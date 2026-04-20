@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\..\common.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Dignite.Paperbase.Abstractions</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 仅依赖 Volo.Abp.Core（DI 标记接口），不依赖 Domain.Shared / Domain -->
+    <PackageReference Include="Volo.Abp.Core" Version="10.2.0" />
+  </ItemGroup>
+
+</Project>

@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Npgsql.EntityFrameworkCore.PostgreSQL;
 
 namespace Dignite.Paperbase.Data;
 
@@ -14,7 +15,7 @@ public class PaperbaseDbContextFactory : IDesignTimeDbContextFactory<PaperbaseDb
         var configuration = BuildConfiguration();
 
         var builder = new DbContextOptionsBuilder<PaperbaseDbContext>()
-            .UseSqlServer(configuration.GetConnectionString("Default"));
+            .UseNpgsql(configuration.GetConnectionString("Default"));
 
         return new PaperbaseDbContext(builder.Options);
     }

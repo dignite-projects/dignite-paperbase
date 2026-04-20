@@ -1,0 +1,26 @@
+id: non_invoice_report_01
+description: Monthly sales performance report for internal review
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  月次売上レポート
+  対象期間: 2024年9月1日〜2024年9月30日
+  作成日: 2024年10月5日
+  作成部門: 営業部
+  【売上サマリー】
+  総売上高: ¥45,280,000（前月比 +8.3%）
+  新規顧客売上: ¥12,500,000
+  既存顧客売上: ¥32,780,000
+  受注件数: 142件
+  【製品別売上ランキング】
+  1位: 製品A ¥18,000,000
+  2位: 製品B ¥11,500,000
+  次月目標: ¥50,000,000
+expected:
+  typeCode: report.monthly
+  minConfidence: 0.75
+tags:
+  - report
+  - negative
+  - sales
+  - monthly

@@ -1,0 +1,23 @@
+id: invoice_positive_01
+description: Standard Japanese qualified invoice (適格請求書) with registration number
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  適格請求書
+  登録番号: T1234567890123
+  請求書番号: INV-2024-001
+  発行日: 2024年4月1日
+  支払期限: 2024年4月30日
+  請求先: 株式会社サンプル商事 御中
+  品目: ソフトウェアライセンス料
+  金額（税抜）: ¥100,000
+  消費税（10%）: ¥10,000
+  合計金額: ¥110,000
+expected:
+  typeCode: invoice.qualified
+  minConfidence: 0.75
+tags:
+  - invoice
+  - positive
+  - qualified
+  - japanese

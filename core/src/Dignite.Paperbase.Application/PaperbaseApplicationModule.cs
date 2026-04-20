@@ -1,14 +1,18 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Dignite.Paperbase.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
+using Volo.Abp.Application;
+using Volo.Abp.BackgroundJobs;
 using Volo.Abp.Mapperly;
 using Volo.Abp.Modularity;
-using Volo.Abp.Application;
 
 namespace Dignite.Paperbase;
 
 [DependsOn(
+    typeof(PaperbaseAbstractionsModule),
     typeof(PaperbaseDomainModule),
     typeof(PaperbaseApplicationContractsModule),
     typeof(AbpDddApplicationModule),
+    typeof(AbpBackgroundJobsModule),
     typeof(AbpMapperlyModule)
     )]
 public class PaperbaseApplicationModule : AbpModule

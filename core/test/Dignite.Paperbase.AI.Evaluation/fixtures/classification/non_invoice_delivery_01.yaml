@@ -1,0 +1,25 @@
+id: non_invoice_delivery_01
+description: Delivery note (納品書) for hardware goods shipment
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  納品書
+  納品書番号: DN-2024-1102
+  納品日: 2024年10月22日
+  納品先: 株式会社テックコープ 資材部 御中
+  発送元: 電子部品販売株式会社
+  【納品明細】
+  品名: LANケーブル Cat6A 5m × 50本　数量確認済
+  品名: USB-Cハブ 7ポート × 20個　数量確認済
+  品名: 無線マウス × 30個　数量確認済
+  上記の通り確かに納品いたしました。
+  受領印:________ 受領者氏名:________
+  ※本書は領収書・請求書ではありません
+expected:
+  typeCode: delivery.note
+  minConfidence: 0.75
+tags:
+  - delivery-note
+  - negative
+  - shipping
+  - hardware

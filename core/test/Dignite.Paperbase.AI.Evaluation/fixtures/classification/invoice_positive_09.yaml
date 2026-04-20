@@ -1,0 +1,25 @@
+id: invoice_positive_09
+description: Transportation and logistics invoice for freight delivery
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  適格請求書
+  登録番号: T2233445566778
+  東日本物流株式会社
+  請求書番号: TL-2024-06-0892
+  輸送期間: 2024年6月1日〜2024年6月30日
+  運送サービス内訳:
+    定期便運賃（東京〜大阪）×8便: ¥320,000
+    緊急配送料金×2件: ¥40,000
+    燃料サーチャージ: ¥15,000
+  小計（税抜）: ¥375,000
+  消費税（10%）: ¥37,500
+  請求金額: ¥412,500
+expected:
+  typeCode: invoice.qualified
+  minConfidence: 0.75
+tags:
+  - invoice
+  - positive
+  - transportation
+  - logistics

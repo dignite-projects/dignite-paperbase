@@ -1,3 +1,4 @@
+using Dignite.Paperbase.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp.EntityFrameworkCore;
 using Volo.Abp.EntityFrameworkCore.Modeling;
@@ -37,8 +38,9 @@ public class PaperbaseDbContext : AbpDbContext<PaperbaseDbContext>
         builder.ConfigureBlobStoring();
         builder.ConfigureIdentity();
         builder.ConfigureOpenIddict();
-        
-        /* Configure your own entities here */
+
+        // Paperbase core module
+        builder.ConfigurePaperbase();
     }
 }
 

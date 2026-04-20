@@ -1,0 +1,25 @@
+id: non_invoice_receipt_01
+description: Purchase receipt for office supplies from retail store
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  領収書
+  株式会社オフィスプラス 新宿店
+  〒160-0022 東京都新宿区新宿3-1-1
+  TEL: 03-1234-5678
+  2024年8月15日 14:32
+  文房具セット: ¥3,200
+  コピー用紙A4（5冊）: ¥2,500
+  ボールペン×10本: ¥1,080
+  合計（税込）: ¥6,780
+  お預かり: ¥10,000
+  お釣り: ¥3,220
+  担当: 田中
+expected:
+  typeCode: receipt.purchase
+  minConfidence: 0.75
+tags:
+  - receipt
+  - negative
+  - retail
+  - office-supplies

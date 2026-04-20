@@ -2,5 +2,5 @@
 
 public static class PaperbaseErrorCodes
 {
-    //Add your business exception error codes here...
+    public const string ExtractedTextIsImmutable = "Paperbase:ExtractedTextIsImmutable";
 }

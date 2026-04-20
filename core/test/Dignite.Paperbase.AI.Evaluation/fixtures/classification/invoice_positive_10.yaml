@@ -1,0 +1,24 @@
+id: invoice_positive_10
+description: IT equipment lease invoice for server hardware
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  適格請求書
+  登録番号: T8899001122334
+  ITリース株式会社
+  請求書番号: LES-2024-0045
+  リース期間: 2024年1月〜2024年12月（月額）
+  リース物件: サーバー機器一式（型番: SV-X9000）
+  月額リース料（税抜）: ¥85,000
+  保守管理費（税抜）: ¥10,000
+  小計: ¥95,000
+  消費税（10%）: ¥9,500
+  今月ご請求額: ¥104,500
+expected:
+  typeCode: invoice.qualified
+  minConfidence: 0.75
+tags:
+  - invoice
+  - positive
+  - it-equipment
+  - lease

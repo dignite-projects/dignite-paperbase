@@ -1,0 +1,24 @@
+id: non_invoice_resume_01
+description: Resume and curriculum vitae for job application
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  履歴書 / Curriculum Vitae
+  氏名: 山田 太郎（Taro Yamada）
+  生年月日: 1990年5月15日
+  住所: 東京都渋谷区〇〇1-2-3
+  学歴:
+    2009年3月 ○○高等学校 卒業
+    2013年3月 △△大学 情報工学部 卒業
+  職歴:
+    2013年4月〜2018年3月 株式会社XYZシステムズ（システムエンジニア）
+    2018年4月〜現在 ABCテクノロジー株式会社（シニアエンジニア）
+  保有資格: 基本情報技術者、AWS認定ソリューションアーキテクト
+expected:
+  typeCode: hr.resume
+  minConfidence: 0.75
+tags:
+  - resume
+  - negative
+  - hr
+  - job-application

@@ -1,0 +1,25 @@
+id: non_invoice_purchase_order_01
+description: Purchase order (発注書) for office furniture procurement
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  発注書
+  発注番号: PO-2024-0321
+  発注日: 2024年9月10日
+  発注者: 株式会社グローバルホールディングス 購買部
+  納入先: 同上（東京都千代田区〇〇1-1-1）
+  御中: オフィス家具販売株式会社
+  【発注明細】
+  品名: 電動昇降デスク（幅160cm）× 20台　単価¥85,000
+  品名: エルゴノミクスチェア × 20脚　単価¥45,000
+  発注金額合計（税抜）: ¥2,600,000
+  希望納期: 2024年10月15日
+  ※本発注書をもって正式注文とします。請求書は納品後に発行願います。
+expected:
+  typeCode: purchase.order
+  minConfidence: 0.75
+tags:
+  - purchase-order
+  - negative
+  - procurement
+  - furniture

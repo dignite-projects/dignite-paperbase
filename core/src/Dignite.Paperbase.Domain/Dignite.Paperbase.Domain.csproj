@@ -12,7 +12,6 @@
   <ItemGroup>
     <PackageReference Include="Volo.Abp.Ddd.Domain" Version="10.2.0"/>
     <ProjectReference Include="..\Dignite.Paperbase.Domain.Shared\Dignite.Paperbase.Domain.Shared.csproj" />
-    <PackageReference Include="Volo.Abp.Commercial.SuiteTemplates" Version="10.2.0" />
   </ItemGroup>
 
 </Project>

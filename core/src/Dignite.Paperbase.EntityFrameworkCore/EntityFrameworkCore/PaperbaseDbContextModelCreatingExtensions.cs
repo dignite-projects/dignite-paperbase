@@ -1,33 +1,74 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Domain.Documents;
+using Microsoft.EntityFrameworkCore;
 using Volo.Abp;
+using Volo.Abp.EntityFrameworkCore.Modeling;
 
 namespace Dignite.Paperbase.EntityFrameworkCore;
 
 public static class PaperbaseDbContextModelCreatingExtensions
 {
-    public static void ConfigurePaperbase(
-        this ModelBuilder builder)
+    public static void ConfigurePaperbase(this ModelBuilder builder)
     {
         Check.NotNull(builder, nameof(builder));
 
-        /* Configure all entities here. Example:
-
-        builder.Entity<Question>(b =>
+        builder.Entity<Document>(b =>
         {
-            //Configure table & schema name
-            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "Questions", PaperbaseDbProperties.DbSchema);
-
+            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "Documents", PaperbaseDbProperties.DbSchema);
             b.ConfigureByConvention();
 
-            //Properties
-            b.Property(q => q.Title).IsRequired().HasMaxLength(QuestionConsts.MaxTitleLength);
+            b.Property(x => x.OriginalFileBlobName).IsRequired().HasMaxLength(512);
+            b.Property(x => x.SourceType).IsRequired();
+            b.Property(x => x.DocumentTypeCode).HasMaxLength(128);
+            b.Property(x => x.LifecycleStatus).IsRequired();
+            b.Property(x => x.ExtractedText).HasColumnType("text");
+            b.Property(x => x.StructuredData).HasColumnType("text");
 
-            //Relations
-            b.HasMany(question => question.Tags).WithOne().HasForeignKey(qt => qt.QuestionId);
+            b.OwnsOne(x => x.FileOrigin, fo =>
+            {
+                fo.Property(x => x.UploadedByUserName).HasMaxLength(256);
+                fo.Property(x => x.OriginalFileName).HasMaxLength(512);
+                fo.Property(x => x.ContentType).IsRequired().HasMaxLength(256);
+                fo.Property(x => x.DeviceInfo).HasMaxLength(512);
+            });
 
-            //Indexes
-            b.HasIndex(q => q.CreationTime);
+            b.HasMany(x => x.PipelineRuns)
+                .WithOne()
+                .HasForeignKey(pr => pr.DocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            b.HasIndex(x => x.LifecycleStatus);
+            b.HasIndex(x => x.DocumentTypeCode);
+            b.HasIndex(x => x.CreationTime);
         });
-        */
+
+        builder.Entity<DocumentPipelineRun>(b =>
+        {
+            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "DocumentPipelineRuns", PaperbaseDbProperties.DbSchema);
+            b.ConfigureByConvention();
+
+            b.Property(x => x.PipelineCode).IsRequired().HasMaxLength(128);
+            b.Property(x => x.ResultCode).HasMaxLength(128);
+            b.Property(x => x.ErrorMessage).HasMaxLength(2048);
+            b.Property(x => x.Metadata).HasColumnType("text");
+
+            // 联合索引：(DocumentId, PipelineCode, AttemptNumber DESC)
+            b.HasIndex(x => new { x.DocumentId, x.PipelineCode, x.AttemptNumber });
+        });
+
+        builder.Entity<DocumentRelation>(b =>
+        {
+            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "DocumentRelations", PaperbaseDbProperties.DbSchema);
+            b.ConfigureByConvention();
+
+            b.Property(x => x.RelationType).IsRequired().HasMaxLength(128);
+            b.Property(x => x.Source).IsRequired();
+
+            b.HasIndex(x => x.SourceDocumentId);
+            b.HasIndex(x => x.TargetDocumentId);
+        });
+
+        // PaperbaseDocumentChunks — reserved schema for Slice 4 (Embedding)
+        // Table will be created by Dignite.Paperbase.AI module in Slice 4.
     }
 }

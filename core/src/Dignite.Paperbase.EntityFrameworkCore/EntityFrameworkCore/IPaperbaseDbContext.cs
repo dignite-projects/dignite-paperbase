@@ -1,4 +1,6 @@
-﻿using Volo.Abp.Data;
+using Dignite.Paperbase.Domain.Documents;
+using Microsoft.EntityFrameworkCore;
+using Volo.Abp.Data;
 using Volo.Abp.EntityFrameworkCore;
 
 namespace Dignite.Paperbase.EntityFrameworkCore;
@@ -6,7 +8,7 @@ namespace Dignite.Paperbase.EntityFrameworkCore;
 [ConnectionStringName(PaperbaseDbProperties.ConnectionStringName)]
 public interface IPaperbaseDbContext : IEfCoreDbContext
 {
-    /* Add DbSet for each Aggregate Root here. Example:
-     * DbSet<Question> Questions { get; }
-     */
+    DbSet<Document> Documents { get; }
+    DbSet<DocumentPipelineRun> DocumentPipelineRuns { get; }
+    DbSet<DocumentRelation> DocumentRelations { get; }
 }

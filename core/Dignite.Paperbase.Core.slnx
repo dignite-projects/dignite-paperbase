@@ -4,6 +4,7 @@
     </Configurations>
 
     <Folder Name="/src/">
+        <Project Path="src/Dignite.Paperbase.Abstractions/Dignite.Paperbase.Abstractions.csproj" />
         <Project Path="src/Dignite.Paperbase.Domain.Shared/Dignite.Paperbase.Domain.Shared.csproj" />
         <Project Path="src/Dignite.Paperbase.Domain/Dignite.Paperbase.Domain.csproj" />
         <Project Path="src/Dignite.Paperbase.Application.Contracts/Dignite.Paperbase.Application.Contracts.csproj" />
@@ -19,5 +20,6 @@
         <Project Path="test/Dignite.Paperbase.EntityFrameworkCore.Tests/Dignite.Paperbase.EntityFrameworkCore.Tests.csproj" />
         <Project Path="test/Dignite.Paperbase.Domain.Tests/Dignite.Paperbase.Domain.Tests.csproj" />
         <Project Path="test/Dignite.Paperbase.Application.Tests/Dignite.Paperbase.Application.Tests.csproj" />
+        <Project Path="test/Dignite.Paperbase.AI.Evaluation/Dignite.Paperbase.AI.Evaluation.csproj" />
     </Folder>
 </Solution>

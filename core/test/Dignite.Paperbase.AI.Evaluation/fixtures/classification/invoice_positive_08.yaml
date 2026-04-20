@@ -1,0 +1,25 @@
+id: invoice_positive_08
+description: Restaurant and catering services invoice for corporate event
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  適格請求書
+  登録番号: T6677889900112
+  株式会社プレミアムケータリング
+  請求書番号: CAT-2024-0156
+  ご利用日: 2024年7月15日
+  サービス内容: 株式会社○○様 社内イベントケータリング
+  お料理（8%軽減税率対象）: ¥200,000
+  会場設営・サービス料（10%対象）: ¥50,000
+  消費税（8%）: ¥16,000
+  消費税（10%）: ¥5,000
+  合計金額（税込）: ¥271,000
+expected:
+  typeCode: invoice.qualified
+  minConfidence: 0.75
+tags:
+  - invoice
+  - positive
+  - catering
+  - food-service
+  - reduced-rate

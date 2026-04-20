@@ -1,0 +1,21 @@
+id: non_invoice_contract_01
+description: Service agreement contract between two companies
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  業務委託契約書
+  甲: 株式会社アルファテック（以下「甲」という）
+  乙: 株式会社ベータソリューションズ（以下「乙」という）
+  第1条（委託業務）甲は乙に対し、次の業務を委託する。
+    1. システム運用保守業務
+    2. ヘルプデスク対応業務
+  第2条（契約期間）本契約の有効期間は2024年4月1日から2025年3月31日までとする。
+  第3条（委託料）月額金500,000円（税別）とする。
+  本契約の成立を証するため、本書2通を作成し、各自1通を保有する。
+expected:
+  typeCode: contract.service
+  minConfidence: 0.75
+tags:
+  - contract
+  - negative
+  - service-agreement

@@ -1,0 +1,25 @@
+id: invoice_positive_11
+description: Invoice with partial payment terms and installment schedule
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  適格請求書
+  登録番号: T0011223344556
+  請求書番号: PP-2024-0033
+  件名: システム開発費用（第2回分割払い）
+  契約総額（税抜）: ¥5,000,000
+  第2回請求分（税抜）: ¥1,500,000
+  消費税（10%）: ¥150,000
+  今回ご請求額: ¥1,650,000
+  支払スケジュール:
+    第1回（支払済）: ¥1,100,000
+    第2回（今回）: ¥1,650,000
+    第3回: ¥2,750,000（2024年9月末）
+expected:
+  typeCode: invoice.qualified
+  minConfidence: 0.75
+tags:
+  - invoice
+  - positive
+  - installment
+  - partial-payment

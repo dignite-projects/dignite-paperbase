@@ -1,0 +1,4 @@
+minAccuracy: 0.85
+minAvgConfidenceOnCorrect: 0.70
+maxP95LatencyMs: 5000
+maxAvgCostUsd: 0.01

@@ -1,0 +1,23 @@
+id: invoice_positive_05
+description: Digital services invoice for SaaS subscription
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  適格請求書
+  登録番号: T3344556677889
+  デジタルサービス株式会社
+  請求書番号: DS-2024-SUB-0042
+  サービス名: CloudPlatform Pro プラン（月額）
+  契約期間: 2024年6月1日〜2024年6月30日
+  ユーザー数: 50アカウント
+  月額料金（税抜）: ¥150,000
+  消費税（10%）: ¥15,000
+  ご請求金額: ¥165,000
+expected:
+  typeCode: invoice.qualified
+  minConfidence: 0.75
+tags:
+  - invoice
+  - positive
+  - saas
+  - digital-services

@@ -1,0 +1,23 @@
+id: invoice_positive_03
+description: Monthly service fee invoice with consumption tax breakdown
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  適格請求書
+  登録番号: T5555666677778
+  請求書番号: SVC-2024-0310
+  サービス提供期間: 2024年3月1日〜2024年3月31日
+  月額保守サービス料: ¥50,000
+  クラウドストレージ利用料: ¥5,000
+  小計（税抜）: ¥55,000
+  消費税（10%）: ¥5,500
+  請求金額合計: ¥60,500
+  振込期限: 2024年4月15日
+expected:
+  typeCode: invoice.qualified
+  minConfidence: 0.75
+tags:
+  - invoice
+  - positive
+  - monthly-service
+  - maintenance

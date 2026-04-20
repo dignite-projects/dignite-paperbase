@@ -9,6 +9,7 @@ using Dignite.Paperbase.HealthChecks;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenIddict.Validation.AspNetCore;
 using Volo.Abp;
+using Volo.Abp.Timing;
 using Volo.Abp.Studio;
 using Volo.Abp.Uow;
 using Volo.Abp.Account;
@@ -35,7 +36,6 @@ using Volo.Abp.MultiTenancy;
 using Volo.Abp.PermissionManagement;
 using Volo.Abp.PermissionManagement.HttpApi;
 using Volo.Abp.PermissionManagement.Identity;
-using Volo.Abp.SettingManagement;
 using Volo.Abp.Swashbuckle;
 using Volo.Abp.UI.Navigation.Urls;
 using Volo.Abp.Validation.Localization;
@@ -52,8 +52,9 @@ using Volo.Abp.Identity.EntityFrameworkCore;
 using Volo.Abp.FeatureManagement.EntityFrameworkCore;
 using Volo.Abp.BlobStoring.Database.EntityFrameworkCore;
 using Volo.Abp.BackgroundJobs.EntityFrameworkCore;
-using Volo.Abp.EntityFrameworkCore.SqlServer;
+using Volo.Abp.EntityFrameworkCore.PostgreSql;
 using Volo.Abp.Studio.Client.AspNetCore;
+using Dignite.Paperbase.EntityFrameworkCore;
 
 using Microsoft.Extensions.Hosting;
 
@@ -104,7 +105,12 @@ namespace Dignite.Paperbase;
     typeof(AbpSettingManagementEntityFrameworkCoreModule),
     typeof(AbpBackgroundJobsEntityFrameworkCoreModule),
     typeof(BlobStoringDatabaseEntityFrameworkCoreModule),
-    typeof(AbpEntityFrameworkCoreSqlServerModule)
+    typeof(AbpEntityFrameworkCorePostgreSqlModule),
+
+    // Paperbase core modules
+    typeof(PaperbaseHttpApiModule),
+    typeof(PaperbaseApplicationModule),
+    typeof(PaperbaseEntityFrameworkCoreModule)
 )]
 public class PaperbaseModule : AbpModule
 {
@@ -166,6 +172,11 @@ public class PaperbaseModule : AbpModule
         {
             context.Services.Replace(ServiceDescriptor.Singleton<IEmailSender, NullEmailSender>());
         }
+
+        Configure<AbpClockOptions>(options =>
+        {
+            options.Kind = DateTimeKind.Utc;
+        });
 
         ConfigureStudio(hostingEnvironment);
         ConfigureAuthentication(context);
@@ -264,24 +275,15 @@ public class PaperbaseModule : AbpModule
     {
         Configure<AbpLocalizationOptions>(options =>
         {
-            options.Resources
-                .Add<PaperbaseResource>("en")
-                .AddBaseTypes(typeof(AbpValidationResource), typeof(AbpUiResource))
-                .AddVirtualJson("/Localization/Paperbase");
-
+            // PaperbaseResource is already registered by PaperbaseDomainSharedModule
             options.DefaultResourceType = typeof(PaperbaseResource);
-            
-            options.Languages.Add(new LanguageInfo("en", "en", "English")); 
-            options.Languages.Add(new LanguageInfo("zh-Hans", "zh-Hans", "Chinese (Simplified)")); 
-            options.Languages.Add(new LanguageInfo("zh-Hant", "zh-Hant", "Chinese (Traditional)")); 
-            options.Languages.Add(new LanguageInfo("ja", "ja", "日语")); 
 
+            options.Languages.Add(new LanguageInfo("en", "en", "English"));
+            options.Languages.Add(new LanguageInfo("zh-Hans", "zh-Hans", "Chinese (Simplified)"));
+            options.Languages.Add(new LanguageInfo("zh-Hant", "zh-Hant", "Chinese (Traditional)"));
+            options.Languages.Add(new LanguageInfo("ja", "ja", "日语"));
         });
 
-        Configure<AbpExceptionLocalizationOptions>(options =>
-        {
-            options.MapCodeNamespace("Paperbase", typeof(PaperbaseResource));
-        });
     }
 
     private void ConfigureAutoApiControllers()
@@ -350,12 +352,8 @@ public class PaperbaseModule : AbpModule
 
     private void ConfigureEfCore(ServiceConfigurationContext context)
     {
-        context.Services.AddAbpDbContext<PaperbaseDbContext>(options =>
+        context.Services.AddAbpDbContext<Data.PaperbaseDbContext>(options =>
         {
-            /* You can remove "includeAllEntities: true" to create
-             * default repositories only for aggregate roots
-             * Documentation: https://docs.abp.io/en/abp/latest/Entity-Framework-Core#add-default-repositories
-             */
             options.AddDefaultRepositories(includeAllEntities: true);
         });
 
@@ -363,7 +361,7 @@ public class PaperbaseModule : AbpModule
         {
             options.Configure(configurationContext =>
             {
-                configurationContext.UseSqlServer();
+                configurationContext.UseNpgsql();
             });
         });
         

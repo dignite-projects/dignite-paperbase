@@ -1,0 +1,24 @@
+id: invoice_positive_07
+description: Invoice from medical supplies company for hospital equipment
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  適格請求書
+  登録番号: T4455667788990
+  メディカルサプライ株式会社
+  請求書番号: MS-2024-0397
+  請求先: ○○病院 購買部門 御中
+  品目: 医療用消耗品一式
+    手術用グローブ（Mサイズ）×200箱: ¥80,000
+    滅菌ガーゼ×100パック: ¥30,000
+  小計（税抜）: ¥110,000
+  消費税（10%）: ¥11,000
+  ご請求合計: ¥121,000
+expected:
+  typeCode: invoice.qualified
+  minConfidence: 0.75
+tags:
+  - invoice
+  - positive
+  - medical
+  - supplies

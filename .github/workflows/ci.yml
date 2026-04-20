@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore core
+        run: dotnet restore core/Dignite.Paperbase.Core.slnx
+
+      - name: Build core
+        run: dotnet build core/Dignite.Paperbase.Core.slnx --no-restore --configuration Release
+
+      - name: Restore host
+        run: dotnet restore host/src/Dignite.Paperbase.Host.csproj
+
+      - name: Build host
+        run: dotnet build host/src/Dignite.Paperbase.Host.csproj --no-restore --configuration Release
+
+      - name: Run domain tests
+        run: dotnet test core/test/Dignite.Paperbase.Domain.Tests/Dignite.Paperbase.Domain.Tests.csproj --no-build --configuration Release --verbosity normal
+
+      - name: Run application tests
+        run: dotnet test core/test/Dignite.Paperbase.Application.Tests/Dignite.Paperbase.Application.Tests.csproj --no-build --configuration Release --verbosity normal
+
+      - name: Run AI evaluation (replay mode)
+        run: dotnet test core/test/Dignite.Paperbase.AI.Evaluation/Dignite.Paperbase.AI.Evaluation.csproj --no-build --configuration Release --verbosity normal
+
+      - name: Build Docker image
+        run: docker build -f host/Dockerfile -t paperbase-api:${{ github.sha }} .
+        if: github.event_name == 'push'
