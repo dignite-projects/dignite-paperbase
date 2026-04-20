@@ -1,0 +1,9 @@
+{
+  "id": "2775fed9-dd0e-47bd-8b81-adbb738155ac",
+  "template": "empty",
+  "modules": {
+    "Dignite.Paperbase": {
+      "path": "Dignite.Paperbase.abpmdl"
+    }
+  }
+}

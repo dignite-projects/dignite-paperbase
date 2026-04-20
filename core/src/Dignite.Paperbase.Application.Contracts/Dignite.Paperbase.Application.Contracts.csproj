@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\..\common.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Dignite.Paperbase</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Volo.Abp.Ddd.Application.Contracts" Version="10.2.0" />
+    <PackageReference Include="Volo.Abp.Authorization" Version="10.2.0" />
+    <ProjectReference Include="..\Dignite.Paperbase.Domain.Shared\Dignite.Paperbase.Domain.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

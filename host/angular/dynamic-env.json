@@ -1,0 +1,21 @@
+{
+  "production": true,
+  "application": {
+    "baseUrl":"https://paperbase-web",
+    "name": "Paperbase",
+    "logoUrl": ""
+  },
+  "oAuthConfig": {
+    "issuer": "https://paperbase-api/",
+    "redirectUri": "https://paperbase",
+    "clientId": "Paperbase_App",
+    "responseType": "code",
+    "scope": "offline_access openid profile email phone"
+  },
+  "apis": {
+    "default": {
+      "url": "https://paperbase-api",
+      "rootNamespace": "Paperbase"
+    }
+  }
+}

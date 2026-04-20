@@ -1,0 +1,58 @@
+{
+  "folders": {
+    "items": {
+      "src": {},
+      "test": {}
+    }
+  },
+  "packages": {
+    "Dignite.Paperbase.Domain": {
+      "path": "src/Dignite.Paperbase.Domain/Dignite.Paperbase.Domain.abppkg",
+      "folder": "src"
+    },
+    "Dignite.Paperbase.Application.Contracts": {
+      "path": "src/Dignite.Paperbase.Application.Contracts/Dignite.Paperbase.Application.Contracts.abppkg",
+      "folder": "src"
+    },
+    "Dignite.Paperbase.Application": {
+      "path": "src/Dignite.Paperbase.Application/Dignite.Paperbase.Application.abppkg",
+      "folder": "src"
+    },
+    "Dignite.Paperbase.EntityFrameworkCore": {
+      "path": "src/Dignite.Paperbase.EntityFrameworkCore/Dignite.Paperbase.EntityFrameworkCore.abppkg",
+      "folder": "src"
+    },
+    "Dignite.Paperbase.HttpApi": {
+      "path": "src/Dignite.Paperbase.HttpApi/Dignite.Paperbase.HttpApi.abppkg",
+      "folder": "src"
+    },
+    "Dignite.Paperbase.HttpApi.Client": {
+      "path": "src/Dignite.Paperbase.HttpApi.Client/Dignite.Paperbase.HttpApi.Client.abppkg",
+      "folder": "src"
+    },
+    "Dignite.Paperbase.TestBase": {
+      "path": "test/Dignite.Paperbase.TestBase/Dignite.Paperbase.TestBase.abppkg",
+      "folder": "test"
+    },
+    "Dignite.Paperbase.EntityFrameworkCore.Tests": {
+      "path": "test/Dignite.Paperbase.EntityFrameworkCore.Tests/Dignite.Paperbase.EntityFrameworkCore.Tests.abppkg",
+      "folder": "test"
+    },
+    "Dignite.Paperbase.Domain.Tests": {
+      "path": "test/Dignite.Paperbase.Domain.Tests/Dignite.Paperbase.Domain.Tests.abppkg",
+      "folder": "test"
+    },
+    "Dignite.Paperbase.Application.Tests": {
+      "path": "test/Dignite.Paperbase.Application.Tests/Dignite.Paperbase.Application.Tests.abppkg",
+      "folder": "test"
+    },
+    "Dignite.Paperbase.Domain.Shared": {
+      "path": "src/Dignite.Paperbase.Domain.Shared/Dignite.Paperbase.Domain.Shared.abppkg",
+      "folder": "src"
+    },
+    "Dignite.Paperbase.Installer": {
+       "path": "src/Dignite.Paperbase.Installer/Dignite.Paperbase.Installer.abppkg",
+       "folder": "src"
+    }
+  }
+}

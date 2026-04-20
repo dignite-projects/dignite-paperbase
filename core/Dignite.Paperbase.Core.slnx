@@ -1,0 +1,23 @@
+<Solution>
+    <Configurations>
+        <Platform Name="Any CPU" />
+    </Configurations>
+
+    <Folder Name="/src/">
+        <Project Path="src/Dignite.Paperbase.Domain.Shared/Dignite.Paperbase.Domain.Shared.csproj" />
+        <Project Path="src/Dignite.Paperbase.Domain/Dignite.Paperbase.Domain.csproj" />
+        <Project Path="src/Dignite.Paperbase.Application.Contracts/Dignite.Paperbase.Application.Contracts.csproj" />
+        <Project Path="src/Dignite.Paperbase.Application/Dignite.Paperbase.Application.csproj" />
+        <Project Path="src/Dignite.Paperbase.EntityFrameworkCore/Dignite.Paperbase.EntityFrameworkCore.csproj" />
+        <Project Path="src/Dignite.Paperbase.HttpApi/Dignite.Paperbase.HttpApi.csproj" />
+        <Project Path="src/Dignite.Paperbase.HttpApi.Client/Dignite.Paperbase.HttpApi.Client.csproj" />
+        <Project Path="src/Dignite.Paperbase.Installer/Dignite.Paperbase.Installer.csproj" />
+    </Folder>
+    
+    <Folder Name="/test/">
+        <Project Path="test/Dignite.Paperbase.TestBase/Dignite.Paperbase.TestBase.csproj" />
+        <Project Path="test/Dignite.Paperbase.EntityFrameworkCore.Tests/Dignite.Paperbase.EntityFrameworkCore.Tests.csproj" />
+        <Project Path="test/Dignite.Paperbase.Domain.Tests/Dignite.Paperbase.Domain.Tests.csproj" />
+        <Project Path="test/Dignite.Paperbase.Application.Tests/Dignite.Paperbase.Application.Tests.csproj" />
+    </Folder>
+</Solution>

@@ -1,0 +1,51 @@
+{
+  "id": "174501bc-17b3-47a0-9e73-d4c3d5332620",
+  "template": "app-nolayers",
+  "versions": {
+    "AbpFramework": "10.2.0",
+    "AbpStudio": "2.2.6",
+    "TargetDotnetFramework": "net10.0"
+  },
+  "modules": {
+    "Dignite.Paperbase.Host": {
+      "path": "Dignite.Paperbase.Host.abpmdl"
+    }
+  },
+  "runProfiles": {
+    "Default": {
+      "path": "etc/run-profiles/Default.abprun.json"
+    }
+  },
+  "options": {
+    "httpRequests": {
+      "ignoredUrls": [
+      
+      ]
+    }
+  },
+  "creatingStudioConfiguration": {
+    "template": "app-nolayers",
+    "createdAbpStudioVersion": "2.2.6",
+    "creationTool": "ABP Studio UI",
+    "multiTenancy": "false",
+    "runInstallLibs": "",
+    "useLocalReferences": "false",
+    "uiFramework": "angular",
+    "databaseProvider": "ef",
+    "runDbMigrator": "",
+    "includeTests": "false",
+    "databaseManagementSystem": "sqlserver",
+    "createInitialMigration": "",
+    "theme": "leptonx-lite",
+    "themeStyle": "",
+    "themeMenuPlacement": "",
+    "progressiveWebApp": "",
+    "runProgressiveWebAppSupport": "",
+    "publicWebsite": "",
+    "socialLogin": "false",
+    "sampleCrudPage": "false",
+    "selectedLanguages": ["English", "Chinese (Simplified)", "Chinese (Traditional)", "日语", ],
+    "defaultLanguage": "English",
+    "createCommand": "abp new Dignite.Paperbase -t app-nolayers --ui-framework angular --mobile  --database-provider ef --database-management-system sqlserver --theme leptonx-lite --skip-migration  --skip-migrator  --no-tests --without-cms-kit --dont-run-install-libs --dont-run-bundling --no-multi-tenancy --no-social-logins -no-gdpr -no-openiddict-admin-ui -no-audit-logging -no-file-management -no-language-management -no-text-template-management"
+  }
+}

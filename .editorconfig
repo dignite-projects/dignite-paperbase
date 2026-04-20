@@ -1,0 +1,3 @@
+# Indent size for C# project files
+[*.csproj]
+indent_size = 2
