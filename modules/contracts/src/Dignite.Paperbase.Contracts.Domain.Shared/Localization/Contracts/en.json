@@ -1,0 +1,21 @@
+{
+  "culture": "en",
+  "texts": {
+    "MyAccount":  "My account",
+    "SamplePageMessage": "A sample page for the Contracts module",
+    "DocumentType:Contract": "Contract",
+    "DocumentType:ContractDescription": "A contract document containing parties, term, amount, and signatures.",
+    "Permission:Contracts": "Contracts",
+    "Permission:Contracts.Contracts": "Contracts",
+    "Permission:Contracts.Contracts.Update": "Update contracts",
+    "Permission:Contracts.Contracts.Confirm": "Confirm contracts",
+    "Title": "Title",
+    "CounterpartyName": "Counterparty",
+    "SignedDate": "Signed date",
+    "ExpirationDate": "Expiration date",
+    "TotalAmount": "Amount",
+    "Status": "Status",
+    "Confidence": "Confidence",
+    "NeedsReview": "Needs review"
+  }
+}

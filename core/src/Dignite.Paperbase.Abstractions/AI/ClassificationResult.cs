@@ -4,7 +4,7 @@ namespace Dignite.Paperbase.Abstractions.AI;
 
 public class ClassificationResult
 {
-    public string TypeCode { get; set; } = default!;
+    public string? TypeCode { get; set; }
     public double ConfidenceScore { get; set; }
 
     /// <summary>Top-K 候选类型（含主结果），用于 LowConfidence 人工确认 UI</summary>

@@ -1,9 +1,10 @@
-﻿using Localization.Resources.AbpUi;
+using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Localization;
+using Localization.Resources.AbpUi;
+using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.AspNetCore.Mvc;
 using Volo.Abp.Localization;
 using Volo.Abp.Modularity;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Dignite.Paperbase;
 
@@ -27,6 +28,11 @@ public class PaperbaseHttpApiModule : AbpModule
             options.Resources
                 .Get<PaperbaseResource>()
                 .AddBaseTypes(typeof(AbpUiResource));
+        });
+
+        Configure<AbpAspNetCoreMvcOptions>(options =>
+        {
+            options.ConventionalControllers.FormBodyBindingIgnoredTypes.Add(typeof(UploadDocumentInput));
         });
     }
 }

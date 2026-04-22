@@ -1,0 +1,16 @@
+id: non_contract_quotation_01
+description: Quotation should not be classified as a contract
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  御見積書
+  見積番号: Q-2024-092
+  件名: システム導入費用
+  見積金額: 3,000,000円
+  有効期限: 2024年7月31日
+expected:
+  typeCode: null
+  minConfidence: 0.0
+tags:
+  - quotation
+  - negative

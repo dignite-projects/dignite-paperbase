@@ -2,15 +2,13 @@ using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Domain.Documents;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.EntityFrameworkCore;
-using Volo.Abp.EntityFrameworkCore.PostgreSql;
 using Volo.Abp.Modularity;
 
 namespace Dignite.Paperbase.EntityFrameworkCore;
 
 [DependsOn(
     typeof(PaperbaseDomainModule),
-    typeof(AbpEntityFrameworkCoreModule),
-    typeof(AbpEntityFrameworkCorePostgreSqlModule)
+    typeof(AbpEntityFrameworkCoreModule)
 )]
 public class PaperbaseEntityFrameworkCoreModule : AbpModule
 {
@@ -25,9 +23,5 @@ public class PaperbaseEntityFrameworkCoreModule : AbpModule
             options.AddRepository<DocumentRelation, EfCoreDocumentRelationRepository>();
         });
 
-        Configure<AbpDbContextOptions>(options =>
-        {
-            options.UseNpgsql();
-        });
     }
 }

@@ -1,0 +1,21 @@
+{
+  "culture": "ja",
+  "texts": {
+    "MyAccount": "マイアカウント",
+    "SamplePageMessage": "Contracts モジュールのサンプルページ",
+    "DocumentType:Contract": "契約書",
+    "DocumentType:ContractDescription": "契約期間、金額、署名欄を含む契約文書",
+    "Permission:Contracts": "Contracts",
+    "Permission:Contracts.Contracts": "Contracts",
+    "Permission:Contracts.Contracts.Update": "契約を更新",
+    "Permission:Contracts.Contracts.Confirm": "契約を確認",
+    "Title": "タイトル",
+    "CounterpartyName": "相手先",
+    "SignedDate": "締結日",
+    "ExpirationDate": "満了日",
+    "TotalAmount": "金額",
+    "Status": "ステータス",
+    "Confidence": "信頼度",
+    "NeedsReview": "要確認"
+  }
+}

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\..\common.props"/>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
+    <RootNamespace>Dignite.Paperbase.Contracts</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Volo.Abp.VirtualFileSystem" Version="10.2.0"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="..\..\Dignite.Paperbase.Contracts.abpmdl"/>
+    <Content Include="..\..\Dignite.Paperbase.Contracts.abpmdl">
+      <Pack>true</Pack>
+      <PackagePath>content\</PackagePath>
+    </Content>
+    <None Remove="..\..\**\*.abppkg*" />
+    <Content Include="..\..\**\*.abppkg*">
+      <Pack>true</Pack>
+      <PackagePath>content\</PackagePath>
+    </Content>
+  </ItemGroup>
+
+</Project>

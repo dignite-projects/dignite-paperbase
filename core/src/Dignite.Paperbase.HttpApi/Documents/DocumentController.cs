@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
 using Microsoft.AspNetCore.Mvc;
+using Volo.Abp.Content;
 using Volo.Abp.Application.Dtos;
 
 namespace Dignite.Paperbase.HttpApi.Documents;
@@ -27,6 +28,19 @@ public class DocumentController : PaperbaseController, IDocumentAppService
     public virtual Task<PagedResultDto<DocumentDto>> GetListAsync(GetDocumentListInput input)
     {
         return _documentAppService.GetListAsync(input);
+    }
+
+    [HttpPost("upload")]
+    [Consumes("multipart/form-data")]
+    public virtual Task<DocumentDto> UploadAsync(UploadDocumentInput input)
+    {
+        return _documentAppService.UploadAsync(input);
+    }
+
+    [HttpGet("{id}/blob")]
+    public virtual Task<IRemoteStreamContent> GetBlobAsync(Guid id)
+    {
+        return _documentAppService.GetBlobAsync(id);
     }
 
     [HttpDelete("{id}")]

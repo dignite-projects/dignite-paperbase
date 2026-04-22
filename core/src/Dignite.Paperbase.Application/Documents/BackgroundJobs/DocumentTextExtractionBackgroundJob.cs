@@ -1,8 +1,12 @@
 using System;
+using System.IO;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.TextExtraction;
+using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Domain.Documents;
 using Volo.Abp.BackgroundJobs;
+using Volo.Abp.BlobStoring;
 using Volo.Abp.DependencyInjection;
 
 namespace Dignite.Paperbase.Application.Documents.BackgroundJobs;
@@ -14,28 +18,55 @@ public class DocumentTextExtractionBackgroundJob
     private readonly IDocumentRepository _documentRepository;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly ITextExtractor _textExtractor;
+    private readonly IBlobContainer<PaperbaseDocumentContainer> _blobContainer;
+    private readonly IBackgroundJobManager _backgroundJobManager;
 
     public DocumentTextExtractionBackgroundJob(
         IDocumentRepository documentRepository,
         DocumentPipelineRunManager pipelineRunManager,
-        ITextExtractor textExtractor)
+        ITextExtractor textExtractor,
+        IBlobContainer<PaperbaseDocumentContainer> blobContainer,
+        IBackgroundJobManager backgroundJobManager)
     {
         _documentRepository = documentRepository;
         _pipelineRunManager = pipelineRunManager;
         _textExtractor = textExtractor;
+        _blobContainer = blobContainer;
+        _backgroundJobManager = backgroundJobManager;
     }
 
     public override async Task ExecuteAsync(DocumentTextExtractionJobArgs args)
     {
-        // TODO: Implement in Slice 1
-        // 1. Load document by args.DocumentId
-        // 2. Start pipeline run via _pipelineRunManager.StartAsync(document, PaperbasePipelines.TextExtraction)
-        // 3. Load blob stream from BlobStoring
-        // 4. Call _textExtractor.ExtractAsync(stream, context)
-        // 5. document.SetExtractedText(result.ExtractedText)
-        // 6. _pipelineRunManager.CompleteAsync(document, run, metadata: result.Metadata)
-        // 7. Enqueue classification job
-        throw new NotImplementedException("DocumentTextExtractionBackgroundJob is implemented in Slice 1.");
+        var document = await _documentRepository.GetAsync(args.DocumentId);
+        var run = await _pipelineRunManager.StartAsync(document, PaperbasePipelines.TextExtraction);
+        await _documentRepository.UpdateAsync(document);
+
+        try
+        {
+            var blobStream = await _blobContainer.GetAsync(document.OriginalFileBlobName);
+            var ctx = new TextExtractionContext
+            {
+                ContentType = document.FileOrigin.ContentType,
+                FileExtension = Path.GetExtension(document.FileOrigin.OriginalFileName ?? string.Empty),
+                LanguageHints = { "ja", "en" }
+            };
+
+            var result = await _textExtractor.ExtractAsync(blobStream, ctx);
+
+            var metadataJson = result.Metadata.Count > 0
+                ? JsonSerializer.Serialize(result.Metadata)
+                : null;
+            await _pipelineRunManager.CompleteTextExtractionAsync(document, run, result.ExtractedText, metadataJson);
+            await _documentRepository.UpdateAsync(document);
+
+            await _backgroundJobManager.EnqueueAsync(
+                new DocumentClassificationJobArgs { DocumentId = document.Id });
+        }
+        catch (Exception ex)
+        {
+            await _pipelineRunManager.FailAsync(document, run, ex.Message);
+            await _documentRepository.UpdateAsync(document);
+        }
     }
 }
 

@@ -1,0 +1,18 @@
+id: contract_general_05
+description: Japanese software license agreement
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  ソフトウェア利用許諾契約書
+  甲: Dignite Japan株式会社
+  乙: 株式会社利用者
+  利用期間: 2024年7月1日から2025年6月30日まで
+  ライセンス料: 年額1,200,000円
+  署名欄
+expected:
+  typeCode: contract.general
+  minConfidence: 0.75
+tags:
+  - contract
+  - positive
+  - japanese

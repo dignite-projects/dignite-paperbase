@@ -1,0 +1,151 @@
+<div class="container-fluid py-4">
+
+  <!-- Back + header -->
+  <div class="d-flex align-items-center mb-3 gap-2">
+    <button class="btn btn-outline-secondary btn-sm" (click)="goBack()">
+      <i class="fas fa-arrow-left me-1"></i>
+      {{ '::Back' | abpLocalization }}
+    </button>
+    <h5 class="mb-0 ms-2">
+      {{ '::Document:Detail' | abpLocalization }}
+    </h5>
+    @if (document()) {
+      <span [class]="getStatusBadgeClass(document()!.lifecycleStatus)" class="ms-2">
+        @if (isProcessing()) {
+          <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+        }
+        {{ getStatusLabel(document()!.lifecycleStatus) | abpLocalization }}
+      </span>
+    }
+  </div>
+
+  <!-- Loading state -->
+  @if (isLoading()) {
+    <div class="text-center py-5">
+      <div class="spinner-border text-primary" role="status"></div>
+    </div>
+  }
+
+  @if (document()) {
+    <!-- Processing banner -->
+    @if (isProcessing()) {
+      <div class="alert alert-warning d-flex align-items-center mb-3" role="alert">
+        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+        <span>{{ '::Document:ProcessingMessage' | abpLocalization }}</span>
+      </div>
+    }
+
+    <div class="row g-3">
+      <!-- LEFT: Original file preview -->
+      <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+          <div class="card-header">
+            <h6 class="mb-0">
+              <i class="fas fa-image me-2"></i>
+              {{ '::Document:OriginalFile' | abpLocalization }}
+            </h6>
+          </div>
+          <div class="card-body p-0 d-flex align-items-center justify-content-center bg-light" style="min-height: 400px;">
+            @if (isImage() && !imageError()) {
+              <img
+                [src]="getImageUrl()"
+                (error)="onImageError()"
+                alt="{{ document()!.fileOrigin?.originalFileName }}"
+                class="img-fluid preview-image"
+                style="max-height: 600px; object-fit: contain;"
+              />
+            } @else if (!isImage()) {
+              <div class="text-center text-muted py-4">
+                <i class="fas fa-file-pdf fa-4x text-danger mb-3 d-block"></i>
+                <p>{{ document()!.fileOrigin?.originalFileName }}</p>
+                <a [href]="getImageUrl()" target="_blank" class="btn btn-outline-primary btn-sm">
+                  <i class="fas fa-external-link-alt me-1"></i>
+                  {{ '::Document:OpenFile' | abpLocalization }}
+                </a>
+              </div>
+            } @else {
+              <div class="text-center text-muted py-4">
+                <i class="fas fa-image fa-4x mb-3 d-block"></i>
+                <p>{{ '::Document:PreviewUnavailable' | abpLocalization }}</p>
+              </div>
+            }
+          </div>
+          <div class="card-footer text-muted small">
+            <i class="fas fa-file me-1"></i>
+            {{ document()!.fileOrigin?.originalFileName }}
+            &nbsp;·&nbsp;
+            {{ document()!.fileOrigin?.contentType }}
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Extracted data -->
+      <div class="col-lg-6 d-flex flex-column gap-3">
+
+        <!-- Document metadata -->
+        <div class="card shadow-sm">
+          <div class="card-header">
+            <h6 class="mb-0">
+              <i class="fas fa-info-circle me-2"></i>
+              {{ '::Document:Metadata' | abpLocalization }}
+            </h6>
+          </div>
+          <div class="card-body">
+            <dl class="row mb-0 small">
+              <dt class="col-sm-5 text-muted">{{ '::Document:Type' | abpLocalization }}</dt>
+              <dd class="col-sm-7">
+                @if (document()!.documentTypeCode) {
+                  <span class="badge bg-info text-dark">{{ document()!.documentTypeCode }}</span>
+                } @else {
+                  <span class="text-muted">—</span>
+                }
+              </dd>
+
+              <dt class="col-sm-5 text-muted">{{ '::Document:ConfidenceScore' | abpLocalization }}</dt>
+              <dd class="col-sm-7">
+                @if (document()!.confidenceScore > 0) {
+                  {{ (document()!.confidenceScore * 100).toFixed(0) }}%
+                } @else {
+                  —
+                }
+              </dd>
+
+              <dt class="col-sm-5 text-muted">{{ '::Document:UploadedBy' | abpLocalization }}</dt>
+              <dd class="col-sm-7">{{ document()!.fileOrigin?.uploadedByUserName }}</dd>
+
+              <dt class="col-sm-5 text-muted">{{ '::Document:UploadedAt' | abpLocalization }}</dt>
+              <dd class="col-sm-7">{{ document()!.creationTime | date:'yyyy-MM-dd HH:mm' }}</dd>
+            </dl>
+
+            <div class="mt-3">
+              <a [href]="getImageUrl()" target="_blank" class="btn btn-outline-primary btn-sm">
+                <i class="fas fa-external-link-alt me-1"></i>
+                {{ '::Document:OpenFile' | abpLocalization }}
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- OCR raw text (collapsible) -->
+        @if (document()!.extractedText) {
+          <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center"
+                 role="button" (click)="toggleText()" style="cursor: pointer;">
+              <h6 class="mb-0">
+                <i class="fas fa-align-left me-2"></i>
+                {{ '::Document:ExtractedText' | abpLocalization }}
+              </h6>
+              <i class="fas" [class.fa-chevron-down]="!isTextExpanded()" [class.fa-chevron-up]="isTextExpanded()"></i>
+            </div>
+            @if (isTextExpanded()) {
+              <div class="card-body">
+                <pre class="ocr-text">{{ document()!.extractedText }}</pre>
+              </div>
+            }
+          </div>
+        }
+
+      </div>
+    </div>
+  }
+</div>

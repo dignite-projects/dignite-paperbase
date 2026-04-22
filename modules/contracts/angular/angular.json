@@ -1,0 +1,55 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "cli": {
+    "analytics": false
+  },
+  "version": 1,
+  "newProjectRoot": "projects",
+  "projects": {
+    "dev-app": {
+      "projectType": "application",
+      "root": "projects/dev-app",
+      "sourceRoot": "projects/dev-app/src"
+    },
+    "contracts": {
+      "projectType": "library",
+      "root": "projects/contracts",
+      "sourceRoot": "projects/contracts/src",
+      "prefix": "lib",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:ng-packagr",
+          "options": {
+            "project": "projects/contracts/ng-package.json"
+          },
+          "configurations": {
+            "production": {
+              "tsConfig": "projects/contracts/tsconfig.lib.prod.json"
+            },
+            "development": {
+              "tsConfig": "projects/contracts/tsconfig.lib.json"
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "test": {
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "projects/contracts/tsconfig.spec.json",
+            "buildTarget": "projects/contracts:build",
+            "runner": "vitest"
+          }
+        },
+        "lint": {
+          "builder": "@angular-eslint/builder:lint",
+          "options": {
+            "lintFilePatterns": [
+              "projects/contracts/**/*.ts",
+              "projects/contracts/**/*.html"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

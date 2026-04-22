@@ -8,9 +8,9 @@ using Xunit.Abstractions;
 namespace Dignite.Paperbase.AI.Evaluation;
 
 /// <summary>
-/// Smoke test: runs the evaluation harness with the AlwaysInvoiceClassifier stub.
+/// Smoke test: runs the evaluation harness with the AlwaysContractClassifier stub.
 /// Verifies the harness wiring is correct and produces a baseline accuracy report.
-/// The stub returns invoice.qualified for everything, so accuracy = (positive fixtures) / total.
+/// The stub returns contract.general for everything, so accuracy = (positive fixtures) / total.
 /// </summary>
 public class StubClassifierEvaluationTests
 {
@@ -29,7 +29,7 @@ public class StubClassifierEvaluationTests
         var fixtures = FixtureLoader.LoadClassificationFixtures(FixturesDir);
         Assert.True(fixtures.Count >= 20, $"Expected at least 20 fixtures, found {fixtures.Count}");
 
-        var runner = new ClassificationEvaluationRunner(new AlwaysInvoiceClassifier());
+        var runner = new ClassificationEvaluationRunner(new AlwaysContractClassifier());
         var report = await runner.RunAsync(fixtures);
 
         _output.WriteLine($"Total:                   {report.Total}");
@@ -42,13 +42,13 @@ public class StubClassifierEvaluationTests
         Assert.Equal(fixtures.Count, report.Total);
         Assert.True(report.Correct >= 0);
 
-        // Stub returns only invoice.qualified — positive fixtures should all be correct
+        // Stub returns only contract.general -- positive fixtures should all be correct
         foreach (var c in report.Cases)
         {
-            if (c.ExpectedTypeCode == AlwaysInvoiceClassifier.TypeCode)
+            if (c.ExpectedTypeCode == AlwaysContractClassifier.TypeCode)
             {
-                Assert.True(c.IsCorrect, $"Fixture {c.FixtureId} expected invoice.qualified but got {c.ActualTypeCode}");
-                Assert.Equal(AlwaysInvoiceClassifier.Confidence, c.Confidence);
+                Assert.True(c.IsCorrect, $"Fixture {c.FixtureId} expected contract.general but got {c.ActualTypeCode}");
+                Assert.Equal(AlwaysContractClassifier.Confidence, c.Confidence);
             }
         }
     }

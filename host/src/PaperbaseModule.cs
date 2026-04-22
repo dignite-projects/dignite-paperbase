@@ -1,62 +1,61 @@
+using Dignite.Paperbase.Data;
+using Dignite.Paperbase.Contracts;
+using Dignite.Paperbase.Contracts.EntityFrameworkCore;
+using Dignite.Paperbase.EntityFrameworkCore;
+using Dignite.Paperbase.HealthChecks;
+using Dignite.Paperbase.Localization;
+using Dignite.Paperbase.Ocr.AzureDocumentIntelligence;
+using Dignite.Paperbase.TextExtraction;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Extensions.DependencyInjection;
-using Microsoft.OpenApi;
-using Dignite.Paperbase.Data;
-using Dignite.Paperbase.Localization;
-using Dignite.Paperbase.HealthChecks;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.OpenApi;
 using OpenIddict.Validation.AspNetCore;
 using Volo.Abp;
-using Volo.Abp.Timing;
-using Volo.Abp.Studio;
-using Volo.Abp.Uow;
 using Volo.Abp.Account;
 using Volo.Abp.Account.Web;
 using Volo.Abp.AspNetCore.Mvc;
 using Volo.Abp.AspNetCore.Mvc.Localization;
 using Volo.Abp.AspNetCore.Mvc.UI.Bundling;
-using Volo.Abp.AspNetCore.Mvc.UI.Theme.Shared;
-using Volo.Abp.SettingManagement;
 using Volo.Abp.AspNetCore.Mvc.UI.Theme.LeptonXLite;
 using Volo.Abp.AspNetCore.Mvc.UI.Theme.LeptonXLite.Bundling;
+using Volo.Abp.AspNetCore.Mvc.UI.Theme.Shared;
 using Volo.Abp.AspNetCore.Serilog;
+using Volo.Abp.AuditLogging.EntityFrameworkCore;
 using Volo.Abp.Autofac;
-using Volo.Abp.Mapperly;
+using Volo.Abp.BackgroundJobs.EntityFrameworkCore;
+using Volo.Abp.BlobStoring;
+using Volo.Abp.BlobStoring.Database;
+using Volo.Abp.BlobStoring.Database.EntityFrameworkCore;
 using Volo.Abp.Caching;
-using Volo.Abp.FeatureManagement;
-using Volo.Abp.Identity;
 using Volo.Abp.Emailing;
+using Volo.Abp.EntityFrameworkCore;
+using Volo.Abp.EntityFrameworkCore.PostgreSql;
+using Volo.Abp.FeatureManagement;
+using Volo.Abp.FeatureManagement.EntityFrameworkCore;
+using Volo.Abp.Identity;
+using Volo.Abp.Identity.EntityFrameworkCore;
 using Volo.Abp.Localization;
-using Volo.Abp.Localization.ExceptionHandling;
-using Localization.Resources.AbpUi;
+using Volo.Abp.Mapperly;
 using Volo.Abp.Modularity;
 using Volo.Abp.MultiTenancy;
+using Volo.Abp.OpenIddict;
+using Volo.Abp.OpenIddict.EntityFrameworkCore;
 using Volo.Abp.PermissionManagement;
+using Volo.Abp.PermissionManagement.EntityFrameworkCore;
 using Volo.Abp.PermissionManagement.HttpApi;
 using Volo.Abp.PermissionManagement.Identity;
-using Volo.Abp.Swashbuckle;
-using Volo.Abp.UI.Navigation.Urls;
-using Volo.Abp.Validation.Localization;
-using Volo.Abp.VirtualFileSystem;
-using Volo.Abp.OpenIddict;
 using Volo.Abp.PermissionManagement.OpenIddict;
 using Volo.Abp.Security.Claims;
-using Volo.Abp.EntityFrameworkCore;
-using Volo.Abp.OpenIddict.EntityFrameworkCore;
+using Volo.Abp.SettingManagement;
 using Volo.Abp.SettingManagement.EntityFrameworkCore;
-using Volo.Abp.PermissionManagement.EntityFrameworkCore;
-using Volo.Abp.AuditLogging.EntityFrameworkCore;
-using Volo.Abp.Identity.EntityFrameworkCore;
-using Volo.Abp.FeatureManagement.EntityFrameworkCore;
-using Volo.Abp.BlobStoring.Database.EntityFrameworkCore;
-using Volo.Abp.BackgroundJobs.EntityFrameworkCore;
-using Volo.Abp.EntityFrameworkCore.PostgreSql;
+using Volo.Abp.Studio;
 using Volo.Abp.Studio.Client.AspNetCore;
-using Dignite.Paperbase.EntityFrameworkCore;
-
-using Microsoft.Extensions.Hosting;
+using Volo.Abp.Swashbuckle;
+using Volo.Abp.Timing;
+using Volo.Abp.UI.Navigation.Urls;
+using Volo.Abp.VirtualFileSystem;
 
 namespace Dignite.Paperbase;
 
@@ -110,7 +109,16 @@ namespace Dignite.Paperbase;
     // Paperbase core modules
     typeof(PaperbaseHttpApiModule),
     typeof(PaperbaseApplicationModule),
-    typeof(PaperbaseEntityFrameworkCoreModule)
+    typeof(PaperbaseEntityFrameworkCoreModule),
+
+    // Paperbase infrastructure modules
+    typeof(PaperbaseTextExtractionModule),
+    typeof(PaperbaseAzureDocumentIntelligenceModule),
+
+    // Paperbase business modules
+    typeof(ContractsHttpApiModule),
+    typeof(ContractsApplicationModule),
+    typeof(ContractsEntityFrameworkCoreModule)
 )]
 public class PaperbaseModule : AbpModule
 {
@@ -364,7 +372,14 @@ public class PaperbaseModule : AbpModule
                 configurationContext.UseNpgsql();
             });
         });
-        
+
+        Configure<AbpBlobStoringOptions>(options =>
+        {
+            options.Containers.ConfigureDefault(container =>
+            {
+                container.UseDatabase();
+            });
+        });
     }
 
     public override void OnApplicationInitialization(ApplicationInitializationContext context)

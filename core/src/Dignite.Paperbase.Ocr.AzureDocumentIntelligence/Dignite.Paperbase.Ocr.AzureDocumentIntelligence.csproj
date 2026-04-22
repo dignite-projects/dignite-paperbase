@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\..\common.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Dignite.Paperbase.Ocr.AzureDocumentIntelligence</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.AI.DocumentIntelligence" Version="1.0.0" />
+    <PackageReference Include="Volo.Abp.Core" Version="10.2.0" />
+    <ProjectReference Include="..\Dignite.Paperbase.Abstractions\Dignite.Paperbase.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

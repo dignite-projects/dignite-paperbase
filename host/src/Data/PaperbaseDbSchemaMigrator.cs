@@ -1,5 +1,6 @@
-﻿using Volo.Abp.DependencyInjection;
+using Dignite.Paperbase.Contracts.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Volo.Abp.DependencyInjection;
 
 namespace Dignite.Paperbase.Data;
 
@@ -15,11 +16,9 @@ public class PaperbaseDbSchemaMigrator : ITransientDependency
 
     public async Task MigrateAsync()
     {
-        
-        /* We intentionally resolving the PaperbaseDbContext
-         * from IServiceProvider (instead of directly injecting it)
-         * to properly get the connection string of the current tenant in the
-         * current scope.
+        /* We intentionally resolve DbContexts from IServiceProvider
+         * to properly get the connection string of the current tenant
+         * in the current scope.
          */
 
         await _serviceProvider
@@ -27,5 +26,9 @@ public class PaperbaseDbSchemaMigrator : ITransientDependency
             .Database
             .MigrateAsync();
 
+        await _serviceProvider
+            .GetRequiredService<ContractsDbContext>()
+            .Database
+            .MigrateAsync();
     }
 }

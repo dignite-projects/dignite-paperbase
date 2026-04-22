@@ -76,6 +76,35 @@ public class DocumentPipelineRunManager : DomainService
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// 记录文本提取结果并完成 Run。
+    /// 封装 Document.SetExtractedText + CompleteAsync，确保两个操作在同一上下文内完成。
+    /// </summary>
+    public virtual Task CompleteTextExtractionAsync(
+        Document document,
+        DocumentPipelineRun run,
+        string extractedText,
+        string? metadata = null)
+    {
+        document.SetExtractedText(extractedText);
+        return CompleteAsync(document, run, "OK", metadata);
+    }
+
+    /// <summary>
+    /// 记录分类结果并完成 Run。
+    /// 封装 Document.SetClassificationResult + CompleteAsync。
+    /// </summary>
+    public virtual Task CompleteClassificationAsync(
+        Document document,
+        DocumentPipelineRun run,
+        string typeCode,
+        double confidenceScore,
+        string? metadata = null)
+    {
+        document.SetClassificationResult(typeCode, confidenceScore);
+        return CompleteAsync(document, run, "OK", metadata);
+    }
+
     public virtual Task SkipAsync(Document document, DocumentPipelineRun run, string reason)
     {
         run.MarkSkipped(Clock.Now, reason);

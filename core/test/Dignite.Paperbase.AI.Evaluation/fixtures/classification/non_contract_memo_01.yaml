@@ -1,0 +1,15 @@
+id: non_contract_memo_01
+description: Internal memo should not be classified as a contract
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  社内メモ
+  件名: 会議室利用ルールの変更
+  来週より会議室Aの予約方法を変更します。
+  総務部
+expected:
+  typeCode: null
+  minConfidence: 0.0
+tags:
+  - memo
+  - negative

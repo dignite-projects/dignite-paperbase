@@ -1,0 +1,18 @@
+id: contract_general_07
+description: Japanese supply agreement
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  継続的取引基本契約書
+  甲: 株式会社材料供給
+  乙: 株式会社製造ライン
+  本契約は部品供給に関する基本条件を定める。
+  契約締結日: 2024年5月15日
+  契約金額: 個別注文書による
+expected:
+  typeCode: contract.general
+  minConfidence: 0.75
+tags:
+  - contract
+  - positive
+  - japanese

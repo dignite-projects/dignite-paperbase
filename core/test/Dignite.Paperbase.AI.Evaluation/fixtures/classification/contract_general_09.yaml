@@ -1,0 +1,18 @@
+id: contract_general_09
+description: Japanese employment agreement
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  雇用契約書
+  使用者: 株式会社サンプル
+  労働者: 田中太郎
+  契約期間: 2024年4月1日から2025年3月31日まで
+  賃金: 月額350,000円
+  署名
+expected:
+  typeCode: contract.general
+  minConfidence: 0.75
+tags:
+  - contract
+  - positive
+  - japanese

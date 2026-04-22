@@ -1,0 +1,46 @@
+﻿{
+  "packages":[
+    {
+      "appRoutingModuleConfiguration":{
+        "imports":[
+          {
+            "names":[
+              "CONTRACTS_ROUTES"
+            ],
+            "namespace": "@dignite.Paperbase/contracts"
+          } 
+        ],
+        "routes":[
+          "{ path: 'contracts', children: CONTRACTS_ROUTES, canActivate: [authGuard] }"
+        ]
+      },
+      "appModuleConfiguration":{
+        "imports":[
+          {
+            "names":[
+              "provideContracts"
+            ],
+            "namespace": "@dignite.Paperbase/contracts/config"
+          }
+        ],
+        "providerNames":[
+          "provideContracts()"
+        ]
+      },
+      "tsJsonPathRecordConfigurations":[
+        {
+          "name": "@dignite.Paperbase/contracts",
+          "paths": [
+            "angular/projects/contracts/src/public-api.ts"
+          ]
+        },
+        {
+          "name": "@dignite.Paperbase/contracts/config",
+          "paths": [
+            "angular/projects/contracts/config/src/public-api.ts"
+          ]
+        }
+      ]
+    }
+  ]
+}

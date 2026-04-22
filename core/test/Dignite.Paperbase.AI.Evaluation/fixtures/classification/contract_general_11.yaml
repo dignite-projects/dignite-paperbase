@@ -1,0 +1,18 @@
+id: contract_general_11
+description: Japanese order contract
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  注文請書兼契約書
+  発注者: 株式会社発注元
+  受注者: 株式会社受注先
+  件名: 店舗改装工事
+  契約金額: 8,800,000円
+  工期: 2024年6月1日から2024年8月31日まで
+expected:
+  typeCode: contract.general
+  minConfidence: 0.75
+tags:
+  - contract
+  - positive
+  - japanese

@@ -1,0 +1,23 @@
+<Solution>
+    <Configurations>
+        <Platform Name="Any CPU" />
+    </Configurations>
+
+    <Folder Name="/src/">
+        <Project Path="src/Dignite.Paperbase.Contracts.Domain.Shared/Dignite.Paperbase.Contracts.Domain.Shared.csproj" />
+        <Project Path="src/Dignite.Paperbase.Contracts.Domain/Dignite.Paperbase.Contracts.Domain.csproj" />
+        <Project Path="src/Dignite.Paperbase.Contracts.Application.Contracts/Dignite.Paperbase.Contracts.Application.Contracts.csproj" />
+        <Project Path="src/Dignite.Paperbase.Contracts.Application/Dignite.Paperbase.Contracts.Application.csproj" />
+        <Project Path="src/Dignite.Paperbase.Contracts.EntityFrameworkCore/Dignite.Paperbase.Contracts.EntityFrameworkCore.csproj" />
+        <Project Path="src/Dignite.Paperbase.Contracts.HttpApi/Dignite.Paperbase.Contracts.HttpApi.csproj" />
+        <Project Path="src/Dignite.Paperbase.Contracts.HttpApi.Client/Dignite.Paperbase.Contracts.HttpApi.Client.csproj" />
+        <Project Path="src/Dignite.Paperbase.Contracts.Installer/Dignite.Paperbase.Contracts.Installer.csproj" />
+    </Folder>
+    
+    <Folder Name="/test/">
+        <Project Path="test/Dignite.Paperbase.Contracts.TestBase/Dignite.Paperbase.Contracts.TestBase.csproj" />
+        <Project Path="test/Dignite.Paperbase.Contracts.EntityFrameworkCore.Tests/Dignite.Paperbase.Contracts.EntityFrameworkCore.Tests.csproj" />
+        <Project Path="test/Dignite.Paperbase.Contracts.Domain.Tests/Dignite.Paperbase.Contracts.Domain.Tests.csproj" />
+        <Project Path="test/Dignite.Paperbase.Contracts.Application.Tests/Dignite.Paperbase.Contracts.Application.Tests.csproj" />
+    </Folder>
+</Solution>

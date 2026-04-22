@@ -1,0 +1,18 @@
+id: contract_general_02
+description: Japanese NDA agreement
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  秘密保持契約書
+  開示者: ABC商事株式会社
+  受領者: XYZテクノロジー株式会社
+  有効期間: 2024年6月1日から2026年5月31日まで
+  本契約に基づき秘密情報を保持する。
+  署名欄
+expected:
+  typeCode: contract.general
+  minConfidence: 0.75
+tags:
+  - contract
+  - positive
+  - japanese

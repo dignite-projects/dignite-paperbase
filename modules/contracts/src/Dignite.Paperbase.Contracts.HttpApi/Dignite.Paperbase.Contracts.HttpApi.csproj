@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\..\common.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Dignite.Paperbase.Contracts</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Volo.Abp.AspNetCore.Mvc" Version="10.2.0"/>
+    <ProjectReference Include="..\Dignite.Paperbase.Contracts.Application.Contracts\Dignite.Paperbase.Contracts.Application.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

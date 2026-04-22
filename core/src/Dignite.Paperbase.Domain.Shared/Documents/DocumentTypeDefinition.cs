@@ -7,7 +7,7 @@ namespace Dignite.Paperbase.Documents;
 /// </summary>
 public class DocumentTypeDefinition
 {
-    /// <summary>文档类型唯一标识，如 "invoice.qualified"、"contract.simple"</summary>
+    /// <summary>文档类型唯一标识，如 "contract.general"、"contract.nda"</summary>
     public string TypeCode { get; set; } = default!;
 
     /// <summary>显示名称（用于 UI 展示）</summary>

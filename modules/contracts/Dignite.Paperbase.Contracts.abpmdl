@@ -1,0 +1,58 @@
+{
+  "folders": {
+    "items": {
+      "src": {},
+      "test": {}
+    }
+  },
+  "packages": {
+    "Dignite.Paperbase.Contracts.Domain": {
+      "path": "src/Dignite.Paperbase.Contracts.Domain/Dignite.Paperbase.Contracts.Domain.abppkg",
+      "folder": "src"
+    },
+    "Dignite.Paperbase.Contracts.Application.Contracts": {
+      "path": "src/Dignite.Paperbase.Contracts.Application.Contracts/Dignite.Paperbase.Contracts.Application.Contracts.abppkg",
+      "folder": "src"
+    },
+    "Dignite.Paperbase.Contracts.Application": {
+      "path": "src/Dignite.Paperbase.Contracts.Application/Dignite.Paperbase.Contracts.Application.abppkg",
+      "folder": "src"
+    },
+    "Dignite.Paperbase.Contracts.EntityFrameworkCore": {
+      "path": "src/Dignite.Paperbase.Contracts.EntityFrameworkCore/Dignite.Paperbase.Contracts.EntityFrameworkCore.abppkg",
+      "folder": "src"
+    },
+    "Dignite.Paperbase.Contracts.HttpApi": {
+      "path": "src/Dignite.Paperbase.Contracts.HttpApi/Dignite.Paperbase.Contracts.HttpApi.abppkg",
+      "folder": "src"
+    },
+    "Dignite.Paperbase.Contracts.HttpApi.Client": {
+      "path": "src/Dignite.Paperbase.Contracts.HttpApi.Client/Dignite.Paperbase.Contracts.HttpApi.Client.abppkg",
+      "folder": "src"
+    },
+    "Dignite.Paperbase.Contracts.TestBase": {
+      "path": "test/Dignite.Paperbase.Contracts.TestBase/Dignite.Paperbase.Contracts.TestBase.abppkg",
+      "folder": "test"
+    },
+    "Dignite.Paperbase.Contracts.EntityFrameworkCore.Tests": {
+      "path": "test/Dignite.Paperbase.Contracts.EntityFrameworkCore.Tests/Dignite.Paperbase.Contracts.EntityFrameworkCore.Tests.abppkg",
+      "folder": "test"
+    },
+    "Dignite.Paperbase.Contracts.Domain.Tests": {
+      "path": "test/Dignite.Paperbase.Contracts.Domain.Tests/Dignite.Paperbase.Contracts.Domain.Tests.abppkg",
+      "folder": "test"
+    },
+    "Dignite.Paperbase.Contracts.Application.Tests": {
+      "path": "test/Dignite.Paperbase.Contracts.Application.Tests/Dignite.Paperbase.Contracts.Application.Tests.abppkg",
+      "folder": "test"
+    },
+    "Dignite.Paperbase.Contracts.Domain.Shared": {
+      "path": "src/Dignite.Paperbase.Contracts.Domain.Shared/Dignite.Paperbase.Contracts.Domain.Shared.abppkg",
+      "folder": "src"
+    },
+    "Dignite.Paperbase.Contracts.Installer": {
+       "path": "src/Dignite.Paperbase.Contracts.Installer/Dignite.Paperbase.Contracts.Installer.abppkg",
+       "folder": "src"
+    }
+  }
+}

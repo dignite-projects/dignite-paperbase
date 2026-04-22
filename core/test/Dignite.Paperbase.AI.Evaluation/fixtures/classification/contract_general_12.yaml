@@ -1,0 +1,18 @@
+id: contract_general_12
+description: Japanese memorandum agreement
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  合意書
+  甲: 株式会社第一
+  乙: 株式会社第二
+  両者は既存契約の条件変更について以下の通り合意する。
+  効力発生日: 2024年12月1日
+  署名欄
+expected:
+  typeCode: contract.general
+  minConfidence: 0.75
+tags:
+  - contract
+  - positive
+  - japanese

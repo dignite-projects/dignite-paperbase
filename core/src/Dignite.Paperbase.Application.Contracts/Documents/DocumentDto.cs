@@ -15,6 +15,7 @@ public class DocumentDto : EntityDto<Guid>
     public DocumentLifecycleStatus LifecycleStatus { get; set; }
     public double ConfidenceScore { get; set; }
     public bool HasEmbedding { get; set; }
+    public string? ExtractedText { get; set; }
     public DateTime CreationTime { get; set; }
     public IList<DocumentPipelineRunDto> PipelineRuns { get; set; } = new List<DocumentPipelineRunDto>();
 }

@@ -1,0 +1,18 @@
+id: contract_general_10
+description: Japanese partnership agreement
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  業務提携契約書
+  甲: 株式会社パートナーA
+  乙: 株式会社パートナーB
+  目的: 新規サービスの共同販売
+  契約期間: 2024年11月1日から2026年10月31日まで
+  甲乙協議の上、本契約を締結する。
+expected:
+  typeCode: contract.general
+  minConfidence: 0.75
+tags:
+  - contract
+  - positive
+  - japanese

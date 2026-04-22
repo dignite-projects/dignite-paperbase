@@ -1,0 +1,17 @@
+id: contract_general_06
+description: Japanese maintenance agreement
+contentType: application/pdf
+fileExtension: .pdf
+sampleText: |
+  保守契約書
+  委託者: 株式会社グリーン商会
+  受託者: 株式会社メンテナンス東京
+  契約期間: 2024年10月1日から2025年9月30日まで
+  保守料金: 月額80,000円
+expected:
+  typeCode: contract.general
+  minConfidence: 0.75
+tags:
+  - contract
+  - positive
+  - japanese

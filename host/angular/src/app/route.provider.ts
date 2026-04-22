@@ -17,5 +17,20 @@ function configureRoutes() {
       order: 1,
       layout: eLayoutType.application,
     },
+    {
+      path: '/documents',
+      name: '::Menu:Documents',
+      iconClass: 'fas fa-file-alt',
+      order: 2,
+      layout: eLayoutType.application,
+    },
+    {
+      path: '/documents/upload',
+      name: '::Menu:UploadDocument',
+      iconClass: 'fas fa-upload',
+      parentName: '::Menu:Documents',
+      order: 1,
+      layout: eLayoutType.application,
+    },
   ]);
 }

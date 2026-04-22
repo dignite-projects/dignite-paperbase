@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\..\common.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Dignite.Paperbase.Contracts</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Volo.Abp.Mapperly" Version="10.2.0" />
+    <PackageReference Include="Volo.Abp.Ddd.Application" Version="10.2.0" />
+    <ProjectReference Include="..\Dignite.Paperbase.Contracts.Application.Contracts\Dignite.Paperbase.Contracts.Application.Contracts.csproj" />
+    <ProjectReference Include="..\Dignite.Paperbase.Contracts.Domain\Dignite.Paperbase.Contracts.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
