@@ -1,11 +1,12 @@
 import { Injectable, inject } from '@angular/core';
-import { RestService } from '@abp/ng.core';
+import { EnvironmentService, RestService } from '@abp/ng.core';
 import { Observable } from 'rxjs';
 import { DocumentDto, GetDocumentListInput, PagedResultDto } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class DocumentService {
   private readonly rest = inject(RestService);
+  private readonly env = inject(EnvironmentService);
   private readonly apiName = 'Default';
   private readonly basePath = '/api/paperbase/documents';
 
@@ -52,5 +53,5 @@ export class DocumentService {
     );
 
   getBlobUrl = (id: string): string =>
-    `/api/paperbase/documents/${id}/blob`;
+    `${this.env.getApiUrl()}/api/paperbase/documents/${id}/blob`;
 }

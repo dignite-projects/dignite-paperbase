@@ -23,6 +23,10 @@ export const environment = {
       url: 'https://localhost:44348',
       rootNamespace: 'Dignite.Paperbase',
     },
+    Contracts: {
+      url: 'https://localhost:44348',
+      rootNamespace: 'Dignite.Paperbase.Contracts',
+    },
     AbpAccountPublic: {
       url: oAuthConfig.issuer,
       rootNamespace: 'AbpAccountPublic',

@@ -84,8 +84,7 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
   }
 
   getImageUrl(): string {
-    // Use the blob endpoint to serve the original file
-    return `/api/paperbase/documents/${this.documentId}/blob`;
+    return this.documentService.getBlobUrl(this.documentId);
   }
 
   onImageError(): void {

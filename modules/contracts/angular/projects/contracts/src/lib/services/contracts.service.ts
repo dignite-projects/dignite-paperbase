@@ -49,9 +49,9 @@ export interface PagedResultDto<T> {
   providedIn: 'root',
 })
 export class ContractsService {
-  apiName = 'Contracts';
+  private readonly apiName = 'Contracts';
 
-  private restService = inject(RestService);
+  private readonly restService = inject(RestService);
 
   getList(input: GetContractListInput): Observable<PagedResultDto<ContractDto>> {
     return this.restService.request<void, PagedResultDto<ContractDto>>(

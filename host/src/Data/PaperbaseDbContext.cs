@@ -1,3 +1,4 @@
+using Dignite.Paperbase.Contracts.EntityFrameworkCore;
 using Dignite.Paperbase.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp.EntityFrameworkCore;
@@ -41,6 +42,9 @@ public class PaperbaseDbContext : AbpDbContext<PaperbaseDbContext>
 
         // Paperbase core module
         builder.ConfigurePaperbase();
+
+        // Business modules
+        builder.ConfigureContracts();
     }
 }
 

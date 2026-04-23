@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Dignite.Paperbase.Contracts.EntityFrameworkCore.Migrations
+namespace Dignite.Paperbase.Host.Migrations
 {
     /// <inheritdoc />
     public partial class Slice1_Contracts : Migration

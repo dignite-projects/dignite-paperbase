@@ -1,12 +1,13 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { LocalizationPipe } from '@abp/ng.core';
 import { finalize } from 'rxjs';
 import { ContractDto, ContractStatus, ContractsService } from '../services/contracts.service';
 
 @Component({
   selector: 'lib-contracts',
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LocalizationPipe],
   template: `
     <div class="container-fluid py-3">
       <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
