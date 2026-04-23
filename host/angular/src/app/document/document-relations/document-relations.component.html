@@ -1,0 +1,86 @@
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h6 class="mb-0">
+      <i class="fas fa-project-diagram me-2"></i>
+      {{ '::Document:Relations' | abpLocalization }}
+    </h6>
+    <button class="btn btn-outline-secondary btn-sm" (click)="load()" [disabled]="isLoading()">
+      <i class="fas fa-sync-alt" [class.fa-spin]="isLoading()"></i>
+    </button>
+  </div>
+  <div class="card-body p-0">
+
+    @if (isLoading()) {
+      <div class="text-center py-4">
+        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+      </div>
+    } @else if (!relations().length) {
+      <p class="text-muted text-center py-4 mb-0 small">
+        {{ '::Document:NoRelations' | abpLocalization }}
+      </p>
+    } @else {
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>{{ '::Document:RelationType' | abpLocalization }}</th>
+              <th>{{ '::Document:TargetDocument' | abpLocalization }}</th>
+              <th>{{ '::Document:RelationSource' | abpLocalization }}</th>
+              <th>{{ '::Document:Confidence' | abpLocalization }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (rel of relations(); track rel.id) {
+              <tr [class.table-warning]="rel.source === RelationSource.AiSuggested">
+                <td>
+                  <span class="badge bg-secondary">{{ rel.relationType }}</span>
+                </td>
+                <td class="font-monospace small">
+                  <span [title]="rel.targetDocumentId">{{ truncateId(rel.targetDocumentId) }}</span>
+                </td>
+                <td>
+                  @if (rel.source === RelationSource.Manual) {
+                    <span class="badge bg-success">{{ '::Document:RelationSource:Manual' | abpLocalization }}</span>
+                  } @else {
+                    <span class="badge bg-warning text-dark">
+                      <i class="fas fa-robot me-1"></i>
+                      {{ '::Document:RelationSource:AI' | abpLocalization }}
+                    </span>
+                  }
+                </td>
+                <td class="small">
+                  @if (rel.confidenceScore > 0) {
+                    {{ (rel.confidenceScore * 100).toFixed(0) }}%
+                  } @else {
+                    —
+                  }
+                </td>
+                <td class="text-end">
+                  @if (rel.source === RelationSource.AiSuggested) {
+                    <button
+                      class="btn btn-outline-success btn-sm me-1"
+                      (click)="confirm(rel.id)"
+                      [disabled]="confirmingId() === rel.id"
+                    >
+                      @if (confirmingId() === rel.id) {
+                        <span class="spinner-border spinner-border-sm" role="status"></span>
+                      } @else {
+                        <i class="fas fa-check"></i>
+                      }
+                      {{ '::Document:ConfirmRelation' | abpLocalization }}
+                    </button>
+                  }
+                  <button class="btn btn-outline-danger btn-sm" (click)="delete(rel.id)">
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+  </div>
+</div>

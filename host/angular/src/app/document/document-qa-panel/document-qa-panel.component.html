@@ -1,0 +1,74 @@
+<div class="card shadow-sm">
+  <div class="card-header">
+    <h6 class="mb-0">
+      <i class="fas fa-robot me-2"></i>
+      {{ '::Document:QA' | abpLocalization }}
+    </h6>
+  </div>
+  <div class="card-body">
+
+    @if (!hasEmbedding) {
+      <div class="alert alert-info small mb-3">
+        <i class="fas fa-info-circle me-1"></i>
+        {{ '::Document:DegradedModeNotice' | abpLocalization }}
+      </div>
+    }
+
+    <div class="input-group mb-3">
+      <input
+        type="text"
+        class="form-control"
+        [placeholder]="'::Document:AskQuestion' | abpLocalization"
+        [ngModel]="question()"
+        (ngModelChange)="question.set($event)"
+        (keyup.enter)="ask()"
+        [disabled]="isAsking()"
+      />
+      <button
+        class="btn btn-primary"
+        (click)="ask()"
+        [disabled]="isAsking() || !question().trim()"
+      >
+        @if (isAsking()) {
+          <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+        }
+        {{ '::Document:Ask' | abpLocalization }}
+      </button>
+    </div>
+
+    @if (error()) {
+      <div class="alert alert-danger small">{{ error() }}</div>
+    }
+
+    @if (result()) {
+      @if (result()!.isDegraded) {
+        <div class="alert alert-warning small mb-2">
+          <i class="fas fa-exclamation-triangle me-1"></i>
+          {{ '::Document:DegradedModeNotice' | abpLocalization }}
+        </div>
+      }
+
+      <div class="border rounded p-3 bg-light mb-2">
+        <p class="mb-0" style="white-space: pre-wrap;">{{ result()!.answer }}</p>
+      </div>
+
+      @if (result()!.sources?.length) {
+        <details class="small text-muted">
+          <summary class="cursor-pointer mb-1">
+            <i class="fas fa-list me-1"></i>
+            {{ '::Document:Sources' | abpLocalization }}
+            ({{ result()!.sources.length }})
+          </summary>
+          <ol class="mt-2 ps-3">
+            @for (src of result()!.sources; track $index) {
+              <li class="mb-1">
+                <span class="text-truncate d-block">{{ src.text }}</span>
+              </li>
+            }
+          </ol>
+        </details>
+      }
+    }
+
+  </div>
+</div>

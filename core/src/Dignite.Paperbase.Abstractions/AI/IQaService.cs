@@ -21,6 +21,21 @@ public class QaRequest
     public Guid DocumentId { get; set; }
     public string Question { get; set; } = default!;
     public QaMode Mode { get; set; } = QaMode.Auto;
+
+    /// <summary>Application 层预填充：文档是否已完成向量化</summary>
+    public bool HasEmbedding { get; set; }
+
+    /// <summary>Application 层预填充：用于 FullText 模式的完整提取文本</summary>
+    public string? ExtractedText { get; set; }
+
+    /// <summary>Application 层预填充：向量检索后的 Top-K chunks，用于 RAG 模式</summary>
+    public IList<QaChunkData> Chunks { get; set; } = new List<QaChunkData>();
+}
+
+public class QaChunkData
+{
+    public string ChunkText { get; set; } = default!;
+    public int ChunkIndex { get; set; }
 }
 
 public class QaResult
@@ -34,7 +49,7 @@ public class QaResult
 public class QaSource
 {
     public string Text { get; set; } = default!;
-    public int? PageNumber { get; set; }
+    public int? ChunkIndex { get; set; }
 }
 
 public enum QaMode

@@ -9,6 +9,8 @@ using Dignite.Paperbase.Localization;
 using Dignite.Paperbase.Ocr.AzureDocumentIntelligence;
 using Dignite.Paperbase.TextExtraction;
 using Microsoft.Extensions.AI;
+using Microsoft.EntityFrameworkCore;
+using Npgsql.EntityFrameworkCore.PostgreSQL;
 using OpenAI;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.DataProtection;
@@ -375,7 +377,8 @@ public class PaperbaseModule : AbpModule
         {
             options.Configure(configurationContext =>
             {
-                configurationContext.UseNpgsql();
+                configurationContext.UseNpgsql(npgsqlOptions =>
+                    npgsqlOptions.UseVector());
             });
         });
 
@@ -393,29 +396,41 @@ public class PaperbaseModule : AbpModule
         var provider = configuration["PaperbaseAI:Provider"] ?? "Ollama";
 
         IChatClient chatClient;
+        IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator;
 
         if (provider == "AzureOpenAI")
         {
-            var deploymentName = configuration["PaperbaseAI:AzureOpenAI:DeploymentName"]!;
             var endpoint = configuration["PaperbaseAI:AzureOpenAI:Endpoint"]!;
             var apiKey = configuration["PaperbaseAI:AzureOpenAI:ApiKey"]!;
-            chatClient = new AzureOpenAIClient(new Uri(endpoint), new Azure.AzureKeyCredential(apiKey))
-                .GetChatClient(deploymentName)
-                .AsIChatClient();
+            var azureClient = new AzureOpenAIClient(new Uri(endpoint), new Azure.AzureKeyCredential(apiKey));
+
+            var deploymentName = configuration["PaperbaseAI:AzureOpenAI:DeploymentName"]!;
+            chatClient = azureClient.GetChatClient(deploymentName).AsIChatClient();
+
+            var embeddingDeployment = configuration["PaperbaseAI:AzureOpenAI:EmbeddingDeploymentName"] ?? "text-embedding-3-small";
+            embeddingGenerator = azureClient.GetEmbeddingClient(embeddingDeployment).AsIEmbeddingGenerator();
         }
         else
         {
             // Ollama exposes an OpenAI-compatible REST API at /v1
+            var ollamaEndpoint = (configuration["PaperbaseAI:Ollama:Endpoint"] ?? "http://localhost:11434").TrimEnd('/');
+            var ollamaCredential = new System.ClientModel.ApiKeyCredential("ollama");
+
             var modelId = configuration["PaperbaseAI:Ollama:ModelId"] ?? "llama3.1:8b";
-            var endpoint = (configuration["PaperbaseAI:Ollama:Endpoint"] ?? "http://localhost:11434").TrimEnd('/');
-            chatClient = new OpenAIClient(
-                    new System.ClientModel.ApiKeyCredential("ollama"),
-                    new OpenAIClientOptions { Endpoint = new Uri(endpoint + "/v1") })
+            chatClient = new OpenAIClient(ollamaCredential,
+                    new OpenAIClientOptions { Endpoint = new Uri(ollamaEndpoint + "/v1") })
                 .GetChatClient(modelId)
                 .AsIChatClient();
+
+            var embeddingModelId = configuration["PaperbaseAI:Ollama:EmbeddingModelId"] ?? "nomic-embed-text";
+            embeddingGenerator = new OpenAIClient(ollamaCredential,
+                    new OpenAIClientOptions { Endpoint = new Uri(ollamaEndpoint + "/v1") })
+                .GetEmbeddingClient(embeddingModelId)
+                .AsIEmbeddingGenerator();
         }
 
         context.Services.AddSingleton(chatClient);
+        context.Services.AddSingleton(embeddingGenerator);
     }
 
     public override void OnApplicationInitialization(ApplicationInitializationContext context)

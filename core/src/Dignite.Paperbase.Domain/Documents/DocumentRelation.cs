@@ -29,6 +29,8 @@ public class DocumentRelation : CreationAuditedEntity<Guid>, IMultiTenant
 
     protected DocumentRelation() { }
 
+    public void Confirm() => Source = RelationSource.Manual;
+
     public DocumentRelation(
         Guid id,
         Guid? tenantId,

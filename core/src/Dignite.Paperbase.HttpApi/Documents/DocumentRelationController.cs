@@ -34,4 +34,10 @@ public class DocumentRelationController : PaperbaseController, IDocumentRelation
     {
         return _relationAppService.DeleteAsync(id);
     }
+
+    [HttpPost("{id}/confirm")]
+    public virtual Task<DocumentRelationDto> ConfirmAsync(Guid id)
+    {
+        return _relationAppService.ConfirmAsync(id);
+    }
 }

@@ -63,6 +63,12 @@ public class DocumentController : PaperbaseController, IDocumentAppService
         return _documentAppService.ConfirmClassificationAsync(id, documentTypeCode);
     }
 
+    [HttpPost("{id}/ask")]
+    public virtual Task<QaResultDto> AskAsync(Guid id, [FromBody] AskDocumentInput input)
+    {
+        return _documentAppService.AskAsync(id, input);
+    }
+
     [HttpPost("bulk-upload")]
     [Consumes("multipart/form-data")]
     public virtual async Task<IReadOnlyList<BulkUploadResultDto>> BulkUploadAsync(IFormFileCollection files)

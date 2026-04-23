@@ -21,6 +21,7 @@ public class PaperbaseEntityFrameworkCoreModule : AbpModule
             options.AddRepository<Document, EfCoreDocumentRepository>();
             options.AddRepository<DocumentPipelineRun, EfCoreDocumentPipelineRunRepository>();
             options.AddRepository<DocumentRelation, EfCoreDocumentRelationRepository>();
+            options.AddRepository<DocumentChunk, EfCoreDocumentChunkRepository>();
         });
 
     }

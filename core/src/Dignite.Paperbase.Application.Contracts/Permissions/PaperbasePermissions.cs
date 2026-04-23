@@ -13,6 +13,7 @@ public class PaperbasePermissions
         public const string Delete = Default + ".Delete";
         public const string Export = Default + ".Export";
         public const string ConfirmClassification = Default + ".ConfirmClassification";
+        public const string Ask = Default + ".Ask";
     }
 
     public static class DocumentRelations
@@ -20,6 +21,7 @@ public class PaperbasePermissions
         public const string Default = GroupName + ".DocumentRelations";
         public const string Create = Default + ".Create";
         public const string Delete = Default + ".Delete";
+        public const string ConfirmRelation = Default + ".ConfirmRelation";
     }
 
     public static string[] GetAll()

@@ -15,7 +15,8 @@ public class PaperbaseDbContextFactory : IDesignTimeDbContextFactory<PaperbaseDb
         var configuration = BuildConfiguration();
 
         var builder = new DbContextOptionsBuilder<PaperbaseDbContext>()
-            .UseNpgsql(configuration.GetConnectionString("Default"));
+            .UseNpgsql(configuration.GetConnectionString("Default"),
+                o => o.UseVector());
 
         return new PaperbaseDbContext(builder.Options);
     }

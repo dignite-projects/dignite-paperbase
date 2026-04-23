@@ -65,6 +65,59 @@ export interface BulkUploadResultDto {
   errorMessage?: string;
 }
 
+// ─── Q&A models ─────────────────────────────────────────────────────────────
+
+export enum QaMode {
+  Auto = 0,
+  Rag = 1,
+  FullText = 2,
+}
+
+export interface AskDocumentInput {
+  question: string;
+  mode?: QaMode;
+}
+
+export interface GlobalAskInput {
+  question: string;
+  documentTypeCode?: string;
+}
+
+export interface QaSourceDto {
+  text: string;
+  chunkIndex?: number;
+}
+
+export interface QaResultDto {
+  answer: string;
+  sources: QaSourceDto[];
+  actualMode: string;
+  isDegraded: boolean;
+}
+
+// ─── Document relation models ────────────────────────────────────────────────
+
+export enum RelationSource {
+  Manual = 1,
+  AiSuggested = 2,
+}
+
+export interface DocumentRelationDto {
+  id: string;
+  sourceDocumentId: string;
+  targetDocumentId: string;
+  relationType: string;
+  source: RelationSource;
+  confidenceScore: number;
+  creationTime: string;
+}
+
+export interface CreateDocumentRelationInput {
+  sourceDocumentId: string;
+  targetDocumentId: string;
+  relationType: string;
+}
+
 // ─── Shared ─────────────────────────────────────────────────────────────────
 
 export interface PagedResultDto<T> {

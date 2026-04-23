@@ -67,6 +67,26 @@
 
     "Failed": "Failed",
 
-    "Permission:Documents.ConfirmClassification": "Confirm Classification"
+    "Document:QA": "Q&A",
+    "Document:AskQuestion": "Ask a question",
+    "Document:Ask": "Ask",
+    "Document:DegradedModeNotice": "Vector index not ready — answering from full text.",
+    "Document:NoRelevantDocumentsFound": "No relevant documents found.",
+    "Document:Relations": "Relations",
+    "Document:ConfirmRelation": "Confirm Relation",
+    "Document:NoRelations": "No relations found.",
+    "Document:GlobalAsk": "Ask Across Documents",
+    "Document:Sources": "Sources",
+    "Document:QaError": "Failed to get an answer. Please try again.",
+    "Document:RelationType": "Relation Type",
+    "Document:TargetDocument": "Target Document",
+    "Document:RelationSource": "Source",
+    "Document:RelationSource:Manual": "Manual",
+    "Document:RelationSource:AI": "AI Suggested",
+    "Document:Confidence": "Confidence",
+
+    "Permission:Documents.ConfirmClassification": "Confirm Classification",
+    "Permission:Documents.Ask": "Ask Documents (Q&A)",
+    "Permission:DocumentRelations.ConfirmRelation": "Confirm Document Relation"
   }
 }

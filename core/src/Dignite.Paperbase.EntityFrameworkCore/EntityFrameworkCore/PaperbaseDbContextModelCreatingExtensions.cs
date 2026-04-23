@@ -12,6 +12,8 @@ public static class PaperbaseDbContextModelCreatingExtensions
     {
         Check.NotNull(builder, nameof(builder));
 
+        builder.HasPostgresExtension("vector");
+
         builder.Entity<Document>(b =>
         {
             b.ToTable(PaperbaseDbProperties.DbTablePrefix + "Documents", PaperbaseDbProperties.DbSchema);
@@ -68,7 +70,17 @@ public static class PaperbaseDbContextModelCreatingExtensions
             b.HasIndex(x => x.TargetDocumentId);
         });
 
-        // PaperbaseDocumentChunks — reserved schema for Slice 4 (Embedding)
-        // Table will be created by Dignite.Paperbase.AI module in Slice 4.
+        builder.Entity<DocumentChunk>(b =>
+        {
+            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "DocumentChunks", PaperbaseDbProperties.DbSchema);
+            b.ConfigureByConvention();
+
+            b.Property(x => x.ChunkText).IsRequired().HasColumnType("text");
+            b.Property(x => x.EmbeddingVector)
+                .IsRequired()
+                .HasColumnType($"vector({PaperbaseDbProperties.EmbeddingVectorDimension})");
+
+            b.HasIndex(x => x.DocumentId);
+        });
     }
 }

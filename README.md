@@ -18,6 +18,28 @@ dignite-paperbase/
 
 * [.NET 10.0+ SDK](https://dotnet.microsoft.com/download/dotnet)
 * [Node.js v18 or later](https://nodejs.org/en)
+* PostgreSQL 16+ with the **pgvector** extension
+
+### Installing pgvector
+
+**Ubuntu / Debian (including WSL):**
+
+```bash
+sudo apt install -y postgresql-16-pgvector
+```
+
+If the package is not found, add the official PGDG repository first:
+
+```bash
+sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /etc/apt/trusted.gpg.d/postgresql.asc > /dev/null
+sudo apt update
+sudo apt install -y postgresql-16-pgvector
+```
+
+**Docker:** use the `pgvector/pgvector:pg17` image instead of `postgres:17` — pgvector is pre-installed.
+
+**Other platforms:** see the [pgvector installation guide](https://github.com/pgvector/pgvector#installation).
 
 ## Getting Started (Local Development)
 

@@ -12,4 +12,6 @@ public interface IDocumentRelationAppService : IApplicationService
     Task<DocumentRelationDto> CreateAsync(CreateDocumentRelationInput input);
 
     Task DeleteAsync(Guid id);
+
+    Task<DocumentRelationDto> ConfirmAsync(Guid id);
 }

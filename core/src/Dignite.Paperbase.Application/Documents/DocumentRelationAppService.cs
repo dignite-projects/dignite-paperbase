@@ -44,4 +44,13 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
     {
         await _relationRepository.DeleteAsync(id);
     }
+
+    [Authorize(PaperbasePermissions.DocumentRelations.ConfirmRelation)]
+    public virtual async Task<DocumentRelationDto> ConfirmAsync(Guid id)
+    {
+        var relation = await _relationRepository.GetAsync(id);
+        relation.Confirm();
+        await _relationRepository.UpdateAsync(relation);
+        return ObjectMapper.Map<DocumentRelation, DocumentRelationDto>(relation);
+    }
 }

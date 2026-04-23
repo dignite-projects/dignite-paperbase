@@ -15,10 +15,12 @@ public class PaperbasePermissionDefinitionProvider : PermissionDefinitionProvide
         documents.AddChild(PaperbasePermissions.Documents.Delete, L("Permission:Documents.Delete"));
         documents.AddChild(PaperbasePermissions.Documents.Export, L("Permission:Documents.Export"));
         documents.AddChild(PaperbasePermissions.Documents.ConfirmClassification, L("Permission:Documents.ConfirmClassification"));
+        documents.AddChild(PaperbasePermissions.Documents.Ask, L("Permission:Documents.Ask"));
 
         var relations = group.AddPermission(PaperbasePermissions.DocumentRelations.Default, L("Permission:DocumentRelations"));
         relations.AddChild(PaperbasePermissions.DocumentRelations.Create, L("Permission:DocumentRelations.Create"));
         relations.AddChild(PaperbasePermissions.DocumentRelations.Delete, L("Permission:DocumentRelations.Delete"));
+        relations.AddChild(PaperbasePermissions.DocumentRelations.ConfirmRelation, L("Permission:DocumentRelations.ConfirmRelation"));
     }
 
     private static LocalizableString L(string name)

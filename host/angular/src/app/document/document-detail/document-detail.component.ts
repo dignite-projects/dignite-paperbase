@@ -12,12 +12,14 @@ import { LocalizationPipe } from '@abp/ng.core';
 import { interval, Subscription, switchMap, startWith } from 'rxjs';
 import { DocumentService } from '../../proxy/document.service';
 import { DocumentDto, DocumentLifecycleStatus } from '../../proxy/models';
+import { DocumentQaPanelComponent } from '../document-qa-panel/document-qa-panel.component';
+import { DocumentRelationsComponent } from '../document-relations/document-relations.component';
 
 @Component({
   selector: 'app-document-detail',
   templateUrl: './document-detail.component.html',
   styleUrls: ['./document-detail.component.scss'],
-  imports: [CommonModule, RouterModule, LocalizationPipe],
+  imports: [CommonModule, RouterModule, LocalizationPipe, DocumentQaPanelComponent, DocumentRelationsComponent],
 })
 export class DocumentDetailComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
@@ -28,6 +30,7 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
   isLoading = signal(true);
   isTextExpanded = signal(false);
   imageError = signal(false);
+  activeTab = signal<'info' | 'qa' | 'relations'>('info');
 
   readonly DocumentLifecycleStatus = DocumentLifecycleStatus;
 
@@ -36,6 +39,10 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
     return status === DocumentLifecycleStatus.Uploaded ||
            status === DocumentLifecycleStatus.Processing;
   });
+
+  isReady = computed(() =>
+    this.document()?.lifecycleStatus === DocumentLifecycleStatus.Ready
+  );
 
   isImage = computed(() =>
     this.document()?.fileOrigin?.contentType?.startsWith('image/') ?? false
@@ -64,12 +71,10 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
           this.isLoading.set(false);
           this.document.set(doc);
 
-          // Stop polling once status is terminal
           if (doc.lifecycleStatus === DocumentLifecycleStatus.Ready ||
               doc.lifecycleStatus === DocumentLifecycleStatus.Failed) {
             this.stopPolling();
           }
-
         },
         error: () => {
           this.isLoading.set(false);
@@ -81,6 +86,10 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
   private stopPolling(): void {
     this.pollSubscription?.unsubscribe();
     this.pollSubscription = undefined;
+  }
+
+  setTab(tab: 'info' | 'qa' | 'relations'): void {
+    this.activeTab.set(tab);
   }
 
   getImageUrl(): string {

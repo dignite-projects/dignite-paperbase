@@ -31,6 +31,7 @@ public class DocumentClassificationBackgroundJob
     private readonly IAiCostLedger _costLedger;
     private readonly IFeatureChecker _featureChecker;
     private readonly ICurrentTenant _currentTenant;
+    private readonly IBackgroundJobManager _backgroundJobManager;
 
     public DocumentClassificationBackgroundJob(
         IDocumentRepository documentRepository,
@@ -41,7 +42,8 @@ public class DocumentClassificationBackgroundJob
         IOptions<DocumentTypeOptions> documentTypeOptions,
         IAiCostLedger costLedger,
         IFeatureChecker featureChecker,
-        ICurrentTenant currentTenant)
+        ICurrentTenant currentTenant,
+        IBackgroundJobManager backgroundJobManager)
     {
         _documentRepository = documentRepository;
         _pipelineRunManager = pipelineRunManager;
@@ -52,6 +54,7 @@ public class DocumentClassificationBackgroundJob
         _costLedger = costLedger;
         _featureChecker = featureChecker;
         _currentTenant = currentTenant;
+        _backgroundJobManager = backgroundJobManager;
     }
 
     public override async Task ExecuteAsync(DocumentClassificationJobArgs args)
@@ -147,6 +150,9 @@ public class DocumentClassificationBackgroundJob
                     ConfidenceScore = result.ConfidenceScore,
                     ExtractedText = document.ExtractedText
                 });
+
+                await _backgroundJobManager.EnqueueAsync(
+                    new DocumentEmbeddingJobArgs { DocumentId = document.Id });
                 return;
             }
         }

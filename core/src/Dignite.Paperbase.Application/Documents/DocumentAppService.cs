@@ -5,12 +5,16 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Dignite.Paperbase.Abstractions.AI;
 using Dignite.Paperbase.Abstractions.Documents;
+using Dignite.Paperbase.AI;
 using Dignite.Paperbase.Application.Documents.BackgroundJobs;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Domain.Documents;
 using Dignite.Paperbase.Permissions;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
 using Volo.Abp.Application.Dtos;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.BlobStoring;
@@ -28,6 +32,10 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     private readonly SourceTypeDetector _sourceTypeDetector;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly IDistributedEventBus _distributedEventBus;
+    private readonly IQaService _qaService;
+    private readonly IDocumentChunkRepository _chunkRepository;
+    private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
+    private readonly PaperbaseAIOptions _aiOptions;
 
     public DocumentAppService(
         IDocumentRepository documentRepository,
@@ -35,7 +43,11 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         IBackgroundJobManager backgroundJobManager,
         SourceTypeDetector sourceTypeDetector,
         DocumentPipelineRunManager pipelineRunManager,
-        IDistributedEventBus distributedEventBus)
+        IDistributedEventBus distributedEventBus,
+        IQaService qaService,
+        IDocumentChunkRepository chunkRepository,
+        IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
+        IOptions<PaperbaseAIOptions> aiOptions)
     {
         _documentRepository = documentRepository;
         _blobContainer = blobContainer;
@@ -43,6 +55,10 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         _sourceTypeDetector = sourceTypeDetector;
         _pipelineRunManager = pipelineRunManager;
         _distributedEventBus = distributedEventBus;
+        _qaService = qaService;
+        _chunkRepository = chunkRepository;
+        _embeddingGenerator = embeddingGenerator;
+        _aiOptions = aiOptions.Value;
     }
 
     public virtual async Task<DocumentDto> GetAsync(Guid id)
@@ -163,6 +179,48 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
 
         await _documentRepository.UpdateAsync(document);
         return ObjectMapper.Map<Document, DocumentDto>(document);
+    }
+
+    [Authorize(PaperbasePermissions.Documents.Ask)]
+    public virtual async Task<QaResultDto> AskAsync(Guid id, AskDocumentInput input)
+    {
+        var document = await _documentRepository.GetAsync(id);
+
+        var request = new QaRequest
+        {
+            DocumentId = id,
+            Question = input.Question,
+            Mode = input.Mode,
+            HasEmbedding = document.HasEmbedding,
+            ExtractedText = document.ExtractedText
+        };
+
+        if (document.HasEmbedding && input.Mode != QaMode.FullText)
+        {
+            var questionEmbeddings = await _embeddingGenerator.GenerateAsync([input.Question]);
+            var chunks = await _chunkRepository.SearchByVectorAsync(
+                questionEmbeddings[0].Vector.ToArray(), _aiOptions.QaTopKChunks, documentId: id);
+
+            request.Chunks = chunks.Select(c => new QaChunkData
+            {
+                ChunkIndex = c.ChunkIndex,
+                ChunkText = c.ChunkText
+            }).ToList<QaChunkData>();
+        }
+
+        var result = await _qaService.AskAsync(request);
+
+        return new QaResultDto
+        {
+            Answer = result.Answer,
+            ActualMode = result.ActualMode.ToString(),
+            IsDegraded = input.Mode == QaMode.Auto && !document.HasEmbedding,
+            Sources = result.Sources.Select(s => new QaSourceDto
+            {
+                Text = s.Text,
+                ChunkIndex = s.ChunkIndex
+            }).ToList()
+        };
     }
 
     protected virtual IQueryable<Document> ApplyFilter(IQueryable<Document> query, GetDocumentListInput input)
