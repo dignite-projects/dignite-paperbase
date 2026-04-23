@@ -445,3 +445,5 @@ appsettings.Staging.json
 
 # docs
 docs/*
+!docs/开发日志/
+!docs/开发日志/*.md
