@@ -2,7 +2,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.AI;
-using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Abstractions.Documents;
 using Microsoft.Extensions.Options;
 using Volo.Abp.DependencyInjection;
 

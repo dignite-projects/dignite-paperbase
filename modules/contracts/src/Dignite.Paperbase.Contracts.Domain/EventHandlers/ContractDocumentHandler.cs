@@ -1,6 +1,6 @@
 using System.Threading.Tasks;
 using Dignite.Paperbase.Contracts.Contracts;
-using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Abstractions.Documents;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.EventBus.Distributed;
 using Volo.Abp.MultiTenancy;

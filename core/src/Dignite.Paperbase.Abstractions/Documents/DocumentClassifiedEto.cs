@@ -1,7 +1,7 @@
 using System;
 using Volo.Abp.EventBus;
 
-namespace Dignite.Paperbase.Documents;
+namespace Dignite.Paperbase.Abstractions.Documents;
 
 [EventName("Dignite.Paperbase.DocumentClassified")]
 public class DocumentClassifiedEto

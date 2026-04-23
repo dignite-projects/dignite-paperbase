@@ -1,4 +1,4 @@
-using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Abstractions.Documents;
 using Volo.Abp.Domain;
 using Volo.Abp.Modularity;
 

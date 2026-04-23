@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Dignite.Paperbase.Documents;
+namespace Dignite.Paperbase.Abstractions.Documents;
 
 /// <summary>
 /// 文档类型定义。由业务模块在启动时注册到 <see cref="DocumentTypeOptions"/>。

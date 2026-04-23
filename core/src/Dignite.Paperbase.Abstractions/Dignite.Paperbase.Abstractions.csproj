@@ -9,8 +9,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- 仅依赖 Volo.Abp.Core（DI 标记接口），不依赖 Domain.Shared / Domain -->
+    <!-- Volo.Abp.Core 提供 DI 标记接口；EventBus.Abstractions 提供 [EventName] 属性（用于集成事件 ETO） -->
     <PackageReference Include="Volo.Abp.Core" Version="10.2.0" />
+    <PackageReference Include="Volo.Abp.EventBus.Abstractions" Version="10.2.0" />
   </ItemGroup>
 
 </Project>

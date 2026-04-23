@@ -12,6 +12,7 @@
   <ItemGroup>
     <PackageReference Include="Volo.Abp.Ddd.Domain" Version="10.2.0"/>
     <ProjectReference Include="..\Dignite.Paperbase.Contracts.Domain.Shared\Dignite.Paperbase.Contracts.Domain.Shared.csproj" />
+    <ProjectReference Include="..\..\..\..\core\src\Dignite.Paperbase.Abstractions\Dignite.Paperbase.Abstractions.csproj" />
   </ItemGroup>
 
 </Project>

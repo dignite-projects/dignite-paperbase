@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.AI;
+using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Domain.Documents;
 using Microsoft.Extensions.Options;

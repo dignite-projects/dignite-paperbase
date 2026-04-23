@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Dignite.Paperbase.Documents;
+namespace Dignite.Paperbase.Abstractions.Documents;
 
 /// <summary>
 /// 文档类型注册表选项。业务模块通过 Configure&lt;DocumentTypeOptions&gt; 注册自己的文档类型。
