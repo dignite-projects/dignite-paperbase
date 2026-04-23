@@ -1,13 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Azure;
 using Azure.AI.DocumentIntelligence;
-using Dignite.Paperbase.Abstractions.Ocr;
+using Dignite.Paperbase.Ocr;
 using Microsoft.Extensions.Options;
 using Volo.Abp.DependencyInjection;
 
@@ -22,81 +20,68 @@ public class AzureDocumentIntelligenceOcrProvider : IOcrProvider, ITransientDepe
         _options = options.Value;
     }
 
-    public virtual async Task<OcrResult> RecognizeAsync(
-        Stream fileStream,
-        OcrOptions options,
-        CancellationToken cancellationToken = default)
+    public virtual async Task<OcrResult> RecognizeAsync(Stream fileStream, OcrOptions options)
     {
         var client = new DocumentIntelligenceClient(
             new Uri(_options.Endpoint),
             new AzureKeyCredential(_options.ApiKey));
 
-        var sw = Stopwatch.StartNew();
-
-        // 将流读入 BinaryData (raw bytes — SDK sends as base64 internally)
         BinaryData binaryData;
         using (var ms = new MemoryStream())
         {
-            await fileStream.CopyToAsync(ms, cancellationToken);
+            await fileStream.CopyToAsync(ms);
             binaryData = BinaryData.FromBytes(ms.ToArray());
         }
 
-        // Azure.AI.DocumentIntelligence 1.0.0 GA API:
-        // - AnalyzeDocumentOptions(modelId, bytesSource) constructor
-        // - AnalyzeDocumentAsync(WaitUntil, AnalyzeDocumentOptions, CancellationToken)
         var analyzeOptions = new AnalyzeDocumentOptions(_options.ModelId, binaryData);
-        var operation = await client.AnalyzeDocumentAsync(
-            WaitUntil.Completed,
-            analyzeOptions,
-            cancellationToken: cancellationToken);
-
-        sw.Stop();
+        var operation = await client.AnalyzeDocumentAsync(WaitUntil.Completed, analyzeOptions);
 
         var analyzeResult = operation.Value;
+        var blocks = new List<OcrBlock>();
+        double totalConfidence = 0;
+        int blockCount = 0;
 
-        var pages = new List<OcrPage>();
-        var allLines = new List<string>();
-
-        if (analyzeResult.Pages != null)
+        foreach (var page in analyzeResult.Pages ?? [])
         {
-            foreach (var page in analyzeResult.Pages)
+            foreach (var line in page.Lines ?? [])
             {
-                var blocks = new List<OcrBlock>();
-
-                if (page.Lines != null)
+                var confidence = line.Spans?.Any() == true ? 1.0 : 0.9;
+                blocks.Add(new OcrBlock
                 {
-                    foreach (var line in page.Lines)
-                    {
-                        allLines.Add(line.Content);
-                        blocks.Add(new OcrBlock
-                        {
-                            Text = line.Content,
-                            Confidence = line.Spans?.Any() == true ? 1.0 : 0.9
-                        });
-                    }
-                }
-
-                pages.Add(new OcrPage
-                {
+                    Text = line.Content,
                     PageNumber = page.PageNumber,
-                    Blocks = blocks
+                    Confidence = confidence,
+                    BoundingBox = options.IncludeBlockPositions
+                        ? ParseBoundingBox(line.Polygon)
+                        : new BoundingBox()
                 });
+                totalConfidence += confidence;
+                blockCount++;
             }
         }
 
-        var metadata = new Dictionary<string, object>
-        {
-            ["ProviderName"] = "AzureDocumentIntelligence",
-            ["ModelId"] = _options.ModelId,
-            ["LatencyMs"] = sw.ElapsedMilliseconds,
-            ["PageCount"] = pages.Count
-        };
-
         return new OcrResult
         {
-            FullText = string.Join(Environment.NewLine, allLines),
-            Pages = pages,
-            Metadata = metadata
+            RawText = string.Join(Environment.NewLine, blocks.Select(b => b.Text)),
+            Blocks = blocks,
+            Confidence = blockCount > 0 ? totalConfidence / blockCount : 0,
+            DetectedLanguage = analyzeResult.Languages?.FirstOrDefault()?.Locale,
+            PageCount = analyzeResult.Pages?.Count ?? 0
+        };
+    }
+
+    protected virtual BoundingBox ParseBoundingBox(IReadOnlyList<float>? polygon)
+    {
+        // Azure polygon: [x1,y1,x2,y2,x3,y3,x4,y4] — top-left + width/height
+        if (polygon == null || polygon.Count < 8)
+            return new BoundingBox();
+
+        return new BoundingBox
+        {
+            X = polygon[0],
+            Y = polygon[1],
+            Width = polygon[4] - polygon[0],
+            Height = polygon[5] - polygon[1]
         };
     }
 }
