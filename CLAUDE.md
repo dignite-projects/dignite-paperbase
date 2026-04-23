@@ -43,7 +43,8 @@ Paperbase 采用**三层分离**的模块化架构：
   - 通过 `IDistributedEventBus` 订阅 `DocumentClassifiedEto` 事件
   - 调用 Abstractions 中定义的能力端口（`IFieldExtractor`、`IDocumentClassifier` 等）进行专业领域处理
   - 持久化自己的领域聚合根，提供业务API和UI
-  - 按需回写核心搜索索引，注册关系类型
+  - 在自己的聚合根上维护业务查询字段（如合同到期日、金额、对方名称），**不得回写到 Document 聚合根**
+  - 按需注册关系类型
 - **非耦合实现**：业务模块之间无依赖；业务模块与核心通过事件和能力契约解耦通信
 
 ### 第三层：Host（宿主应用）
@@ -77,6 +78,14 @@ Dignite.Paperbase.Abstractions（扩展契约层，无其他项目依赖）
 - **单向依赖**：Abstractions ← 能力模块和业务模块；Paperbase 核心 ⇄ 能力模块不存在反向依赖
 - **业务模块间无耦合**：每个业务模块独立开发、独立测试、可独立卸载
 - **编排留给核心**：BackgroundJob、PipelineRun 生命周期、Document 的读写都是核心职责
+
+### Document 聚合根边界（强制）
+
+`Document` 是**纯基础设施聚合根**，职责限于：文件存储、生命周期状态机、流水线 Run 记录、文本提取结果、AI 分类结果、向量化状态。
+
+**禁止**在 `Document` 上添加任何来自业务模块的字段，例如合同金额、到期日、对方名称、发票号等。这类字段属于业务模块自己的聚合根，由业务模块在收到 `DocumentClassifiedEto` 后自行持久化和查询。
+
+> **判断依据**：如果一个字段的含义只有在特定业务场景（合同、发票、报销单…）下才成立，它就不属于 `Document`。
 
 ## 处理规则
 

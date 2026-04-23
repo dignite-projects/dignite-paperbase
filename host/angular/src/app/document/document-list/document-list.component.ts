@@ -9,18 +9,19 @@ import {
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
+import { FormsModule } from '@angular/forms';
 import { LocalizationPipe } from '@abp/ng.core';
 import { ConfirmationService, ToasterService } from '@abp/ng.theme.shared';
 import { Confirmation } from '@abp/ng.theme.shared';
 import { Subscription, interval, switchMap, startWith } from 'rxjs';
 import { DocumentService } from '../../proxy/document.service';
-import { DocumentDto, DocumentLifecycleStatus, PagedResultDto } from '../../proxy/models';
+import { BulkUploadResultDto, DocumentDto, DocumentLifecycleStatus, GetDocumentListInput, PagedResultDto } from '../../proxy/models';
 
 @Component({
   selector: 'app-document-list',
   templateUrl: './document-list.component.html',
   styleUrls: ['./document-list.component.scss'],
-  imports: [CommonModule, RouterModule, LocalizationPipe],
+  imports: [CommonModule, RouterModule, FormsModule, LocalizationPipe],
 })
 export class DocumentListComponent implements OnInit, OnDestroy {
   private readonly documentService = inject(DocumentService);
@@ -30,10 +31,15 @@ export class DocumentListComponent implements OnInit, OnDestroy {
 
   documents = signal<PagedResultDto<DocumentDto>>({ totalCount: 0, items: [] });
   isLoading = signal(true);
+  isExporting = signal(false);
+  isBulkUploading = signal(false);
+  bulkUploadResults = signal<BulkUploadResultDto[]>([]);
 
   page = signal(0);
   pageSize = 10;
   totalPages = computed(() => Math.ceil(this.documents().totalCount / this.pageSize));
+
+  private activeFilter: GetDocumentListInput = {};
 
   readonly DocumentLifecycleStatus = DocumentLifecycleStatus;
 
@@ -48,11 +54,11 @@ export class DocumentListComponent implements OnInit, OnDestroy {
   }
 
   private startPolling(): void {
-    // Poll every 3 seconds while any document is Processing
     this.pollSubscription = interval(3000)
       .pipe(
         startWith(0),
         switchMap(() => this.documentService.getList({
+          ...this.activeFilter,
           maxResultCount: this.pageSize,
           skipCount: this.page() * this.pageSize,
           sorting: 'creationTime desc',
@@ -63,7 +69,6 @@ export class DocumentListComponent implements OnInit, OnDestroy {
           this.isLoading.set(false);
           this.documents.set(result);
 
-          // Stop polling when no documents are processing
           const hasProcessing = result.items.some(
             d => d.lifecycleStatus === DocumentLifecycleStatus.Processing ||
                  d.lifecycleStatus === DocumentLifecycleStatus.Uploaded
@@ -96,6 +101,36 @@ export class DocumentListComponent implements OnInit, OnDestroy {
 
   uploadNew(): void {
     this.router.navigate(['/documents/upload']);
+  }
+
+  onBulkFileChange(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (!input.files?.length) return;
+    const files = Array.from(input.files);
+    this.isBulkUploading.set(true);
+    this.bulkUploadResults.set([]);
+
+    this.documentService.bulkUpload(files).subscribe({
+      next: results => {
+        this.isBulkUploading.set(false);
+        this.bulkUploadResults.set(results);
+        const succeeded = results.filter(r => r.succeeded).length;
+        this.toaster.success(`${succeeded} / ${results.length} files uploaded`, '::Upload');
+        this.stopPolling();
+        this.isLoading.set(true);
+        this.startPolling();
+        input.value = '';
+      },
+      error: () => {
+        this.isBulkUploading.set(false);
+        this.toaster.error('::Document:BulkUploadFailed', '::Error');
+      },
+    });
+  }
+
+  exportCsv(): void {
+    const url = this.documentService.getExportUrl(this.activeFilter);
+    window.open(url, '_blank');
   }
 
   delete(doc: DocumentDto, event: Event): void {

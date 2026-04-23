@@ -12,10 +12,16 @@ import { ContractDto, ContractStatus, ContractsService } from '../services/contr
     <div class="container-fluid py-3">
       <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
         <h1 class="h3 mb-0">{{ '::DocumentType:Contract' | abpLocalization }}</h1>
-        <button type="button" class="btn btn-outline-primary" (click)="load()" [disabled]="loading">
-          <i class="fa fa-refresh me-1"></i>
-          {{ 'AbpUi::Refresh' | abpLocalization }}
-        </button>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-outline-success" (click)="exportCsv()">
+            <i class="fa fa-download me-1"></i>
+            {{ '::Contract:ExportCsv' | abpLocalization }}
+          </button>
+          <button type="button" class="btn btn-outline-primary" (click)="load()" [disabled]="loading">
+            <i class="fa fa-refresh me-1"></i>
+            {{ 'AbpUi::Refresh' | abpLocalization }}
+          </button>
+        </div>
       </div>
 
       <div class="row g-2 align-items-end mb-3">
@@ -30,6 +36,56 @@ import { ContractDto, ContractStatus, ContractsService } from '../services/contr
             name="counterpartyKeyword"
             [(ngModel)]="counterpartyKeyword"
             (keyup.enter)="load()"
+          />
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label" for="expirationDateFrom">
+            {{ '::ExpirationDateFrom' | abpLocalization }}
+          </label>
+          <input
+            id="expirationDateFrom"
+            class="form-control"
+            type="date"
+            name="expirationDateFrom"
+            [(ngModel)]="expirationDateFrom"
+          />
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label" for="expirationDateTo">
+            {{ '::ExpirationDateTo' | abpLocalization }}
+          </label>
+          <input
+            id="expirationDateTo"
+            class="form-control"
+            type="date"
+            name="expirationDateTo"
+            [(ngModel)]="expirationDateTo"
+          />
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label" for="amountMin">
+            {{ '::TotalAmountMin' | abpLocalization }}
+          </label>
+          <input
+            id="amountMin"
+            class="form-control"
+            type="number"
+            name="amountMin"
+            [(ngModel)]="amountMin"
+            min="0"
+          />
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label" for="amountMax">
+            {{ '::TotalAmountMax' | abpLocalization }}
+          </label>
+          <input
+            id="amountMax"
+            class="form-control"
+            type="number"
+            name="amountMax"
+            [(ngModel)]="amountMax"
+            min="0"
           />
         </div>
         <div class="col-12 col-md-auto">
@@ -114,11 +170,26 @@ export class ContractsComponent implements OnInit {
   protected readonly service = inject(ContractsService);
   protected contracts: ContractDto[] = [];
   protected counterpartyKeyword = '';
+  protected expirationDateFrom = '';
+  protected expirationDateTo = '';
+  protected amountMin: number | null = null;
+  protected amountMax: number | null = null;
   protected needsReviewOnly = false;
   protected loading = false;
 
   ngOnInit(): void {
     this.load();
+  }
+
+  protected exportCsv(): void {
+    const url = this.service.getExportUrl({
+      counterpartyKeyword: this.counterpartyKeyword || undefined,
+      expirationDateFrom: this.expirationDateFrom || undefined,
+      expirationDateTo: this.expirationDateTo || undefined,
+      amountMin: this.amountMin ?? undefined,
+      amountMax: this.amountMax ?? undefined,
+    });
+    window.open(url, '_blank');
   }
 
   protected load(): void {
@@ -129,6 +200,10 @@ export class ContractsComponent implements OnInit {
         maxResultCount: 20,
         sorting: 'expirationDate',
         counterpartyKeyword: this.counterpartyKeyword || undefined,
+        expirationDateFrom: this.expirationDateFrom || undefined,
+        expirationDateTo: this.expirationDateTo || undefined,
+        amountMin: this.amountMin ?? undefined,
+        amountMax: this.amountMax ?? undefined,
         needsReview: this.needsReviewOnly ? true : undefined,
       })
       .pipe(finalize(() => (this.loading = false)))

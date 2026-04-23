@@ -13,6 +13,7 @@ public class PaperbasePermissionDefinitionProvider : PermissionDefinitionProvide
         var documents = group.AddPermission(PaperbasePermissions.Documents.Default, L("Permission:Documents"));
         documents.AddChild(PaperbasePermissions.Documents.Upload, L("Permission:Documents.Upload"));
         documents.AddChild(PaperbasePermissions.Documents.Delete, L("Permission:Documents.Delete"));
+        documents.AddChild(PaperbasePermissions.Documents.Export, L("Permission:Documents.Export"));
 
         var relations = group.AddPermission(PaperbasePermissions.DocumentRelations.Default, L("Permission:DocumentRelations"));
         relations.AddChild(PaperbasePermissions.DocumentRelations.Create, L("Permission:DocumentRelations.Create"));

@@ -4,6 +4,7 @@ using Dignite.Paperbase.Contracts.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Volo.Abp;
 using Volo.Abp.Application.Dtos;
+using Volo.Abp.Content;
 
 namespace Dignite.Paperbase.Contracts;
 
@@ -44,5 +45,12 @@ public class ContractController : ContractsController, IContractAppService
     public virtual async Task ConfirmAsync(Guid id)
     {
         await _contractAppService.ConfirmAsync(id);
+    }
+
+    [HttpGet]
+    [Route("export")]
+    public virtual async Task<IRemoteStreamContent> ExportAsync(GetContractListInput input)
+    {
+        return await _contractAppService.ExportAsync(input);
     }
 }

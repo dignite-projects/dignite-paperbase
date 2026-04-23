@@ -11,6 +11,7 @@ public class PaperbasePermissions
         public const string Default = GroupName + ".Documents";
         public const string Upload = Default + ".Upload";
         public const string Delete = Default + ".Delete";
+        public const string Export = Default + ".Export";
     }
 
     public static class DocumentRelations

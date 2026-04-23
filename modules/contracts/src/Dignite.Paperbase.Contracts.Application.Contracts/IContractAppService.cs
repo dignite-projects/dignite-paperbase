@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Contracts.Dtos;
 using Volo.Abp.Application.Dtos;
 using Volo.Abp.Application.Services;
+using Volo.Abp.Content;
 
 namespace Dignite.Paperbase.Contracts;
 
@@ -15,4 +16,6 @@ public interface IContractAppService : IApplicationService
     Task<ContractDto> UpdateAsync(Guid id, UpdateContractDto input);
 
     Task ConfirmAsync(Guid id);
+
+    Task<IRemoteStreamContent> ExportAsync(GetContractListInput input);
 }

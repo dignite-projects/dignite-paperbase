@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Contracts.Contracts;
 using Dignite.Paperbase.Contracts.Dtos;
 using Dignite.Paperbase.Contracts.Permissions;
 using Microsoft.AspNetCore.Authorization;
 using Volo.Abp.Application.Dtos;
+using Volo.Abp.Content;
 
 namespace Dignite.Paperbase.Contracts;
 
@@ -113,7 +116,35 @@ public class ContractAppService : ContractsAppService, IContractAppService
             query = query.Where(x => x.NeedsReview == input.NeedsReview.Value);
         }
 
+        if (input.TotalAmountMin.HasValue)
+        {
+            query = query.Where(x =>
+                x.TotalAmount.HasValue &&
+                x.TotalAmount.Value >= input.TotalAmountMin.Value);
+        }
+
+        if (input.TotalAmountMax.HasValue)
+        {
+            query = query.Where(x =>
+                x.TotalAmount.HasValue &&
+                x.TotalAmount.Value <= input.TotalAmountMax.Value);
+        }
+
         return query;
+    }
+
+    [Authorize(ContractsPermissions.Contracts.Export)]
+    public virtual async Task<IRemoteStreamContent> ExportAsync(GetContractListInput input)
+    {
+        var query = await _contractRepository.GetQueryableAsync();
+        query = ApplyFilter(query, input);
+        query = ApplySorting(query, input.Sorting);
+
+        var contracts = await AsyncExecuter.ToListAsync(query);
+        var csv = BuildContractCsv(contracts);
+        var bytes = Encoding.UTF8.GetBytes(csv);
+
+        return new RemoteStreamContent(new MemoryStream(bytes), "contracts.csv", "text/csv");
     }
 
     protected virtual IQueryable<Contract> ApplySorting(
@@ -130,5 +161,40 @@ public class ContractAppService : ContractsAppService, IContractAppService
             "signedDate desc" => query.OrderByDescending(x => x.SignedDate),
             _ => query.OrderByDescending(x => x.CreationTime)
         };
+    }
+
+    private static string BuildContractCsv(List<Contract> contracts)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Id,DocumentId,DocumentTypeCode,Title,ContractNumber,PartyAName,PartyBName,CounterpartyName,SignedDate,EffectiveDate,ExpirationDate,TotalAmount,Currency,Status");
+
+        foreach (var c in contracts)
+        {
+            sb.AppendLine(string.Join(",",
+                c.Id,
+                c.DocumentId,
+                EscapeCsv(c.DocumentTypeCode),
+                EscapeCsv(c.Title),
+                EscapeCsv(c.ContractNumber),
+                EscapeCsv(c.PartyAName),
+                EscapeCsv(c.PartyBName),
+                EscapeCsv(c.CounterpartyName),
+                c.SignedDate?.ToString("yyyy-MM-dd") ?? string.Empty,
+                c.EffectiveDate?.ToString("yyyy-MM-dd") ?? string.Empty,
+                c.ExpirationDate?.ToString("yyyy-MM-dd") ?? string.Empty,
+                c.TotalAmount?.ToString("F2") ?? string.Empty,
+                EscapeCsv(c.Currency),
+                c.Status.ToString()));
+        }
+
+        return sb.ToString();
+    }
+
+    private static string EscapeCsv(string? value)
+    {
+        if (value.IsNullOrEmpty()) return string.Empty;
+        if (value!.Contains(',') || value.Contains('"') || value.Contains('\n'))
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        return value;
     }
 }

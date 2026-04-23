@@ -2201,7 +2201,7 @@ namespace Dignite.Paperbase.Host.Migrations
 
                             b1.HasKey("DocumentId");
 
-                            b1.ToTable("PaperbaseDocuments");
+                            b1.ToTable("PaperbaseDocuments", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("DocumentId");
@@ -2332,7 +2332,7 @@ namespace Dignite.Paperbase.Host.Migrations
 
                             b1.HasKey("IdentityUserPasskeyCredentialId");
 
-                            b1.ToTable("AbpUserPasskeys");
+                            b1.ToTable("AbpUserPasskeys", (string)null);
 
                             b1
                                 .ToJson("Data")

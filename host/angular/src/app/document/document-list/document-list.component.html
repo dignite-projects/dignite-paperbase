@@ -5,11 +5,48 @@
       <i class="fas fa-file-alt me-2"></i>
       {{ '::Document:Documents' | abpLocalization }}
     </h4>
-    <button class="btn btn-primary" (click)="uploadNew()">
-      <i class="fas fa-upload me-1"></i>
-      {{ '::Document:Upload' | abpLocalization }}
-    </button>
+    <div class="d-flex gap-2">
+      <button class="btn btn-outline-success" (click)="exportCsv()" [disabled]="isExporting()">
+        <i class="fas fa-download me-1"></i>
+        {{ '::Document:ExportCsv' | abpLocalization }}
+      </button>
+      <!-- Bulk upload -->
+      <label class="btn btn-outline-primary mb-0" [class.disabled]="isBulkUploading()">
+        <i class="fas fa-upload me-1"></i>
+        {{ isBulkUploading() ? ('AbpUi::Loading' | abpLocalization) : ('::Document:BulkUpload' | abpLocalization) }}
+        <input type="file" multiple accept=".pdf,.png,.jpg,.jpeg" class="d-none"
+               (change)="onBulkFileChange($event)" [disabled]="isBulkUploading()">
+      </label>
+      <button class="btn btn-primary" (click)="uploadNew()">
+        <i class="fas fa-upload me-1"></i>
+        {{ '::Document:Upload' | abpLocalization }}
+      </button>
+    </div>
   </div>
+
+  <!-- Bulk upload results -->
+  @if (bulkUploadResults().length > 0) {
+    <div class="card shadow-sm mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>{{ '::Document:BulkUploadResults' | abpLocalization }}</span>
+        <button type="button" class="btn-close" (click)="bulkUploadResults.set([])"></button>
+      </div>
+      <ul class="list-group list-group-flush">
+        @for (r of bulkUploadResults(); track r.fileName) {
+          <li class="list-group-item d-flex justify-content-between align-items-center py-2">
+            <span>{{ r.fileName }}</span>
+            @if (r.succeeded) {
+              <span class="badge bg-success">OK</span>
+            } @else {
+              <span class="badge bg-danger" [title]="r.errorMessage ?? ''">
+                {{ '::Failed' | abpLocalization }}
+              </span>
+            }
+          </li>
+        }
+      </ul>
+    </div>
+  }
 
   <!-- Loading spinner -->
   @if (isLoading()) {
@@ -51,7 +88,6 @@
           <tbody>
             @for (doc of documents().items; track doc.id) {
               <tr class="align-middle cursor-pointer" (click)="openDetail(doc)">
-                <!-- File type icon -->
                 <td>
                   @if (isImage(doc)) {
                     <i class="fas fa-file-image fa-lg text-primary"></i>
@@ -59,15 +95,11 @@
                     <i class="fas fa-file-pdf fa-lg text-danger"></i>
                   }
                 </td>
-
-                <!-- File name -->
                 <td>
                   <span class="fw-semibold">
                     {{ doc.fileOrigin?.originalFileName || doc.originalFileBlobName }}
                   </span>
                 </td>
-
-                <!-- Document type -->
                 <td>
                   @if (doc.documentTypeCode) {
                     <span class="badge bg-info text-dark">{{ doc.documentTypeCode }}</span>
@@ -75,8 +107,6 @@
                     <span class="text-muted">—</span>
                   }
                 </td>
-
-                <!-- Status badge -->
                 <td>
                   <span [class]="getStatusBadgeClass(doc.lifecycleStatus)">
                     @if (doc.lifecycleStatus === DocumentLifecycleStatus.Processing ||
@@ -86,18 +116,8 @@
                     {{ getStatusLabel(doc.lifecycleStatus) | abpLocalization }}
                   </span>
                 </td>
-
-                <!-- File size -->
-                <td class="text-muted small">
-                  {{ formatFileSize(doc.fileOrigin?.fileSize ?? 0) }}
-                </td>
-
-                <!-- Upload date -->
-                <td class="text-muted small">
-                  {{ doc.creationTime | date:'yyyy-MM-dd HH:mm' }}
-                </td>
-
-                <!-- Delete action -->
+                <td class="text-muted small">{{ formatFileSize(doc.fileOrigin?.fileSize ?? 0) }}</td>
+                <td class="text-muted small">{{ doc.creationTime | date:'yyyy-MM-dd HH:mm' }}</td>
                 <td>
                   <button
                     class="btn btn-sm btn-outline-danger"

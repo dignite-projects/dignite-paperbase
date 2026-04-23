@@ -1,4 +1,4 @@
-import { RestService } from '@abp/ng.core';
+import { EnvironmentService, RestService } from '@abp/ng.core';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
@@ -38,6 +38,8 @@ export interface GetContractListInput {
   expirationDateFrom?: string;
   expirationDateTo?: string;
   needsReview?: boolean;
+  amountMin?: number;
+  amountMax?: number;
 }
 
 export interface PagedResultDto<T> {
@@ -52,6 +54,7 @@ export class ContractsService {
   private readonly apiName = 'Contracts';
 
   private readonly restService = inject(RestService);
+  private readonly env = inject(EnvironmentService);
 
   getList(input: GetContractListInput): Observable<PagedResultDto<ContractDto>> {
     return this.restService.request<void, PagedResultDto<ContractDto>>(
@@ -82,5 +85,16 @@ export class ContractsService {
       },
       { apiName: this.apiName }
     );
+  }
+
+  getExportUrl(input?: GetContractListInput): string {
+    const params = new URLSearchParams();
+    if (input?.counterpartyKeyword) params.set('counterpartyKeyword', input.counterpartyKeyword);
+    if (input?.expirationDateFrom) params.set('expirationDateFrom', input.expirationDateFrom);
+    if (input?.expirationDateTo) params.set('expirationDateTo', input.expirationDateTo);
+    if (input?.amountMin != null) params.set('totalAmountMin', String(input.amountMin));
+    if (input?.amountMax != null) params.set('totalAmountMax', String(input.amountMax));
+    const qs = params.toString();
+    return `${this.env.getApiUrl()}/api/paperbase/contracts/export${qs ? '?' + qs : ''}`;
   }
 }

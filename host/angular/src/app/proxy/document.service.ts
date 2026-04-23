@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { EnvironmentService, RestService } from '@abp/ng.core';
 import { Observable } from 'rxjs';
-import { DocumentDto, GetDocumentListInput, PagedResultDto } from './models';
+import { BulkUploadResultDto, DocumentDto, GetDocumentListInput, PagedResultDto } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class DocumentService {
@@ -46,6 +46,21 @@ export class DocumentService {
     );
   };
 
+  bulkUpload = (files: File[]): Observable<BulkUploadResultDto[]> => {
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append('files', file, file.name);
+    }
+    return this.rest.request<FormData, BulkUploadResultDto[]>(
+      {
+        method: 'POST',
+        url: `${this.basePath}/bulk-upload`,
+        body: formData,
+      },
+      { apiName: this.apiName }
+    );
+  };
+
   delete = (id: string): Observable<void> =>
     this.rest.request<void, void>(
       { method: 'DELETE', url: `${this.basePath}/${id}` },
@@ -54,4 +69,12 @@ export class DocumentService {
 
   getBlobUrl = (id: string): string =>
     `${this.env.getApiUrl()}/api/paperbase/documents/${id}/blob`;
+
+  getExportUrl = (input: GetDocumentListInput): string => {
+    const params = new URLSearchParams();
+    if (input.lifecycleStatus != null) params.set('lifecycleStatus', String(input.lifecycleStatus));
+    if (input.documentTypeCode) params.set('documentTypeCode', input.documentTypeCode);
+    const qs = params.toString();
+    return `${this.env.getApiUrl()}${this.basePath}/export${qs ? '?' + qs : ''}`;
+  };
 }

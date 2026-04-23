@@ -41,15 +41,15 @@ public class ContractDocumentHandler :
             {
                 existing.UpdateExtractedFields(fields);
                 await _contractRepository.UpdateAsync(existing, autoSave: true);
-                return;
             }
-
-            var contract = await _contractManager.CreateAsync(
-                eventData.DocumentId,
-                eventData.DocumentTypeCode,
-                fields);
-
-            await _contractRepository.InsertAsync(contract, autoSave: true);
+            else
+            {
+                var contract = await _contractManager.CreateAsync(
+                    eventData.DocumentId,
+                    eventData.DocumentTypeCode,
+                    fields);
+                await _contractRepository.InsertAsync(contract, autoSave: true);
+            }
         }
     }
 }

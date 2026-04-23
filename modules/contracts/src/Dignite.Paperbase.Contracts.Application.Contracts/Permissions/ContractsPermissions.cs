@@ -11,6 +11,7 @@ public class ContractsPermissions
         public const string Default = GroupName + ".Contracts";
         public const string Update = Default + ".Update";
         public const string Confirm = Default + ".Confirm";
+        public const string Export = Default + ".Export";
     }
 
     public static string[] GetAll()

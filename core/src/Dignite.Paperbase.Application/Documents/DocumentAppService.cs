@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Application.Documents.BackgroundJobs;
 using Dignite.Paperbase.Documents;
@@ -44,15 +47,19 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     {
         await CheckPolicyAsync(PaperbasePermissions.Documents.Default);
 
-        var totalCount = await _documentRepository.CountAsync();
-        var documents = await _documentRepository.GetPagedListAsync(
-            input.SkipCount,
-            input.MaxResultCount,
-            input.Sorting ?? "CreationTime desc");
+        var query = await _documentRepository.GetQueryableAsync();
+        query = ApplyFilter(query, input);
+
+        var totalCount = await AsyncExecuter.CountAsync(query);
+
+        query = ApplySorting(query, input.Sorting);
+        query = query.Skip(input.SkipCount).Take(input.MaxResultCount);
+
+        var documents = await AsyncExecuter.ToListAsync(query);
 
         return new PagedResultDto<DocumentDto>(
             totalCount,
-            ObjectMapper.Map<System.Collections.Generic.List<Document>, System.Collections.Generic.List<DocumentDto>>(documents));
+            ObjectMapper.Map<List<Document>, List<DocumentDto>>(documents));
     }
 
     [Authorize(PaperbasePermissions.Documents.Upload)]
@@ -111,5 +118,66 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         var document = await _documentRepository.GetAsync(id);
         await _blobContainer.DeleteAsync(document.OriginalFileBlobName);
         await _documentRepository.DeleteAsync(id);
+    }
+
+    [Authorize(PaperbasePermissions.Documents.Export)]
+    public virtual async Task<IRemoteStreamContent> ExportAsync(GetDocumentListInput input)
+    {
+        var query = await _documentRepository.GetQueryableAsync();
+        query = ApplyFilter(query, input);
+        query = ApplySorting(query, input.Sorting);
+
+        var documents = await AsyncExecuter.ToListAsync(query);
+        var csv = BuildDocumentCsv(documents);
+        var bytes = Encoding.UTF8.GetBytes(csv);
+
+        return new RemoteStreamContent(new MemoryStream(bytes), "documents.csv", "text/csv");
+    }
+
+    protected virtual IQueryable<Document> ApplyFilter(IQueryable<Document> query, GetDocumentListInput input)
+    {
+        if (input.LifecycleStatus.HasValue)
+            query = query.Where(x => x.LifecycleStatus == input.LifecycleStatus.Value);
+
+        if (!input.DocumentTypeCode.IsNullOrWhiteSpace())
+            query = query.Where(x => x.DocumentTypeCode == input.DocumentTypeCode);
+
+        return query;
+    }
+
+    protected virtual IQueryable<Document> ApplySorting(IQueryable<Document> query, string? sorting)
+    {
+        return sorting switch
+        {
+            "creationTime" => query.OrderBy(x => x.CreationTime),
+            _ => query.OrderByDescending(x => x.CreationTime)
+        };
+    }
+
+    private static string BuildDocumentCsv(List<Document> documents)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Id,DocumentTypeCode,LifecycleStatus,OriginalFileName,ContentType,CreationTime");
+
+        foreach (var d in documents)
+        {
+            sb.AppendLine(string.Join(",",
+                d.Id,
+                EscapeCsv(d.DocumentTypeCode),
+                d.LifecycleStatus.ToString(),
+                EscapeCsv(d.FileOrigin.OriginalFileName),
+                EscapeCsv(d.FileOrigin.ContentType),
+                d.CreationTime.ToString("yyyy-MM-dd HH:mm:ss")));
+        }
+
+        return sb.ToString();
+    }
+
+    private static string EscapeCsv(string? value)
+    {
+        if (value.IsNullOrEmpty()) return string.Empty;
+        if (value!.Contains(',') || value.Contains('"') || value.Contains('\n'))
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        return value;
     }
 }

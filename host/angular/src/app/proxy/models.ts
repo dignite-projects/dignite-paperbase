@@ -51,8 +51,15 @@ export interface GetDocumentListInput {
   maxResultCount?: number;
   skipCount?: number;
   sorting?: string;
-  lifecycleStatus?: string;
+  lifecycleStatus?: number;
   documentTypeCode?: string;
+}
+
+export interface BulkUploadResultDto {
+  fileName: string;
+  documentId?: string;
+  succeeded: boolean;
+  errorMessage?: string;
 }
 
 // ─── Shared ─────────────────────────────────────────────────────────────────

@@ -17,4 +17,6 @@ public interface IDocumentAppService : IApplicationService
     Task<IRemoteStreamContent> GetBlobAsync(Guid id);
 
     Task DeleteAsync(Guid id);
+
+    Task<IRemoteStreamContent> ExportAsync(GetDocumentListInput input);
 }

@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Volo.Abp.Content;
 using Volo.Abp.Application.Dtos;
+using Volo.Abp.Content;
 
 namespace Dignite.Paperbase.HttpApi.Documents;
 
@@ -47,5 +49,38 @@ public class DocumentController : PaperbaseController, IDocumentAppService
     public virtual Task DeleteAsync(Guid id)
     {
         return _documentAppService.DeleteAsync(id);
+    }
+
+    [HttpGet("export")]
+    public virtual Task<IRemoteStreamContent> ExportAsync(GetDocumentListInput input)
+    {
+        return _documentAppService.ExportAsync(input);
+    }
+
+    [HttpPost("bulk-upload")]
+    [Consumes("multipart/form-data")]
+    public virtual async Task<IReadOnlyList<BulkUploadResultDto>> BulkUploadAsync(IFormFileCollection files)
+    {
+        var results = new List<BulkUploadResultDto>();
+
+        foreach (var file in files)
+        {
+            try
+            {
+                var input = new UploadDocumentInput
+                {
+                    File = new RemoteStreamContent(file.OpenReadStream(), file.FileName, file.ContentType),
+                    FileName = file.FileName
+                };
+                var doc = await _documentAppService.UploadAsync(input);
+                results.Add(new BulkUploadResultDto { FileName = file.FileName, DocumentId = doc.Id, Succeeded = true });
+            }
+            catch (Exception ex)
+            {
+                results.Add(new BulkUploadResultDto { FileName = file.FileName, Succeeded = false, ErrorMessage = ex.Message });
+            }
+        }
+
+        return results;
     }
 }

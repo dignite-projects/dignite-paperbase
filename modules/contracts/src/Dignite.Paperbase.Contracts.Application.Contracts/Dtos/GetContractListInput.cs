@@ -14,4 +14,8 @@ public class GetContractListInput : PagedAndSortedResultRequestDto
     public DateTime? ExpirationDateTo { get; set; }
 
     public bool? NeedsReview { get; set; }
+
+    public decimal? TotalAmountMin { get; set; }
+
+    public decimal? TotalAmountMax { get; set; }
 }

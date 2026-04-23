@@ -20,6 +20,10 @@ public class ContractsPermissionDefinitionProvider : PermissionDefinitionProvide
         contractsPermission.AddChild(
             ContractsPermissions.Contracts.Confirm,
             L("Permission:Contracts.Contracts.Confirm"));
+
+        contractsPermission.AddChild(
+            ContractsPermissions.Contracts.Export,
+            L("Permission:Contracts.Contracts.Export"));
     }
 
     private static LocalizableString L(string name)
