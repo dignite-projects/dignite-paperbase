@@ -87,10 +87,10 @@ public class DocumentPipelineRun : Entity<Guid>, IMultiTenant
         CompletedAt = now;
     }
 
-    internal void MarkSkipped(DateTime now, string reason)
+    internal void MarkSkipped(DateTime now, string reason, string resultCode = "Skipped")
     {
         Status = PipelineRunStatus.Skipped;
-        ResultCode = "Skipped";
+        ResultCode = resultCode;
         ErrorMessage = reason;
         CompletedAt = now;
     }

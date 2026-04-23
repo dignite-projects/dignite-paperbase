@@ -6,6 +6,19 @@
       {{ '::Document:Documents' | abpLocalization }}
     </h4>
     <div class="d-flex gap-2">
+      <button
+        class="btn"
+        [class.btn-warning]="needsManualReview()"
+        [class.btn-outline-warning]="!needsManualReview()"
+        (click)="toggleManualReviewFilter()"
+        title="{{ '::Document:NeedsManualReview' | abpLocalization }}"
+      >
+        <i class="fas fa-user-edit me-1"></i>
+        {{ '::Document:NeedsManualReview' | abpLocalization }}
+        @if (pendingReviewCount() > 0) {
+          <span class="badge bg-danger ms-1">{{ pendingReviewCount() }}</span>
+        }
+      </button>
       <button class="btn btn-outline-success" (click)="exportCsv()" [disabled]="isExporting()">
         <i class="fas fa-download me-1"></i>
         {{ '::Document:ExportCsv' | abpLocalization }}
@@ -118,7 +131,16 @@
                 </td>
                 <td class="text-muted small">{{ formatFileSize(doc.fileOrigin?.fileSize ?? 0) }}</td>
                 <td class="text-muted small">{{ doc.creationTime | date:'yyyy-MM-dd HH:mm' }}</td>
-                <td>
+                <td class="d-flex gap-1">
+                  @if (needsConfirmation(doc)) {
+                    <button
+                      class="btn btn-sm btn-warning"
+                      (click)="openConfirmDialog(doc, $event)"
+                      title="{{ '::Document:ConfirmClassification' | abpLocalization }}"
+                    >
+                      <i class="fas fa-check"></i>
+                    </button>
+                  }
                   <button
                     class="btn btn-sm btn-outline-danger"
                     (click)="delete(doc, $event)"
@@ -163,3 +185,71 @@
     </div>
   }
 </div>
+
+<!-- Manual Classification Confirm Modal -->
+@if (confirmingDoc(); as doc) {
+  <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.4);" (click)="closeConfirmDialog()">
+    <div class="modal-dialog modal-dialog-centered" (click)="$event.stopPropagation()">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <i class="fas fa-user-edit me-2"></i>
+            {{ '::Document:ConfirmClassification' | abpLocalization }}
+          </h5>
+          <button type="button" class="btn-close" (click)="closeConfirmDialog()"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small mb-3">
+            {{ doc.fileOrigin?.originalFileName || doc.originalFileBlobName }}
+          </p>
+          <p class="fw-semibold mb-2">{{ '::Document:SelectDocumentType' | abpLocalization }}</p>
+          @if (getCandidates(doc).length > 0) {
+            <div class="list-group">
+              @for (c of getCandidates(doc); track c.typeCode) {
+                <label class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                  <div class="d-flex align-items-center gap-2">
+                    <input
+                      type="radio"
+                      name="typeCode"
+                      [value]="c.typeCode"
+                      [checked]="selectedTypeCode() === c.typeCode"
+                      (change)="selectedTypeCode.set(c.typeCode)"
+                    />
+                    <span>{{ c.typeCode }}</span>
+                  </div>
+                  <span class="badge bg-secondary">{{ (c.confidence * 100).toFixed(0) }}%</span>
+                </label>
+              }
+            </div>
+          } @else {
+            <div class="input-group">
+              <input
+                type="text"
+                class="form-control"
+                [value]="selectedTypeCode()"
+                (input)="selectedTypeCode.set(($event.target as HTMLInputElement).value)"
+                placeholder="{{ '::Document:DocumentTypeCode' | abpLocalization }}"
+              />
+            </div>
+          }
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" (click)="closeConfirmDialog()">
+            {{ '::Cancel' | abpLocalization }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            [disabled]="!selectedTypeCode() || isConfirming()"
+            (click)="submitConfirmation()"
+          >
+            @if (isConfirming()) {
+              <span class="spinner-border spinner-border-sm me-1"></span>
+            }
+            {{ '::Document:Confirm' | abpLocalization }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}

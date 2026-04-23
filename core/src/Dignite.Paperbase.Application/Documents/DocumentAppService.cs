@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
+using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Application.Documents.BackgroundJobs;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Domain.Documents;
@@ -14,6 +16,7 @@ using Volo.Abp.BackgroundJobs;
 using Volo.Abp.BlobStoring;
 using Volo.Abp.Content;
 using Volo.Abp.Domain.Repositories;
+using Volo.Abp.EventBus.Distributed;
 
 namespace Dignite.Paperbase.Application.Documents;
 
@@ -23,17 +26,23 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     private readonly IBlobContainer<PaperbaseDocumentContainer> _blobContainer;
     private readonly IBackgroundJobManager _backgroundJobManager;
     private readonly SourceTypeDetector _sourceTypeDetector;
+    private readonly DocumentPipelineRunManager _pipelineRunManager;
+    private readonly IDistributedEventBus _distributedEventBus;
 
     public DocumentAppService(
         IDocumentRepository documentRepository,
         IBlobContainer<PaperbaseDocumentContainer> blobContainer,
         IBackgroundJobManager backgroundJobManager,
-        SourceTypeDetector sourceTypeDetector)
+        SourceTypeDetector sourceTypeDetector,
+        DocumentPipelineRunManager pipelineRunManager,
+        IDistributedEventBus distributedEventBus)
     {
         _documentRepository = documentRepository;
         _blobContainer = blobContainer;
         _backgroundJobManager = backgroundJobManager;
         _sourceTypeDetector = sourceTypeDetector;
+        _pipelineRunManager = pipelineRunManager;
+        _distributedEventBus = distributedEventBus;
     }
 
     public virtual async Task<DocumentDto> GetAsync(Guid id)
@@ -134,6 +143,28 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         return new RemoteStreamContent(new MemoryStream(bytes), "documents.csv", "text/csv");
     }
 
+    [Authorize(PaperbasePermissions.Documents.ConfirmClassification)]
+    public virtual async Task<DocumentDto> ConfirmClassificationAsync(Guid id, string documentTypeCode)
+    {
+        var document = await _documentRepository.GetAsync(id);
+        var run = await _pipelineRunManager.StartAsync(document, PaperbasePipelines.Classification);
+
+        var metadata = JsonSerializer.Serialize(new { Source = "ManualOverride", ConfirmedBy = CurrentUser.Id });
+        await _pipelineRunManager.CompleteClassificationAsync(document, run, documentTypeCode, 1.0, metadata);
+
+        await _distributedEventBus.PublishAsync(new DocumentClassifiedEto
+        {
+            DocumentId = document.Id,
+            TenantId = document.TenantId,
+            DocumentTypeCode = documentTypeCode,
+            ConfidenceScore = 1.0,
+            ExtractedText = document.ExtractedText
+        });
+
+        await _documentRepository.UpdateAsync(document);
+        return ObjectMapper.Map<Document, DocumentDto>(document);
+    }
+
     protected virtual IQueryable<Document> ApplyFilter(IQueryable<Document> query, GetDocumentListInput input)
     {
         if (input.LifecycleStatus.HasValue)
@@ -141,6 +172,17 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
 
         if (!input.DocumentTypeCode.IsNullOrWhiteSpace())
             query = query.Where(x => x.DocumentTypeCode == input.DocumentTypeCode);
+
+        if (input.NeedsManualReview == true)
+        {
+            var reviewCodes = new[] { "LowConfidence", "BudgetExceeded" };
+            query = query.Where(d => d.PipelineRuns.Any(r =>
+                r.PipelineCode == PaperbasePipelines.Classification
+                && reviewCodes.Contains(r.ResultCode)
+                && r.AttemptNumber == d.PipelineRuns
+                    .Where(r2 => r2.PipelineCode == PaperbasePipelines.Classification)
+                    .Max(r2 => r2.AttemptNumber)));
+        }
 
         return query;
     }

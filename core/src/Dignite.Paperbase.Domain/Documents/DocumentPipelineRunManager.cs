@@ -105,9 +105,13 @@ public class DocumentPipelineRunManager : DomainService
         return CompleteAsync(document, run, "OK", metadata);
     }
 
-    public virtual Task SkipAsync(Document document, DocumentPipelineRun run, string reason)
+    public virtual Task SkipAsync(
+        Document document,
+        DocumentPipelineRun run,
+        string reason,
+        string resultCode = "Skipped")
     {
-        run.MarkSkipped(Clock.Now, reason);
+        run.MarkSkipped(Clock.Now, reason, resultCode);
 
         document.PublishPipelineRunCompletedEvent(new DocumentPipelineRunCompletedEvent(
             document.Id,

@@ -15,7 +15,12 @@ import { ConfirmationService, ToasterService } from '@abp/ng.theme.shared';
 import { Confirmation } from '@abp/ng.theme.shared';
 import { Subscription, interval, switchMap, startWith } from 'rxjs';
 import { DocumentService } from '../../proxy/document.service';
-import { BulkUploadResultDto, DocumentDto, DocumentLifecycleStatus, GetDocumentListInput, PagedResultDto } from '../../proxy/models';
+import { BulkUploadResultDto, DocumentDto, DocumentLifecycleStatus, DocumentPipelineRunDto, GetDocumentListInput, PagedResultDto } from '../../proxy/models';
+
+interface ClassificationCandidate {
+  typeCode: string;
+  confidence: number;
+}
 
 @Component({
   selector: 'app-document-list',
@@ -35,9 +40,17 @@ export class DocumentListComponent implements OnInit, OnDestroy {
   isBulkUploading = signal(false);
   bulkUploadResults = signal<BulkUploadResultDto[]>([]);
 
+  needsManualReview = signal(false);
+  confirmingDoc = signal<DocumentDto | null>(null);
+  selectedTypeCode = signal('');
+  isConfirming = signal(false);
+
   page = signal(0);
   pageSize = 10;
   totalPages = computed(() => Math.ceil(this.documents().totalCount / this.pageSize));
+  pendingReviewCount = computed(() =>
+    this.documents().items.filter(d => this.needsConfirmation(d)).length
+  );
 
   private activeFilter: GetDocumentListInput = {};
 
@@ -62,6 +75,7 @@ export class DocumentListComponent implements OnInit, OnDestroy {
           maxResultCount: this.pageSize,
           skipCount: this.page() * this.pageSize,
           sorting: 'creationTime desc',
+          needsManualReview: this.needsManualReview() || undefined,
         }))
       )
       .subscribe({
@@ -149,6 +163,75 @@ export class DocumentListComponent implements OnInit, OnDestroy {
           });
         }
       });
+  }
+
+  toggleManualReviewFilter(): void {
+    this.needsManualReview.update(v => !v);
+    this.page.set(0);
+    this.stopPolling();
+    this.isLoading.set(true);
+    this.startPolling();
+  }
+
+  getLatestClassificationRun(doc: DocumentDto): DocumentPipelineRunDto | null {
+    const runs = doc.pipelineRuns?.filter(r => r.pipelineCode === 'classification') ?? [];
+    if (runs.length === 0) return null;
+    return runs.reduce((prev, curr) => curr.attemptNumber > prev.attemptNumber ? curr : prev);
+  }
+
+  needsConfirmation(doc: DocumentDto): boolean {
+    const run = this.getLatestClassificationRun(doc);
+    return run?.resultCode === 'LowConfidence' || run?.resultCode === 'BudgetExceeded';
+  }
+
+  getCandidates(doc: DocumentDto): ClassificationCandidate[] {
+    const run = this.getLatestClassificationRun(doc);
+    if (!run?.metadata) return doc.documentTypeCode ? [{ typeCode: doc.documentTypeCode, confidence: 1 }] : [];
+    try {
+      const meta = JSON.parse(run.metadata);
+      return (meta.candidates as ClassificationCandidate[]) ?? [];
+    } catch {
+      return doc.documentTypeCode ? [{ typeCode: doc.documentTypeCode, confidence: 1 }] : [];
+    }
+  }
+
+  openConfirmDialog(doc: DocumentDto, event: Event): void {
+    event.stopPropagation();
+    this.confirmingDoc.set(doc);
+    const run = this.getLatestClassificationRun(doc);
+    let defaultCode = doc.documentTypeCode ?? '';
+    if (run?.metadata) {
+      try {
+        const meta = JSON.parse(run.metadata);
+        defaultCode = meta.typeCode ?? defaultCode;
+      } catch { /* use default */ }
+    }
+    this.selectedTypeCode.set(defaultCode);
+  }
+
+  closeConfirmDialog(): void {
+    this.confirmingDoc.set(null);
+    this.selectedTypeCode.set('');
+  }
+
+  submitConfirmation(): void {
+    const doc = this.confirmingDoc();
+    if (!doc || !this.selectedTypeCode()) return;
+    this.isConfirming.set(true);
+    this.documentService.confirmClassification(doc.id, this.selectedTypeCode()).subscribe({
+      next: () => {
+        this.isConfirming.set(false);
+        this.closeConfirmDialog();
+        this.toaster.success('::Document:ClassificationConfirmed', '::Success');
+        this.stopPolling();
+        this.isLoading.set(true);
+        this.startPolling();
+      },
+      error: () => {
+        this.isConfirming.set(false);
+        this.toaster.error('::Document:ConfirmFailed', '::Error');
+      },
+    });
   }
 
   getStatusBadgeClass(status: DocumentLifecycleStatus): string {

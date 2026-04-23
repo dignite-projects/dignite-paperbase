@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\..\common.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Dignite.Paperbase.AI</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- AI 对话能力标准抽象（IChatClient、DelegatingChatClient） -->
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.5.0" />
+    <!-- 分布式缓存（AiCostLedger 月度计费） -->
+    <PackageReference Include="Volo.Abp.Caching" Version="10.2.0" />
+    <ProjectReference Include="..\Dignite.Paperbase.Abstractions\Dignite.Paperbase.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -31,6 +31,14 @@ public class ContractDto : AuditedEntityDto<Guid>
 
     public string? Currency { get; set; }
 
+    public bool? AutoRenewal { get; set; }
+
+    public int? TerminationNoticeDays { get; set; }
+
+    public string? GoverningLaw { get; set; }
+
+    public string? Summary { get; set; }
+
     public ContractStatus Status { get; set; }
 
     public double? ExtractionConfidence { get; set; }

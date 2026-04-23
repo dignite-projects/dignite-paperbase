@@ -1,6 +1,7 @@
 using System.Threading.Tasks;
-using Dignite.Paperbase.Contracts.Contracts;
+using Dignite.Paperbase.Abstractions.AI;
 using Dignite.Paperbase.Abstractions.Documents;
+using Dignite.Paperbase.Contracts.Contracts;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.EventBus.Distributed;
 using Volo.Abp.MultiTenancy;
@@ -13,15 +14,18 @@ public class ContractDocumentHandler :
 {
     private readonly IContractRepository _contractRepository;
     private readonly ContractManager _contractManager;
+    private readonly IFieldExtractor _fieldExtractor;
     private readonly ICurrentTenant _currentTenant;
 
     public ContractDocumentHandler(
         IContractRepository contractRepository,
         ContractManager contractManager,
+        IFieldExtractor fieldExtractor,
         ICurrentTenant currentTenant)
     {
         _contractRepository = contractRepository;
         _contractManager = contractManager;
+        _fieldExtractor = fieldExtractor;
         _currentTenant = currentTenant;
     }
 
@@ -34,7 +38,14 @@ public class ContractDocumentHandler :
 
         using (_currentTenant.Change(eventData.TenantId))
         {
-            var fields = RegexContractExtractor.Extract(eventData.ExtractedText ?? string.Empty);
+            var extractionResult = await _fieldExtractor.ExtractAsync(new FieldExtractionRequest
+            {
+                ExtractedText = eventData.ExtractedText ?? string.Empty,
+                DocumentTypeCode = eventData.DocumentTypeCode,
+                Fields = ContractFieldSchemas.All
+            });
+
+            var fields = ExtractedContractFields.FromDictionary(extractionResult.Fields);
             var existing = await _contractRepository.FindByDocumentIdAsync(eventData.DocumentId);
 
             if (existing != null)

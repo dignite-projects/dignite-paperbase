@@ -1,11 +1,15 @@
-using Dignite.Paperbase.Data;
+using Azure.AI.OpenAI;
+using Dignite.Paperbase.AI;
 using Dignite.Paperbase.Contracts;
 using Dignite.Paperbase.Contracts.EntityFrameworkCore;
+using Dignite.Paperbase.Data;
 using Dignite.Paperbase.EntityFrameworkCore;
 using Dignite.Paperbase.HealthChecks;
 using Dignite.Paperbase.Localization;
 using Dignite.Paperbase.Ocr.AzureDocumentIntelligence;
 using Dignite.Paperbase.TextExtraction;
+using Microsoft.Extensions.AI;
+using OpenAI;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Extensions.DependencyInjection;
@@ -114,6 +118,7 @@ namespace Dignite.Paperbase;
     // Paperbase infrastructure modules
     typeof(PaperbaseTextExtractionModule),
     typeof(PaperbaseAzureDocumentIntelligenceModule),
+    typeof(PaperbaseAIModule),
 
     // Paperbase business modules
     typeof(ContractsHttpApiModule),
@@ -199,6 +204,7 @@ public class PaperbaseModule : AbpModule
         ConfigureDataProtection(context);
         ConfigureVirtualFiles(hostingEnvironment);
         ConfigureEfCore(context);
+        ConfigureAI(context, configuration);
 
         if (hostingEnvironment.IsDevelopment())
         {
@@ -380,6 +386,36 @@ public class PaperbaseModule : AbpModule
                 container.UseDatabase();
             });
         });
+    }
+
+    private void ConfigureAI(ServiceConfigurationContext context, IConfiguration configuration)
+    {
+        var provider = configuration["PaperbaseAI:Provider"] ?? "Ollama";
+
+        IChatClient chatClient;
+
+        if (provider == "AzureOpenAI")
+        {
+            var deploymentName = configuration["PaperbaseAI:AzureOpenAI:DeploymentName"]!;
+            var endpoint = configuration["PaperbaseAI:AzureOpenAI:Endpoint"]!;
+            var apiKey = configuration["PaperbaseAI:AzureOpenAI:ApiKey"]!;
+            chatClient = new AzureOpenAIClient(new Uri(endpoint), new Azure.AzureKeyCredential(apiKey))
+                .GetChatClient(deploymentName)
+                .AsIChatClient();
+        }
+        else
+        {
+            // Ollama exposes an OpenAI-compatible REST API at /v1
+            var modelId = configuration["PaperbaseAI:Ollama:ModelId"] ?? "llama3.1:8b";
+            var endpoint = (configuration["PaperbaseAI:Ollama:Endpoint"] ?? "http://localhost:11434").TrimEnd('/');
+            chatClient = new OpenAIClient(
+                    new System.ClientModel.ApiKeyCredential("ollama"),
+                    new OpenAIClientOptions { Endpoint = new Uri(endpoint + "/v1") })
+                .GetChatClient(modelId)
+                .AsIChatClient();
+        }
+
+        context.Services.AddSingleton(chatClient);
     }
 
     public override void OnApplicationInitialization(ApplicationInitializationContext context)

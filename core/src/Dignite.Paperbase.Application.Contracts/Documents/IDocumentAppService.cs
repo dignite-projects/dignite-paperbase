@@ -19,4 +19,6 @@ public interface IDocumentAppService : IApplicationService
     Task DeleteAsync(Guid id);
 
     Task<IRemoteStreamContent> ExportAsync(GetDocumentListInput input);
+
+    Task<DocumentDto> ConfirmClassificationAsync(Guid id, string documentTypeCode);
 }

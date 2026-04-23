@@ -29,6 +29,8 @@ public static class ContractsDbContextModelCreatingExtensions
             b.Property(x => x.CounterpartyName).HasMaxLength(256);
             b.Property(x => x.Currency).HasMaxLength(8);
             b.Property(x => x.TotalAmount).HasColumnType("decimal(18,2)");
+            b.Property(x => x.GoverningLaw).HasMaxLength(128);
+            b.Property(x => x.Summary).HasMaxLength(2000);
         });
     }
 }

@@ -27,7 +27,18 @@ export class DocumentService {
           sorting: input.sorting,
           lifecycleStatus: input.lifecycleStatus,
           documentTypeCode: input.documentTypeCode,
+          needsManualReview: input.needsManualReview,
         },
+      },
+      { apiName: this.apiName }
+    );
+
+  confirmClassification = (id: string, documentTypeCode: string): Observable<DocumentDto> =>
+    this.rest.request<{ documentTypeCode: string }, DocumentDto>(
+      {
+        method: 'POST',
+        url: `${this.basePath}/${id}/confirm-classification`,
+        body: documentTypeCode,
       },
       { apiName: this.apiName }
     );

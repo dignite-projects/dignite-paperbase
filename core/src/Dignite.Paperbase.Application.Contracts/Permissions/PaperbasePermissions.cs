@@ -12,6 +12,7 @@ public class PaperbasePermissions
         public const string Upload = Default + ".Upload";
         public const string Delete = Default + ".Delete";
         public const string Export = Default + ".Export";
+        public const string ConfirmClassification = Default + ".ConfirmClassification";
     }
 
     public static class DocumentRelations

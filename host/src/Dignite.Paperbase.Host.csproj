@@ -10,6 +10,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.5.0" />
+    <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
     <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
     <PackageReference Include="Serilog.Sinks.Async" Version="2.1.0" />
     <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" Version="10.0.2" />
@@ -82,6 +84,7 @@
     <ProjectReference Include="..\..\core\src\Dignite.Paperbase.Abstractions\Dignite.Paperbase.Abstractions.csproj" />
     <ProjectReference Include="..\..\core\src\Dignite.Paperbase.TextExtraction\Dignite.Paperbase.TextExtraction.csproj" />
     <ProjectReference Include="..\..\core\src\Dignite.Paperbase.Ocr.AzureDocumentIntelligence\Dignite.Paperbase.Ocr.AzureDocumentIntelligence.csproj" />
+    <ProjectReference Include="..\..\core\src\Dignite.Paperbase.AI\Dignite.Paperbase.AI.csproj" />
     <ProjectReference Include="..\..\modules\contracts\src\Dignite.Paperbase.Contracts.HttpApi\Dignite.Paperbase.Contracts.HttpApi.csproj" />
     <ProjectReference Include="..\..\modules\contracts\src\Dignite.Paperbase.Contracts.Application\Dignite.Paperbase.Contracts.Application.csproj" />
     <ProjectReference Include="..\..\modules\contracts\src\Dignite.Paperbase.Contracts.EntityFrameworkCore\Dignite.Paperbase.Contracts.EntityFrameworkCore.csproj" />

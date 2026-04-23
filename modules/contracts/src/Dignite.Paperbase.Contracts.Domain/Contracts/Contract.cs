@@ -32,6 +32,14 @@ public class Contract : AuditedAggregateRoot<Guid>, IMultiTenant
 
     public virtual string? Currency { get; private set; }
 
+    public virtual bool? AutoRenewal { get; private set; }
+
+    public virtual int? TerminationNoticeDays { get; private set; }
+
+    public virtual string? GoverningLaw { get; private set; }
+
+    public virtual string? Summary { get; private set; }
+
     public virtual ContractStatus Status { get; private set; }
 
     public virtual double? ExtractionConfidence { get; private set; }
@@ -70,6 +78,10 @@ public class Contract : AuditedAggregateRoot<Guid>, IMultiTenant
         ExpirationDate = fields.ExpirationDate;
         TotalAmount = fields.TotalAmount;
         Currency = fields.Currency;
+        AutoRenewal = fields.AutoRenewal;
+        TerminationNoticeDays = fields.TerminationNoticeDays;
+        GoverningLaw = fields.GoverningLaw;
+        Summary = fields.Summary;
         ExtractionConfidence = fields.ExtractionConfidence;
         NeedsReview = fields.NeedsReview;
     }

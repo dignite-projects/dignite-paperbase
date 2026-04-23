@@ -50,6 +50,23 @@
     "Document:Status:Processing": "Processing",
     "Document:Status:Ready": "Ready",
     "Document:Status:Failed": "Failed",
-    "Document:Status:Unknown": "Unknown"
+    "Document:Status:Unknown": "Unknown",
+
+    "Document:BulkUpload": "Bulk Upload",
+    "Document:BulkUploadResults": "Upload Results",
+    "Document:BulkUploadFailed": "Bulk upload failed.",
+    "Document:ExportCsv": "Export CSV",
+
+    "Document:NeedsManualReview": "Needs Review",
+    "Document:ConfirmClassification": "Confirm Classification",
+    "Document:SelectDocumentType": "Select Document Type",
+    "Document:DocumentTypeCode": "Document Type Code",
+    "Document:Confirm": "Confirm",
+    "Document:ClassificationConfirmed": "Classification confirmed.",
+    "Document:ConfirmFailed": "Failed to confirm classification.",
+
+    "Failed": "Failed",
+
+    "Permission:Documents.ConfirmClassification": "Confirm Classification"
   }
 }

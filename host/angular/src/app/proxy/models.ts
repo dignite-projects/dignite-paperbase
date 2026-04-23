@@ -26,10 +26,12 @@ export interface FileOriginDto {
 export interface DocumentPipelineRunDto {
   id: string;
   pipelineCode: string;
+  attemptNumber: number;
   status: string;
   startedAt: string;
   completedAt?: string;
   resultCode?: string;
+  metadata?: string;
 }
 
 export interface DocumentDto {
@@ -53,6 +55,7 @@ export interface GetDocumentListInput {
   sorting?: string;
   lifecycleStatus?: number;
   documentTypeCode?: string;
+  needsManualReview?: boolean;
 }
 
 export interface BulkUploadResultDto {
