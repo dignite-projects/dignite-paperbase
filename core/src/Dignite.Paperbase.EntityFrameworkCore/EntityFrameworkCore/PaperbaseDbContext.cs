@@ -22,6 +22,6 @@ public class PaperbaseDbContext : AbpDbContext<PaperbaseDbContext>, IPaperbaseDb
     {
         base.OnModelCreating(builder);
 
-        builder.ConfigurePaperbase();
+        builder.ConfigurePaperbase(isNpgsql: Database.ProviderName?.Contains("Npgsql") == true);
     }
 }

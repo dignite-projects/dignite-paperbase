@@ -1,6 +1,9 @@
+using System;
+using System.Linq;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Domain.Documents;
 using Microsoft.EntityFrameworkCore;
+using Pgvector;
 using Volo.Abp;
 using Volo.Abp.EntityFrameworkCore.Modeling;
 
@@ -8,11 +11,12 @@ namespace Dignite.Paperbase.EntityFrameworkCore;
 
 public static class PaperbaseDbContextModelCreatingExtensions
 {
-    public static void ConfigurePaperbase(this ModelBuilder builder)
+    public static void ConfigurePaperbase(this ModelBuilder builder, bool isNpgsql = true)
     {
         Check.NotNull(builder, nameof(builder));
 
-        builder.HasPostgresExtension("vector");
+        if (isNpgsql)
+            builder.HasPostgresExtension("vector");
 
         builder.Entity<Document>(b =>
         {
@@ -76,9 +80,23 @@ public static class PaperbaseDbContextModelCreatingExtensions
             b.ConfigureByConvention();
 
             b.Property(x => x.ChunkText).IsRequired().HasColumnType("text");
-            b.Property(x => x.EmbeddingVector)
-                .IsRequired()
-                .HasColumnType($"vector({PaperbaseDbProperties.EmbeddingVectorDimension})");
+
+            if (isNpgsql)
+            {
+                b.Property(x => x.EmbeddingVector)
+                    .IsRequired()
+                    .HasColumnType($"vector({PaperbaseDbProperties.EmbeddingVectorDimension})");
+            }
+            else
+            {
+                // SQLite: serialize vector as comma-separated floats
+                b.Property(x => x.EmbeddingVector)
+                    .IsRequired()
+                    .HasConversion(
+                        v => string.Join(",", v.ToArray()),
+                        s => new Vector(s.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                        .Select(float.Parse).ToArray()));
+            }
 
             b.HasIndex(x => x.DocumentId);
         });
