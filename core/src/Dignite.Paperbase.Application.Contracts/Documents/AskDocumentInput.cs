@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using Dignite.Paperbase.Abstractions.AI;
 
 namespace Dignite.Paperbase.Documents;
 

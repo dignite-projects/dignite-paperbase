@@ -14,45 +14,45 @@
 
 Paperbase 采用**三层分离**的模块化架构：
 
-### 第一层：Core（基础设施与能力契约）
+### 第一层：Core（基础设施与扩展契约）
 
 `core/` 包含两个核心部分：
 
-1. **Dignite.Paperbase.Abstractions**  
-   - **位置**：依赖拓扑的最底层（无其他项目依赖）
-   - **职责**：提供扩展契约层，定义业务模块和能力模块接入平台所必需的接口与DTO
+1. **Dignite.Paperbase.Abstractions（扩展契约层）**
+   - **位置**：依赖拓扑的最底层（无其他 Paperbase 项目依赖）
+   - **职责**：参考 `Volo.Abp.Users.Abstractions` 模式，提供业务模块和能力模块接入平台所必需的契约
    - **内容**：
      - 文档类型注册：`DocumentTypeDefinition`、`DocumentTypeOptions`
      - 集成事件：`DocumentClassifiedEto`
-     - 能力端口：`ITextExtractor`、`IDocumentClassifier`、`IFieldExtractor`、`IQaService`、`IEmbeddingIndexer`、`IRelationInferrer`
-     - 对应的请求/响应POCO
-   - **约束**：不依赖任何其他Paperbase项目，仅依赖ABP基础模块
+     - 文本提取契约（多 OCR Provider 可插拔）：`ITextExtractor`、`TextExtractionContext`、`TextExtractionResult`
+   - **约束**：不依赖任何其他 Paperbase 项目，仅依赖 ABP 基础模块
 
-2. **Dignite.Paperbase（核心模块）与其他能力模块**  
-   - **核心职责**：Document 聚合根管理、生命周期编排、事件总线、BackgroundJob 调度
-   - **能力模块职责**：TextExtraction、AI（分类/提取/向量/问答/推断）、Ocr
-   - **约束**：能力模块仅依赖 Abstractions，不依赖 Domain / Application 的实现；核心不反向依赖任何业务模块
+2. **Dignite.Paperbase 核心模块栈**
+   - **Domain.Shared / Domain / Application / EntityFrameworkCore / HttpApi**：标准 ABP 分层
+   - **核心 AI 能力（分类 / 向量-RAG / 关系推断 / 问答）直接在 Application 层落地**——通过 Microsoft Agent Framework (MAF) 1.0 的 `ChatClientAgent` 实现，不再独立成 AI 模块
+   - **能力模块**：`TextExtraction`（默认文本提取）、`Ocr.AzureDocumentIntelligence`（Azure OCR Provider）
 
 ### 第二层：Modules（业务模块生态）
 
 `modules/` 中的各业务模块（如 Contracts）：
 
-- **依赖关系**：仅依赖 `Abstractions` + ABP 基础模块 + `Domain.Shared`（按需，仅消费核心公开的DTO/枚举/本地化）
+- **依赖关系**：依赖 `Abstractions`（注册类型、订阅事件）+ ABP 基础模块；如需调用 LLM，直接 NuGet 引用 `Microsoft.Extensions.AI` + `Microsoft.Agents.AI`
 - **职责**：
   - 通过 `DocumentTypeOptions` 注册自己关心的文档类型
   - 通过 `IDistributedEventBus` 订阅 `DocumentClassifiedEto` 事件
-  - 调用 Abstractions 中定义的能力端口（`IFieldExtractor`、`IDocumentClassifier` 等）进行专业领域处理
-  - 持久化自己的领域聚合根，提供业务API和UI
-  - 在自己的聚合根上维护业务查询字段（如合同到期日、金额、对方名称），**不得回写到 Document 聚合根**
-  - 按需注册关系类型
-- **非耦合实现**：业务模块之间无依赖；业务模块与核心通过事件和能力契约解耦通信
+  - **使用 MAF `ChatClientAgent` + 结构化输出**自实现领域专属的字段提取（不再有通用的 `IFieldExtractor` 抽象）
+  - 持久化自己的领域聚合根，提供业务 API 和 UI
+  - 在自己的聚合根上维护业务查询字段，**不得回写到 Document 聚合根**
+- **非耦合实现**：业务模块之间无依赖；业务模块与核心通过事件解耦通信
 
 ### 第三层：Host（宿主应用）
 
 `host/` 仅作为容器：
 
 - 在 `[DependsOn(...)]` 中声明依赖的核心模块、能力模块和业务模块
-- 在 `ConfigureServices()` 中配置 OCR Provider、AI Provider、存储等运行时选项
+- 在 `ConfigureServices()` 中：
+  - 配置 OCR Provider（如 Azure Document Intelligence）
+  - 注册 `IChatClient` + `IEmbeddingGenerator<string, Embedding<float>>`（Azure OpenAI 或 Ollama）——所有上层 MAF Agent 共享这套 LLM 接入
 - **仅在此处配置中间件**（`OnApplicationInitialization`）
 - 不实现任何业务逻辑
 
@@ -60,24 +60,23 @@ Paperbase 采用**三层分离**的模块化架构：
 
 ```
 Host Application
-    ├── depends on
-    │   ├── Dignite.Paperbase（核心）
-    │   ├── Dignite.Paperbase.TextExtraction（能力）
-    │   ├── Dignite.Paperbase.AI（能力）
-    │   └── Dignite.Paperbase.Contracts（业务模块）
-    │
-    ↓ 所有上层模块汇聚到最底层
+    ├── 注册 IChatClient + IEmbeddingGenerator
+    └── DependsOn:
+        ├── Dignite.Paperbase.Application（核心 + 内嵌 MAF Workflow）
+        ├── Dignite.Paperbase.TextExtraction（能力）
+        ├── Dignite.Paperbase.Ocr.AzureDocumentIntelligence（能力）
+        └── Dignite.Paperbase.Contracts.Application（业务模块）
 
 Dignite.Paperbase.Abstractions（扩展契约层，无其他项目依赖）
-    ├── 被 Core 模块实现和调用
-    ├── 被 TextExtraction/AI 模块实现
-    └── 被 Contracts 等业务模块引用、注册和订阅
+    ├── DocumentTypeDefinition / DocumentTypeOptions / DocumentClassifiedEto
+    ├── ITextExtractor + POCO（OCR Provider 实现侧）
+    └── 被业务模块订阅事件、注册类型
 ```
 
 **核心约束**：
-- **单向依赖**：Abstractions ← 能力模块和业务模块；Paperbase 核心 ⇄ 能力模块不存在反向依赖
+- **单向依赖**：Abstractions 处于最底层，被所有上层引用
 - **业务模块间无耦合**：每个业务模块独立开发、独立测试、可独立卸载
-- **编排留给核心**：BackgroundJob、PipelineRun 生命周期、Document 的读写都是核心职责
+- **编排在 Application**：BackgroundJob、Workflow、PipelineRun 生命周期、Document 读写均在 Paperbase.Application
 
 ### Document 聚合根边界（强制）
 
@@ -86,6 +85,16 @@ Dignite.Paperbase.Abstractions（扩展契约层，无其他项目依赖）
 **禁止**在 `Document` 上添加任何来自业务模块的字段，例如合同金额、到期日、对方名称、发票号等。这类字段属于业务模块自己的聚合根，由业务模块在收到 `DocumentClassifiedEto` 后自行持久化和查询。
 
 > **判断依据**：如果一个字段的含义只有在特定业务场景（合同、发票、报销单…）下才成立，它就不属于 `Document`。
+
+### AI 实现约定
+
+- 核心三大 AI 功能 + QA 全部以 MAF `ChatClientAgent` 形式落地在 `Paperbase.Application/Documents/AI/Workflows/`：
+  - `DocumentClassificationWorkflow` — 分类
+  - `DocumentEmbeddingWorkflow` — 文本分块 + 向量
+  - `DocumentRelationInferenceWorkflow` — 关系推断
+  - `DocumentQaWorkflow` — RAG / FullText 问答
+- BackgroundJob 在 `Paperbase.Application/Documents/BackgroundJobs/`，调用上述 Workflow 编排流水线
+- 业务模块（如 Contracts）字段提取自实现：注入 `IChatClient`，构造领域专属 `ChatClientAgent`，使用 `RunAsync<T>` 结构化输出反序列化到自己的 POCO
 
 ## 处理规则
 

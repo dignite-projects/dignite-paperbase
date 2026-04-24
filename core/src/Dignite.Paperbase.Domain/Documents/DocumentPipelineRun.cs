@@ -42,7 +42,7 @@ public class DocumentPipelineRun : Entity<Guid>, IMultiTenant
 
     /// <summary>
     /// 流水线私有元数据（JSON）。由各流水线自行定义 schema。
-    /// AI 类流水线必须遵循 06-模块-Dignite.Paperbase.AI.md 第 6.2 节的 Metadata 约定。
+    /// AI 类流水线 Metadata 由 Application 的 Workflow 在执行结果中写入。
     /// </summary>
     public virtual string? Metadata { get; private set; }
 

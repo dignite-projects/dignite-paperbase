@@ -2,9 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Abstractions.AI;
-using Dignite.Paperbase.AI;
-using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Documents.AI;
+using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Domain.Documents;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,10 +14,6 @@ using Xunit;
 
 namespace Dignite.Paperbase.Documents;
 
-// ────────────────────────────────────────────────────────────────────────────
-// Test module：注册三个 mock 替换真实 AI 依赖
-// ────────────────────────────────────────────────────────────────────────────
-
 [DependsOn(typeof(PaperbaseApplicationTestModule))]
 public class DocumentQaAppServiceTestModule : AbpModule
 {
@@ -28,10 +23,16 @@ public class DocumentQaAppServiceTestModule : AbpModule
             Substitute.For<IDocumentChunkRepository>());
 
         context.Services.AddSingleton(
-            Substitute.For<IQaService>());
+            Substitute.For<IChatClient>());
 
         context.Services.AddSingleton(
             Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>());
+
+        // 用 Substitute 替换默认 Workflow，便于断言调用与返回
+        var qaWorkflow = Substitute.ForPartsOf<DocumentQaWorkflow>(
+            Substitute.For<IChatClient>(),
+            Microsoft.Extensions.Options.Options.Create(new PaperbaseAIOptions { QaTopKChunks = 5 }));
+        context.Services.AddSingleton(qaWorkflow);
 
         context.Services.Configure<PaperbaseAIOptions>(opt =>
         {
@@ -40,30 +41,22 @@ public class DocumentQaAppServiceTestModule : AbpModule
     }
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Tests
-// ────────────────────────────────────────────────────────────────────────────
-
 public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQaAppServiceTestModule>
 {
     private readonly IDocumentQaAppService _qaAppService;
     private readonly IDocumentChunkRepository _chunkRepository;
-    private readonly IQaService _qaService;
+    private readonly DocumentQaWorkflow _qaWorkflow;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
 
     public DocumentQaAppService_Tests()
     {
         _qaAppService = GetRequiredService<IDocumentQaAppService>();
         _chunkRepository = GetRequiredService<IDocumentChunkRepository>();
-        _qaService = GetRequiredService<IQaService>();
+        _qaWorkflow = GetRequiredService<DocumentQaWorkflow>();
         _embeddingGenerator = GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
 
         SetupDefaultEmbedding();
     }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // Scenario 1: chunk 检索返回空 → 返回「无相关文档」提示
-    // ────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GlobalAsk_Returns_NoRelevant_When_No_Chunks_Found()
@@ -81,17 +74,12 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
         });
 
         result.ShouldNotBeNull();
-        // IQaService は呼ばれない
-        await _qaService.DidNotReceive()
-            .AskAsync(Arg.Any<QaRequest>(), Arg.Any<CancellationToken>());
+        await _qaWorkflow.DidNotReceive()
+            .RunRagAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<QaChunk>>(), Arg.Any<CancellationToken>());
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // Scenario 2: 有 chunks → 调用 IQaService 并映射返回值
-    // ────────────────────────────────────────────────────────────────────────
-
     [Fact]
-    public async Task GlobalAsk_Delegates_To_QaService_When_Chunks_Found()
+    public async Task GlobalAsk_Delegates_To_Workflow_When_Chunks_Found()
     {
         var fakeChunks = new List<DocumentChunk>
         {
@@ -106,17 +94,20 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
                 Arg.Any<CancellationToken>())
             .Returns(fakeChunks);
 
-        _qaService
-            .AskAsync(Arg.Any<QaRequest>(), Arg.Any<CancellationToken>())
-            .Returns(new QaResult
-            {
-                Answer = "有効期限は2027年3月31日です。",
-                ActualMode = QaMode.Rag,
-                Sources = new List<QaSource>
-                {
-                    new() { Text = "合同期間は2026年4月から2027年3月まで。", ChunkIndex = 0 }
-                }
-            });
+        var outcome = new DocumentQaOutcome
+        {
+            Answer = "有効期限は2027年3月31日です。",
+            ActualMode = QaMode.Rag
+        };
+        outcome.Sources.Add(new QaSourceItem
+        {
+            Text = "合同期間は2026年4月から2027年3月まで。",
+            ChunkIndex = 0
+        });
+
+        _qaWorkflow
+            .RunRagAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<QaChunk>>(), Arg.Any<CancellationToken>())
+            .Returns(outcome);
 
         var result = await _qaAppService.GlobalAskAsync(new GlobalAskInput
         {
@@ -130,10 +121,6 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
         result.Sources.Count.ShouldBe(1);
         result.Sources[0].ChunkIndex.ShouldBe(0);
     }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // Scenario 3: DocumentTypeCode 过滤器透传给 chunk 检索
-    // ────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GlobalAsk_Passes_DocumentTypeCode_To_ChunkSearch()
@@ -157,10 +144,6 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
                 documentId: null, documentTypeCode: "contract.general",
                 Arg.Any<CancellationToken>());
     }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // Helpers
-    // ────────────────────────────────────────────────────────────────────────
 
     private void SetupDefaultEmbedding()
     {

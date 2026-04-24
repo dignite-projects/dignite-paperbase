@@ -1,5 +1,4 @@
 using Azure.AI.OpenAI;
-using Dignite.Paperbase.AI;
 using Dignite.Paperbase.Contracts;
 using Dignite.Paperbase.Contracts.EntityFrameworkCore;
 using Dignite.Paperbase.Data;
@@ -120,7 +119,6 @@ namespace Dignite.Paperbase;
     // Paperbase infrastructure modules
     typeof(PaperbaseTextExtractionModule),
     typeof(PaperbaseAzureDocumentIntelligenceModule),
-    typeof(PaperbaseAIModule),
 
     // Paperbase business modules
     typeof(ContractsHttpApiModule),

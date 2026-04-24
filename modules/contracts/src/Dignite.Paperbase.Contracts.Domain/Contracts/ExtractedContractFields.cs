@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Globalization;
 
 namespace Dignite.Paperbase.Contracts.Contracts;
@@ -38,61 +37,41 @@ public class ExtractedContractFields
 
     public bool NeedsReview { get; set; }
 
-    public static ExtractedContractFields FromDictionary(IDictionary<string, string?> fields)
+    public static ExtractedContractFields FromAgentResult(ContractExtractionResult result)
     {
-        var result = new ExtractedContractFields
+        var fields = new ExtractedContractFields
         {
-            Title = Get(fields, "Title"),
-            ContractNumber = Get(fields, "ContractNumber"),
-            PartyAName = Get(fields, "PartyAName"),
-            PartyBName = Get(fields, "PartyBName"),
-            CounterpartyName = Get(fields, "CounterpartyName"),
-            SignedDate = GetDate(fields, "SignedDate"),
-            EffectiveDate = GetDate(fields, "EffectiveDate"),
-            ExpirationDate = GetDate(fields, "ExpirationDate"),
-            TotalAmount = GetDecimal(fields, "TotalAmount"),
-            Currency = Get(fields, "Currency") ?? "JPY",
-            AutoRenewal = GetBool(fields, "AutoRenewal"),
-            TerminationNoticeDays = GetInt(fields, "TerminationNoticeDays"),
-            GoverningLaw = Get(fields, "GoverningLaw"),
-            Summary = Get(fields, "Summary")
+            Title = result.Title,
+            ContractNumber = result.ContractNumber,
+            PartyAName = result.PartyAName,
+            PartyBName = result.PartyBName,
+            CounterpartyName = result.CounterpartyName,
+            SignedDate = ParseDate(result.SignedDate),
+            EffectiveDate = ParseDate(result.EffectiveDate),
+            ExpirationDate = ParseDate(result.ExpirationDate),
+            TotalAmount = result.TotalAmount,
+            Currency = string.IsNullOrEmpty(result.Currency) ? "JPY" : result.Currency,
+            AutoRenewal = result.AutoRenewal,
+            TerminationNoticeDays = result.TerminationNoticeDays,
+            GoverningLaw = result.GoverningLaw,
+            Summary = result.Summary
         };
 
-        var filledRequired = (result.Title != null ? 1 : 0)
-            + (result.SignedDate.HasValue ? 1 : 0)
-            + (result.ExpirationDate.HasValue ? 1 : 0);
+        var filledRequired = (fields.Title != null ? 1 : 0)
+            + (fields.SignedDate.HasValue ? 1 : 0)
+            + (fields.ExpirationDate.HasValue ? 1 : 0);
 
-        result.NeedsReview = filledRequired < 3;
-        result.ExtractionConfidence = Math.Min(0.95, 0.70 + filledRequired * 0.08);
+        fields.NeedsReview = filledRequired < 3;
+        fields.ExtractionConfidence = Math.Min(0.95, 0.70 + filledRequired * 0.08);
 
-        return result;
+        return fields;
     }
 
-    private static string? Get(IDictionary<string, string?> f, string key)
-        => f.TryGetValue(key, out var v) ? v : null;
-
-    private static DateTime? GetDate(IDictionary<string, string?> f, string key)
+    private static DateTime? ParseDate(string? value)
     {
-        if (!f.TryGetValue(key, out var v) || v is null) return null;
-        return DateTime.TryParseExact(v, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        return DateTime.TryParseExact(
+                value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
             ? d : null;
-    }
-
-    private static decimal? GetDecimal(IDictionary<string, string?> f, string key)
-    {
-        if (!f.TryGetValue(key, out var v) || v is null) return null;
-        return decimal.TryParse(v, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : null;
-    }
-
-    private static bool? GetBool(IDictionary<string, string?> f, string key)
-    {
-        if (!f.TryGetValue(key, out var v) || v is null) return null;
-        return bool.TryParse(v, out var b) ? b : null;
-    }
-
-    private static int? GetInt(IDictionary<string, string?> f, string key)
-    {
-        if (!f.TryGetValue(key, out var v) || v is null) return null;
-        return int.TryParse(v, out var i) ? i : null;
     }
 }

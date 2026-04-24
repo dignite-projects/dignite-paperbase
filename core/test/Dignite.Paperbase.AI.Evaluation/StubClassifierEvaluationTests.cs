@@ -29,7 +29,7 @@ public class StubClassifierEvaluationTests
         var fixtures = FixtureLoader.LoadClassificationFixtures(FixturesDir);
         Assert.True(fixtures.Count >= 20, $"Expected at least 20 fixtures, found {fixtures.Count}");
 
-        var runner = new ClassificationEvaluationRunner(new AlwaysContractClassifier());
+        var runner = new ClassificationEvaluationRunner(AlwaysContractClassifier.ClassifyAsync);
         var report = await runner.RunAsync(fixtures);
 
         _output.WriteLine($"Total:                   {report.Total}");

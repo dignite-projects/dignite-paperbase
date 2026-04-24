@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using Microsoft.Extensions.Options;
 using Volo.Abp.DependencyInjection;
 
-namespace Dignite.Paperbase.AI.Embedding;
+namespace Dignite.Paperbase.Documents.AI;
 
 public class TextChunker : ITransientDependency
 {

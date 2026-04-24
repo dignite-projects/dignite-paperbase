@@ -1,25 +1,59 @@
-using System.Collections.Generic;
-using Dignite.Paperbase.Abstractions.AI;
-
 namespace Dignite.Paperbase.Contracts.Contracts;
 
-public static class ContractFieldSchemas
+/// <summary>
+/// 合同字段提取的结构化输出契约 + Agent Instructions。
+/// 由 ChatClientAgent 通过 ResponseFormat = JsonSchema&lt;ContractExtractionResult&gt; 直接反序列化。
+/// </summary>
+public class ContractExtractionResult
 {
-    public static readonly IList<FieldSchema> All = new List<FieldSchema>
-    {
-        new() { Name = "Title",                 Type = "string",  Description = "契約タイトル（例: 業務委託基本契約書）", Required = true  },
-        new() { Name = "ContractNumber",        Type = "string",  Description = "契約番号（例: 2024-001）",               Required = false },
-        new() { Name = "PartyAName",            Type = "string",  Description = "甲（委託者）の名称（例: 株式会社ABC）",   Required = true  },
-        new() { Name = "PartyBName",            Type = "string",  Description = "乙（受託者）の名称（例: 株式会社XYZ）",   Required = true  },
-        new() { Name = "CounterpartyName",      Type = "string",  Description = "相手方名（甲乙不明の場合の補完）",         Required = false },
-        new() { Name = "SignedDate",            Type = "date",    Description = "契約締結日（ISO 8601: yyyy-MM-dd）",       Required = true  },
-        new() { Name = "EffectiveDate",         Type = "date",    Description = "契約開始日（ISO 8601: yyyy-MM-dd）",       Required = false },
-        new() { Name = "ExpirationDate",        Type = "date",    Description = "契約終了日（ISO 8601: yyyy-MM-dd）",       Required = true  },
-        new() { Name = "TotalAmount",           Type = "decimal", Description = "契約金額（数値のみ、単位・カンマ不要）",    Required = false },
-        new() { Name = "Currency",              Type = "string",  Description = "通貨コード（例: JPY）",                    Required = false },
-        new() { Name = "AutoRenewal",           Type = "boolean", Description = "自動更新の有無（true / false）",            Required = false },
-        new() { Name = "TerminationNoticeDays", Type = "integer", Description = "解除通知期間（日数、整数）",                Required = false },
-        new() { Name = "GoverningLaw",          Type = "string",  Description = "準拠法（例: 日本法）",                     Required = false },
-        new() { Name = "Summary",               Type = "string",  Description = "契約概要（一文程度）",                     Required = false },
-    };
+    /// <summary>契約タイトル（例: 業務委託基本契約書）</summary>
+    public string? Title { get; set; }
+
+    /// <summary>契約番号（例: 2024-001）</summary>
+    public string? ContractNumber { get; set; }
+
+    /// <summary>甲（委託者）の名称（例: 株式会社ABC）</summary>
+    public string? PartyAName { get; set; }
+
+    /// <summary>乙（受託者）の名称（例: 株式会社XYZ）</summary>
+    public string? PartyBName { get; set; }
+
+    /// <summary>相手方名（甲乙不明の場合の補完）</summary>
+    public string? CounterpartyName { get; set; }
+
+    /// <summary>契約締結日（ISO 8601: yyyy-MM-dd）</summary>
+    public string? SignedDate { get; set; }
+
+    /// <summary>契約開始日（ISO 8601: yyyy-MM-dd）</summary>
+    public string? EffectiveDate { get; set; }
+
+    /// <summary>契約終了日（ISO 8601: yyyy-MM-dd）</summary>
+    public string? ExpirationDate { get; set; }
+
+    /// <summary>契約金額（数値のみ、単位・カンマ不要）</summary>
+    public decimal? TotalAmount { get; set; }
+
+    /// <summary>通貨コード（例: JPY）</summary>
+    public string? Currency { get; set; }
+
+    /// <summary>自動更新の有無</summary>
+    public bool? AutoRenewal { get; set; }
+
+    /// <summary>解除通知期間（日数、整数）</summary>
+    public int? TerminationNoticeDays { get; set; }
+
+    /// <summary>準拠法（例: 日本法）</summary>
+    public string? GoverningLaw { get; set; }
+
+    /// <summary>契約概要（一文程度）</summary>
+    public string? Summary { get; set; }
+}
+
+public static class ContractAgentInstructions
+{
+    public const string SystemPrompt =
+        "あなたは契約書の情報抽出専門家です。" +
+        "提供された契約書テキストから所定のフィールドを抽出し、JSON で回答してください。" +
+        "日付は ISO 8601 形式（yyyy-MM-dd）。金額は数値のみ（単位・カンマ不要）。" +
+        "値が不明な場合は null を設定してください。推測せず、テキストに明記されている値のみ抽出してください。";
 }

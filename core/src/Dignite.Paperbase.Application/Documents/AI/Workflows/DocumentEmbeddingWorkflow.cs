@@ -1,0 +1,54 @@
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.AI;
+using Volo.Abp.DependencyInjection;
+
+namespace Dignite.Paperbase.Documents.AI.Workflows;
+
+/// <summary>
+/// 文档向量化 Workflow：分块 → 调用 IEmbeddingGenerator 生成向量。
+/// </summary>
+public class DocumentEmbeddingWorkflow : ITransientDependency
+{
+    private readonly TextChunker _chunker;
+    private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
+
+    public DocumentEmbeddingWorkflow(
+        TextChunker chunker,
+        IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator)
+    {
+        _chunker = chunker;
+        _embeddingGenerator = embeddingGenerator;
+    }
+
+    public virtual async Task<IReadOnlyList<DocumentEmbeddingChunk>> RunAsync(
+        string extractedText,
+        CancellationToken cancellationToken = default)
+    {
+        var chunks = _chunker.Chunk(extractedText);
+        var results = new List<DocumentEmbeddingChunk>(chunks.Count);
+
+        for (var i = 0; i < chunks.Count; i++)
+        {
+            var embeddings = await _embeddingGenerator.GenerateAsync(
+                [chunks[i]], cancellationToken: cancellationToken);
+
+            results.Add(new DocumentEmbeddingChunk
+            {
+                ChunkIndex = i,
+                ChunkText = chunks[i],
+                Vector = embeddings[0].Vector.ToArray()
+            });
+        }
+
+        return results;
+    }
+}
+
+public class DocumentEmbeddingChunk
+{
+    public int ChunkIndex { get; set; }
+    public string ChunkText { get; set; } = default!;
+    public float[] Vector { get; set; } = default!;
+}

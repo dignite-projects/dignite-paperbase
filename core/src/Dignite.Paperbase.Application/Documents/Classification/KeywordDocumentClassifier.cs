@@ -1,18 +1,16 @@
+using System;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Dignite.Paperbase.Abstractions.AI;
 using Dignite.Paperbase.Abstractions.Documents;
+using Dignite.Paperbase.Documents.AI.Workflows;
 using Microsoft.Extensions.Options;
 using Volo.Abp.DependencyInjection;
 
 namespace Dignite.Paperbase.Application.Documents.Classification;
 
 /// <summary>
-/// 关键词匹配分类器（Slice 1 暴力版）。
-/// Slice 3 替换为 AiDocumentClassifier，此类可直接删除。
+/// 关键词匹配分类器：在 AI Provider 失败时作为兜底。
 /// </summary>
-public class KeywordDocumentClassifier : IDocumentClassifier, ITransientDependency
+public class KeywordDocumentClassifier : ITransientDependency
 {
     private readonly DocumentTypeOptions _options;
 
@@ -21,30 +19,28 @@ public class KeywordDocumentClassifier : IDocumentClassifier, ITransientDependen
         _options = options.Value;
     }
 
-    public virtual Task<ClassificationResult> ClassifyAsync(
-        ClassificationRequest request,
-        CancellationToken cancellationToken = default)
+    public virtual DocumentClassificationOutcome Classify(string extractedText)
     {
-        var text = request.ExtractedText ?? string.Empty;
+        var text = extractedText ?? string.Empty;
 
         var match = _options.Types
             .OrderByDescending(t => t.Priority)
             .FirstOrDefault(t => t.MatchKeywords.Any(kw =>
-                text.Contains(kw, System.StringComparison.OrdinalIgnoreCase)));
+                text.Contains(kw, StringComparison.OrdinalIgnoreCase)));
 
         if (match != null)
         {
-            return Task.FromResult(new ClassificationResult
+            return new DocumentClassificationOutcome
             {
                 TypeCode = match.TypeCode,
                 ConfidenceScore = 0.9
-            });
+            };
         }
 
-        return Task.FromResult(new ClassificationResult
+        return new DocumentClassificationOutcome
         {
             TypeCode = null,
             ConfidenceScore = 0.0
-        });
+        };
     }
 }

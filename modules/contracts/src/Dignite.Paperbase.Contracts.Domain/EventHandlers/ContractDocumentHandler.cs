@@ -1,7 +1,8 @@
 using System.Threading.Tasks;
-using Dignite.Paperbase.Abstractions.AI;
 using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Contracts.Contracts;
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.EventBus.Distributed;
 using Volo.Abp.MultiTenancy;
@@ -14,18 +15,18 @@ public class ContractDocumentHandler :
 {
     private readonly IContractRepository _contractRepository;
     private readonly ContractManager _contractManager;
-    private readonly IFieldExtractor _fieldExtractor;
+    private readonly IChatClient _chatClient;
     private readonly ICurrentTenant _currentTenant;
 
     public ContractDocumentHandler(
         IContractRepository contractRepository,
         ContractManager contractManager,
-        IFieldExtractor fieldExtractor,
+        IChatClient chatClient,
         ICurrentTenant currentTenant)
     {
         _contractRepository = contractRepository;
         _contractManager = contractManager;
-        _fieldExtractor = fieldExtractor;
+        _chatClient = chatClient;
         _currentTenant = currentTenant;
     }
 
@@ -38,14 +39,9 @@ public class ContractDocumentHandler :
 
         using (_currentTenant.Change(eventData.TenantId))
         {
-            var extractionResult = await _fieldExtractor.ExtractAsync(new FieldExtractionRequest
-            {
-                ExtractedText = eventData.ExtractedText ?? string.Empty,
-                DocumentTypeCode = eventData.DocumentTypeCode,
-                Fields = ContractFieldSchemas.All
-            });
+            var extraction = await ExtractFieldsAsync(eventData.ExtractedText ?? string.Empty);
+            var fields = ExtractedContractFields.FromAgentResult(extraction);
 
-            var fields = ExtractedContractFields.FromDictionary(extractionResult.Fields);
             var existing = await _contractRepository.FindByDocumentIdAsync(eventData.DocumentId);
 
             if (existing != null)
@@ -62,5 +58,15 @@ public class ContractDocumentHandler :
                 await _contractRepository.InsertAsync(contract, autoSave: true);
             }
         }
+    }
+
+    protected virtual async Task<ContractExtractionResult> ExtractFieldsAsync(string extractedText)
+    {
+        var agent = new ChatClientAgent(
+            _chatClient,
+            instructions: ContractAgentInstructions.SystemPrompt);
+
+        var run = await agent.RunAsync<ContractExtractionResult>(extractedText);
+        return run.Result ?? new ContractExtractionResult();
     }
 }

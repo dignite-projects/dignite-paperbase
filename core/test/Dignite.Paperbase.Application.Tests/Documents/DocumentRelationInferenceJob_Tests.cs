@@ -2,24 +2,19 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Abstractions.AI;
-using Dignite.Paperbase.AI;
 using Dignite.Paperbase.Application.Documents.BackgroundJobs;
-using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Documents.AI;
+using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Domain.Documents;
-using Dignite.Paperbase.Features;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
-using Volo.Abp.Features;
 using Volo.Abp.Modularity;
 using Xunit;
 
 namespace Dignite.Paperbase.Documents;
-
-// ────────────────────────────────────────────────────────────────────────────
-// Test module：全量 mock — 无需 EF Core / pgvector
-// ────────────────────────────────────────────────────────────────────────────
 
 [DependsOn(typeof(PaperbaseApplicationTestModule))]
 public class DocumentRelationInferenceJobTestModule : AbpModule
@@ -29,15 +24,10 @@ public class DocumentRelationInferenceJobTestModule : AbpModule
         context.Services.AddSingleton(Substitute.For<IDocumentRepository>());
         context.Services.AddSingleton(Substitute.For<IDocumentChunkRepository>());
         context.Services.AddSingleton(Substitute.For<IDocumentRelationRepository>());
-        context.Services.AddSingleton(Substitute.For<IRelationInferrer>());
-        context.Services.AddSingleton(Substitute.For<IAiCostLedger>());
 
-        // IFeatureChecker: 让 MonthlyBudgetUsd 返回一个可控预算值（100 美元）
-        var featureChecker = Substitute.For<IFeatureChecker>();
-        featureChecker
-            .GetOrNullAsync(PaperbaseAIFeatures.MonthlyBudgetUsd)
-            .Returns("100.00");
-        context.Services.AddSingleton(featureChecker);
+        var workflow = Substitute.ForPartsOf<DocumentRelationInferenceWorkflow>(
+            Substitute.For<IChatClient>());
+        context.Services.AddSingleton(workflow);
 
         context.Services.Configure<PaperbaseAIOptions>(opt =>
         {
@@ -46,18 +36,13 @@ public class DocumentRelationInferenceJobTestModule : AbpModule
     }
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Tests
-// ────────────────────────────────────────────────────────────────────────────
-
 public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<DocumentRelationInferenceJobTestModule>
 {
     private readonly DocumentRelationInferenceBackgroundJob _job;
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentChunkRepository _chunkRepository;
     private readonly IDocumentRelationRepository _relationRepository;
-    private readonly IRelationInferrer _relationInferrer;
-    private readonly IAiCostLedger _costLedger;
+    private readonly DocumentRelationInferenceWorkflow _workflow;
 
     public DocumentRelationInferenceJob_Tests()
     {
@@ -65,10 +50,8 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _chunkRepository = GetRequiredService<IDocumentChunkRepository>();
         _relationRepository = GetRequiredService<IDocumentRelationRepository>();
-        _relationInferrer = GetRequiredService<IRelationInferrer>();
-        _costLedger = GetRequiredService<IAiCostLedger>();
+        _workflow = GetRequiredService<DocumentRelationInferenceWorkflow>();
 
-        // NSubstitute 默认 Task<List<T>> 返回 null，手动设置默认值防止 NPE
         _chunkRepository
             .GetListByDocumentIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns(new List<DocumentChunk>());
@@ -80,47 +63,20 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
             .Returns(new List<DocumentChunk>());
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // Scenario 1: 月度预算超标 → 流水线跳过，IRelationInferrer 不被调用
-    // ────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task Budget_Exceeded_Skips_Inference()
-    {
-        var doc = CreateDocument();
-        _documentRepository.GetAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
-        // 测试模块将预算设为 $100；used=$999 > $100 → 触发超额跳过
-        _costLedger.GetCurrentMonthUsageAsync(Arg.Any<Guid?>()).Returns(999m);
-
-        await _job.ExecuteAsync(new DocumentRelationInferenceJobArgs { DocumentId = doc.Id });
-
-        await _relationInferrer.DidNotReceive()
-            .InferAsync(Arg.Any<RelationInferenceRequest>(), Arg.Any<CancellationToken>());
-
-        var latestRun = doc.GetLatestRun(PaperbasePipelines.RelationInference);
-        latestRun.ShouldNotBeNull();
-        latestRun.Status.ShouldBe(PipelineRunStatus.Skipped);
-        latestRun.ResultCode.ShouldBe("BudgetExceeded");
-    }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // Scenario 2: 源文档无 chunks → 流水线跳过（NoChunks）
-    // ────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task No_Source_Chunks_Skips_Inference()
     {
         var doc = CreateDocument();
         _documentRepository.GetAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
-        _costLedger.GetCurrentMonthUsageAsync(Arg.Any<Guid?>()).Returns(0m);
         _chunkRepository
             .GetListByDocumentIdAsync(doc.Id, Arg.Any<CancellationToken>())
             .Returns(new List<DocumentChunk>());
 
         await _job.ExecuteAsync(new DocumentRelationInferenceJobArgs { DocumentId = doc.Id });
 
-        await _relationInferrer.DidNotReceive()
-            .InferAsync(Arg.Any<RelationInferenceRequest>(), Arg.Any<CancellationToken>());
+        await _workflow.DidNotReceive()
+            .RunAsync(Arg.Any<Guid>(), Arg.Any<string>(),
+                Arg.Any<IReadOnlyList<RelationCandidate>>(), Arg.Any<CancellationToken>());
 
         var latestRun = doc.GetLatestRun(PaperbasePipelines.RelationInference);
         latestRun.ShouldNotBeNull();
@@ -128,16 +84,11 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
         latestRun.ResultCode.ShouldBe("NoChunks");
     }
 
-    // ────────────────────────────────────────────────────────────────────────
-    // Scenario 3: 向量检索无候选文档 → 流水线完成（NoCandidates）
-    // ────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task No_Candidate_Docs_Completes_With_NoCandidates()
     {
         var doc = CreateDocument(extractedText: "契約内容...");
         _documentRepository.GetAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
-        _costLedger.GetCurrentMonthUsageAsync(Arg.Any<Guid?>()).Returns(0m);
 
         _chunkRepository
             .GetListByDocumentIdAsync(doc.Id, Arg.Any<CancellationToken>())
@@ -146,7 +97,6 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
                 new(Guid.NewGuid(), null, doc.Id, 0, "契約内容...", new float[] { 0.1f, 0.2f })
             });
 
-        // 向量搜索返回空 → 无候选
         _chunkRepository
             .SearchByVectorAsync(
                 Arg.Any<float[]>(), Arg.Any<int>(),
@@ -156,18 +106,15 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
 
         await _job.ExecuteAsync(new DocumentRelationInferenceJobArgs { DocumentId = doc.Id });
 
-        await _relationInferrer.DidNotReceive()
-            .InferAsync(Arg.Any<RelationInferenceRequest>(), Arg.Any<CancellationToken>());
+        await _workflow.DidNotReceive()
+            .RunAsync(Arg.Any<Guid>(), Arg.Any<string>(),
+                Arg.Any<IReadOnlyList<RelationCandidate>>(), Arg.Any<CancellationToken>());
 
         var latestRun = doc.GetLatestRun(PaperbasePipelines.RelationInference);
         latestRun.ShouldNotBeNull();
         latestRun.Status.ShouldBe(PipelineRunStatus.Succeeded);
         latestRun.ResultCode.ShouldBe("NoCandidates");
     }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // Scenario 4: 推断成功 → 关系写入，流水线标记 Succeeded
-    // ────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Inference_Succeeds_Inserts_Relations_And_Completes_Pipeline()
@@ -178,7 +125,6 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
 
         _documentRepository.GetAsync(sourceDoc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(sourceDoc);
         _documentRepository.FindAsync(candidateDocId, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(candidateDoc);
-        _costLedger.GetCurrentMonthUsageAsync(Arg.Any<Guid?>()).Returns(0m);
 
         var sourceChunk = new DocumentChunk(Guid.NewGuid(), null, sourceDoc.Id, 0, "業務委託契約書。", new float[] { 0.5f, 0.6f });
         var candidateChunk = new DocumentChunk(Guid.NewGuid(), null, candidateDocId, 0, "発注書。", new float[] { 0.5f, 0.6f });
@@ -194,16 +140,16 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
                 Arg.Any<CancellationToken>())
             .Returns(new List<DocumentChunk> { candidateChunk });
 
-        _relationInferrer
-            .InferAsync(Arg.Any<RelationInferenceRequest>(), Arg.Any<CancellationToken>())
-            .Returns(new List<InferredRelation>
+        _workflow
+            .RunAsync(Arg.Any<Guid>(), Arg.Any<string>(),
+                Arg.Any<IReadOnlyList<RelationCandidate>>(), Arg.Any<CancellationToken>())
+            .Returns(new List<InferredDocumentRelation>
             {
                 new() { TargetDocumentId = candidateDocId, RelationType = "references", Confidence = 0.9 }
             });
 
         await _job.ExecuteAsync(new DocumentRelationInferenceJobArgs { DocumentId = sourceDoc.Id });
 
-        // 关系应已写入
         await _relationRepository.Received(1).InsertAsync(
             Arg.Is<DocumentRelation>(r =>
                 r.SourceDocumentId == sourceDoc.Id &&
@@ -213,15 +159,10 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
             Arg.Any<bool>(),
             Arg.Any<CancellationToken>());
 
-        // 流水线状态应为 Succeeded
         var latestRun = sourceDoc.GetLatestRun(PaperbasePipelines.RelationInference);
         latestRun.ShouldNotBeNull();
         latestRun.Status.ShouldBe(PipelineRunStatus.Succeeded);
     }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // Helper
-    // ────────────────────────────────────────────────────────────────────────
 
     private static Document CreateDocument(string? extractedText = null)
     {

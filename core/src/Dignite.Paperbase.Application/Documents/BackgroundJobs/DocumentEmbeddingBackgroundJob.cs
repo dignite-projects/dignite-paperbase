@@ -1,17 +1,12 @@
 using System;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Abstractions.AI;
-using Dignite.Paperbase.AI;
 using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Domain.Documents;
-using Dignite.Paperbase.Features;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.DependencyInjection;
-using Volo.Abp.Features;
 using Volo.Abp.Guids;
-using Volo.Abp.MultiTenancy;
 
 namespace Dignite.Paperbase.Application.Documents.BackgroundJobs;
 
@@ -21,37 +16,25 @@ public class DocumentEmbeddingBackgroundJob
 {
     private readonly IDocumentRepository _documentRepository;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
-    private readonly IEmbeddingIndexer _embeddingIndexer;
+    private readonly DocumentEmbeddingWorkflow _workflow;
     private readonly IDocumentChunkRepository _chunkRepository;
     private readonly IBackgroundJobManager _backgroundJobManager;
-    private readonly IAiCostLedger _costLedger;
-    private readonly IFeatureChecker _featureChecker;
-    private readonly ICurrentTenant _currentTenant;
     private readonly IGuidGenerator _guidGenerator;
-    private readonly PaperbaseAIOptions _aiOptions;
 
     public DocumentEmbeddingBackgroundJob(
         IDocumentRepository documentRepository,
         DocumentPipelineRunManager pipelineRunManager,
-        IEmbeddingIndexer embeddingIndexer,
+        DocumentEmbeddingWorkflow workflow,
         IDocumentChunkRepository chunkRepository,
         IBackgroundJobManager backgroundJobManager,
-        IAiCostLedger costLedger,
-        IFeatureChecker featureChecker,
-        ICurrentTenant currentTenant,
-        IGuidGenerator guidGenerator,
-        IOptions<PaperbaseAIOptions> aiOptions)
+        IGuidGenerator guidGenerator)
     {
         _documentRepository = documentRepository;
         _pipelineRunManager = pipelineRunManager;
-        _embeddingIndexer = embeddingIndexer;
+        _workflow = workflow;
         _chunkRepository = chunkRepository;
         _backgroundJobManager = backgroundJobManager;
-        _costLedger = costLedger;
-        _featureChecker = featureChecker;
-        _currentTenant = currentTenant;
         _guidGenerator = guidGenerator;
-        _aiOptions = aiOptions.Value;
     }
 
     public override async Task ExecuteAsync(DocumentEmbeddingJobArgs args)
@@ -62,19 +45,6 @@ public class DocumentEmbeddingBackgroundJob
 
         try
         {
-            var budgetStr = await _featureChecker.GetOrNullAsync(PaperbaseAIFeatures.MonthlyBudgetUsd);
-            var budget = decimal.TryParse(budgetStr, out var b) ? b : decimal.MaxValue;
-            var used = await _costLedger.GetCurrentMonthUsageAsync(_currentTenant.Id);
-
-            if (used >= budget)
-            {
-                await _pipelineRunManager.SkipAsync(document, run,
-                    $"Monthly AI budget exceeded. Budget: ${budget:F2}, Used: ${used:F2}",
-                    "BudgetExceeded");
-                await _documentRepository.UpdateAsync(document);
-                return;
-            }
-
             if (string.IsNullOrWhiteSpace(document.ExtractedText))
             {
                 await _pipelineRunManager.SkipAsync(document, run, "No extracted text.", "NoText");
@@ -84,14 +54,9 @@ public class DocumentEmbeddingBackgroundJob
 
             await _chunkRepository.DeleteByDocumentIdAsync(document.Id);
 
-            var indexResult = await _embeddingIndexer.IndexAsync(new EmbeddingIndexRequest
-            {
-                DocumentId = document.Id,
-                DocumentTypeCode = document.DocumentTypeCode,
-                ExtractedText = document.ExtractedText
-            });
+            var chunks = await _workflow.RunAsync(document.ExtractedText);
 
-            foreach (var chunk in indexResult.Chunks)
+            foreach (var chunk in chunks)
             {
                 await _chunkRepository.InsertAsync(new DocumentChunk(
                     _guidGenerator.Create(),

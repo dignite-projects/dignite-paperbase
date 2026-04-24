@@ -16,11 +16,6 @@
       <PrivateAssets>All</PrivateAssets>
     </PackageReference>
     <PackageReference Include="YamlDotNet" Version="16.3.0" />
-    <PackageReference Include="Volo.Abp.Core" Version="10.2.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\Dignite.Paperbase.Abstractions\Dignite.Paperbase.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>

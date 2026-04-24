@@ -5,11 +5,11 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Abstractions.AI;
 using Dignite.Paperbase.Abstractions.Documents;
-using Dignite.Paperbase.AI;
 using Dignite.Paperbase.Application.Documents.BackgroundJobs;
 using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Documents.AI;
+using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Domain.Documents;
 using Dignite.Paperbase.Permissions;
 using Microsoft.AspNetCore.Authorization;
@@ -32,7 +32,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     private readonly SourceTypeDetector _sourceTypeDetector;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly IDistributedEventBus _distributedEventBus;
-    private readonly IQaService _qaService;
+    private readonly DocumentQaWorkflow _qaWorkflow;
     private readonly IDocumentChunkRepository _chunkRepository;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
     private readonly PaperbaseAIOptions _aiOptions;
@@ -44,7 +44,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         SourceTypeDetector sourceTypeDetector,
         DocumentPipelineRunManager pipelineRunManager,
         IDistributedEventBus distributedEventBus,
-        IQaService qaService,
+        DocumentQaWorkflow qaWorkflow,
         IDocumentChunkRepository chunkRepository,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
         IOptions<PaperbaseAIOptions> aiOptions)
@@ -55,7 +55,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         _sourceTypeDetector = sourceTypeDetector;
         _pipelineRunManager = pipelineRunManager;
         _distributedEventBus = distributedEventBus;
-        _qaService = qaService;
+        _qaWorkflow = qaWorkflow;
         _chunkRepository = chunkRepository;
         _embeddingGenerator = embeddingGenerator;
         _aiOptions = aiOptions.Value;
@@ -186,41 +186,46 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     {
         var document = await _documentRepository.GetAsync(id);
 
-        var request = new QaRequest
-        {
-            DocumentId = id,
-            Question = input.Question,
-            Mode = input.Mode,
-            HasEmbedding = document.HasEmbedding,
-            ExtractedText = document.ExtractedText
-        };
+        var actualMode = DetermineActualMode(input.Mode, document.HasEmbedding);
 
-        if (document.HasEmbedding && input.Mode != QaMode.FullText)
+        DocumentQaOutcome outcome;
+        if (actualMode == QaMode.Rag)
         {
             var questionEmbeddings = await _embeddingGenerator.GenerateAsync([input.Question]);
             var chunks = await _chunkRepository.SearchByVectorAsync(
                 questionEmbeddings[0].Vector.ToArray(), _aiOptions.QaTopKChunks, documentId: id);
 
-            request.Chunks = chunks.Select(c => new QaChunkData
+            var qaChunks = chunks.Select(c => new QaChunk
             {
                 ChunkIndex = c.ChunkIndex,
                 ChunkText = c.ChunkText
-            }).ToList<QaChunkData>();
-        }
+            }).ToList();
 
-        var result = await _qaService.AskAsync(request);
+            outcome = await _qaWorkflow.RunRagAsync(input.Question, qaChunks);
+        }
+        else
+        {
+            outcome = await _qaWorkflow.RunFullTextAsync(input.Question, document.ExtractedText);
+        }
 
         return new QaResultDto
         {
-            Answer = result.Answer,
-            ActualMode = result.ActualMode.ToString(),
+            Answer = outcome.Answer,
+            ActualMode = outcome.ActualMode.ToString(),
             IsDegraded = input.Mode == QaMode.Auto && !document.HasEmbedding,
-            Sources = result.Sources.Select(s => new QaSourceDto
+            Sources = outcome.Sources.Select(s => new QaSourceDto
             {
                 Text = s.Text,
                 ChunkIndex = s.ChunkIndex
             }).ToList()
         };
+    }
+
+    private static QaMode DetermineActualMode(QaMode requested, bool hasEmbedding)
+    {
+        if (requested == QaMode.Rag) return QaMode.Rag;
+        if (requested == QaMode.FullText) return QaMode.FullText;
+        return hasEmbedding ? QaMode.Rag : QaMode.FullText;
     }
 
     protected virtual IQueryable<Document> ApplyFilter(IQueryable<Document> query, GetDocumentListInput input)

@@ -1,20 +1,18 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Abstractions.AI;
 using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Application.Documents.Classification;
 using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Domain.Documents;
-using Dignite.Paperbase.Features;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.EventBus.Distributed;
-using Volo.Abp.Features;
-using Volo.Abp.MultiTenancy;
 
 namespace Dignite.Paperbase.Application.Documents.BackgroundJobs;
 
@@ -24,36 +22,27 @@ public class DocumentClassificationBackgroundJob
 {
     private readonly IDocumentRepository _documentRepository;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
-    private readonly IDocumentClassifier _documentClassifier;
+    private readonly DocumentClassificationWorkflow _workflow;
     private readonly KeywordDocumentClassifier _keywordClassifier;
     private readonly IDistributedEventBus _distributedEventBus;
     private readonly DocumentTypeOptions _documentTypeOptions;
-    private readonly IAiCostLedger _costLedger;
-    private readonly IFeatureChecker _featureChecker;
-    private readonly ICurrentTenant _currentTenant;
     private readonly IBackgroundJobManager _backgroundJobManager;
 
     public DocumentClassificationBackgroundJob(
         IDocumentRepository documentRepository,
         DocumentPipelineRunManager pipelineRunManager,
-        IDocumentClassifier documentClassifier,
+        DocumentClassificationWorkflow workflow,
         KeywordDocumentClassifier keywordClassifier,
         IDistributedEventBus distributedEventBus,
         IOptions<DocumentTypeOptions> documentTypeOptions,
-        IAiCostLedger costLedger,
-        IFeatureChecker featureChecker,
-        ICurrentTenant currentTenant,
         IBackgroundJobManager backgroundJobManager)
     {
         _documentRepository = documentRepository;
         _pipelineRunManager = pipelineRunManager;
-        _documentClassifier = documentClassifier;
+        _workflow = workflow;
         _keywordClassifier = keywordClassifier;
         _distributedEventBus = distributedEventBus;
         _documentTypeOptions = documentTypeOptions.Value;
-        _costLedger = costLedger;
-        _featureChecker = featureChecker;
-        _currentTenant = currentTenant;
         _backgroundJobManager = backgroundJobManager;
     }
 
@@ -65,38 +54,25 @@ public class DocumentClassificationBackgroundJob
 
         try
         {
-            // 预算检查（在调用 AI 之前，由核心模块负责）
-            var budgetStr = await _featureChecker.GetOrNullAsync(PaperbaseAIFeatures.MonthlyBudgetUsd);
-            var budget = decimal.TryParse(budgetStr, out var b) ? b : decimal.MaxValue;
-            var used = await _costLedger.GetCurrentMonthUsageAsync(_currentTenant.Id);
+            var candidates = _documentTypeOptions.Types
+                .OrderByDescending(t => t.Priority)
+                .ToList();
 
-            if (used >= budget)
-            {
-                await _pipelineRunManager.SkipAsync(
-                    document, run,
-                    reason: $"Monthly AI budget exceeded. Budget: ${budget:F2}, Used: ${used:F2}",
-                    resultCode: "BudgetExceeded");
-                await _documentRepository.UpdateAsync(document);
-                return;
-            }
-
-            var request = BuildRequest(document);
-            ClassificationResult result;
-
+            DocumentClassificationOutcome outcome;
             try
             {
-                result = await _documentClassifier.ClassifyAsync(request);
+                outcome = await _workflow.RunAsync(
+                    candidates, document.ExtractedText ?? string.Empty);
             }
             catch (Exception ex) when (IsAiProviderError(ex))
             {
-                // AI 超时/Provider 错误：回退到关键字分类器（最后防线）
                 Logger.LogWarning(ex,
-                    "AI classifier failed for document {DocumentId}, falling back to keyword classifier.",
+                    "AI classification workflow failed for document {DocumentId}, falling back to keyword classifier.",
                     document.Id);
-                result = await _keywordClassifier.ClassifyAsync(request);
+                outcome = _keywordClassifier.Classify(document.ExtractedText ?? string.Empty);
             }
 
-            await ApplyClassificationResultAsync(document, run, result);
+            await ApplyClassificationResultAsync(document, run, outcome);
             await _documentRepository.UpdateAsync(document);
         }
         catch (Exception ex)
@@ -106,48 +82,37 @@ public class DocumentClassificationBackgroundJob
         }
     }
 
-    private ClassificationRequest BuildRequest(Document document)
-    {
-        return new ClassificationRequest
-        {
-            ExtractedText = document.ExtractedText ?? string.Empty,
-            CandidateTypes = _documentTypeOptions.Types
-                .OrderByDescending(t => t.Priority)
-                .Select(t => new DocumentTypeHint
-                {
-                    TypeCode = t.TypeCode,
-                    DisplayName = t.DisplayName,
-                    Keywords = t.MatchKeywords
-                }).ToList()
-        };
-    }
-
     private async Task ApplyClassificationResultAsync(
         Document document,
         DocumentPipelineRun run,
-        ClassificationResult result)
+        DocumentClassificationOutcome outcome)
     {
-        var metadataJson = result.Metadata.Count > 0
-            ? JsonSerializer.Serialize(result.Metadata)
-            : null;
+        string? metadataJson = null;
+        if (!string.IsNullOrEmpty(outcome.Reason))
+        {
+            metadataJson = JsonSerializer.Serialize(new Dictionary<string, object>
+            {
+                ["Reason"] = outcome.Reason
+            });
+        }
 
-        if (!string.IsNullOrEmpty(result.TypeCode))
+        if (!string.IsNullOrEmpty(outcome.TypeCode))
         {
             var typeDef = _documentTypeOptions.Types
-                .FirstOrDefault(t => t.TypeCode == result.TypeCode);
+                .FirstOrDefault(t => t.TypeCode == outcome.TypeCode);
             var threshold = typeDef?.ConfidenceThreshold ?? 0.7;
 
-            if (result.ConfidenceScore >= threshold)
+            if (outcome.ConfidenceScore >= threshold)
             {
                 await _pipelineRunManager.CompleteClassificationAsync(
-                    document, run, result.TypeCode, result.ConfidenceScore, metadataJson);
+                    document, run, outcome.TypeCode, outcome.ConfidenceScore, metadataJson);
 
                 await _distributedEventBus.PublishAsync(new DocumentClassifiedEto
                 {
                     DocumentId = document.Id,
                     TenantId = document.TenantId,
-                    DocumentTypeCode = result.TypeCode,
-                    ConfidenceScore = result.ConfidenceScore,
+                    DocumentTypeCode = outcome.TypeCode,
+                    ConfidenceScore = outcome.ConfidenceScore,
                     ExtractedText = document.ExtractedText
                 });
 
@@ -157,13 +122,11 @@ public class DocumentClassificationBackgroundJob
             }
         }
 
-        // LowConfidence：置信度不足或无结果
         await _pipelineRunManager.CompleteAsync(document, run, "LowConfidence", metadataJson);
     }
 
     private static bool IsAiProviderError(Exception ex)
     {
-        // 超时、网络错误、Provider 异常——这些场景回退到关键字分类器
         return ex is TimeoutException
             || ex is OperationCanceledException
             || ex.GetType().Name.Contains("HttpRequestException", StringComparison.OrdinalIgnoreCase)

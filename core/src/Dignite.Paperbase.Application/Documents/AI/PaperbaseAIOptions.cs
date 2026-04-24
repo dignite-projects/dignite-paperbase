@@ -1,4 +1,4 @@
-namespace Dignite.Paperbase.AI;
+namespace Dignite.Paperbase.Documents.AI;
 
 public class PaperbaseAIOptions
 {

@@ -1,8 +1,8 @@
 using System.Linq;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Abstractions.AI;
-using Dignite.Paperbase.AI;
 using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Documents.AI;
+using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Domain.Documents;
 using Dignite.Paperbase.Permissions;
 using Microsoft.AspNetCore.Authorization;
@@ -15,18 +15,18 @@ namespace Dignite.Paperbase.Application.Documents;
 public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
 {
     private readonly IDocumentChunkRepository _chunkRepository;
-    private readonly IQaService _qaService;
+    private readonly DocumentQaWorkflow _qaWorkflow;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
     private readonly PaperbaseAIOptions _aiOptions;
 
     public DocumentQaAppService(
         IDocumentChunkRepository chunkRepository,
-        IQaService qaService,
+        DocumentQaWorkflow qaWorkflow,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
         IOptions<PaperbaseAIOptions> aiOptions)
     {
         _chunkRepository = chunkRepository;
-        _qaService = qaService;
+        _qaWorkflow = qaWorkflow;
         _embeddingGenerator = embeddingGenerator;
         _aiOptions = aiOptions.Value;
     }
@@ -48,27 +48,20 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
             };
         }
 
-        var request = new QaRequest
+        var qaChunks = chunks.Select(c => new QaChunk
         {
-            DocumentId = System.Guid.Empty,
-            Question = input.Question,
-            Mode = QaMode.Rag,
-            HasEmbedding = true,
-            Chunks = chunks.Select(c => new QaChunkData
-            {
-                ChunkIndex = c.ChunkIndex,
-                ChunkText = c.ChunkText
-            }).ToList<QaChunkData>()
-        };
+            ChunkIndex = c.ChunkIndex,
+            ChunkText = c.ChunkText
+        }).ToList();
 
-        var result = await _qaService.AskAsync(request);
+        var outcome = await _qaWorkflow.RunRagAsync(input.Question, qaChunks);
 
         return new QaResultDto
         {
-            Answer = result.Answer,
-            ActualMode = result.ActualMode.ToString(),
+            Answer = outcome.Answer,
+            ActualMode = outcome.ActualMode.ToString(),
             IsDegraded = false,
-            Sources = result.Sources.Select(s => new QaSourceDto
+            Sources = outcome.Sources.Select(s => new QaSourceDto
             {
                 Text = s.Text,
                 ChunkIndex = s.ChunkIndex

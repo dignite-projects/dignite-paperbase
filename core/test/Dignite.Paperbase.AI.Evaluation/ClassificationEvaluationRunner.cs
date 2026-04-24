@@ -3,15 +3,26 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Abstractions.AI;
 
 namespace Dignite.Paperbase.AI.Evaluation;
 
+/// <summary>
+/// Classifier delegate signature: takes the extracted text, returns the predicted TypeCode + confidence.
+/// </summary>
+public delegate Task<ClassificationDelegateResult> ClassifierDelegate(
+    string extractedText, CancellationToken cancellationToken);
+
+public class ClassificationDelegateResult
+{
+    public string? TypeCode { get; set; }
+    public double Confidence { get; set; }
+}
+
 public class ClassificationEvaluationRunner
 {
-    private readonly IDocumentClassifier _classifier;
+    private readonly ClassifierDelegate _classifier;
 
-    public ClassificationEvaluationRunner(IDocumentClassifier classifier)
+    public ClassificationEvaluationRunner(ClassifierDelegate classifier)
     {
         _classifier = classifier;
     }
@@ -31,14 +42,9 @@ public class ClassificationEvaluationRunner
 
             try
             {
-                var request = new ClassificationRequest
-                {
-                    ExtractedText = fixture.SampleText ?? string.Empty
-                };
-
-                var result = await _classifier.ClassifyAsync(request, cancellationToken);
+                var result = await _classifier(fixture.SampleText ?? string.Empty, cancellationToken);
                 actualTypeCode = result.TypeCode ?? string.Empty;
-                confidence = result.ConfidenceScore;
+                confidence = result.Confidence;
             }
             catch (Exception ex)
             {

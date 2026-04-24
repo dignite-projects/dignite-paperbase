@@ -13,7 +13,6 @@
         <Project Path="src/Dignite.Paperbase.HttpApi/Dignite.Paperbase.HttpApi.csproj" />
         <Project Path="src/Dignite.Paperbase.HttpApi.Client/Dignite.Paperbase.HttpApi.Client.csproj" />
         <Project Path="src/Dignite.Paperbase.Installer/Dignite.Paperbase.Installer.csproj" />
-        <Project Path="src/Dignite.Paperbase.AI/Dignite.Paperbase.AI.csproj" />
         <Project Path="src/Dignite.Paperbase.Ocr/Dignite.Paperbase.Ocr.csproj" />
         <Project Path="src/Dignite.Paperbase.TextExtraction/Dignite.Paperbase.TextExtraction.csproj" />
         <Project Path="src/Dignite.Paperbase.Ocr.AzureDocumentIntelligence/Dignite.Paperbase.Ocr.AzureDocumentIntelligence.csproj" />
