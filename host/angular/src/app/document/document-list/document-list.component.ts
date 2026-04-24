@@ -15,7 +15,14 @@ import { ConfirmationService, ToasterService } from '@abp/ng.theme.shared';
 import { Confirmation } from '@abp/ng.theme.shared';
 import { Subscription, interval, switchMap, startWith } from 'rxjs';
 import { DocumentService } from '../../proxy/document.service';
-import { BulkUploadResultDto, DocumentDto, DocumentLifecycleStatus, DocumentPipelineRunDto, GetDocumentListInput, PagedResultDto } from '../../proxy/models';
+import { DocumentDto, DocumentLifecycleStatus, DocumentPipelineRunDto, GetDocumentListInput, PagedResultDto } from '../../proxy/models';
+
+interface UploadResult {
+  fileName: string;
+  documentId?: string;
+  succeeded: boolean;
+  errorMessage?: string;
+}
 
 interface ClassificationCandidate {
   typeCode: string;
@@ -38,7 +45,7 @@ export class DocumentListComponent implements OnInit, OnDestroy {
   isLoading = signal(true);
   isExporting = signal(false);
   isBulkUploading = signal(false);
-  bulkUploadResults = signal<BulkUploadResultDto[]>([]);
+  bulkUploadResults = signal<UploadResult[]>([]);
 
   needsManualReview = signal(false);
   confirmingDoc = signal<DocumentDto | null>(null);
@@ -121,25 +128,31 @@ export class DocumentListComponent implements OnInit, OnDestroy {
     const input = event.target as HTMLInputElement;
     if (!input.files?.length) return;
     const files = Array.from(input.files);
+
     this.isBulkUploading.set(true);
     this.bulkUploadResults.set([]);
 
-    this.documentService.bulkUpload(files).subscribe({
-      next: results => {
-        this.isBulkUploading.set(false);
-        this.bulkUploadResults.set(results);
-        const succeeded = results.filter(r => r.succeeded).length;
-        this.toaster.success(`${succeeded} / ${results.length} files uploaded`, '::Upload');
-        this.stopPolling();
-        this.isLoading.set(true);
-        this.startPolling();
-        input.value = '';
-      },
-      error: () => {
-        this.isBulkUploading.set(false);
-        this.toaster.error('::Document:BulkUploadFailed', '::Error');
-      },
-    });
+    let completed = 0;
+    const onAllDone = () => {
+      this.isBulkUploading.set(false);
+      this.stopPolling();
+      this.isLoading.set(true);
+      this.startPolling();
+      input.value = '';
+    };
+
+    for (const file of files) {
+      this.documentService.upload(file).subscribe({
+        next: doc => {
+          this.bulkUploadResults.update(r => [...r, { fileName: file.name, documentId: doc.id, succeeded: true }]);
+          if (++completed === files.length) onAllDone();
+        },
+        error: err => {
+          this.bulkUploadResults.update(r => [...r, { fileName: file.name, succeeded: false, errorMessage: err.message }]);
+          if (++completed === files.length) onAllDone();
+        },
+      });
+    }
   }
 
   exportCsv(): void {

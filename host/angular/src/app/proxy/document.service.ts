@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { EnvironmentService, RestService } from '@abp/ng.core';
 import { Observable } from 'rxjs';
-import { BulkUploadResultDto, DocumentDto, GetDocumentListInput, PagedResultDto } from './models';
+import { DocumentDto, GetDocumentListInput, PagedResultDto } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class DocumentService {
@@ -46,26 +46,10 @@ export class DocumentService {
   upload = (file: File): Observable<DocumentDto> => {
     const formData = new FormData();
     formData.append('File', file, file.name);
-    formData.append('FileName', file.name);
     return this.rest.request<FormData, DocumentDto>(
       {
         method: 'POST',
         url: `${this.basePath}/upload`,
-        body: formData,
-      },
-      { apiName: this.apiName }
-    );
-  };
-
-  bulkUpload = (files: File[]): Observable<BulkUploadResultDto[]> => {
-    const formData = new FormData();
-    for (const file of files) {
-      formData.append('files', file, file.name);
-    }
-    return this.rest.request<FormData, BulkUploadResultDto[]>(
-      {
-        method: 'POST',
-        url: `${this.basePath}/bulk-upload`,
         body: formData,
       },
       { apiName: this.apiName }

@@ -90,7 +90,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     [Authorize(PaperbasePermissions.Documents.Upload)]
     public virtual async Task<DocumentDto> UploadAsync(UploadDocumentInput input)
     {
-        var fileName = input.FileName ?? input.File.FileName ?? "document";
+        var fileName = input.File.FileName ?? "document";
         var contentType = input.File.ContentType ?? "application/octet-stream";
         var fileSize = input.File.ContentLength ?? 0;
         var extension = Path.GetExtension(fileName);

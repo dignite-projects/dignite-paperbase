@@ -58,13 +58,6 @@ export interface GetDocumentListInput {
   needsManualReview?: boolean;
 }
 
-export interface BulkUploadResultDto {
-  fileName: string;
-  documentId?: string;
-  succeeded: boolean;
-  errorMessage?: string;
-}
-
 // ─── Q&A models ─────────────────────────────────────────────────────────────
 
 export enum QaMode {

@@ -20,13 +20,21 @@
             (drop)="onDrop($event)"
           >
             @if (isUploading()) {
-              <div class="text-center py-4">
-                <div class="spinner-border text-primary mb-3" role="status">
-                  <span class="visually-hidden">{{ '::Uploading' | abpLocalization }}</span>
-                </div>
-                <p class="text-muted mb-0">
-                  {{ '::Document:Uploading' | abpLocalization }} {{ uploadProgress() }}
-                </p>
+              <div class="py-4">
+                <ul class="list-group">
+                  @for (f of uploadingFiles(); track f.name) {
+                    <li class="list-group-item d-flex justify-content-between align-items-center py-2">
+                      <span class="text-truncate me-2">{{ f.name }}</span>
+                      @if (f.done) {
+                        <span class="badge bg-success"><i class="fas fa-check"></i></span>
+                      } @else if (f.error) {
+                        <span class="badge bg-danger"><i class="fas fa-times"></i></span>
+                      } @else {
+                        <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
+                      }
+                    </li>
+                  }
+                </ul>
               </div>
             } @else {
               <div class="text-center py-4">
@@ -38,19 +46,20 @@
                   {{ '::Document:SupportedFormats' | abpLocalization }}
                 </p>
 
-                <!-- Desktop file picker -->
+                <!-- Desktop file picker (multiple) -->
                 <label class="btn btn-primary me-2">
                   <i class="fas fa-folder-open me-1"></i>
                   {{ '::Document:BrowseFiles' | abpLocalization }}
                   <input
                     type="file"
                     accept="image/*,application/pdf"
+                    multiple
                     class="d-none"
                     (change)="onFileSelected($event)"
                   />
                 </label>
 
-                <!-- Mobile camera capture -->
+                <!-- Mobile camera capture (single by nature) -->
                 <label class="btn btn-outline-secondary">
                   <i class="fas fa-camera me-1"></i>
                   {{ '::Document:TakePhoto' | abpLocalization }}
