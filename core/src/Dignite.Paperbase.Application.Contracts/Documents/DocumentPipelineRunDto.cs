@@ -14,5 +14,4 @@ public class DocumentPipelineRunDto
     public DateTime? CompletedAt { get; set; }
     public string? ResultCode { get; set; }
     public string? ErrorMessage { get; set; }
-    public string? Metadata { get; set; }
 }

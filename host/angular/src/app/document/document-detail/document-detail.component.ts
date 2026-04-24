@@ -11,7 +11,7 @@ import { CommonModule } from '@angular/common';
 import { LocalizationPipe } from '@abp/ng.core';
 import { interval, Subscription, switchMap, startWith } from 'rxjs';
 import { DocumentService } from '../../proxy/document.service';
-import { DocumentDto, DocumentLifecycleStatus } from '../../proxy/models';
+import { DocumentDto, DocumentLifecycleStatus, DocumentReviewStatus } from '../../proxy/models';
 import { DocumentQaPanelComponent } from '../document-qa-panel/document-qa-panel.component';
 import { DocumentRelationsComponent } from '../document-relations/document-relations.component';
 
@@ -33,6 +33,11 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
   activeTab = signal<'info' | 'qa' | 'relations'>('info');
 
   readonly DocumentLifecycleStatus = DocumentLifecycleStatus;
+  readonly DocumentReviewStatus = DocumentReviewStatus;
+
+  needsReview = computed(() =>
+    this.document()?.reviewStatus === DocumentReviewStatus.PendingReview
+  );
 
   isProcessing = computed(() => {
     const status = this.document()?.lifecycleStatus;

@@ -128,6 +128,26 @@
                     }
                   </dd>
 
+                  @if (document()!.reviewStatus !== DocumentReviewStatus.None) {
+                    <dt class="col-sm-5 text-muted">{{ '::Document:ReviewStatus' | abpLocalization }}</dt>
+                    <dd class="col-sm-7">
+                      @if (document()!.reviewStatus === DocumentReviewStatus.PendingReview) {
+                        <span class="badge bg-warning text-dark">
+                          {{ '::DocumentReviewStatus:PendingReview' | abpLocalization }}
+                        </span>
+                      } @else {
+                        <span class="badge bg-success">
+                          {{ '::DocumentReviewStatus:Reviewed' | abpLocalization }}
+                        </span>
+                      }
+                    </dd>
+                  }
+
+                  @if (document()!.classificationReason) {
+                    <dt class="col-sm-5 text-muted">{{ '::Document:ClassificationReason' | abpLocalization }}</dt>
+                    <dd class="col-sm-7 text-muted fst-italic small">{{ document()!.classificationReason }}</dd>
+                  }
+
                   <dt class="col-sm-5 text-muted">{{ '::Document:UploadedBy' | abpLocalization }}</dt>
                   <dd class="col-sm-7">{{ document()!.fileOrigin?.uploadedByUserName }}</dd>
 

@@ -29,6 +29,8 @@
     "Document:UploadedAt": "Uploaded At",
     "Document:UploadedBy": "Uploaded By",
     "Document:ConfidenceScore": "Confidence",
+    "Document:ReviewStatus": "Review Status",
+    "Document:ClassificationReason": "Classification Reason",
     "Document:TotalCount": "Total:",
     "Document:AreYouSureToDelete": "Are you sure you want to delete this document?",
     "Document:DeletedSuccessfully": "Document deleted.",

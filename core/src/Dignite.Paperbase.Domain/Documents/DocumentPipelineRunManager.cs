@@ -40,10 +40,9 @@ public class DocumentPipelineRunManager : DomainService
     public virtual Task CompleteAsync(
         Document document,
         DocumentPipelineRun run,
-        string resultCode = "Ok",
-        string? metadata = null)
+        string resultCode = "Ok")
     {
-        run.MarkSucceeded(Clock.Now, resultCode, metadata);
+        run.MarkSucceeded(Clock.Now, resultCode);
 
         document.PublishPipelineRunCompletedEvent(new DocumentPipelineRunCompletedEvent(
             document.Id,
@@ -60,10 +59,9 @@ public class DocumentPipelineRunManager : DomainService
         Document document,
         DocumentPipelineRun run,
         string errorMessage,
-        string resultCode = "Error",
-        string? metadata = null)
+        string resultCode = "Error")
     {
-        run.MarkFailed(Clock.Now, errorMessage, resultCode, metadata);
+        run.MarkFailed(Clock.Now, errorMessage, resultCode);
 
         document.PublishPipelineRunCompletedEvent(new DocumentPipelineRunCompletedEvent(
             document.Id,
@@ -77,40 +75,39 @@ public class DocumentPipelineRunManager : DomainService
     }
 
     /// <summary>
-    /// 记录文本提取结果并完成 Run。
-    /// 封装 Document.SetExtractedText + CompleteAsync，确保两个操作在同一上下文内完成。
+    /// 记录文本提取结果、回写实际 SourceType 并完成 Run。
     /// </summary>
     public virtual Task CompleteTextExtractionAsync(
         Document document,
         DocumentPipelineRun run,
         string extractedText,
-        string? metadata = null)
+        SourceType sourceType = SourceType.Physical)
     {
+        document.SetSourceType(sourceType);
         document.SetExtractedText(extractedText);
-        return CompleteAsync(document, run, "OK", metadata);
+        return CompleteAsync(document, run, "OK");
     }
 
     /// <summary>
     /// 记录分类结果并完成 Run。
-    /// 封装 Document.SetClassificationResult + CompleteAsync。
     /// </summary>
     public virtual Task CompleteClassificationAsync(
         Document document,
         DocumentPipelineRun run,
         string typeCode,
         double confidenceScore,
-        string? metadata = null)
+        string? reason = null)
     {
-        document.SetClassificationResult(typeCode, confidenceScore);
-        return CompleteAsync(document, run, "OK", metadata);
+        document.SetClassificationResult(typeCode, confidenceScore, reason);
+        return CompleteAsync(document, run, "OK");
     }
 
     /// <summary>
-    /// 标记文档需要人工确认分类（分类置信度不足或未能产出有效类型时调用）。
+    /// 标记文档需要人工确认分类。
     /// </summary>
-    public virtual Task MarkPendingReviewAsync(Document document)
+    public virtual Task MarkPendingReviewAsync(Document document, string? reason = null)
     {
-        document.MarkPendingReview();
+        document.MarkPendingReview(reason);
         return Task.CompletedTask;
     }
 
@@ -121,12 +118,11 @@ public class DocumentPipelineRunManager : DomainService
     public virtual Task CompleteManualClassificationAsync(
         Document document,
         DocumentPipelineRun run,
-        string typeCode,
-        string? metadata = null)
+        string typeCode)
     {
-        document.SetClassificationResult(typeCode, 1.0);
+        document.SetClassificationResult(typeCode, 1.0, reason: null);
         document.MarkReviewed();
-        return CompleteAsync(document, run, "ManualOverride", metadata);
+        return CompleteAsync(document, run, "ManualOverride");
     }
 
     public virtual Task SkipAsync(
@@ -150,10 +146,6 @@ public class DocumentPipelineRunManager : DomainService
 
     /// <summary>
     /// 根据所有关键流水线的最新 Run 派生 Document.LifecycleStatus。
-    /// 派生规则：
-    ///   任一关键流水线最新 Run = Failed → Failed
-    ///   所有关键流水线最新 Run = Succeeded → Ready
-    ///   其他（含尚未启动、Running、Skipped）→ Processing
     /// </summary>
     protected virtual void DeriveLifecycle(Document document)
     {

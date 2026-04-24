@@ -1,7 +1,5 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Application.Documents.Classification;
@@ -87,15 +85,6 @@ public class DocumentClassificationBackgroundJob
         DocumentPipelineRun run,
         DocumentClassificationOutcome outcome)
     {
-        string? metadataJson = null;
-        if (!string.IsNullOrEmpty(outcome.Reason))
-        {
-            metadataJson = JsonSerializer.Serialize(new Dictionary<string, object>
-            {
-                ["Reason"] = outcome.Reason
-            });
-        }
-
         if (!string.IsNullOrEmpty(outcome.TypeCode))
         {
             var typeDef = _documentTypeOptions.Types
@@ -105,7 +94,7 @@ public class DocumentClassificationBackgroundJob
             if (outcome.ConfidenceScore >= threshold)
             {
                 await _pipelineRunManager.CompleteClassificationAsync(
-                    document, run, outcome.TypeCode, outcome.ConfidenceScore, metadataJson);
+                    document, run, outcome.TypeCode, outcome.ConfidenceScore, outcome.Reason);
 
                 await _distributedEventBus.PublishAsync(new DocumentClassifiedEto
                 {
@@ -122,8 +111,8 @@ public class DocumentClassificationBackgroundJob
             }
         }
 
-        await _pipelineRunManager.CompleteAsync(document, run, "LowConfidence", metadataJson);
-        await _pipelineRunManager.MarkPendingReviewAsync(document);
+        await _pipelineRunManager.CompleteAsync(document, run, "LowConfidence");
+        await _pipelineRunManager.MarkPendingReviewAsync(document, outcome.Reason);
     }
 
     private static bool IsAiProviderError(Exception ex)

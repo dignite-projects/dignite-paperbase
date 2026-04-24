@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -6,6 +5,8 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.TextExtraction;
 using Dignite.Paperbase.Ocr;
 using Dignite.Paperbase.TextExtraction.Digital;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Volo.Abp.DependencyInjection;
 
@@ -16,6 +17,8 @@ public class DefaultTextExtractor : ITextExtractor, ITransientDependency
     private readonly IOcrProvider _ocrProvider;
     private readonly IDigitalTextExtractorFactory _digitalExtractorFactory;
     private readonly PaperbaseOcrOptions _ocrOptions;
+
+    public ILogger<DefaultTextExtractor> Logger { get; set; } = NullLogger<DefaultTextExtractor>.Instance;
 
     public DefaultTextExtractor(
         IOcrProvider ocrProvider,
@@ -56,14 +59,13 @@ public class DefaultTextExtractor : ITextExtractor, ITransientDependency
         if (ext == ".pdf")
             return ExtractionPath.Pdf;
 
-        return ExtractionPath.Physical; // 兜底
+        return ExtractionPath.Physical;
     }
 
     protected virtual async Task<TextExtractionResult> ExtractPdfAsync(
         Stream fileStream,
         TextExtractionContext ctx)
     {
-        // 缓冲流，两条路径（PdfPig 和 OCR）都需要可重置的流
         byte[] pdfBytes;
         using (var ms = new MemoryStream())
         {
@@ -89,17 +91,16 @@ public class DefaultTextExtractor : ITextExtractor, ITransientDependency
     {
         var extractor = _digitalExtractorFactory.GetExtractor(ctx.ContentType ?? string.Empty, ctx.FileExtension ?? string.Empty);
         var text = await extractor.ExtractAsync(fileStream, ctx.ContentType ?? string.Empty);
+
+        Logger.LogDebug("Digital extraction completed using {Extractor}", extractor.GetType().Name);
+
         return new TextExtractionResult
         {
             ExtractedText = text,
             Confidence = 1.0,
             DetectedLanguage = null,
             PageCount = 0,
-            Metadata = new Dictionary<string, object>
-            {
-                ["path"] = "digital",
-                ["digital.extractor"] = extractor.GetType().Name
-            }
+            UsedOcr = false,
         };
     }
 
@@ -118,17 +119,15 @@ public class DefaultTextExtractor : ITextExtractor, ITransientDependency
 
         var result = await _ocrProvider.RecognizeAsync(fileStream, options);
 
+        Logger.LogDebug("OCR extraction completed using {Provider}", _ocrProvider.GetType().Name);
+
         return new TextExtractionResult
         {
             ExtractedText = result.RawText,
             Confidence = result.Confidence,
             DetectedLanguage = result.DetectedLanguage,
             PageCount = result.PageCount,
-            Metadata = new Dictionary<string, object>
-            {
-                ["path"] = "physical",
-                ["ocr.provider"] = _ocrProvider.GetType().Name
-            }
+            UsedOcr = true,
         };
     }
 }

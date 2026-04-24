@@ -50,6 +50,9 @@ public class Document : CreationAuditedAggregateRoot<Guid>, IMultiTenant
     /// <summary>文档分类置信度（0.0 ~ 1.0），为最后一次成功分类 Run 的快照</summary>
     public virtual double ConfidenceScore { get; private set; }
 
+    /// <summary>分类原因说明（低置信度时由 AI 填写；人工确认后清空）</summary>
+    public virtual string? ClassificationReason { get; private set; }
+
     // --- 聚合内的 PipelineRun 集合 ---
 
     public virtual IReadOnlyCollection<DocumentPipelineRun> PipelineRuns
@@ -99,21 +102,29 @@ public class Document : CreationAuditedAggregateRoot<Guid>, IMultiTenant
         ExtractedText = extractedText;
     }
 
-    internal void SetClassificationResult(string documentTypeCode, double confidenceScore)
+    internal void SetSourceType(SourceType sourceType)
+    {
+        SourceType = sourceType;
+    }
+
+    internal void SetClassificationResult(string documentTypeCode, double confidenceScore, string? reason = null)
     {
         DocumentTypeCode = documentTypeCode;
         ConfidenceScore = confidenceScore;
+        ClassificationReason = reason;
         ReviewStatus = DocumentReviewStatus.None;
     }
 
-    internal void MarkPendingReview()
+    internal void MarkPendingReview(string? reason = null)
     {
         ReviewStatus = DocumentReviewStatus.PendingReview;
+        ClassificationReason = reason;
     }
 
     internal void MarkReviewed()
     {
         ReviewStatus = DocumentReviewStatus.Reviewed;
+        ClassificationReason = null;
     }
 
     internal void UpdateStructuredData(string structuredData)

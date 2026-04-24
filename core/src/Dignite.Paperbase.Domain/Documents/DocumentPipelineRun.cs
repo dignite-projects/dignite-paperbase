@@ -32,19 +32,13 @@ public class DocumentPipelineRun : Entity<Guid>, IMultiTenant
     public virtual DateTime? CompletedAt { get; private set; }
 
     /// <summary>
-    /// 流水线私有的结果码。Succeeded 时典型值："Ok"、"LowConfidence"。
+    /// 流水线私有的结果码。Succeeded 时典型值："Ok"、"LowConfidence"、"ManualOverride"。
     /// Failed 时典型值："Timeout"、"ProviderError"。
     /// </summary>
     public virtual string? ResultCode { get; private set; }
 
     /// <summary>失败时的错误信息（ResultCode 之外的可读描述）</summary>
     public virtual string? ErrorMessage { get; private set; }
-
-    /// <summary>
-    /// 流水线私有元数据（JSON）。由各流水线自行定义 schema。
-    /// AI 类流水线 Metadata 由 Application 的 Workflow 在执行结果中写入。
-    /// </summary>
-    public virtual string? Metadata { get; private set; }
 
     protected DocumentPipelineRun() { }
 
@@ -70,20 +64,18 @@ public class DocumentPipelineRun : Entity<Guid>, IMultiTenant
         StartedAt = now;
     }
 
-    internal void MarkSucceeded(DateTime now, string resultCode = "Ok", string? metadata = null)
+    internal void MarkSucceeded(DateTime now, string resultCode = "Ok")
     {
         Status = PipelineRunStatus.Succeeded;
         ResultCode = resultCode;
-        Metadata = metadata;
         CompletedAt = now;
     }
 
-    internal void MarkFailed(DateTime now, string errorMessage, string resultCode = "Error", string? metadata = null)
+    internal void MarkFailed(DateTime now, string errorMessage, string resultCode = "Error")
     {
         Status = PipelineRunStatus.Failed;
         ResultCode = resultCode;
         ErrorMessage = errorMessage;
-        Metadata = metadata;
         CompletedAt = now;
     }
 

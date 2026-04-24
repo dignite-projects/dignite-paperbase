@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.TextExtraction;
 using Dignite.Paperbase.Documents;
@@ -53,10 +52,8 @@ public class DocumentTextExtractionBackgroundJob
 
             var result = await _textExtractor.ExtractAsync(blobStream, ctx);
 
-            var metadataJson = result.Metadata.Count > 0
-                ? JsonSerializer.Serialize(result.Metadata)
-                : null;
-            await _pipelineRunManager.CompleteTextExtractionAsync(document, run, result.ExtractedText, metadataJson);
+            var actualSourceType = result.UsedOcr ? SourceType.Physical : SourceType.Digital;
+            await _pipelineRunManager.CompleteTextExtractionAsync(document, run, result.ExtractedText, actualSourceType);
             await _documentRepository.UpdateAsync(document);
 
             await _backgroundJobManager.EnqueueAsync(

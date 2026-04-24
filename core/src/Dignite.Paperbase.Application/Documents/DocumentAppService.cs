@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Application.Documents.BackgroundJobs;
@@ -29,7 +28,6 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     private readonly IDocumentRepository _documentRepository;
     private readonly IBlobContainer<PaperbaseDocumentContainer> _blobContainer;
     private readonly IBackgroundJobManager _backgroundJobManager;
-    private readonly SourceTypeDetector _sourceTypeDetector;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly IDistributedEventBus _distributedEventBus;
     private readonly DocumentQaWorkflow _qaWorkflow;
@@ -41,7 +39,6 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         IDocumentRepository documentRepository,
         IBlobContainer<PaperbaseDocumentContainer> blobContainer,
         IBackgroundJobManager backgroundJobManager,
-        SourceTypeDetector sourceTypeDetector,
         DocumentPipelineRunManager pipelineRunManager,
         IDistributedEventBus distributedEventBus,
         DocumentQaWorkflow qaWorkflow,
@@ -52,7 +49,6 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         _documentRepository = documentRepository;
         _blobContainer = blobContainer;
         _backgroundJobManager = backgroundJobManager;
-        _sourceTypeDetector = sourceTypeDetector;
         _pipelineRunManager = pipelineRunManager;
         _distributedEventBus = distributedEventBus;
         _qaWorkflow = qaWorkflow;
@@ -99,7 +95,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         await using var stream = input.File.GetStream();
         await _blobContainer.SaveAsync(blobName, stream);
 
-        var sourceType = _sourceTypeDetector.Detect(contentType);
+        var sourceType = SourceType.Physical; // placeholder；提取完成后由 BackgroundJob 回写实际值
         var fileOrigin = new FileOrigin(
             Clock.Now,
             CurrentUser.Id!.Value,
@@ -165,8 +161,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         var document = await _documentRepository.GetAsync(id);
         var run = await _pipelineRunManager.StartAsync(document, PaperbasePipelines.Classification);
 
-        var metadata = JsonSerializer.Serialize(new { Source = "ManualOverride", ConfirmedBy = CurrentUser.Id });
-        await _pipelineRunManager.CompleteManualClassificationAsync(document, run, documentTypeCode, metadata);
+        await _pipelineRunManager.CompleteManualClassificationAsync(document, run, documentTypeCode);
 
         await _distributedEventBus.PublishAsync(new DocumentClassifiedEto
         {
