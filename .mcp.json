@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "microsoft-learn": {
+      "type": "http",
+      "url": "https://learn.microsoft.com/api/mcp"
+    },
+    "abp-studio": {
+      "type": "stdio",
+      "command": "abp",
+      "args": ["mcp-studio"]
+    }
+  }
+}
