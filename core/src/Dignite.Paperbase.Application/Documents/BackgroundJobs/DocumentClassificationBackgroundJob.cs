@@ -111,8 +111,16 @@ public class DocumentClassificationBackgroundJob
             }
         }
 
+        var candidates = outcome.Candidates
+            .Select(c => new PipelineRunCandidate
+            {
+                TypeCode = c.TypeCode,
+                ConfidenceScore = c.ConfidenceScore
+            })
+            .ToList();
+
         await _pipelineRunManager.CompleteClassificationWithLowConfidenceAsync(
-            document, run, outcome.Reason);
+            document, run, outcome.Reason, candidates);
     }
 
     private static bool IsAiProviderError(Exception ex)

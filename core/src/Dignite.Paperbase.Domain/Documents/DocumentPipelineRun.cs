@@ -1,7 +1,9 @@
 using System;
 using Dignite.Paperbase.Documents;
+using Volo.Abp.Data;
 using Volo.Abp.Domain.Entities;
 using Volo.Abp.MultiTenancy;
+using Volo.Abp.ObjectExtending;
 
 namespace Dignite.Paperbase.Domain.Documents;
 
@@ -9,9 +11,14 @@ namespace Dignite.Paperbase.Domain.Documents;
 /// 文档流水线执行记录。
 /// 一条 Document + PipelineCode + AttemptNumber 唯一确定一次执行。
 /// 同一流水线可重试，每次重试产生一条新记录，AttemptNumber 自增。
+///
+/// 实现 <see cref="IHasExtraProperties"/>：各 pipeline 的产物（分类候选、chunk 数量等）
+/// 以 key-value 形式写入 ExtraProperties，避免为每种 pipeline 扩列。
 /// </summary>
-public class DocumentPipelineRun : Entity<Guid>, IMultiTenant
+public class DocumentPipelineRun : Entity<Guid>, IMultiTenant, IHasExtraProperties
 {
+    public virtual ExtraPropertyDictionary ExtraProperties { get; protected set; }
+
     public virtual Guid? TenantId { get; private set; }
 
     /// <summary>所属文档 ID</summary>
@@ -37,7 +44,11 @@ public class DocumentPipelineRun : Entity<Guid>, IMultiTenant
     /// </summary>
     public virtual string? StatusMessage { get; private set; }
 
-    protected DocumentPipelineRun() { }
+    protected DocumentPipelineRun()
+    {
+        ExtraProperties = new ExtraPropertyDictionary();
+        this.SetDefaultsForExtraProperties();
+    }
 
     internal DocumentPipelineRun(
         Guid id,
@@ -53,6 +64,8 @@ public class DocumentPipelineRun : Entity<Guid>, IMultiTenant
         AttemptNumber = attemptNumber;
         Status = PipelineRunStatus.Pending;
         StartedAt = DateTime.UtcNow;
+        ExtraProperties = new ExtraPropertyDictionary();
+        this.SetDefaultsForExtraProperties();
     }
 
     internal void MarkRunning(DateTime now)

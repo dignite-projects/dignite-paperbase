@@ -31,13 +31,23 @@ export interface FileOriginDto {
 
 export interface DocumentPipelineRunDto {
   id: string;
+  documentId: string;
   pipelineCode: string;
   attemptNumber: number;
   status: string;
   startedAt: string;
   completedAt?: string;
   statusMessage?: string;
-  metadata?: string;
+  /**
+   * 各 pipeline 的专属输出。约定 key：
+   *  - "Candidates": ClassificationCandidate[] — 分类流水线 top-K 候选
+   */
+  extraProperties?: Record<string, unknown>;
+}
+
+export interface ClassificationCandidate {
+  typeCode: string;
+  confidenceScore: number;
 }
 
 export interface DocumentDto {

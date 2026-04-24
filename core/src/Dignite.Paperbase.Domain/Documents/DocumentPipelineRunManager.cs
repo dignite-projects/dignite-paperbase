@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Domain.Documents.Events;
+using Volo.Abp.Data;
 using Volo.Abp.Domain.Services;
 
 namespace Dignite.Paperbase.Domain.Documents;
@@ -105,9 +107,18 @@ public class DocumentPipelineRunManager : DomainService
     public virtual Task CompleteClassificationWithLowConfidenceAsync(
         Document document,
         DocumentPipelineRun run,
-        string? reason = null)
+        string? reason = null,
+        IReadOnlyList<PipelineRunCandidate>? candidates = null)
     {
         document.MarkPendingReview(reason);
+
+        if (candidates is { Count: > 0 })
+        {
+            run.SetProperty(
+                PipelineRunExtraPropertyNames.ClassificationCandidates,
+                candidates);
+        }
+
         return CompleteAsync(document, run);
     }
 

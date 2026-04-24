@@ -15,18 +15,13 @@ import { ConfirmationService, ToasterService } from '@abp/ng.theme.shared';
 import { Confirmation } from '@abp/ng.theme.shared';
 import { Subscription, interval, switchMap, startWith } from 'rxjs';
 import { DocumentService } from '../../proxy/document.service';
-import { DocumentDto, DocumentLifecycleStatus, DocumentReviewStatus, DocumentPipelineRunDto, GetDocumentListInput, PagedResultDto } from '../../proxy/models';
+import { ClassificationCandidate, DocumentDto, DocumentLifecycleStatus, DocumentReviewStatus, DocumentPipelineRunDto, GetDocumentListInput, PagedResultDto } from '../../proxy/models';
 
 interface UploadResult {
   fileName: string;
   documentId?: string;
   succeeded: boolean;
   errorMessage?: string;
-}
-
-interface ClassificationCandidate {
-  typeCode: string;
-  confidence: number;
 }
 
 @Component({
@@ -201,26 +196,16 @@ export class DocumentListComponent implements OnInit, OnDestroy {
 
   getCandidates(doc: DocumentDto): ClassificationCandidate[] {
     const run = this.getLatestClassificationRun(doc);
-    if (!run?.metadata) return doc.documentTypeCode ? [{ typeCode: doc.documentTypeCode, confidence: 1 }] : [];
-    try {
-      const meta = JSON.parse(run.metadata);
-      return (meta.candidates as ClassificationCandidate[]) ?? [];
-    } catch {
-      return doc.documentTypeCode ? [{ typeCode: doc.documentTypeCode, confidence: 1 }] : [];
-    }
+    const fromRun = run?.extraProperties?.['Candidates'] as ClassificationCandidate[] | undefined;
+    if (fromRun && fromRun.length > 0) return fromRun;
+    return doc.documentTypeCode ? [{ typeCode: doc.documentTypeCode, confidenceScore: 1 }] : [];
   }
 
   openConfirmDialog(doc: DocumentDto, event: Event): void {
     event.stopPropagation();
     this.confirmingDoc.set(doc);
-    const run = this.getLatestClassificationRun(doc);
-    let defaultCode = doc.documentTypeCode ?? '';
-    if (run?.metadata) {
-      try {
-        const meta = JSON.parse(run.metadata);
-        defaultCode = meta.typeCode ?? defaultCode;
-      } catch { /* use default */ }
-    }
+    const candidates = this.getCandidates(doc);
+    const defaultCode = candidates[0]?.typeCode ?? doc.documentTypeCode ?? '';
     this.selectedTypeCode.set(defaultCode);
   }
 
