@@ -95,8 +95,9 @@ public class DocumentClassificationBackgroundJob_Tests
         run.ShouldNotBeNull();
         run.Status.ShouldBe(PipelineRunStatus.Succeeded);
 
-        // Document 的 TypeCode 已写入，ReviewStatus 重置为 None
+        // Document 的 TypeCode/ConfidenceScore 已写入，ReviewStatus 重置为 None
         doc.DocumentTypeCode.ShouldBe("contract.general");
+        doc.ConfidenceScore.ShouldBe(0.92);
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.None);
 
         // 发布了 DocumentClassifiedEto
@@ -114,7 +115,7 @@ public class DocumentClassificationBackgroundJob_Tests
     }
 
     [Fact]
-    public async Task LowConfidence_Completes_With_LowConfidence_ResultCode_No_Event_No_Embedding()
+    public async Task LowConfidence_Marks_PendingReview_No_Event_No_Embedding()
     {
         var doc = CreateDocument("Some document text.");
         SetupDocumentRepository(doc);
@@ -136,10 +137,10 @@ public class DocumentClassificationBackgroundJob_Tests
         var run = doc.GetLatestRun(PaperbasePipelines.Classification);
         run.ShouldNotBeNull();
         run.Status.ShouldBe(PipelineRunStatus.Succeeded);
-        run.ResultCode.ShouldBe("LowConfidence");
 
-        // DocumentTypeCode 不应被写入，ReviewStatus 应为 PendingReview
+        // DocumentTypeCode/ConfidenceScore 不应被污染，ReviewStatus 应为 PendingReview
         doc.DocumentTypeCode.ShouldBeNull();
+        doc.ConfidenceScore.ShouldBe(0);
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
 
         // 不发布事件，不入队 Embedding
@@ -152,7 +153,7 @@ public class DocumentClassificationBackgroundJob_Tests
     }
 
     [Fact]
-    public async Task NullTypeCode_Completes_With_LowConfidence_ResultCode()
+    public async Task NullTypeCode_Marks_PendingReview()
     {
         var doc = CreateDocument("Unrecognized document.");
         SetupDocumentRepository(doc);
@@ -172,7 +173,7 @@ public class DocumentClassificationBackgroundJob_Tests
 
         var run = doc.GetLatestRun(PaperbasePipelines.Classification);
         run.ShouldNotBeNull();
-        run.ResultCode.ShouldBe("LowConfidence");
+        run.Status.ShouldBe(PipelineRunStatus.Succeeded);
         doc.DocumentTypeCode.ShouldBeNull();
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
     }
@@ -221,7 +222,7 @@ public class DocumentClassificationBackgroundJob_Tests
 
         var run = doc.GetLatestRun(PaperbasePipelines.Classification);
         run.ShouldNotBeNull();
-        run.ResultCode.ShouldBe("LowConfidence");
+        run.Status.ShouldBe(PipelineRunStatus.Succeeded);
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
 
         await _eventBus.DidNotReceive().PublishAsync(

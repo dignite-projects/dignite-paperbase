@@ -39,16 +39,14 @@ public class DocumentPipelineRunManager : DomainService
 
     public virtual Task CompleteAsync(
         Document document,
-        DocumentPipelineRun run,
-        string resultCode = "Ok")
+        DocumentPipelineRun run)
     {
-        run.MarkSucceeded(Clock.Now, resultCode);
+        run.MarkSucceeded(Clock.Now);
 
         document.PublishPipelineRunCompletedEvent(new DocumentPipelineRunCompletedEvent(
             document.Id,
             run.PipelineCode,
-            run.Status,
-            run.ResultCode));
+            run.Status));
 
         DeriveLifecycle(document);
 
@@ -58,16 +56,14 @@ public class DocumentPipelineRunManager : DomainService
     public virtual Task FailAsync(
         Document document,
         DocumentPipelineRun run,
-        string errorMessage,
-        string resultCode = "Error")
+        string errorMessage)
     {
-        run.MarkFailed(Clock.Now, errorMessage, resultCode);
+        run.MarkFailed(Clock.Now, errorMessage);
 
         document.PublishPipelineRunCompletedEvent(new DocumentPipelineRunCompletedEvent(
             document.Id,
             run.PipelineCode,
-            run.Status,
-            run.ResultCode));
+            run.Status));
 
         DeriveLifecycle(document);
 
@@ -85,7 +81,7 @@ public class DocumentPipelineRunManager : DomainService
     {
         document.SetSourceType(sourceType);
         document.SetExtractedText(extractedText);
-        return CompleteAsync(document, run, "OK");
+        return CompleteAsync(document, run);
     }
 
     /// <summary>
@@ -99,21 +95,25 @@ public class DocumentPipelineRunManager : DomainService
         string? reason = null)
     {
         document.SetClassificationResult(typeCode, confidenceScore, reason);
-        return CompleteAsync(document, run, "OK");
+        return CompleteAsync(document, run);
     }
 
     /// <summary>
-    /// 标记文档需要人工确认分类。
+    /// 分类置信度不足：完成 Run 并将文档标记为待人工审核。
+    /// 置信度信号由 <see cref="Document.ReviewStatus"/> = PendingReview 表达，不再记录在 Run 上。
     /// </summary>
-    public virtual Task MarkPendingReviewAsync(Document document, string? reason = null)
+    public virtual Task CompleteClassificationWithLowConfidenceAsync(
+        Document document,
+        DocumentPipelineRun run,
+        string? reason = null)
     {
         document.MarkPendingReview(reason);
-        return Task.CompletedTask;
+        return CompleteAsync(document, run);
     }
 
     /// <summary>
-    /// 人工确认文档类型：写入分类结果、标记已审核、完成 Run。
-    /// 置信度固定为 1.0，ResultCode 为 "ManualOverride"。
+    /// 人工确认文档类型：写入分类结果、标记已审核、完成 Run。置信度固定为 1.0。
+    /// 人工覆盖信号由 <see cref="Document.ReviewStatus"/> = Reviewed 表达。
     /// </summary>
     public virtual Task CompleteManualClassificationAsync(
         Document document,
@@ -122,22 +122,20 @@ public class DocumentPipelineRunManager : DomainService
     {
         document.SetClassificationResult(typeCode, 1.0, reason: null);
         document.MarkReviewed();
-        return CompleteAsync(document, run, "ManualOverride");
+        return CompleteAsync(document, run);
     }
 
     public virtual Task SkipAsync(
         Document document,
         DocumentPipelineRun run,
-        string reason,
-        string resultCode = "Skipped")
+        string reason)
     {
-        run.MarkSkipped(Clock.Now, reason, resultCode);
+        run.MarkSkipped(Clock.Now, reason);
 
         document.PublishPipelineRunCompletedEvent(new DocumentPipelineRunCompletedEvent(
             document.Id,
             run.PipelineCode,
-            run.Status,
-            run.ResultCode));
+            run.Status));
 
         DeriveLifecycle(document);
 

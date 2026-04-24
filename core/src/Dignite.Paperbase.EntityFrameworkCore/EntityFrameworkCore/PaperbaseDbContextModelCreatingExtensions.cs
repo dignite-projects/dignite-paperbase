@@ -57,8 +57,7 @@ public static class PaperbaseDbContextModelCreatingExtensions
             b.ConfigureByConvention();
 
             b.Property(x => x.PipelineCode).IsRequired().HasMaxLength(128);
-            b.Property(x => x.ResultCode).HasMaxLength(128);
-            b.Property(x => x.ErrorMessage).HasMaxLength(2048);
+            b.Property(x => x.StatusMessage).HasMaxLength(2048);
 
             // 联合索引：(DocumentId, PipelineCode, AttemptNumber DESC)
             b.HasIndex(x => new { x.DocumentId, x.PipelineCode, x.AttemptNumber });

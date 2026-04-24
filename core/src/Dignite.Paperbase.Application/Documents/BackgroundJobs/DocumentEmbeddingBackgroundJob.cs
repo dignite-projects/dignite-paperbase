@@ -47,7 +47,7 @@ public class DocumentEmbeddingBackgroundJob
         {
             if (string.IsNullOrWhiteSpace(document.ExtractedText))
             {
-                await _pipelineRunManager.SkipAsync(document, run, "No extracted text.", "NoText");
+                await _pipelineRunManager.SkipAsync(document, run, "No extracted text.");
                 await _documentRepository.UpdateAsync(document);
                 return;
             }
@@ -67,7 +67,7 @@ public class DocumentEmbeddingBackgroundJob
                     chunk.Vector));
             }
 
-            await _pipelineRunManager.CompleteAsync(document, run, "OK");
+            await _pipelineRunManager.CompleteAsync(document, run);
             await _documentRepository.UpdateAsync(document);
 
             await _backgroundJobManager.EnqueueAsync(

@@ -81,7 +81,7 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
         var latestRun = doc.GetLatestRun(PaperbasePipelines.RelationInference);
         latestRun.ShouldNotBeNull();
         latestRun.Status.ShouldBe(PipelineRunStatus.Skipped);
-        latestRun.ResultCode.ShouldBe("NoChunks");
+        latestRun.StatusMessage.ShouldBe("No chunks found.");
     }
 
     [Fact]
@@ -113,7 +113,11 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
         var latestRun = doc.GetLatestRun(PaperbasePipelines.RelationInference);
         latestRun.ShouldNotBeNull();
         latestRun.Status.ShouldBe(PipelineRunStatus.Succeeded);
-        latestRun.ResultCode.ShouldBe("NoCandidates");
+        // NoCandidates signal is expressed by absence of DocumentRelation records, not on the Run
+        await _relationRepository.DidNotReceive().InsertAsync(
+            Arg.Any<DocumentRelation>(),
+            Arg.Any<bool>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]

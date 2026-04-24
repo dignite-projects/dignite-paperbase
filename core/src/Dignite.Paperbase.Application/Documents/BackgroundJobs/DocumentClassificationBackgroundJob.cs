@@ -111,8 +111,8 @@ public class DocumentClassificationBackgroundJob
             }
         }
 
-        await _pipelineRunManager.CompleteAsync(document, run, "LowConfidence");
-        await _pipelineRunManager.MarkPendingReviewAsync(document, outcome.Reason);
+        await _pipelineRunManager.CompleteClassificationWithLowConfidenceAsync(
+            document, run, outcome.Reason);
     }
 
     private static bool IsAiProviderError(Exception ex)

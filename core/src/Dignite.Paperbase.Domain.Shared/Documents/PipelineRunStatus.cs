@@ -8,7 +8,7 @@ public enum PipelineRunStatus
     /// <summary>正在执行</summary>
     Running = 20,
 
-    /// <summary>成功完成（具体语义由 Run.ResultCode 表达）</summary>
+    /// <summary>成功完成</summary>
     Succeeded = 30,
 
     /// <summary>失败（重试上限内仍失败才最终进入此状态）</summary>

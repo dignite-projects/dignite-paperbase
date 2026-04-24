@@ -55,7 +55,7 @@ public class DocumentRelationInferenceBackgroundJob
             var sourceChunks = await _chunkRepository.GetListByDocumentIdAsync(document.Id);
             if (sourceChunks.Count == 0)
             {
-                await _pipelineRunManager.SkipAsync(document, run, "No chunks found.", "NoChunks");
+                await _pipelineRunManager.SkipAsync(document, run, "No chunks found.");
                 await _documentRepository.UpdateAsync(document);
                 return;
             }
@@ -73,7 +73,7 @@ public class DocumentRelationInferenceBackgroundJob
 
             if (candidateDocIds.Count == 0)
             {
-                await _pipelineRunManager.CompleteAsync(document, run, "NoCandidates");
+                await _pipelineRunManager.CompleteAsync(document, run);
                 await _documentRepository.UpdateAsync(document);
                 return;
             }
@@ -99,7 +99,7 @@ public class DocumentRelationInferenceBackgroundJob
 
             if (candidates.Count == 0)
             {
-                await _pipelineRunManager.CompleteAsync(document, run, "NoCandidates");
+                await _pipelineRunManager.CompleteAsync(document, run);
                 await _documentRepository.UpdateAsync(document);
                 return;
             }
@@ -119,7 +119,7 @@ public class DocumentRelationInferenceBackgroundJob
                     rel.Confidence));
             }
 
-            await _pipelineRunManager.CompleteAsync(document, run, "OK");
+            await _pipelineRunManager.CompleteAsync(document, run);
             await _documentRepository.UpdateAsync(document);
         }
         catch (Exception ex)

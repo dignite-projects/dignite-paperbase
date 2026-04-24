@@ -32,13 +32,10 @@ public class DocumentPipelineRun : Entity<Guid>, IMultiTenant
     public virtual DateTime? CompletedAt { get; private set; }
 
     /// <summary>
-    /// 流水线私有的结果码。Succeeded 时典型值："Ok"、"LowConfidence"、"ManualOverride"。
-    /// Failed 时典型值："Timeout"、"ProviderError"。
+    /// 状态描述。失败时为异常信息、跳过时为跳过原因；成功时通常为 null。
+    /// 仅用于诊断/审计展示，不承载业务语义（业务结果由相关聚合根字段表达）。
     /// </summary>
-    public virtual string? ResultCode { get; private set; }
-
-    /// <summary>失败时的错误信息（ResultCode 之外的可读描述）</summary>
-    public virtual string? ErrorMessage { get; private set; }
+    public virtual string? StatusMessage { get; private set; }
 
     protected DocumentPipelineRun() { }
 
@@ -64,26 +61,23 @@ public class DocumentPipelineRun : Entity<Guid>, IMultiTenant
         StartedAt = now;
     }
 
-    internal void MarkSucceeded(DateTime now, string resultCode = "Ok")
+    internal void MarkSucceeded(DateTime now)
     {
         Status = PipelineRunStatus.Succeeded;
-        ResultCode = resultCode;
         CompletedAt = now;
     }
 
-    internal void MarkFailed(DateTime now, string errorMessage, string resultCode = "Error")
+    internal void MarkFailed(DateTime now, string statusMessage)
     {
         Status = PipelineRunStatus.Failed;
-        ResultCode = resultCode;
-        ErrorMessage = errorMessage;
+        StatusMessage = statusMessage;
         CompletedAt = now;
     }
 
-    internal void MarkSkipped(DateTime now, string reason, string resultCode = "Skipped")
+    internal void MarkSkipped(DateTime now, string statusMessage)
     {
         Status = PipelineRunStatus.Skipped;
-        ResultCode = resultCode;
-        ErrorMessage = reason;
+        StatusMessage = statusMessage;
         CompletedAt = now;
     }
 }

@@ -52,12 +52,12 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
         var textRun = await _manager.StartAsync(doc, PaperbasePipelines.TextExtraction);
         doc.LifecycleStatus.ShouldBe(DocumentLifecycleStatus.Processing);
 
-        await _manager.CompleteAsync(doc, textRun, resultCode: "Ok");
+        await _manager.CompleteAsync(doc, textRun);
         doc.LifecycleStatus.ShouldBe(DocumentLifecycleStatus.Processing); // Classification not done
 
         // Classification
         var classRun = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
-        await _manager.CompleteAsync(doc, classRun, resultCode: "Ok");
+        await _manager.CompleteAsync(doc, classRun);
 
         doc.LifecycleStatus.ShouldBe(DocumentLifecycleStatus.Ready);
     }
@@ -100,7 +100,7 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
         // While running, LifecycleStatus goes back to Processing (latest is Running)
         doc.LifecycleStatus.ShouldBe(DocumentLifecycleStatus.Processing);
 
-        await _manager.CompleteAsync(doc, run2, resultCode: "Ok");
+        await _manager.CompleteAsync(doc, run2);
 
         // Latest run for TextExtraction is now Succeeded; Classification still missing → Processing
         doc.LifecycleStatus.ShouldBe(DocumentLifecycleStatus.Processing);
@@ -161,23 +161,29 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
     }
 
     // ────────────────────────────────────────────────────────────────────────────
-    // Scenario 6: MarkPendingReviewAsync sets ReviewStatus to PendingReview
+    // Scenario 6: CompleteClassificationWithLowConfidenceAsync completes Run and
+    //             sets ReviewStatus to PendingReview (low-confidence signal is on
+    //             Document.ReviewStatus, not on the Run)
     // ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task MarkPendingReview_Sets_ReviewStatus_To_PendingReview()
+    public async Task CompleteClassificationWithLowConfidence_Sets_ReviewStatus_And_Completes_Run()
     {
         var doc = CreateDocument();
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.None);
 
-        await _manager.MarkPendingReviewAsync(doc);
+        var run = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
+        await _manager.CompleteClassificationWithLowConfidenceAsync(doc, run, "AI confidence too low");
 
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
+
+        var latestRun = doc.GetLatestRun(PaperbasePipelines.Classification);
+        latestRun!.Status.ShouldBe(PipelineRunStatus.Succeeded);
     }
 
     // ────────────────────────────────────────────────────────────────────────────
     // Scenario 7: CompleteManualClassificationAsync writes TypeCode, marks Reviewed,
-    //             sets Run to Succeeded with ResultCode "ManualOverride"
+    //             completes Run (manual-override signal is on Document.ReviewStatus)
     // ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -187,8 +193,7 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
 
         // 先模拟低置信度进入待审核
         var run1 = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
-        await _manager.CompleteAsync(doc, run1, "LowConfidence");
-        await _manager.MarkPendingReviewAsync(doc);
+        await _manager.CompleteClassificationWithLowConfidenceAsync(doc, run1);
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
 
         // 人工确认
@@ -201,7 +206,6 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
 
         var latestRun = doc.GetLatestRun(PaperbasePipelines.Classification);
         latestRun!.Status.ShouldBe(PipelineRunStatus.Succeeded);
-        latestRun.ResultCode.ShouldBe("ManualOverride");
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -215,8 +219,7 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
 
         // 第一次低置信度 → PendingReview
         var run1 = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
-        await _manager.CompleteAsync(doc, run1, "LowConfidence");
-        await _manager.MarkPendingReviewAsync(doc);
+        await _manager.CompleteClassificationWithLowConfidenceAsync(doc, run1);
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
 
         // 重试自动分类成功
@@ -225,5 +228,6 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
 
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.None);
         doc.DocumentTypeCode.ShouldBe("contract.general");
+        doc.ConfidenceScore.ShouldBe(0.95);
     }
 }

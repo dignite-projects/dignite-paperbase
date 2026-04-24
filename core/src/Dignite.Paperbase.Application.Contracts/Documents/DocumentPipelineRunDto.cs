@@ -12,6 +12,5 @@ public class DocumentPipelineRunDto
     public int AttemptNumber { get; set; }
     public DateTime StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
-    public string? ResultCode { get; set; }
-    public string? ErrorMessage { get; set; }
+    public string? StatusMessage { get; set; }
 }
