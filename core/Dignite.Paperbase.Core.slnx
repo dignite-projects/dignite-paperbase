@@ -23,6 +23,5 @@
         <Project Path="test/Dignite.Paperbase.EntityFrameworkCore.Tests/Dignite.Paperbase.EntityFrameworkCore.Tests.csproj" />
         <Project Path="test/Dignite.Paperbase.Domain.Tests/Dignite.Paperbase.Domain.Tests.csproj" />
         <Project Path="test/Dignite.Paperbase.Application.Tests/Dignite.Paperbase.Application.Tests.csproj" />
-        <Project Path="test/Dignite.Paperbase.AI.Evaluation/Dignite.Paperbase.AI.Evaluation.csproj" />
     </Folder>
 </Solution>
