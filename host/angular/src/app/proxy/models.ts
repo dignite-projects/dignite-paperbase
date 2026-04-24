@@ -36,7 +36,7 @@ export interface DocumentPipelineRunDto {
   status: string;
   startedAt: string;
   completedAt?: string;
-  resultCode?: string;
+  statusMessage?: string;
   metadata?: string;
 }
 
