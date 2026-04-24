@@ -1,17 +1,17 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.Identity;
 
-namespace Dignite.Paperbase.HealthChecks;
+namespace Dignite.Paperbase.Host.HealthChecks;
 
-public class PaperbaseDatabaseCheck : IHealthCheck, ITransientDependency
+public class PaperbaseHostDatabaseCheck : IHealthCheck, ITransientDependency
 {
     protected readonly IIdentityRoleRepository IdentityRoleRepository;
 
-    public PaperbaseDatabaseCheck(IIdentityRoleRepository identityRoleRepository)
+    public PaperbaseHostDatabaseCheck(IIdentityRoleRepository identityRoleRepository)
     {
         IdentityRoleRepository = identityRoleRepository;
     }

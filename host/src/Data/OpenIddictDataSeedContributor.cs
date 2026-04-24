@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
@@ -10,7 +10,7 @@ using Volo.Abp.OpenIddict.Applications;
 using Volo.Abp.OpenIddict.Scopes;
 using Volo.Abp.Uow;
 
-namespace Dignite.Paperbase.Data;
+namespace Dignite.Paperbase.Host.Data;
 
 /* Creates initial data that is needed to property run the application
  * and make client-to-server communication possible.

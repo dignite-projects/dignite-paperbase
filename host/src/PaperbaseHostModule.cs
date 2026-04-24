@@ -1,8 +1,8 @@
 using Dignite.Paperbase.Contracts;
 using Dignite.Paperbase.Contracts.EntityFrameworkCore;
-using Dignite.Paperbase.Data;
+using Dignite.Paperbase.Host.Data;
 using Dignite.Paperbase.EntityFrameworkCore;
-using Dignite.Paperbase.HealthChecks;
+using Dignite.Paperbase.Host.HealthChecks;
 using Dignite.Paperbase.Localization;
 using Dignite.Paperbase.Ocr.AzureDocumentIntelligence;
 using Dignite.Paperbase.TextExtraction;
@@ -61,7 +61,7 @@ using Volo.Abp.Timing;
 using Volo.Abp.UI.Navigation.Urls;
 using Volo.Abp.VirtualFileSystem;
 
-namespace Dignite.Paperbase;
+namespace Dignite.Paperbase.Host;
 
 [DependsOn(
     // ABP Framework packages
@@ -124,7 +124,7 @@ namespace Dignite.Paperbase;
     typeof(ContractsApplicationModule),
     typeof(ContractsEntityFrameworkCoreModule)
 )]
-public class PaperbaseModule : AbpModule
+public class PaperbaseHostModule : AbpModule
 {
     /* Single point to enable/disable multi-tenancy */
     public const bool IsMultiTenant = false;
@@ -164,9 +164,9 @@ public class PaperbaseModule : AbpModule
             });
         }
 
-        PaperbaseGlobalFeatureConfigurator.Configure();
-        PaperbaseModuleExtensionConfigurator.Configure();
-        PaperbaseEfCoreEntityExtensionMappings.Configure();
+        PaperbaseHostGlobalFeatureConfigurator.Configure();
+        PaperbaseHostModuleExtensionConfigurator.Configure();
+        PaperbaseHostEfCoreEntityExtensionMappings.Configure();
     }
 
     public override void ConfigureServices(ServiceConfigurationContext context)
@@ -303,7 +303,7 @@ public class PaperbaseModule : AbpModule
     {
         Configure<AbpAspNetCoreMvcOptions>(options =>
         {
-            options.ConventionalControllers.Create(typeof(PaperbaseModule).Assembly);
+            options.ConventionalControllers.Create(typeof(PaperbaseHostModule).Assembly);
         });
     }
 
@@ -354,18 +354,18 @@ public class PaperbaseModule : AbpModule
     {
         Configure<AbpVirtualFileSystemOptions>(options =>
         {
-            options.FileSets.AddEmbedded<PaperbaseModule>();
+            options.FileSets.AddEmbedded<PaperbaseHostModule>();
             if (hostingEnvironment.IsDevelopment())
             {
                 /* Using physical files in development, so we don't need to recompile on changes */
-                options.FileSets.ReplaceEmbeddedByPhysical<PaperbaseModule>(hostingEnvironment.ContentRootPath);
+                options.FileSets.ReplaceEmbeddedByPhysical<PaperbaseHostModule>(hostingEnvironment.ContentRootPath);
             }
         });
     }
 
     private void ConfigureEfCore(ServiceConfigurationContext context)
     {
-        context.Services.AddAbpDbContext<Data.PaperbaseDbContext>(options =>
+        context.Services.AddAbpDbContext<Data.PaperbaseHostDbContext>(options =>
         {
             options.AddDefaultRepositories(includeAllEntities: true);
         });

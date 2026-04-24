@@ -1,10 +1,10 @@
 using System;
-using Dignite.Paperbase.Data;
+using Dignite.Paperbase.Host.Data;
 using Serilog;
 using Serilog.Events;
 using Volo.Abp.Data;
 
-namespace Dignite.Paperbase;
+namespace Dignite.Paperbase.Host;
 
 public class Program
 {
@@ -41,13 +41,13 @@ public class Program
             {
                 builder.Services.AddDataMigrationEnvironment();
             }
-            await builder.AddApplicationAsync<PaperbaseModule>();
+            await builder.AddApplicationAsync<PaperbaseHostModule>();
             var app = builder.Build();
             await app.InitializeApplicationAsync();
 
             if (IsMigrateDatabase(args))
             {
-                await app.Services.GetRequiredService<PaperbaseDbMigrationService>().MigrateAsync();
+                await app.Services.GetRequiredService<PaperbaseHostDbMigrationService>().MigrateAsync();
                 var previous = Console.ForegroundColor;
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine("Migration completed.");
@@ -55,7 +55,7 @@ public class Program
                 return 0;
             }
 
-            Log.Information("Starting Dignite.Paperbase.");
+            Log.Information("Starting Dignite.Paperbase.Host.");
             await app.RunAsync();
             return 0;
         }
@@ -66,7 +66,7 @@ public class Program
                 throw;
             }
 
-            Log.Fatal(ex, "Dignite.Paperbase terminated unexpectedly!");
+            Log.Fatal(ex, "Dignite.Paperbase.Host terminated unexpectedly!");
             return 1;
         }
         finally

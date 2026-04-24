@@ -18,8 +18,8 @@ public class PaperbaseOcrOptions
         return this;
     }
 
-    internal void SetProviderConfigure(Delegate? action) => ProviderConfigureAction = action;
+    public void SetProviderConfigure(Delegate? action) => ProviderConfigureAction = action;
 
-    internal TAction? GetProviderConfigure<TAction>() where TAction : Delegate
+    public TAction? GetProviderConfigure<TAction>() where TAction : Delegate
         => ProviderConfigureAction as TAction;
 }

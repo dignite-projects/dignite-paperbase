@@ -1,3 +1,4 @@
+using System;
 using Dignite.Paperbase.Ocr;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;

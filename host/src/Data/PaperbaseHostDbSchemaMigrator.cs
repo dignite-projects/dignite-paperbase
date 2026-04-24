@@ -2,13 +2,13 @@ using Dignite.Paperbase.Contracts.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp.DependencyInjection;
 
-namespace Dignite.Paperbase.Data;
+namespace Dignite.Paperbase.Host.Data;
 
-public class PaperbaseDbSchemaMigrator : ITransientDependency
+public class PaperbaseHostDbSchemaMigrator : ITransientDependency
 {
     private readonly IServiceProvider _serviceProvider;
 
-    public PaperbaseDbSchemaMigrator(
+    public PaperbaseHostDbSchemaMigrator(
         IServiceProvider serviceProvider)
     {
         _serviceProvider = serviceProvider;
@@ -22,7 +22,7 @@ public class PaperbaseDbSchemaMigrator : ITransientDependency
          */
 
         await _serviceProvider
-            .GetRequiredService<PaperbaseDbContext>()
+            .GetRequiredService<PaperbaseHostDbContext>()
             .Database
             .MigrateAsync();
 

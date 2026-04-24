@@ -1,12 +1,12 @@
 using Volo.Abp.Application.Services;
 using Dignite.Paperbase.Localization;
 
-namespace Dignite.Paperbase.Services;
+namespace Dignite.Paperbase.Host.Services;
 
 /* Inherit your application services from this class. */
-public abstract class PaperbaseAppService : ApplicationService
+public abstract class PaperbaseHostAppService : ApplicationService
 {
-    protected PaperbaseAppService()
+    protected PaperbaseHostAppService()
     {
         LocalizationResource = typeof(PaperbaseResource);
     }

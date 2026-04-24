@@ -46,6 +46,6 @@
     "sampleCrudPage": "false",
     "selectedLanguages": ["English", "Chinese (Simplified)", "Chinese (Traditional)", "日语", ],
     "defaultLanguage": "English",
-    "createCommand": "abp new Dignite.Paperbase -t app-nolayers --ui-framework angular --mobile  --database-provider ef --database-management-system sqlserver --theme leptonx-lite --skip-migration  --skip-migrator  --no-tests --without-cms-kit --dont-run-install-libs --dont-run-bundling --no-multi-tenancy --no-social-logins -no-gdpr -no-openiddict-admin-ui -no-audit-logging -no-file-management -no-language-management -no-text-template-management"
+    "createCommand": "abp new Dignite.Paperbase.Host -t app-nolayers --ui-framework angular --mobile  --database-provider ef --database-management-system sqlserver --theme leptonx-lite --skip-migration  --skip-migrator  --no-tests --without-cms-kit --dont-run-install-libs --dont-run-bundling --no-multi-tenancy --no-social-logins -no-gdpr -no-openiddict-admin-ui -no-audit-logging -no-file-management -no-language-management -no-text-template-management"
   }
 }

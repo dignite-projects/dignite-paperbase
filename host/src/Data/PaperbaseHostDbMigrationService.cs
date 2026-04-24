@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging.Abstractions;
 using Volo.Abp.Data;
@@ -6,26 +6,26 @@ using Volo.Abp.DependencyInjection;
 using Volo.Abp.Identity;
 using Volo.Abp.MultiTenancy;
 
-namespace Dignite.Paperbase.Data;
+namespace Dignite.Paperbase.Host.Data;
 
-public class PaperbaseDbMigrationService : ITransientDependency
+public class PaperbaseHostDbMigrationService : ITransientDependency
 {
-    public ILogger<PaperbaseDbMigrationService> Logger { get; set; }
+    public ILogger<PaperbaseHostDbMigrationService> Logger { get; set; }
 
     private readonly IDataSeeder _dataSeeder;
-    private readonly PaperbaseDbSchemaMigrator _dbSchemaMigrator;
+    private readonly PaperbaseHostDbSchemaMigrator _dbSchemaMigrator;
     private readonly ICurrentTenant _currentTenant;
 
-    public PaperbaseDbMigrationService(
+    public PaperbaseHostDbMigrationService(
         IDataSeeder dataSeeder,
-        PaperbaseDbSchemaMigrator dbSchemaMigrator,
+        PaperbaseHostDbSchemaMigrator dbSchemaMigrator,
         ICurrentTenant currentTenant)
     {
         _dataSeeder = dataSeeder;
         _dbSchemaMigrator = dbSchemaMigrator;
         _currentTenant = currentTenant;
 
-        Logger = NullLogger<PaperbaseDbMigrationService>.Instance;
+        Logger = NullLogger<PaperbaseHostDbMigrationService>.Instance;
     }
 
     public async Task MigrateAsync()
@@ -54,8 +54,8 @@ public class PaperbaseDbMigrationService : ITransientDependency
     private async Task SeedDataAsync()
     {
         await _dataSeeder.SeedAsync(new DataSeedContext()
-            .WithProperty(IdentityDataSeedContributor.AdminEmailPropertyName, PaperbaseConsts.AdminEmailDefaultValue)
-            .WithProperty(IdentityDataSeedContributor.AdminPasswordPropertyName, PaperbaseConsts.AdminPasswordDefaultValue)
+            .WithProperty(IdentityDataSeedContributor.AdminEmailPropertyName, PaperbaseHostConsts.AdminEmailDefaultValue)
+            .WithProperty(IdentityDataSeedContributor.AdminPasswordPropertyName, PaperbaseHostConsts.AdminPasswordDefaultValue)
         );
     }
 
@@ -145,7 +145,7 @@ public class PaperbaseDbMigrationService : ITransientDependency
             throw new Exception("Solution folder not found!");
         }
 
-        return Path.Combine(slnDirectoryPath, "Dignite.Paperbase");
+        return Path.Combine(slnDirectoryPath, "src");
     }
 
     private string GetSolutionDirectoryPath()

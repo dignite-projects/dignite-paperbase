@@ -1,4 +1,4 @@
-﻿{
+{
   "iisSettings": {
     "windowsAuthentication": false,
     "anonymousAuthentication": true,
@@ -15,7 +15,7 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Dignite.Paperbase": {
+    "Dignite.Paperbase.Host": {
       "commandName": "Project",
       "launchBrowser": true,
       "applicationUrl": "https://localhost:44348",

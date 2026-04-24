@@ -1,12 +1,12 @@
 using Riok.Mapperly.Abstractions;
 using Volo.Abp.Mapperly;
 
-namespace Dignite.Paperbase.ObjectMapping;
+namespace Dignite.Paperbase.Host.ObjectMapping;
 
 /*
  * You can add your own mappings here.
  * [Mapper(RequiredMappingStrategy = RequiredMappingStrategy.Target)]
- * public partial class PaperbaseMappers : MapperBase<BookDto, CreateUpdateBookDto>
+ * public partial class PaperbaseHostMappers : MapperBase<BookDto, CreateUpdateBookDto>
  * {
  *    public override partial CreateUpdateBookDto Map(BookDto source);
  * 

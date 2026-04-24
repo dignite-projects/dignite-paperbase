@@ -1,7 +1,7 @@
-﻿using HealthChecks.UI.Client;
+using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 
-namespace Dignite.Paperbase.HealthChecks;
+namespace Dignite.Paperbase.Host.HealthChecks;
 
 public static class HealthChecksBuilderExtensions
 {
@@ -9,7 +9,7 @@ public static class HealthChecksBuilderExtensions
     {
         // Add your health checks here
         var healthChecksBuilder = services.AddHealthChecks();
-        healthChecksBuilder.AddCheck<PaperbaseDatabaseCheck>("Paperbase DbContext Check", tags: new string[] { "database" });
+        healthChecksBuilder.AddCheck<PaperbaseHostDatabaseCheck>("Paperbase DbContext Check", tags: new string[] { "database" });
 
         var configuration = services.GetConfiguration();
         var healthCheckUrl = configuration["App:HealthCheckUrl"];

@@ -12,15 +12,15 @@ using Volo.Abp.OpenIddict.EntityFrameworkCore;
 using Volo.Abp.PermissionManagement.EntityFrameworkCore;
 using Volo.Abp.SettingManagement.EntityFrameworkCore;
 
-namespace Dignite.Paperbase.Data;
+namespace Dignite.Paperbase.Host.Data;
 
-public class PaperbaseDbContext : AbpDbContext<PaperbaseDbContext>
+public class PaperbaseHostDbContext : AbpDbContext<PaperbaseHostDbContext>
 {
     
     public const string DbTablePrefix = "App";
     public const string DbSchema = null;
 
-    public PaperbaseDbContext(DbContextOptions<PaperbaseDbContext> options)
+    public PaperbaseHostDbContext(DbContextOptions<PaperbaseHostDbContext> options)
         : base(options)
     {
     }

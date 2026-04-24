@@ -1,24 +1,24 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Npgsql.EntityFrameworkCore.PostgreSQL;
 
-namespace Dignite.Paperbase.Data;
+namespace Dignite.Paperbase.Host.Data;
 
-public class PaperbaseDbContextFactory : IDesignTimeDbContextFactory<PaperbaseDbContext>
+public class PaperbaseHostDbContextFactory : IDesignTimeDbContextFactory<PaperbaseHostDbContext>
 {
-    public PaperbaseDbContext CreateDbContext(string[] args)
+    public PaperbaseHostDbContext CreateDbContext(string[] args)
     {
-        PaperbaseGlobalFeatureConfigurator.Configure();
-        PaperbaseModuleExtensionConfigurator.Configure();
+        PaperbaseHostGlobalFeatureConfigurator.Configure();
+        PaperbaseHostModuleExtensionConfigurator.Configure();
 
-        PaperbaseEfCoreEntityExtensionMappings.Configure();
+        PaperbaseHostEfCoreEntityExtensionMappings.Configure();
         var configuration = BuildConfiguration();
 
-        var builder = new DbContextOptionsBuilder<PaperbaseDbContext>()
+        var builder = new DbContextOptionsBuilder<PaperbaseHostDbContext>()
             .UseNpgsql(configuration.GetConnectionString("Default"),
                 o => o.UseVector());
 
-        return new PaperbaseDbContext(builder.Options);
+        return new PaperbaseHostDbContext(builder.Options);
     }
 
     private static IConfigurationRoot BuildConfiguration()

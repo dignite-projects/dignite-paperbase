@@ -3,9 +3,9 @@ using Volo.Abp.Identity;
 using Volo.Abp.ObjectExtending;
 using Volo.Abp.Threading;
 
-namespace Dignite.Paperbase;
+namespace Dignite.Paperbase.Host;
 
-public static class PaperbaseModuleExtensionConfigurator
+public static class PaperbaseHostModuleExtensionConfigurator
 {
     private static readonly OneTimeRunner OneTimeRunner = new OneTimeRunner();
 

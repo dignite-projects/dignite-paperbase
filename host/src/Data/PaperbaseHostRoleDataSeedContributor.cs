@@ -6,15 +6,15 @@ using Volo.Abp.DependencyInjection;
 using Volo.Abp.Identity;
 using Volo.Abp.PermissionManagement;
 
-namespace Dignite.Paperbase.Data;
+namespace Dignite.Paperbase.Host.Data;
 
-public class PaperbaseRoleDataSeedContributor : IDataSeedContributor, ITransientDependency
+public class PaperbaseHostRoleDataSeedContributor : IDataSeedContributor, ITransientDependency
 {
     private readonly IIdentityRoleRepository _roleRepository;
     private readonly IdentityRoleManager _roleManager;
     private readonly IPermissionManager _permissionManager;
 
-    public PaperbaseRoleDataSeedContributor(
+    public PaperbaseHostRoleDataSeedContributor(
         IIdentityRoleRepository roleRepository,
         IdentityRoleManager roleManager,
         IPermissionManager permissionManager)
