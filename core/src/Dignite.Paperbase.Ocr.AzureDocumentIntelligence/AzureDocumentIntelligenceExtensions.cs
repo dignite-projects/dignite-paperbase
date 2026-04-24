@@ -14,6 +14,7 @@ public static class AzureDocumentIntelligenceExtensions
         Action<AzureDocumentIntelligenceOptions>? configure = null)
     {
         options.UseProvider<AzureDocumentIntelligenceOcrProvider>();
+        options.SetProviderConfigure(configure);
         return options;
     }
 }

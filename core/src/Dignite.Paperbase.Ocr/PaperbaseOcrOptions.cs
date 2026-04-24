@@ -10,9 +10,16 @@ public class PaperbaseOcrOptions
 
     internal Type? OcrProviderType { get; private set; }
 
+    internal Delegate? ProviderConfigureAction { get; private set; }
+
     public PaperbaseOcrOptions UseProvider<T>() where T : IOcrProvider
     {
         OcrProviderType = typeof(T);
         return this;
     }
+
+    internal void SetProviderConfigure(Delegate? action) => ProviderConfigureAction = action;
+
+    internal TAction? GetProviderConfigure<TAction>() where TAction : Delegate
+        => ProviderConfigureAction as TAction;
 }

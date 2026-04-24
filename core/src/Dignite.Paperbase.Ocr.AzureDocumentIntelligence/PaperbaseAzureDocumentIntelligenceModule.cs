@@ -1,5 +1,6 @@
 using Dignite.Paperbase.Ocr;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Volo.Abp.Modularity;
 
 namespace Dignite.Paperbase.Ocr.AzureDocumentIntelligence;
@@ -12,5 +13,14 @@ public class PaperbaseAzureDocumentIntelligenceModule : AbpModule
         var configuration = context.Services.GetConfiguration();
         context.Services.Configure<AzureDocumentIntelligenceOptions>(
             configuration.GetSection("AzureDocumentIntelligence"));
+
+        context.Services
+            .AddOptions<AzureDocumentIntelligenceOptions>()
+            .PostConfigure<IOptions<PaperbaseOcrOptions>>((azureOpts, ocrOpts) =>
+            {
+                ocrOpts.Value
+                    .GetProviderConfigure<Action<AzureDocumentIntelligenceOptions>>()
+                    ?.Invoke(azureOpts);
+            });
     }
 }

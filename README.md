@@ -11,7 +11,7 @@ dignite-paperbase/
 ├── host/       # Host application for development and deployment
 │   ├── src/    # ASP.NET Core API backend
 │   └── angular/# Angular SPA frontend
-└── docs/       # Project documentation
+└── docs/       # Developer documentation and design documents
 ```
 
 ## Pre-requirements
@@ -146,7 +146,7 @@ cd host/etc/docker
 
 ## Resources
 
-* [Project Documentation](./docs/)
+* [Configuration Guide](./docs/configuration.md)
 * [Angular Application](./host/angular/README.md)
 * [ABP Framework Documentation](https://abp.io/docs/latest)
 * [Application (Single Layer) Startup Template](https://abp.io/docs/latest/solution-templates/application-single-layer)
