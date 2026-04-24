@@ -1,13 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Volo.Abp.DependencyInjection;
 
 namespace Dignite.Paperbase.Documents.AI.Workflows;
@@ -28,14 +28,18 @@ public class DocumentRelationInferenceWorkflow : ITransientDependency
         "Return a JSON array. Each item must have: targetDocumentId (string), relationType (string), confidence (0.0-1.0). " +
         "Only include pairs with confidence >= 0.5. Return [] if none qualify.";
 
-    private readonly IChatClient _chatClient;
+    private readonly ChatClientAgent _agent;
+    private readonly PaperbaseAIOptions _options;
 
     public ILogger<DocumentRelationInferenceWorkflow> Logger { get; set; }
         = NullLogger<DocumentRelationInferenceWorkflow>.Instance;
 
-    public DocumentRelationInferenceWorkflow(IChatClient chatClient)
+    public DocumentRelationInferenceWorkflow(
+        IChatClient chatClient,
+        IOptions<PaperbaseAIOptions> options)
     {
-        _chatClient = chatClient;
+        _options = options.Value;
+        _agent = new ChatClientAgent(chatClient, instructions: SystemInstructions);
     }
 
     public virtual async Task<IReadOnlyList<InferredDocumentRelation>> RunAsync(
@@ -49,48 +53,31 @@ public class DocumentRelationInferenceWorkflow : ITransientDependency
 
         var userMessage = BuildUserMessage(sourceText, candidates);
 
-        var agent = new ChatClientAgent(
-            _chatClient,
-            instructions: SystemInstructions);
-
-        var run = await agent.RunAsync(
+        var response = await _agent.RunAsync<List<RelationItem>>(
             userMessage,
             session: null,
-            new ChatClientAgentRunOptions(new ChatOptions
-            {
-                ResponseFormat = ChatResponseFormat.Json
-            }),
+            serializerOptions: null,
+            options: null,
             cancellationToken);
 
         var results = new List<InferredDocumentRelation>();
-        try
-        {
-            var items = JsonSerializer.Deserialize<List<RelationItem>>(
-                run.Text,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        var items = response.Result;
 
-            if (items != null)
+        if (items != null)
+        {
+            foreach (var item in items)
             {
-                foreach (var item in items)
+                if (Guid.TryParse(item.TargetDocumentId, out var targetId)
+                    && !string.IsNullOrEmpty(item.RelationType))
                 {
-                    if (Guid.TryParse(item.TargetDocumentId, out var targetId)
-                        && !string.IsNullOrEmpty(item.RelationType))
+                    results.Add(new InferredDocumentRelation
                     {
-                        results.Add(new InferredDocumentRelation
-                        {
-                            TargetDocumentId = targetId,
-                            RelationType = item.RelationType,
-                            Confidence = item.Confidence
-                        });
-                    }
+                        TargetDocumentId = targetId,
+                        RelationType = item.RelationType,
+                        Confidence = item.Confidence
+                    });
                 }
             }
-        }
-        catch (JsonException ex)
-        {
-            Logger.LogWarning(ex,
-                "Failed to parse relation inference response for document {DocumentId}.",
-                sourceDocumentId);
         }
 
         return results;
@@ -102,7 +89,9 @@ public class DocumentRelationInferenceWorkflow : ITransientDependency
     {
         var sb = new StringBuilder();
         sb.AppendLine("Source document excerpt:");
-        var truncated = sourceText.Length > 600 ? sourceText[..600] + "..." : sourceText;
+        var truncated = sourceText.Length > _options.MaxTextLengthPerExtraction
+            ? sourceText[.._options.MaxTextLengthPerExtraction] + "..."
+            : sourceText;
         sb.AppendLine(truncated);
         sb.AppendLine();
         sb.AppendLine("Candidate documents:");

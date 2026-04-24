@@ -7,7 +7,7 @@ using Volo.Abp.DependencyInjection;
 namespace Dignite.Paperbase.Documents.AI.Workflows;
 
 /// <summary>
-/// 文档向量化 Workflow：分块 → 调用 IEmbeddingGenerator 生成向量。
+/// 文档向量化 Workflow：分块 → 批量调用 IEmbeddingGenerator 生成向量。
 /// </summary>
 public class DocumentEmbeddingWorkflow : ITransientDependency
 {
@@ -27,18 +27,20 @@ public class DocumentEmbeddingWorkflow : ITransientDependency
         CancellationToken cancellationToken = default)
     {
         var chunks = _chunker.Chunk(extractedText);
-        var results = new List<DocumentEmbeddingChunk>(chunks.Count);
+        if (chunks.Count == 0)
+            return [];
 
+        var allEmbeddings = await _embeddingGenerator.GenerateAsync(
+            chunks, cancellationToken: cancellationToken);
+
+        var results = new List<DocumentEmbeddingChunk>(chunks.Count);
         for (var i = 0; i < chunks.Count; i++)
         {
-            var embeddings = await _embeddingGenerator.GenerateAsync(
-                [chunks[i]], cancellationToken: cancellationToken);
-
             results.Add(new DocumentEmbeddingChunk
             {
                 ChunkIndex = i,
                 ChunkText = chunks[i],
-                Vector = embeddings[0].Vector.ToArray()
+                Vector = allEmbeddings[i].Vector.ToArray()
             });
         }
 

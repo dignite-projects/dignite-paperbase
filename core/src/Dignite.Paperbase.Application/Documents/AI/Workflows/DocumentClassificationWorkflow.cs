@@ -1,7 +1,5 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Documents;
@@ -18,19 +16,19 @@ namespace Dignite.Paperbase.Documents.AI.Workflows;
 public class DocumentClassificationWorkflow : ITransientDependency
 {
     private const string SystemInstructions =
-        "あなたは文書分類の専門家です。" +
-        "文書テキストを分析し、最も適合する文書タイプをJSONで回答してください。" +
-        "確信が持てない場合は confidence を低く設定し、typeCode は null にしてください。";
+        "You are a document classification expert. " +
+        "Analyze the document text and determine the best matching document type from the provided list. " +
+        "If you are not confident, set confidence low and typeCode to null.";
 
-    private readonly IChatClient _chatClient;
+    private readonly ChatClientAgent _agent;
     private readonly PaperbaseAIOptions _options;
 
     public DocumentClassificationWorkflow(
         IChatClient chatClient,
         IOptions<PaperbaseAIOptions> options)
     {
-        _chatClient = chatClient;
         _options = options.Value;
+        _agent = new ChatClientAgent(chatClient, instructions: SystemInstructions);
     }
 
     public virtual async Task<DocumentClassificationOutcome> RunAsync(
@@ -53,9 +51,8 @@ public class DocumentClassificationWorkflow : ITransientDependency
             .Take(_options.MaxDocumentTypesInClassificationPrompt)
             .ToList();
 
-        var maxTextLength = _options.MaxDocumentTypesInClassificationPrompt * 40;
-        var truncatedText = extractedText.Length > maxTextLength
-            ? extractedText[..maxTextLength]
+        var truncatedText = extractedText.Length > _options.MaxTextLengthPerExtraction
+            ? extractedText[.._options.MaxTextLengthPerExtraction]
             : extractedText;
 
         var typeDescriptions = trimmedTypes.Select(t =>
@@ -66,47 +63,33 @@ public class DocumentClassificationWorkflow : ITransientDependency
                 : string.Empty));
 
         var userMessage = $$"""
-                ## 登録済み文書タイプ一覧
+                ## Registered Document Types
                 {{string.Join("\n", typeDescriptions)}}
 
-                ## 分類対象文書（先頭{{maxTextLength}}文字）
+                ## Document Text (first {{_options.MaxTextLengthPerExtraction}} characters)
                 {{truncatedText}}
 
-                ## 回答形式（JSON のみ、説明不要）
+                ## Response Format (JSON only, no explanation)
                 {
-                  "typeCode": "最も適合するTypeCode、該当なしの場合は null",
-                  "confidence": 0.0から1.0の数値,
-                  "reason": "判定根拠を一文で",
+                  "typeCode": "best matching TypeCode, or null if none",
+                  "confidence": <number between 0.0 and 1.0>,
+                  "reason": "one sentence explaining the decision",
                   "candidates": [
-                    {"typeCode": "候補TypeCode", "confidence": 0.0から1.0}
+                    {"typeCode": "TypeCode", "confidence": <number>}
                   ]
                 }
+
+                Respond in: {{_options.DefaultLanguage}}
                 """;
 
-        var agent = new ChatClientAgent(
-            _chatClient,
-            instructions: SystemInstructions);
-
-        var run = await agent.RunAsync(
+        var response = await _agent.RunAsync<ClassificationResponse>(
             userMessage,
             session: null,
-            new ChatClientAgentRunOptions(new ChatOptions
-            {
-                ResponseFormat = ChatResponseFormat.Json
-            }),
+            serializerOptions: null,
+            options: null,
             cancellationToken);
 
-        ClassificationResponse? parsed = null;
-        try
-        {
-            parsed = JsonSerializer.Deserialize<ClassificationResponse>(
-                run.Text,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        }
-        catch (JsonException)
-        {
-            // JSON 解析失败视为低置信度，由调用方处理
-        }
+        var parsed = response.Result;
 
         var outcome = new DocumentClassificationOutcome
         {

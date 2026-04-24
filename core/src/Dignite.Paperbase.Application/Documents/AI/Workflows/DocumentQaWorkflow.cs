@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
@@ -20,15 +21,15 @@ public class DocumentQaWorkflow : ITransientDependency
         "If citing a source, reference it by [chunk N]. " +
         "If the answer is not in the provided content, say so clearly rather than guessing.";
 
-    private readonly IChatClient _chatClient;
+    private readonly ChatClientAgent _agent;
     private readonly PaperbaseAIOptions _options;
 
     public DocumentQaWorkflow(
         IChatClient chatClient,
         IOptions<PaperbaseAIOptions> options)
     {
-        _chatClient = chatClient;
         _options = options.Value;
+        _agent = new ChatClientAgent(chatClient, instructions: SystemInstructions);
     }
 
     public virtual Task<DocumentQaOutcome> RunRagAsync(
@@ -68,11 +69,7 @@ public class DocumentQaWorkflow : ITransientDependency
         IReadOnlyList<QaChunk> chunks,
         CancellationToken cancellationToken)
     {
-        var agent = new ChatClientAgent(
-            _chatClient,
-            instructions: SystemInstructions);
-
-        var run = await agent.RunAsync(userMessage, session: null, options: null, cancellationToken);
+        var run = await _agent.RunAsync(userMessage, session: null, options: null, cancellationToken);
 
         var outcome = new DocumentQaOutcome
         {
@@ -82,11 +79,12 @@ public class DocumentQaWorkflow : ITransientDependency
 
         foreach (var chunk in chunks)
         {
-            if (run.Text.Contains($"[chunk {chunk.ChunkIndex}]"))
+            var citation = $"[chunk {chunk.ChunkIndex}]";
+            if (run.Text.Contains(citation, StringComparison.OrdinalIgnoreCase))
             {
                 outcome.Sources.Add(new QaSourceItem
                 {
-                    Text = chunk.ChunkText[..System.Math.Min(200, chunk.ChunkText.Length)],
+                    Text = chunk.ChunkText[..Math.Min(200, chunk.ChunkText.Length)],
                     ChunkIndex = chunk.ChunkIndex
                 });
             }
