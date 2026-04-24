@@ -105,6 +105,30 @@ public class DocumentPipelineRunManager : DomainService
         return CompleteAsync(document, run, "OK", metadata);
     }
 
+    /// <summary>
+    /// 标记文档需要人工确认分类（分类置信度不足或未能产出有效类型时调用）。
+    /// </summary>
+    public virtual Task MarkPendingReviewAsync(Document document)
+    {
+        document.MarkPendingReview();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 人工确认文档类型：写入分类结果、标记已审核、完成 Run。
+    /// 置信度固定为 1.0，ResultCode 为 "ManualOverride"。
+    /// </summary>
+    public virtual Task CompleteManualClassificationAsync(
+        Document document,
+        DocumentPipelineRun run,
+        string typeCode,
+        string? metadata = null)
+    {
+        document.SetClassificationResult(typeCode, 1.0);
+        document.MarkReviewed();
+        return CompleteAsync(document, run, "ManualOverride", metadata);
+    }
+
     public virtual Task SkipAsync(
         Document document,
         DocumentPipelineRun run,

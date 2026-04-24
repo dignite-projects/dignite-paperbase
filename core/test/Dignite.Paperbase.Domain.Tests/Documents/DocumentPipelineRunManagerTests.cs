@@ -159,4 +159,71 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
 
         doc.LifecycleStatus.ShouldBe(DocumentLifecycleStatus.Ready);
     }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Scenario 6: MarkPendingReviewAsync sets ReviewStatus to PendingReview
+    // ────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task MarkPendingReview_Sets_ReviewStatus_To_PendingReview()
+    {
+        var doc = CreateDocument();
+        doc.ReviewStatus.ShouldBe(DocumentReviewStatus.None);
+
+        await _manager.MarkPendingReviewAsync(doc);
+
+        doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Scenario 7: CompleteManualClassificationAsync writes TypeCode, marks Reviewed,
+    //             sets Run to Succeeded with ResultCode "ManualOverride"
+    // ────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CompleteManualClassification_Sets_TypeCode_Marks_Reviewed_And_Completes_Run()
+    {
+        var doc = CreateDocument();
+
+        // 先模拟低置信度进入待审核
+        var run1 = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
+        await _manager.CompleteAsync(doc, run1, "LowConfidence");
+        await _manager.MarkPendingReviewAsync(doc);
+        doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
+
+        // 人工确认
+        var run2 = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
+        await _manager.CompleteManualClassificationAsync(doc, run2, "contract.general");
+
+        doc.DocumentTypeCode.ShouldBe("contract.general");
+        doc.ConfidenceScore.ShouldBe(1.0);
+        doc.ReviewStatus.ShouldBe(DocumentReviewStatus.Reviewed);
+
+        var latestRun = doc.GetLatestRun(PaperbasePipelines.Classification);
+        latestRun!.Status.ShouldBe(PipelineRunStatus.Succeeded);
+        latestRun.ResultCode.ShouldBe("ManualOverride");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Scenario 8: auto-classification success after PendingReview resets ReviewStatus
+    // ────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task AutoClassification_Success_After_PendingReview_Resets_ReviewStatus_To_None()
+    {
+        var doc = CreateDocument();
+
+        // 第一次低置信度 → PendingReview
+        var run1 = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
+        await _manager.CompleteAsync(doc, run1, "LowConfidence");
+        await _manager.MarkPendingReviewAsync(doc);
+        doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
+
+        // 重试自动分类成功
+        var run2 = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
+        await _manager.CompleteClassificationAsync(doc, run2, "contract.general", 0.95);
+
+        doc.ReviewStatus.ShouldBe(DocumentReviewStatus.None);
+        doc.DocumentTypeCode.ShouldBe("contract.general");
+    }
 }

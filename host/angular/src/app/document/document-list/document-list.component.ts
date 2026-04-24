@@ -15,7 +15,7 @@ import { ConfirmationService, ToasterService } from '@abp/ng.theme.shared';
 import { Confirmation } from '@abp/ng.theme.shared';
 import { Subscription, interval, switchMap, startWith } from 'rxjs';
 import { DocumentService } from '../../proxy/document.service';
-import { DocumentDto, DocumentLifecycleStatus, DocumentPipelineRunDto, GetDocumentListInput, PagedResultDto } from '../../proxy/models';
+import { DocumentDto, DocumentLifecycleStatus, DocumentReviewStatus, DocumentPipelineRunDto, GetDocumentListInput, PagedResultDto } from '../../proxy/models';
 
 interface UploadResult {
   fileName: string;
@@ -47,7 +47,7 @@ export class DocumentListComponent implements OnInit, OnDestroy {
   isBulkUploading = signal(false);
   bulkUploadResults = signal<UploadResult[]>([]);
 
-  needsManualReview = signal(false);
+  reviewStatusFilter = signal<DocumentReviewStatus | undefined>(undefined);
   confirmingDoc = signal<DocumentDto | null>(null);
   selectedTypeCode = signal('');
   isConfirming = signal(false);
@@ -56,12 +56,13 @@ export class DocumentListComponent implements OnInit, OnDestroy {
   pageSize = 10;
   totalPages = computed(() => Math.ceil(this.documents().totalCount / this.pageSize));
   pendingReviewCount = computed(() =>
-    this.documents().items.filter(d => this.needsConfirmation(d)).length
+    this.documents().items.filter(d => d.reviewStatus === DocumentReviewStatus.PendingReview).length
   );
 
   private activeFilter: GetDocumentListInput = {};
 
   readonly DocumentLifecycleStatus = DocumentLifecycleStatus;
+  readonly DocumentReviewStatus = DocumentReviewStatus;
 
   private pollSubscription?: Subscription;
 
@@ -82,7 +83,7 @@ export class DocumentListComponent implements OnInit, OnDestroy {
           maxResultCount: this.pageSize,
           skipCount: this.page() * this.pageSize,
           sorting: 'creationTime desc',
-          needsManualReview: this.needsManualReview() || undefined,
+          reviewStatus: this.reviewStatusFilter(),
         }))
       )
       .subscribe({
@@ -179,7 +180,9 @@ export class DocumentListComponent implements OnInit, OnDestroy {
   }
 
   toggleManualReviewFilter(): void {
-    this.needsManualReview.update(v => !v);
+    this.reviewStatusFilter.update(v =>
+      v === DocumentReviewStatus.PendingReview ? undefined : DocumentReviewStatus.PendingReview
+    );
     this.page.set(0);
     this.stopPolling();
     this.isLoading.set(true);
@@ -193,8 +196,7 @@ export class DocumentListComponent implements OnInit, OnDestroy {
   }
 
   needsConfirmation(doc: DocumentDto): boolean {
-    const run = this.getLatestClassificationRun(doc);
-    return run?.resultCode === 'LowConfidence' || run?.resultCode === 'BudgetExceeded';
+    return doc.reviewStatus === DocumentReviewStatus.PendingReview;
   }
 
   getCandidates(doc: DocumentDto): ClassificationCandidate[] {

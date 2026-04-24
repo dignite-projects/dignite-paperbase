@@ -57,7 +57,10 @@
     "Document:BulkUploadFailed": "Bulk upload failed.",
     "Document:ExportCsv": "Export CSV",
 
-    "Document:NeedsManualReview": "Needs Review",
+
+    "DocumentReviewStatus:None": "Auto Classified",
+    "DocumentReviewStatus:PendingReview": "Pending Review",
+    "DocumentReviewStatus:Reviewed": "Reviewed",
     "Document:ConfirmClassification": "Confirm Classification",
     "Document:SelectDocumentType": "Select Document Type",
     "Document:DocumentTypeCode": "Document Type Code",

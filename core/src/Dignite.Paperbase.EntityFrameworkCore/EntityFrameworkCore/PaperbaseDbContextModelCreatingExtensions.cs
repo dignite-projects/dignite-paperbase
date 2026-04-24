@@ -27,6 +27,7 @@ public static class PaperbaseDbContextModelCreatingExtensions
             b.Property(x => x.SourceType).IsRequired();
             b.Property(x => x.DocumentTypeCode).HasMaxLength(128);
             b.Property(x => x.LifecycleStatus).IsRequired();
+            b.Property(x => x.ReviewStatus).IsRequired();
             b.Property(x => x.ExtractedText).HasColumnType("text");
             b.Property(x => x.StructuredData).HasColumnType("text");
 
@@ -44,6 +45,7 @@ public static class PaperbaseDbContextModelCreatingExtensions
                 .OnDelete(DeleteBehavior.Cascade);
 
             b.HasIndex(x => x.LifecycleStatus);
+            b.HasIndex(x => x.ReviewStatus);
             b.HasIndex(x => x.DocumentTypeCode);
             b.HasIndex(x => x.CreationTime);
         });

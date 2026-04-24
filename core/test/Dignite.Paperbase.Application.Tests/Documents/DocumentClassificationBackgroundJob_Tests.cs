@@ -95,8 +95,9 @@ public class DocumentClassificationBackgroundJob_Tests
         run.ShouldNotBeNull();
         run.Status.ShouldBe(PipelineRunStatus.Succeeded);
 
-        // Document 的 TypeCode 已写入
+        // Document 的 TypeCode 已写入，ReviewStatus 重置为 None
         doc.DocumentTypeCode.ShouldBe("contract.general");
+        doc.ReviewStatus.ShouldBe(DocumentReviewStatus.None);
 
         // 发布了 DocumentClassifiedEto
         await _eventBus.Received(1).PublishAsync(
@@ -137,8 +138,9 @@ public class DocumentClassificationBackgroundJob_Tests
         run.Status.ShouldBe(PipelineRunStatus.Succeeded);
         run.ResultCode.ShouldBe("LowConfidence");
 
-        // DocumentTypeCode 不应被写入
+        // DocumentTypeCode 不应被写入，ReviewStatus 应为 PendingReview
         doc.DocumentTypeCode.ShouldBeNull();
+        doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
 
         // 不发布事件，不入队 Embedding
         await _eventBus.DidNotReceive().PublishAsync(
@@ -172,6 +174,7 @@ public class DocumentClassificationBackgroundJob_Tests
         run.ShouldNotBeNull();
         run.ResultCode.ShouldBe("LowConfidence");
         doc.DocumentTypeCode.ShouldBeNull();
+        doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
     }
 
     [Fact]
@@ -219,6 +222,7 @@ public class DocumentClassificationBackgroundJob_Tests
         var run = doc.GetLatestRun(PaperbasePipelines.Classification);
         run.ShouldNotBeNull();
         run.ResultCode.ShouldBe("LowConfidence");
+        doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
 
         await _eventBus.DidNotReceive().PublishAsync(
             Arg.Any<DocumentClassifiedEto>(), Arg.Any<bool>());

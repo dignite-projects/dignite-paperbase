@@ -1,5 +1,11 @@
 // ─── Document models ───────────────────────────────────────────────────────
 
+export enum DocumentReviewStatus {
+  None = 0,
+  PendingReview = 10,
+  Reviewed = 20,
+}
+
 export enum DocumentLifecycleStatus {
   Uploaded = 10,
   Processing = 20,
@@ -42,6 +48,7 @@ export interface DocumentDto {
   fileOrigin: FileOriginDto;
   documentTypeCode?: string;
   lifecycleStatus: DocumentLifecycleStatus;
+  reviewStatus: DocumentReviewStatus;
   confidenceScore: number;
   hasEmbedding: boolean;
   extractedText?: string;
@@ -55,7 +62,7 @@ export interface GetDocumentListInput {
   sorting?: string;
   lifecycleStatus?: number;
   documentTypeCode?: string;
-  needsManualReview?: boolean;
+  reviewStatus?: DocumentReviewStatus;
 }
 
 // ─── Q&A models ─────────────────────────────────────────────────────────────

@@ -123,6 +123,7 @@ public class DocumentClassificationBackgroundJob
         }
 
         await _pipelineRunManager.CompleteAsync(document, run, "LowConfidence", metadataJson);
+        await _pipelineRunManager.MarkPendingReviewAsync(document);
     }
 
     private static bool IsAiProviderError(Exception ex)

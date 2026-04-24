@@ -34,6 +34,13 @@ public class Document : CreationAuditedAggregateRoot<Guid>, IMultiTenant
     /// </summary>
     public virtual DocumentLifecycleStatus LifecycleStatus { get; private set; }
 
+    /// <summary>
+    /// 人工审核状态。
+    /// 分类置信度不足或无法产出有效类型时自动置为 PendingReview；人工确认后置为 Reviewed；
+    /// 新一轮自动分类成功时重置为 None。
+    /// </summary>
+    public virtual DocumentReviewStatus ReviewStatus { get; private set; }
+
     /// <summary>提取的文本内容（文本提取流水线 Run 成功后写入，不可变）</summary>
     public virtual string? ExtractedText { get; private set; }
 
@@ -96,6 +103,17 @@ public class Document : CreationAuditedAggregateRoot<Guid>, IMultiTenant
     {
         DocumentTypeCode = documentTypeCode;
         ConfidenceScore = confidenceScore;
+        ReviewStatus = DocumentReviewStatus.None;
+    }
+
+    internal void MarkPendingReview()
+    {
+        ReviewStatus = DocumentReviewStatus.PendingReview;
+    }
+
+    internal void MarkReviewed()
+    {
+        ReviewStatus = DocumentReviewStatus.Reviewed;
     }
 
     internal void UpdateStructuredData(string structuredData)

@@ -1,0 +1,13 @@
+namespace Dignite.Paperbase.Documents;
+
+public enum DocumentReviewStatus
+{
+    /// <summary>无需人工介入（分类置信度达标，或尚未触发分类）</summary>
+    None = 0,
+
+    /// <summary>分类置信度不足或未能产出有效类型，等待人工确认</summary>
+    PendingReview = 10,
+
+    /// <summary>已由人工确认文档类型</summary>
+    Reviewed = 20
+}

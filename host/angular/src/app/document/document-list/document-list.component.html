@@ -8,13 +8,13 @@
     <div class="d-flex gap-2">
       <button
         class="btn"
-        [class.btn-warning]="needsManualReview()"
-        [class.btn-outline-warning]="!needsManualReview()"
+        [class.btn-warning]="reviewStatusFilter() === DocumentReviewStatus.PendingReview"
+        [class.btn-outline-warning]="reviewStatusFilter() !== DocumentReviewStatus.PendingReview"
         (click)="toggleManualReviewFilter()"
-        title="{{ '::Document:NeedsManualReview' | abpLocalization }}"
+        title="{{ '::DocumentReviewStatus:PendingReview' | abpLocalization }}"
       >
         <i class="fas fa-user-edit me-1"></i>
-        {{ '::Document:NeedsManualReview' | abpLocalization }}
+        {{ '::DocumentReviewStatus:PendingReview' | abpLocalization }}
         @if (pendingReviewCount() > 0) {
           <span class="badge bg-danger ms-1">{{ pendingReviewCount() }}</span>
         }

@@ -166,7 +166,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         var run = await _pipelineRunManager.StartAsync(document, PaperbasePipelines.Classification);
 
         var metadata = JsonSerializer.Serialize(new { Source = "ManualOverride", ConfirmedBy = CurrentUser.Id });
-        await _pipelineRunManager.CompleteClassificationAsync(document, run, documentTypeCode, 1.0, metadata);
+        await _pipelineRunManager.CompleteManualClassificationAsync(document, run, documentTypeCode, metadata);
 
         await _distributedEventBus.PublishAsync(new DocumentClassifiedEto
         {
@@ -176,6 +176,9 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
             ConfidenceScore = 1.0,
             ExtractedText = document.ExtractedText
         });
+
+        await _backgroundJobManager.EnqueueAsync(
+            new DocumentEmbeddingJobArgs { DocumentId = document.Id });
 
         await _documentRepository.UpdateAsync(document);
         return ObjectMapper.Map<Document, DocumentDto>(document);
@@ -236,16 +239,8 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         if (!input.DocumentTypeCode.IsNullOrWhiteSpace())
             query = query.Where(x => x.DocumentTypeCode == input.DocumentTypeCode);
 
-        if (input.NeedsManualReview == true)
-        {
-            var reviewCodes = new[] { "LowConfidence", "BudgetExceeded" };
-            query = query.Where(d => d.PipelineRuns.Any(r =>
-                r.PipelineCode == PaperbasePipelines.Classification
-                && reviewCodes.Contains(r.ResultCode)
-                && r.AttemptNumber == d.PipelineRuns
-                    .Where(r2 => r2.PipelineCode == PaperbasePipelines.Classification)
-                    .Max(r2 => r2.AttemptNumber)));
-        }
+        if (input.ReviewStatus.HasValue)
+            query = query.Where(d => d.ReviewStatus == input.ReviewStatus.Value);
 
         return query;
     }
