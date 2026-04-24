@@ -10,6 +10,7 @@ using Dignite.Paperbase.TextExtraction;
 using Microsoft.Extensions.AI;
 using Microsoft.EntityFrameworkCore;
 using Npgsql.EntityFrameworkCore.PostgreSQL;
+using OpenAI;
 using OllamaSharp;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.DataProtection;
@@ -391,14 +392,13 @@ public class PaperbaseModule : AbpModule
 
     private void ConfigureAI(ServiceConfigurationContext context, IConfiguration configuration)
     {
-        var provider = configuration["PaperbaseAI:Provider"] ?? "Ollama";
-
-        // AzureOpenAIClient is a heavyweight HTTP client — register as singleton and share
-        // between the chat client and embedding generator factories below.
-        if (provider.Equals("AzureOpenAI", StringComparison.OrdinalIgnoreCase))
+        // AzureOpenAIClient is a heavyweight HTTP client — register as singleton so the chat
+        // and embedding factories below can share the same instance.
+        var azureEndpoint = configuration["PaperbaseAI:AzureOpenAI:Endpoint"];
+        if (!string.IsNullOrEmpty(azureEndpoint))
         {
             context.Services.AddSingleton(new AzureOpenAIClient(
-                new Uri(configuration["PaperbaseAI:AzureOpenAI:Endpoint"]!),
+                new Uri(azureEndpoint),
                 new Azure.AzureKeyCredential(configuration["PaperbaseAI:AzureOpenAI:ApiKey"]!)));
         }
 
@@ -414,37 +414,39 @@ public class PaperbaseModule : AbpModule
 
     private static IChatClient CreateChatClient(IServiceProvider sp, IConfiguration configuration)
     {
-        var provider = configuration["PaperbaseAI:Provider"] ?? "Ollama";
-
-        if (provider.Equals("AzureOpenAI", StringComparison.OrdinalIgnoreCase))
+        // Production: Azure OpenAI (detected by presence of AzureOpenAI:Endpoint)
+        if (!string.IsNullOrEmpty(configuration["PaperbaseAI:AzureOpenAI:Endpoint"]))
         {
             return sp.GetRequiredService<AzureOpenAIClient>()
-                .GetChatClient(configuration["PaperbaseAI:AzureOpenAI:DeploymentName"]!)
+                .GetChatClient(configuration["PaperbaseAI:AzureOpenAI:ChatDeploymentName"]!)
                 .AsIChatClient();
         }
 
-        var endpoint = configuration["PaperbaseAI:Ollama:Endpoint"] ?? "http://localhost:11434";
-        var modelId = configuration["PaperbaseAI:Ollama:ModelId"] ?? "llama3.1:8b";
-        return new OllamaApiClient(new Uri(endpoint), modelId);
+        // Development / CI: any OpenAI-compatible endpoint (DeepSeek, OpenAI, etc.)
+        return new OpenAIClient(
+                new System.ClientModel.ApiKeyCredential(configuration["PaperbaseAI:Chat:ApiKey"]!),
+                new OpenAIClientOptions { Endpoint = new Uri(configuration["PaperbaseAI:Chat:Endpoint"]!) })
+            .GetChatClient(configuration["PaperbaseAI:Chat:ModelId"]!)
+            .AsIChatClient();
     }
 
     private static IEmbeddingGenerator<string, Embedding<float>> CreateEmbeddingGenerator(
         IServiceProvider sp, IConfiguration configuration)
     {
-        var provider = configuration["PaperbaseAI:Provider"] ?? "Ollama";
-
-        if (provider.Equals("AzureOpenAI", StringComparison.OrdinalIgnoreCase))
+        // Production: Azure OpenAI
+        if (!string.IsNullOrEmpty(configuration["PaperbaseAI:AzureOpenAI:Endpoint"]))
         {
-            var deploymentName = configuration["PaperbaseAI:AzureOpenAI:EmbeddingDeploymentName"]
-                ?? "text-embedding-3-small";
             return sp.GetRequiredService<AzureOpenAIClient>()
-                .GetEmbeddingClient(deploymentName)
+                .GetEmbeddingClient(
+                    configuration["PaperbaseAI:AzureOpenAI:EmbeddingDeploymentName"]
+                    ?? "text-embedding-3-small")
                 .AsIEmbeddingGenerator();
         }
 
-        var endpoint = configuration["PaperbaseAI:Ollama:Endpoint"] ?? "http://localhost:11434";
-        var embeddingModelId = configuration["PaperbaseAI:Ollama:EmbeddingModelId"] ?? "nomic-embed-text";
-        return new OllamaApiClient(new Uri(endpoint), embeddingModelId);
+        // Development / CI: Ollama
+        return new OllamaApiClient(
+            new Uri(configuration["PaperbaseAI:Embedding:Endpoint"] ?? "http://localhost:11434"),
+            configuration["PaperbaseAI:Embedding:ModelId"] ?? "nomic-embed-text");
     }
 
     public override void OnApplicationInitialization(ApplicationInitializationContext context)
