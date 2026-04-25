@@ -52,6 +52,9 @@ public class EfCoreDocumentChunkRepository
         var dbContext = await GetDbContextAsync();
         var vector = new Vector(queryVector);
 
+        // dbContext.Set<DocumentChunk>() 与 GetDbSetAsync() 一样会应用 ABP 的
+        // IMultiTenant / ISoftDelete 全局过滤；下面对 Document 的子查询同理，
+        // 两边都会被 CurrentTenant 过滤住，无需在此处再加 TenantId 条件。
         IQueryable<DocumentChunk> query = dbContext.Set<DocumentChunk>().AsNoTracking();
 
         if (documentId.HasValue)
