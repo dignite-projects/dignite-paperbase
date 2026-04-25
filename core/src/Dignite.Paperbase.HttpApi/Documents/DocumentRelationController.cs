@@ -23,6 +23,12 @@ public class DocumentRelationController : PaperbaseController, IDocumentRelation
         return _relationAppService.GetListAsync(documentId);
     }
 
+    [HttpGet("graph")]
+    public virtual Task<DocumentRelationGraphDto> GetGraphAsync([FromQuery] GetDocumentRelationGraphInput input)
+    {
+        return _relationAppService.GetGraphAsync(input);
+    }
+
     [HttpPost]
     public virtual Task<DocumentRelationDto> CreateAsync(CreateDocumentRelationInput input)
     {

@@ -9,6 +9,8 @@ public interface IDocumentRelationAppService : IApplicationService
 {
     Task<List<DocumentRelationDto>> GetListAsync(Guid documentId);
 
+    Task<DocumentRelationGraphDto> GetGraphAsync(GetDocumentRelationGraphInput input);
+
     Task<DocumentRelationDto> CreateAsync(CreateDocumentRelationInput input);
 
     Task DeleteAsync(Guid id);

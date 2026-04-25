@@ -1,5 +1,6 @@
 using System;
 using Dignite.Paperbase.Documents;
+using Volo.Abp;
 using Volo.Abp.Domain.Entities.Auditing;
 using Volo.Abp.MultiTenancy;
 
@@ -8,8 +9,10 @@ namespace Dignite.Paperbase.Domain.Documents;
 /// <summary>
 /// 文档间关系。独立聚合根，不内嵌于 Document。
 /// </summary>
-public class DocumentRelation : CreationAuditedEntity<Guid>, IMultiTenant
+public class DocumentRelation : CreationAuditedAggregateRoot<Guid>, IMultiTenant
 {
+    public const int MaxRelationTypeLength = 128;
+
     public virtual Guid? TenantId { get; private set; }
 
     /// <summary>来源文档 ID</summary>
@@ -29,7 +32,11 @@ public class DocumentRelation : CreationAuditedEntity<Guid>, IMultiTenant
 
     protected DocumentRelation() { }
 
-    public void Confirm() => Source = RelationSource.Manual;
+    public virtual void Confirm()
+    {
+        Source = RelationSource.Manual;
+        Confidence = null;
+    }
 
     public DocumentRelation(
         Guid id,
@@ -42,10 +49,45 @@ public class DocumentRelation : CreationAuditedEntity<Guid>, IMultiTenant
         : base(id)
     {
         TenantId = tenantId;
-        SourceDocumentId = sourceDocumentId;
-        TargetDocumentId = targetDocumentId;
-        RelationType = relationType;
+        SourceDocumentId = ValidateDocumentId(sourceDocumentId, nameof(sourceDocumentId));
+        TargetDocumentId = ValidateDocumentId(targetDocumentId, nameof(targetDocumentId));
+
+        if (SourceDocumentId == TargetDocumentId)
+        {
+            throw new BusinessException(PaperbaseErrorCodes.DocumentRelationCannotTargetSelf);
+        }
+
+        RelationType = Check.NotNullOrWhiteSpace(
+            relationType,
+            nameof(relationType),
+            MaxRelationTypeLength);
         Source = source;
-        Confidence = confidence;
+        Confidence = ValidateConfidence(source, confidence);
+    }
+
+    private static Guid ValidateDocumentId(Guid documentId, string parameterName)
+    {
+        if (documentId == Guid.Empty)
+        {
+            throw new BusinessException(PaperbaseErrorCodes.DocumentRelationDocumentIdRequired)
+                .WithData("ParameterName", parameterName);
+        }
+
+        return documentId;
+    }
+
+    private static double? ValidateConfidence(RelationSource source, double? confidence)
+    {
+        if (source == RelationSource.Manual)
+        {
+            return null;
+        }
+
+        if (confidence is < 0 or > 1)
+        {
+            throw new BusinessException(PaperbaseErrorCodes.DocumentRelationConfidenceOutOfRange);
+        }
+
+        return confidence;
     }
 }
