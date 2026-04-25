@@ -20,10 +20,10 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore core
-        run: dotnet restore core/Dignite.Paperbase.Core.slnx
+        run: dotnet restore core/Dignite.Paperbase.slnx
 
       - name: Build core
-        run: dotnet build core/Dignite.Paperbase.Core.slnx --no-restore --configuration Release
+        run: dotnet build core/Dignite.Paperbase.slnx --no-restore --configuration Release
 
       - name: Restore host
         run: dotnet restore host/src/Dignite.Paperbase.Host.csproj
