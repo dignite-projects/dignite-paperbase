@@ -9,4 +9,5 @@ public static class PaperbaseErrorCodes
     public const string DocumentChunkDocumentIdRequired = "Paperbase:DocumentChunkDocumentIdRequired";
     public const string DocumentChunkIndexOutOfRange = "Paperbase:DocumentChunkIndexOutOfRange";
     public const string EmbeddingDimensionMismatch = "Paperbase:EmbeddingDimensionMismatch";
+    public const string InvalidDocumentTypeCode = "Paperbase:InvalidDocumentTypeCode";
 }

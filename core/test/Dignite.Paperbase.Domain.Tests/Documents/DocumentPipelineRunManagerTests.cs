@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
 using Shouldly;
+using Volo.Abp;
 using Xunit;
 
 namespace Dignite.Paperbase.Documents;
@@ -54,7 +55,7 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
 
         // Classification
         var classRun = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
-        await _manager.CompleteAsync(doc, classRun);
+        await _manager.CompleteClassificationAsync(doc, classRun, "contract.general", 0.92);
 
         doc.LifecycleStatus.ShouldBe(DocumentLifecycleStatus.Ready);
     }
@@ -123,7 +124,7 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
         await _manager.CompleteAsync(doc, textRun);
 
         var classRun = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
-        await _manager.CompleteAsync(doc, classRun);
+        await _manager.CompleteClassificationAsync(doc, classRun, "contract.general", 0.92);
 
         doc.LifecycleStatus.ShouldBe(DocumentLifecycleStatus.Ready);
 
@@ -149,7 +150,7 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
         await _manager.CompleteAsync(doc, textRun);
 
         var classRun = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
-        await _manager.CompleteAsync(doc, classRun);
+        await _manager.CompleteClassificationAsync(doc, classRun, "contract.general", 0.92);
 
         var embeddingRun = await _manager.StartAsync(doc, PaperbasePipelines.Embedding);
         await _manager.SkipAsync(doc, embeddingRun, reason: "document too short");
@@ -176,6 +177,22 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
 
         var latestRun = doc.GetLatestRun(PaperbasePipelines.Classification);
         latestRun!.Status.ShouldBe(PipelineRunStatus.Succeeded);
+    }
+
+    [Fact]
+    public async Task LowConfidence_Does_Not_Transition_To_Ready()
+    {
+        var doc = CreateDocument();
+
+        var textRun = await _manager.StartAsync(doc, PaperbasePipelines.TextExtraction);
+        await _manager.CompleteAsync(doc, textRun);
+
+        var classRun = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
+        await _manager.CompleteClassificationWithLowConfidenceAsync(doc, classRun, "AI confidence too low");
+
+        doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
+        doc.DocumentTypeCode.ShouldBeNull();
+        doc.LifecycleStatus.ShouldBe(DocumentLifecycleStatus.Processing);
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -254,5 +271,37 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
         doc.ClassificationConfidence.ShouldBe(0);
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
         doc.ClassificationReason.ShouldBe("AI confidence too low");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Scenario 10: Manager rejects typeCode that is not registered in DocumentTypeOptions
+    // ────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CompleteManualClassification_Throws_When_TypeCode_Not_Registered()
+    {
+        var doc = CreateDocument();
+        var run = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
+
+        var ex = await Should.ThrowAsync<BusinessException>(async () =>
+        {
+            await _manager.CompleteManualClassificationAsync(doc, run, "not.registered.type");
+        });
+
+        ex.Code.ShouldBe(PaperbaseErrorCodes.InvalidDocumentTypeCode);
+    }
+
+    [Fact]
+    public async Task CompleteClassification_Throws_When_TypeCode_Not_Registered()
+    {
+        var doc = CreateDocument();
+        var run = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
+
+        var ex = await Should.ThrowAsync<BusinessException>(async () =>
+        {
+            await _manager.CompleteClassificationAsync(doc, run, "not.registered.type", 0.95);
+        });
+
+        ex.Code.ShouldBe(PaperbaseErrorCodes.InvalidDocumentTypeCode);
     }
 }

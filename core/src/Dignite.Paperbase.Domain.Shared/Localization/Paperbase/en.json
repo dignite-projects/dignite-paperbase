@@ -92,6 +92,9 @@
 
     "Permission:Documents.ConfirmClassification": "Confirm Classification",
     "Permission:Documents.Ask": "Ask Documents (Q&A)",
-    "Permission:DocumentRelations.ConfirmRelation": "Confirm Document Relation"
+    "Permission:DocumentRelations.ConfirmRelation": "Confirm Document Relation",
+
+    "Paperbase:InvalidDocumentTypeCode": "Invalid document type code: '{documentTypeCode}'.",
+    "Paperbase:ExtractedTextIsImmutable": "Extracted text has already been set and cannot be changed."
   }
 }

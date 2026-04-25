@@ -2,8 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.Events;
+using Microsoft.Extensions.Options;
+using Volo.Abp;
 using Volo.Abp.Data;
 using Volo.Abp.Domain.Services;
 
@@ -16,6 +19,13 @@ namespace Dignite.Paperbase.Documents;
 /// </summary>
 public class DocumentPipelineRunManager : DomainService
 {
+    private readonly DocumentTypeOptions _documentTypeOptions;
+
+    public DocumentPipelineRunManager(IOptions<DocumentTypeOptions> documentTypeOptions)
+    {
+        _documentTypeOptions = documentTypeOptions.Value;
+    }
+
     public virtual Task<DocumentPipelineRun> StartAsync(Document document, string pipelineCode)
     {
         var attemptNumber = document.PipelineRuns
@@ -96,7 +106,8 @@ public class DocumentPipelineRunManager : DomainService
         double confidenceScore,
         string? reason = null)
     {
-        document.SetClassificationResult(typeCode, confidenceScore, reason);
+        EnsureRegisteredTypeCode(typeCode);
+        document.ApplyAutomaticClassificationResult(typeCode, confidenceScore, reason);
         return CompleteAsync(document, run);
     }
 
@@ -110,7 +121,7 @@ public class DocumentPipelineRunManager : DomainService
         string? reason = null,
         IReadOnlyList<PipelineRunCandidate>? candidates = null)
     {
-        document.MarkPendingReview(reason);
+        document.RequestClassificationReview(reason);
 
         if (candidates is { Count: > 0 })
         {
@@ -133,9 +144,25 @@ public class DocumentPipelineRunManager : DomainService
         DocumentPipelineRun run,
         string typeCode)
     {
-        document.SetClassificationResult(typeCode, 1.0, reason: null);
-        document.MarkReviewed();
+        EnsureRegisteredTypeCode(typeCode);
+        document.ConfirmClassification(typeCode);
         return CompleteAsync(document, run);
+    }
+
+    /// <summary>
+    /// 强制 typeCode 必须存在于已注册的 <see cref="DocumentTypeOptions"/>。
+    /// 这是 Document 聚合的契约不变量：任何写入到 <c>DocumentTypeCode</c> 的值
+    /// 必须可被业务模块（订阅 <c>DocumentClassifiedEto</c> 的消费者）识别。
+    /// </summary>
+    protected virtual void EnsureRegisteredTypeCode(string typeCode)
+    {
+        Check.NotNullOrWhiteSpace(typeCode, nameof(typeCode));
+
+        if (!_documentTypeOptions.Types.Any(t => t.TypeCode == typeCode))
+        {
+            throw new BusinessException(PaperbaseErrorCodes.InvalidDocumentTypeCode)
+                .WithData(nameof(typeCode), typeCode);
+        }
     }
 
     public virtual Task SkipAsync(
@@ -187,7 +214,9 @@ public class DocumentPipelineRunManager : DomainService
             }
         }
 
-        if (derivedStatus != DocumentLifecycleStatus.Failed && allSucceeded)
+        if (derivedStatus != DocumentLifecycleStatus.Failed &&
+            allSucceeded &&
+            !string.IsNullOrWhiteSpace(document.DocumentTypeCode))
         {
             derivedStatus = DocumentLifecycleStatus.Ready;
         }

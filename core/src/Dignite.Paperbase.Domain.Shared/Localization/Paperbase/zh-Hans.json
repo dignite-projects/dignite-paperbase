@@ -2,6 +2,9 @@
   "culture": "zh-Hans",
   "texts": {
     "MyAccount": "我的账户",
-    "SamplePageMessage": "Paperbase 模块的示例页面"
+    "SamplePageMessage": "Paperbase 模块的示例页面",
+
+    "Paperbase:InvalidDocumentTypeCode": "文档类型代码无效：'{documentTypeCode}'。",
+    "Paperbase:ExtractedTextIsImmutable": "已写入提取文本，不允许修改。"
   }
 }

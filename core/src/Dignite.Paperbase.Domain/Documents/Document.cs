@@ -90,7 +90,7 @@ public class Document : CreationAuditedAggregateRoot<Guid>, IMultiTenant
         TenantId = tenantId;
         OriginalFileBlobName = Check.NotNullOrWhiteSpace(originalFileBlobName, nameof(originalFileBlobName));
         SourceType = sourceType;
-        FileOrigin = fileOrigin;
+        FileOrigin = Check.NotNull(fileOrigin, nameof(fileOrigin));
         LifecycleStatus = DocumentLifecycleStatus.Uploaded;
     }
 
@@ -108,7 +108,10 @@ public class Document : CreationAuditedAggregateRoot<Guid>, IMultiTenant
         SourceType = sourceType;
     }
 
-    internal void SetClassificationResult(string documentTypeCode, double classificationConfidence, string? reason = null)
+    internal void ApplyAutomaticClassificationResult(
+        string documentTypeCode,
+        double classificationConfidence,
+        string? reason = null)
     {
         DocumentTypeCode = Check.NotNullOrWhiteSpace(documentTypeCode, nameof(documentTypeCode));
         ClassificationConfidence = Check.Range(classificationConfidence, nameof(classificationConfidence), 0d, 1d);
@@ -119,7 +122,7 @@ public class Document : CreationAuditedAggregateRoot<Guid>, IMultiTenant
     /// <summary>
     /// 标记为待人工审核：清空尚未确认的分类结果，避免历史值污染外部读模型。
     /// </summary>
-    internal void MarkPendingReview(string? reason = null)
+    internal void RequestClassificationReview(string? reason = null)
     {
         DocumentTypeCode = null;
         ClassificationConfidence = 0;
@@ -127,8 +130,10 @@ public class Document : CreationAuditedAggregateRoot<Guid>, IMultiTenant
         ReviewStatus = DocumentReviewStatus.PendingReview;
     }
 
-    internal void MarkReviewed()
+    internal void ConfirmClassification(string documentTypeCode)
     {
+        DocumentTypeCode = Check.NotNullOrWhiteSpace(documentTypeCode, nameof(documentTypeCode));
+        ClassificationConfidence = 1.0;
         ReviewStatus = DocumentReviewStatus.Reviewed;
         ClassificationReason = null;
     }
