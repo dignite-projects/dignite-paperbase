@@ -4,7 +4,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Documents.Events;
 using Microsoft.Extensions.Options;
 using Volo.Abp;
 using Volo.Abp.Data;

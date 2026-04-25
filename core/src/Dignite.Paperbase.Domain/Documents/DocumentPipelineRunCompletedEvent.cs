@@ -1,7 +1,6 @@
 using System;
-using Dignite.Paperbase.Documents;
 
-namespace Dignite.Paperbase.Documents.Events;
+namespace Dignite.Paperbase.Documents;
 
 /// <summary>
 /// 单条流水线 Run 结束的本地域事件（成功、失败、跳过均发出）。
