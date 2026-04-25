@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Application.Documents.Classification;
 using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.Documents.AI.Workflows;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -23,6 +24,7 @@ public class DocumentClassificationBackgroundJob
     private readonly KeywordDocumentClassifier _keywordClassifier;
     private readonly IDistributedEventBus _distributedEventBus;
     private readonly DocumentTypeOptions _documentTypeOptions;
+    private readonly PaperbaseAIOptions _aiOptions;
     private readonly IBackgroundJobManager _backgroundJobManager;
 
     public DocumentClassificationBackgroundJob(
@@ -32,6 +34,7 @@ public class DocumentClassificationBackgroundJob
         KeywordDocumentClassifier keywordClassifier,
         IDistributedEventBus distributedEventBus,
         IOptions<DocumentTypeOptions> documentTypeOptions,
+        IOptions<PaperbaseAIOptions> aiOptions,
         IBackgroundJobManager backgroundJobManager)
     {
         _documentRepository = documentRepository;
@@ -40,6 +43,7 @@ public class DocumentClassificationBackgroundJob
         _keywordClassifier = keywordClassifier;
         _distributedEventBus = distributedEventBus;
         _documentTypeOptions = documentTypeOptions.Value;
+        _aiOptions = aiOptions.Value;
         _backgroundJobManager = backgroundJobManager;
     }
 
@@ -51,8 +55,11 @@ public class DocumentClassificationBackgroundJob
 
         try
         {
+            // 候选集在此处一次确定（按 Priority 排序 + 截断），同时供 LLM 路径与
+            // 关键词兜底路径使用，避免两条路径结论指向不同子集。
             var candidates = _documentTypeOptions.Types
                 .OrderByDescending(t => t.Priority)
+                .Take(_aiOptions.MaxDocumentTypesInClassificationPrompt)
                 .ToList();
 
             DocumentClassificationOutcome outcome;
@@ -66,7 +73,7 @@ public class DocumentClassificationBackgroundJob
                 Logger.LogWarning(ex,
                     "AI classification workflow failed for document {DocumentId}, falling back to keyword classifier.",
                     document.Id);
-                outcome = _keywordClassifier.Classify(document.ExtractedText ?? string.Empty);
+                outcome = _keywordClassifier.Classify(candidates, document.ExtractedText ?? string.Empty);
             }
 
             await ApplyClassificationResultAsync(document, run, outcome);
@@ -84,30 +91,27 @@ public class DocumentClassificationBackgroundJob
         DocumentPipelineRun run,
         DocumentClassificationOutcome outcome)
     {
-        if (!string.IsNullOrEmpty(outcome.TypeCode))
+        var typeDef = string.IsNullOrEmpty(outcome.TypeCode)
+            ? null
+            : _documentTypeOptions.Types.FirstOrDefault(t => t.TypeCode == outcome.TypeCode);
+
+        if (typeDef != null && outcome.ConfidenceScore >= typeDef.ConfidenceThreshold)
         {
-            var typeDef = _documentTypeOptions.Types
-                .FirstOrDefault(t => t.TypeCode == outcome.TypeCode);
-            var threshold = typeDef?.ConfidenceThreshold ?? 0.7;
+            await _pipelineRunManager.CompleteClassificationAsync(
+                document, run, typeDef.TypeCode, outcome.ConfidenceScore, outcome.Reason);
 
-            if (outcome.ConfidenceScore >= threshold)
+            await _distributedEventBus.PublishAsync(new DocumentClassifiedEto
             {
-                await _pipelineRunManager.CompleteClassificationAsync(
-                    document, run, outcome.TypeCode, outcome.ConfidenceScore, outcome.Reason);
+                DocumentId = document.Id,
+                TenantId = document.TenantId,
+                DocumentTypeCode = typeDef.TypeCode,
+                ClassificationConfidence = outcome.ConfidenceScore,
+                ExtractedText = document.ExtractedText
+            });
 
-                await _distributedEventBus.PublishAsync(new DocumentClassifiedEto
-                {
-                    DocumentId = document.Id,
-                    TenantId = document.TenantId,
-                    DocumentTypeCode = outcome.TypeCode,
-                    ConfidenceScore = outcome.ConfidenceScore,
-                    ExtractedText = document.ExtractedText
-                });
-
-                await _backgroundJobManager.EnqueueAsync(
-                    new DocumentEmbeddingJobArgs { DocumentId = document.Id });
-                return;
-            }
+            await _backgroundJobManager.EnqueueAsync(
+                new DocumentEmbeddingJobArgs { DocumentId = document.Id });
+            return;
         }
 
         var candidates = outcome.Candidates

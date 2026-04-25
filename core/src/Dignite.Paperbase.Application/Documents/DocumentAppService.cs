@@ -165,7 +165,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
             DocumentId = document.Id,
             TenantId = document.TenantId,
             DocumentTypeCode = documentTypeCode,
-            ConfidenceScore = 1.0,
+            ClassificationConfidence = 1.0,
             ExtractedText = document.ExtractedText
         });
 

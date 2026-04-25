@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Volo.Abp;
 
 namespace Dignite.Paperbase.Abstractions.Documents;
 
@@ -12,6 +13,8 @@ public class DocumentTypeOptions
 
     public void Register(DocumentTypeDefinition definition)
     {
+        Check.NotNull(definition, nameof(definition));
+
         var existing = Types.FirstOrDefault(t => t.TypeCode == definition.TypeCode);
         if (existing != null)
         {

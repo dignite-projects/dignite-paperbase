@@ -44,11 +44,12 @@ public class Document : CreationAuditedAggregateRoot<Guid>, IMultiTenant
     /// <summary>提取的文本内容（文本提取流水线 Run 成功后写入，不可变）</summary>
     public virtual string? ExtractedText { get; private set; }
 
-    /// <summary>AI 结构化提取结果（JSON，具体结构由分类类型决定）</summary>
-    public virtual string? StructuredData { get; private set; }
-
-    /// <summary>文档分类置信度（0.0 ~ 1.0），为最后一次成功分类 Run 的快照</summary>
-    public virtual double ConfidenceScore { get; private set; }
+    /// <summary>
+    /// 文档分类置信度（0.0 ~ 1.0），为最后一次成功分类 Run 的快照。
+    /// 当 <see cref="DocumentTypeCode"/> 为 null（尚未分类或 LowConfidence）时此值为 0。
+    /// 人工确认（<see cref="DocumentReviewStatus.Reviewed"/>）时固定写入 1.0。
+    /// </summary>
+    public virtual double ClassificationConfidence { get; private set; }
 
     /// <summary>分类原因说明（低置信度时由 AI 填写；人工确认后清空）</summary>
     public virtual string? ClassificationReason { get; private set; }
@@ -107,29 +108,29 @@ public class Document : CreationAuditedAggregateRoot<Guid>, IMultiTenant
         SourceType = sourceType;
     }
 
-    internal void SetClassificationResult(string documentTypeCode, double confidenceScore, string? reason = null)
+    internal void SetClassificationResult(string documentTypeCode, double classificationConfidence, string? reason = null)
     {
-        DocumentTypeCode = documentTypeCode;
-        ConfidenceScore = confidenceScore;
+        DocumentTypeCode = Check.NotNullOrWhiteSpace(documentTypeCode, nameof(documentTypeCode));
+        ClassificationConfidence = Check.Range(classificationConfidence, nameof(classificationConfidence), 0d, 1d);
         ClassificationReason = reason;
         ReviewStatus = DocumentReviewStatus.None;
     }
 
+    /// <summary>
+    /// 标记为待人工审核：清空尚未确认的分类结果，避免历史值污染外部读模型。
+    /// </summary>
     internal void MarkPendingReview(string? reason = null)
     {
-        ReviewStatus = DocumentReviewStatus.PendingReview;
+        DocumentTypeCode = null;
+        ClassificationConfidence = 0;
         ClassificationReason = reason;
+        ReviewStatus = DocumentReviewStatus.PendingReview;
     }
 
     internal void MarkReviewed()
     {
         ReviewStatus = DocumentReviewStatus.Reviewed;
         ClassificationReason = null;
-    }
-
-    internal void UpdateStructuredData(string structuredData)
-    {
-        StructuredData = structuredData;
     }
 
     internal void TransitionLifecycle(DocumentLifecycleStatus newStatus)

@@ -46,16 +46,13 @@ public class DocumentClassificationWorkflow : ITransientDependency
             };
         }
 
-        var trimmedTypes = candidateTypes
-            .OrderByDescending(t => t.Priority)
-            .Take(_options.MaxDocumentTypesInClassificationPrompt)
-            .ToList();
-
+        // 候选集排序与数量上限由调用方（DocumentClassificationBackgroundJob）决定，
+        // 以保证 LLM 路径与 KeywordDocumentClassifier 兜底路径使用同一组候选。
         var truncatedText = extractedText.Length > _options.MaxTextLengthPerExtraction
             ? extractedText[.._options.MaxTextLengthPerExtraction]
             : extractedText;
 
-        var typeDescriptions = trimmedTypes.Select(t =>
+        var typeDescriptions = candidateTypes.Select(t =>
             $"- TypeCode: {t.TypeCode}\n" +
             $"  Name: {t.DisplayName}" +
             (t.MatchKeywords.Count > 0

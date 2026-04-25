@@ -198,7 +198,7 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
         await _manager.CompleteManualClassificationAsync(doc, run2, "contract.general");
 
         doc.DocumentTypeCode.ShouldBe("contract.general");
-        doc.ConfidenceScore.ShouldBe(1.0);
+        doc.ClassificationConfidence.ShouldBe(1.0);
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.Reviewed);
 
         var latestRun = doc.GetLatestRun(PaperbasePipelines.Classification);
@@ -225,6 +225,34 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
 
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.None);
         doc.DocumentTypeCode.ShouldBe("contract.general");
-        doc.ConfidenceScore.ShouldBe(0.95);
+        doc.ClassificationConfidence.ShouldBe(0.95);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Scenario 9: 先成功分类再 LowConfidence —— 历史 TypeCode 与 Confidence 被清空
+    // ────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task LowConfidence_After_Successful_Classification_Clears_Stale_Fields()
+    {
+        var doc = CreateDocument();
+
+        // 第一次：高置信度分类成功
+        var run1 = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
+        await _manager.CompleteClassificationAsync(doc, run1, "contract.general", 0.92);
+
+        doc.DocumentTypeCode.ShouldBe("contract.general");
+        doc.ClassificationConfidence.ShouldBe(0.92);
+        doc.ReviewStatus.ShouldBe(DocumentReviewStatus.None);
+
+        // 第二次：重跑分类落入 LowConfidence
+        var run2 = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
+        await _manager.CompleteClassificationWithLowConfidenceAsync(doc, run2, "AI confidence too low");
+
+        // 历史 TypeCode/Confidence 必须清空，避免外部读到「类型已确定 + 待审核」自相矛盾
+        doc.DocumentTypeCode.ShouldBeNull();
+        doc.ClassificationConfidence.ShouldBe(0);
+        doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
+        doc.ClassificationReason.ShouldBe("AI confidence too low");
     }
 }

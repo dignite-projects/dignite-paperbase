@@ -29,7 +29,6 @@ public static class PaperbaseDbContextModelCreatingExtensions
             b.Property(x => x.ReviewStatus).IsRequired();
             b.Property(x => x.ClassificationReason).HasColumnType("text");
             b.Property(x => x.ExtractedText).HasColumnType("text");
-            b.Property(x => x.StructuredData).HasColumnType("text");
 
             b.OwnsOne(x => x.FileOrigin, fo =>
             {

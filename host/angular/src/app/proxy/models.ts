@@ -59,7 +59,7 @@ export interface DocumentDto {
   documentTypeCode?: string;
   lifecycleStatus: DocumentLifecycleStatus;
   reviewStatus: DocumentReviewStatus;
-  confidenceScore: number;
+  classificationConfidence: number;
   hasEmbedding: boolean;
   extractedText?: string;
   creationTime: string;

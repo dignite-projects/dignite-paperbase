@@ -32,7 +32,8 @@ public class ContractDocumentHandler :
 
     public virtual async Task HandleEventAsync(DocumentClassifiedEto eventData)
     {
-        if (!eventData.DocumentTypeCode.StartsWith("contract."))
+        if (string.IsNullOrEmpty(eventData.DocumentTypeCode) ||
+            !eventData.DocumentTypeCode.StartsWith(ContractsDocumentTypes.Prefix))
         {
             return;
         }

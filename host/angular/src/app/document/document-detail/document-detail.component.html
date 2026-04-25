@@ -119,10 +119,10 @@
                     }
                   </dd>
 
-                  <dt class="col-sm-5 text-muted">{{ '::Document:ConfidenceScore' | abpLocalization }}</dt>
+                  <dt class="col-sm-5 text-muted">{{ '::Document:ClassificationConfidence' | abpLocalization }}</dt>
                   <dd class="col-sm-7">
-                    @if (document()!.confidenceScore > 0) {
-                      {{ (document()!.confidenceScore * 100).toFixed(0) }}%
+                    @if (document()!.classificationConfidence > 0) {
+                      {{ (document()!.classificationConfidence * 100).toFixed(0) }}%
                     } @else {
                       —
                     }

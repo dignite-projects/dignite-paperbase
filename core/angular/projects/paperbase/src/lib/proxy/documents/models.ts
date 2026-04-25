@@ -26,7 +26,7 @@ export interface DocumentDto extends EntityDto<string> {
   documentTypeCode?: string | null;
   lifecycleStatus?: DocumentLifecycleStatus;
   reviewStatus?: DocumentReviewStatus;
-  confidenceScore?: number;
+  classificationConfidence?: number;
   classificationReason?: string | null;
   hasEmbedding?: boolean;
   extractedText?: string | null;

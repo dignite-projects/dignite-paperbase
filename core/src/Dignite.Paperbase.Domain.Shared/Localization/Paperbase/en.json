@@ -28,7 +28,7 @@
     "Document:Size": "Size",
     "Document:UploadedAt": "Uploaded At",
     "Document:UploadedBy": "Uploaded By",
-    "Document:ConfidenceScore": "Confidence",
+    "Document:ClassificationConfidence": "Confidence",
     "Document:ReviewStatus": "Review Status",
     "Document:ClassificationReason": "Classification Reason",
     "Document:TotalCount": "Total:",

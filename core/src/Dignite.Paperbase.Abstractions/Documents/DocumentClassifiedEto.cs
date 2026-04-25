@@ -14,7 +14,7 @@ public class DocumentClassifiedEto
 
     public string DocumentTypeCode { get; set; } = default!;
 
-    public double ConfidenceScore { get; set; }
+    public double ClassificationConfidence { get; set; }
 
     /// <summary>
     /// 文档提取的全文，随事件携带，省去业务模块回查核心仓储。

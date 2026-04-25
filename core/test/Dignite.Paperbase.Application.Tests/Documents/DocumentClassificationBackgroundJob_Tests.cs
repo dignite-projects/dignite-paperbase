@@ -95,16 +95,17 @@ public class DocumentClassificationBackgroundJob_Tests
         run.ShouldNotBeNull();
         run.Status.ShouldBe(PipelineRunStatus.Succeeded);
 
-        // Document 的 TypeCode/ConfidenceScore 已写入，ReviewStatus 重置为 None
+        // Document 的 TypeCode/ClassificationConfidence 已写入，ReviewStatus 重置为 None
         doc.DocumentTypeCode.ShouldBe("contract.general");
-        doc.ConfidenceScore.ShouldBe(0.92);
+        doc.ClassificationConfidence.ShouldBe(0.92);
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.None);
 
         // 发布了 DocumentClassifiedEto
         await _eventBus.Received(1).PublishAsync(
             Arg.Is<DocumentClassifiedEto>(e =>
                 e.DocumentId == doc.Id &&
-                e.DocumentTypeCode == "contract.general"),
+                e.DocumentTypeCode == "contract.general" &&
+                e.ClassificationConfidence == 0.92),
             Arg.Any<bool>());
 
         // 入队了 Embedding Job
@@ -138,9 +139,9 @@ public class DocumentClassificationBackgroundJob_Tests
         run.ShouldNotBeNull();
         run.Status.ShouldBe(PipelineRunStatus.Succeeded);
 
-        // DocumentTypeCode/ConfidenceScore 不应被污染，ReviewStatus 应为 PendingReview
+        // DocumentTypeCode/ClassificationConfidence 不应被污染，ReviewStatus 应为 PendingReview
         doc.DocumentTypeCode.ShouldBeNull();
-        doc.ConfidenceScore.ShouldBe(0);
+        doc.ClassificationConfidence.ShouldBe(0);
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
 
         // 不发布事件，不入队 Embedding
@@ -176,6 +177,45 @@ public class DocumentClassificationBackgroundJob_Tests
         run.Status.ShouldBe(PipelineRunStatus.Succeeded);
         doc.DocumentTypeCode.ShouldBeNull();
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
+    }
+
+    [Fact]
+    public async Task UnregisteredTypeCode_Marks_PendingReview_Without_Polluting_Document()
+    {
+        // LLM 幻觉：返回一个不在 DocumentTypeOptions 注册表中的 TypeCode
+        var doc = CreateDocument("Some document text.");
+        SetupDocumentRepository(doc);
+
+        _workflow
+            .RunAsync(
+                Arg.Any<IReadOnlyList<DocumentTypeDefinition>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new DocumentClassificationOutcome
+            {
+                TypeCode = "invoice.general",   // 未注册——白名单不应放行
+                ConfidenceScore = 0.95,         // 看似高置信度，但 TypeCode 非法
+                Reason = "LLM hallucinated an unknown type"
+            });
+
+        await _job.ExecuteAsync(new DocumentClassificationJobArgs { DocumentId = doc.Id });
+
+        var run = doc.GetLatestRun(PaperbasePipelines.Classification);
+        run.ShouldNotBeNull();
+        run.Status.ShouldBe(PipelineRunStatus.Succeeded);
+
+        // 不能写入未注册的 TypeCode，必须落入 PendingReview
+        doc.DocumentTypeCode.ShouldBeNull();
+        doc.ClassificationConfidence.ShouldBe(0);
+        doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
+
+        // 不发布事件，不入队 Embedding
+        await _eventBus.DidNotReceive().PublishAsync(
+            Arg.Any<DocumentClassifiedEto>(), Arg.Any<bool>());
+        await _backgroundJobManager.DidNotReceive().EnqueueAsync(
+            Arg.Any<DocumentEmbeddingJobArgs>(),
+            Arg.Any<BackgroundJobPriority>(),
+            Arg.Any<TimeSpan?>());
     }
 
     [Fact]
