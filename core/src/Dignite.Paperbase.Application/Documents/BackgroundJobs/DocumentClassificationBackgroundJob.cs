@@ -112,11 +112,7 @@ public class DocumentClassificationBackgroundJob
         }
 
         var candidates = outcome.Candidates
-            .Select(c => new PipelineRunCandidate
-            {
-                TypeCode = c.TypeCode,
-                ConfidenceScore = c.ConfidenceScore
-            })
+            .Select(c => new PipelineRunCandidate(c.TypeCode, c.ConfidenceScore))
             .ToList();
 
         await _pipelineRunManager.CompleteClassificationWithLowConfidenceAsync(
