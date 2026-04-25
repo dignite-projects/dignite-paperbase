@@ -71,7 +71,7 @@ public static class PaperbaseDbContextModelCreatingExtensions
             b.ToTable(PaperbaseDbProperties.DbTablePrefix + "DocumentRelations", PaperbaseDbProperties.DbSchema);
             b.ConfigureByConvention();
 
-            b.Property(x => x.RelationType).IsRequired().HasMaxLength(128);
+            b.Property(x => x.Description).IsRequired().HasMaxLength(DocumentRelationConsts.MaxDescriptionLength);
             b.Property(x => x.Source).IsRequired();
 
             b.HasIndex(x => x.SourceDocumentId);

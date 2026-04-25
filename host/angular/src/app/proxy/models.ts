@@ -116,7 +116,7 @@ export interface DocumentRelationDto {
   id: string;
   sourceDocumentId: string;
   targetDocumentId: string;
-  relationType: string;
+  description: string;
   source: RelationSource;
   confidenceScore: number;
   creationTime: string;
@@ -125,7 +125,7 @@ export interface DocumentRelationDto {
 export interface CreateDocumentRelationInput {
   sourceDocumentId: string;
   targetDocumentId: string;
-  relationType: string;
+  description: string;
 }
 
 // ─── Shared ─────────────────────────────────────────────────────────────────

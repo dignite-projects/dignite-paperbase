@@ -15,7 +15,7 @@ export interface AskDocumentInput {
 export interface CreateDocumentRelationInput {
   sourceDocumentId: string;
   targetDocumentId: string;
-  relationType: string;
+  description: string;
 }
 
 export interface DocumentDto extends EntityDto<string> {
@@ -48,7 +48,7 @@ export interface DocumentPipelineRunDto extends ExtensibleObject {
 export interface DocumentRelationDto extends EntityDto<string> {
   sourceDocumentId?: string;
   targetDocumentId?: string;
-  relationType?: string;
+  description?: string;
   source?: RelationSource;
   confidence?: number | null;
   creationTime?: string;
@@ -58,7 +58,7 @@ export interface DocumentRelationEdgeDto {
   id?: string;
   sourceDocumentId?: string;
   targetDocumentId?: string;
-  relationType?: string;
+  description?: string;
   source?: RelationSource;
   confidence?: number | null;
 }
@@ -96,7 +96,6 @@ export interface GetDocumentRelationGraphInput {
   rootDocumentId: string;
   depth?: number;
   includeAiSuggested?: boolean;
-  relationTypes?: string[] | null;
 }
 
 export interface GlobalAskInput {

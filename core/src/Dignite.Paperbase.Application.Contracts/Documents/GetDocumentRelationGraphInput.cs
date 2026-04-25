@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 namespace Dignite.Paperbase.Documents;
@@ -13,6 +12,4 @@ public class GetDocumentRelationGraphInput
     public int Depth { get; set; } = 1;
 
     public bool IncludeAiSuggested { get; set; } = true;
-
-    public List<string>? RelationTypes { get; set; }
 }

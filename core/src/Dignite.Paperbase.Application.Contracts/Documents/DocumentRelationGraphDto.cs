@@ -37,7 +37,7 @@ public class DocumentRelationEdgeDto
 
     public Guid TargetDocumentId { get; set; }
 
-    public string RelationType { get; set; } = default!;
+    public string Description { get; set; } = default!;
 
     public RelationSource Source { get; set; }
 

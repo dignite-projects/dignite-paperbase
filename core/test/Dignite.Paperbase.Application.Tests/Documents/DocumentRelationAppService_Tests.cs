@@ -51,8 +51,8 @@ public class DocumentRelationAppService_Tests
         };
         var relations = new List<DocumentRelation>
         {
-            CreateRelation(rootId, firstHopId, "references", RelationSource.Manual),
-            CreateRelation(firstHopId, secondHopId, "references", RelationSource.Manual)
+            CreateRelation(rootId, firstHopId, source: RelationSource.Manual),
+            CreateRelation(firstHopId, secondHopId, source: RelationSource.Manual)
         };
 
         SetupRepositories(documents, relations);
@@ -149,24 +149,21 @@ public class DocumentRelationAppService_Tests
     }
 
     [Fact]
-    public async Task GetGraphAsync_Should_Apply_Source_And_RelationType_Filters()
+    public async Task GetGraphAsync_Should_Exclude_AiSuggested_When_Disabled()
     {
         var rootId = Guid.NewGuid();
         var manualTargetId = Guid.NewGuid();
         var aiTargetId = Guid.NewGuid();
-        var otherTypeTargetId = Guid.NewGuid();
         var documents = new List<Document>
         {
             CreateDocument(rootId, "root.pdf"),
             CreateDocument(manualTargetId, "manual.pdf"),
-            CreateDocument(aiTargetId, "ai.pdf"),
-            CreateDocument(otherTypeTargetId, "other-type.pdf")
+            CreateDocument(aiTargetId, "ai.pdf")
         };
         var relations = new List<DocumentRelation>
         {
-            CreateRelation(rootId, manualTargetId, "references", RelationSource.Manual),
-            CreateRelation(rootId, aiTargetId, "references", RelationSource.AiSuggested),
-            CreateRelation(rootId, otherTypeTargetId, "supports", RelationSource.Manual)
+            CreateRelation(rootId, manualTargetId, source: RelationSource.Manual),
+            CreateRelation(rootId, aiTargetId, source: RelationSource.AiSuggested)
         };
 
         SetupRepositories(documents, relations);
@@ -175,8 +172,7 @@ public class DocumentRelationAppService_Tests
         {
             RootDocumentId = rootId,
             Depth = 1,
-            IncludeAiSuggested = false,
-            RelationTypes = new List<string> { "references" }
+            IncludeAiSuggested = false
         });
 
         result.Nodes.Select(n => n.DocumentId).ShouldBe(
@@ -210,18 +206,15 @@ public class DocumentRelationAppService_Tests
             .GetListByDocumentIdsAsync(
                 Arg.Any<IReadOnlyCollection<Guid>>(),
                 Arg.Any<bool>(),
-                Arg.Any<IReadOnlyCollection<string>?>(),
                 Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {
                 var ids = ((IReadOnlyCollection<Guid>)callInfo[0]).ToHashSet();
                 var includeAiSuggested = (bool)callInfo[1];
-                var relationTypes = ((IReadOnlyCollection<string>?)callInfo[2])?.ToHashSet();
 
                 return relations
                     .Where(r => ids.Contains(r.SourceDocumentId) || ids.Contains(r.TargetDocumentId))
                     .Where(r => includeAiSuggested || r.Source != RelationSource.AiSuggested)
-                    .Where(r => relationTypes == null || relationTypes.Contains(r.RelationType))
                     .ToList();
             });
     }
@@ -229,7 +222,7 @@ public class DocumentRelationAppService_Tests
     private static DocumentRelation CreateRelation(
         Guid sourceDocumentId,
         Guid targetDocumentId,
-        string relationType = "references",
+        string description = "测试关系说明",
         RelationSource source = RelationSource.Manual)
     {
         return new DocumentRelation(
@@ -237,7 +230,7 @@ public class DocumentRelationAppService_Tests
             tenantId: null,
             sourceDocumentId,
             targetDocumentId,
-            relationType,
+            description,
             source,
             source == RelationSource.AiSuggested ? 0.9 : null);
     }

@@ -32,7 +32,6 @@ public class EfCoreDocumentRelationRepository
     public virtual async Task<List<DocumentRelation>> GetListByDocumentIdsAsync(
         IReadOnlyCollection<Guid> documentIds,
         bool includeAiSuggested = true,
-        IReadOnlyCollection<string>? relationTypes = null,
         CancellationToken cancellationToken = default)
     {
         if (documentIds.Count == 0)
@@ -49,20 +48,6 @@ public class EfCoreDocumentRelationRepository
         {
             sourceQuery = sourceQuery.Where(r => r.Source != RelationSource.AiSuggested);
             targetQuery = targetQuery.Where(r => r.Source != RelationSource.AiSuggested);
-        }
-
-        if (relationTypes is { Count: > 0 })
-        {
-            var distinctRelationTypes = relationTypes
-                .Where(t => !string.IsNullOrWhiteSpace(t))
-                .Distinct()
-                .ToList();
-
-            if (distinctRelationTypes.Count > 0)
-            {
-                sourceQuery = sourceQuery.Where(r => distinctRelationTypes.Contains(r.RelationType));
-                targetQuery = targetQuery.Where(r => distinctRelationTypes.Contains(r.RelationType));
-            }
         }
 
         var sourceRelations = await sourceQuery.ToListAsync(GetCancellationToken(cancellationToken));

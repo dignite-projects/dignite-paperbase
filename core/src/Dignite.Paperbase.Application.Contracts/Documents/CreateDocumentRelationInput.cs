@@ -12,6 +12,6 @@ public class CreateDocumentRelationInput
     public Guid TargetDocumentId { get; set; }
 
     [Required]
-    [StringLength(64)]
-    public string RelationType { get; set; } = default!;
+    [StringLength(DocumentRelationConsts.MaxDescriptionLength)]
+    public string Description { get; set; } = default!;
 }

@@ -114,7 +114,7 @@ public class DocumentRelationInferenceBackgroundJob
                     document.TenantId,
                     document.Id,
                     rel.TargetDocumentId,
-                    rel.RelationType,
+                    rel.Description,
                     RelationSource.AiSuggested,
                     rel.Confidence));
             }

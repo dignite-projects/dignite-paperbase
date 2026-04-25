@@ -49,7 +49,6 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
                 $"Depth must be between 1 and {MaxGraphDepth}.");
         }
 
-        var relationTypes = NormalizeRelationTypes(input.RelationTypes);
         var rootDocument = await _documentRepository.GetAsync(input.RootDocumentId);
         var distances = new Dictionary<Guid, int>
         {
@@ -62,8 +61,7 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
         {
             var relations = await _relationRepository.GetListByDocumentIdsAsync(
                 frontier.ToList(),
-                input.IncludeAiSuggested,
-                relationTypes);
+                input.IncludeAiSuggested);
 
             var nextFrontier = new HashSet<Guid>();
             foreach (var relation in relations)
@@ -118,7 +116,7 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
             CurrentTenant.Id,
             input.SourceDocumentId,
             input.TargetDocumentId,
-            input.RelationType,
+            input.Description,
             RelationSource.Manual);
 
         await _relationRepository.InsertAsync(relation);
@@ -138,17 +136,6 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
         relation.Confirm();
         await _relationRepository.UpdateAsync(relation);
         return ObjectMapper.Map<DocumentRelation, DocumentRelationDto>(relation);
-    }
-
-    private static IReadOnlyCollection<string>? NormalizeRelationTypes(List<string>? relationTypes)
-    {
-        var normalized = relationTypes?
-            .Where(t => !string.IsNullOrWhiteSpace(t))
-            .Select(t => t.Trim())
-            .Distinct()
-            .ToList();
-
-        return normalized is { Count: > 0 } ? normalized : null;
     }
 
     private static void AddNeighborIfDiscoveredFromFrontier(
@@ -194,7 +181,7 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
             Id = relation.Id,
             SourceDocumentId = relation.SourceDocumentId,
             TargetDocumentId = relation.TargetDocumentId,
-            RelationType = relation.RelationType,
+            Description = relation.Description,
             Source = relation.Source,
             Confidence = relation.Confidence
         };

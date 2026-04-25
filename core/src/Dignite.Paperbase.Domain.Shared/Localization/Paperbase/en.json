@@ -83,7 +83,7 @@
     "Document:GlobalAsk": "Ask Across Documents",
     "Document:Sources": "Sources",
     "Document:QaError": "Failed to get an answer. Please try again.",
-    "Document:RelationType": "Relation Type",
+    "Document:RelationDescription": "Relation Description",
     "Document:TargetDocument": "Target Document",
     "Document:RelationSource": "Source",
     "Document:RelationSource:Manual": "Manual",

@@ -15,6 +15,5 @@ public interface IDocumentRelationRepository : IRepository<DocumentRelation, Gui
     Task<List<DocumentRelation>> GetListByDocumentIdsAsync(
         IReadOnlyCollection<Guid> documentIds,
         bool includeAiSuggested = true,
-        IReadOnlyCollection<string>? relationTypes = null,
         CancellationToken cancellationToken = default);
 }

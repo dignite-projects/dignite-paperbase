@@ -150,7 +150,7 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
                 Arg.Any<IReadOnlyList<RelationCandidate>>(), Arg.Any<CancellationToken>())
             .Returns(new List<InferredDocumentRelation>
             {
-                new() { TargetDocumentId = candidateDocId, RelationType = "references", Confidence = 0.9 }
+                new() { TargetDocumentId = candidateDocId, Description = "本文档引用了候选文档", Confidence = 0.9 }
             });
 
         await _job.ExecuteAsync(new DocumentRelationInferenceJobArgs { DocumentId = sourceDoc.Id });
@@ -159,7 +159,7 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
             Arg.Is<DocumentRelation>(r =>
                 r.SourceDocumentId == sourceDoc.Id &&
                 r.TargetDocumentId == candidateDocId &&
-                r.RelationType == "references" &&
+                r.Description == "本文档引用了候选文档" &&
                 r.Source == RelationSource.AiSuggested),
             Arg.Any<bool>(),
             Arg.Any<CancellationToken>());

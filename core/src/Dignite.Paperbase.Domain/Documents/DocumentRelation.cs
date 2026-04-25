@@ -11,7 +11,7 @@ namespace Dignite.Paperbase.Domain.Documents;
 /// </summary>
 public class DocumentRelation : CreationAuditedAggregateRoot<Guid>, IMultiTenant
 {
-    public const int MaxRelationTypeLength = 128;
+    public const int MaxDescriptionLength = DocumentRelationConsts.MaxDescriptionLength;
 
     public virtual Guid? TenantId { get; private set; }
 
@@ -21,8 +21,8 @@ public class DocumentRelation : CreationAuditedAggregateRoot<Guid>, IMultiTenant
     /// <summary>目标文档 ID</summary>
     public virtual Guid TargetDocumentId { get; private set; }
 
-    /// <summary>关系类型，如 "related-to"、"supplements"、"supersedes"、"belongs-to"</summary>
-    public virtual string RelationType { get; private set; } = default!;
+    /// <summary>用户可读的关系说明（如：本合同补充了主合同第 3 条付款条款的执行细节）</summary>
+    public virtual string Description { get; private set; } = default!;
 
     /// <summary>关系来源</summary>
     public virtual RelationSource Source { get; private set; }
@@ -43,7 +43,7 @@ public class DocumentRelation : CreationAuditedAggregateRoot<Guid>, IMultiTenant
         Guid? tenantId,
         Guid sourceDocumentId,
         Guid targetDocumentId,
-        string relationType,
+        string description,
         RelationSource source,
         double? confidence = null)
         : base(id)
@@ -57,10 +57,10 @@ public class DocumentRelation : CreationAuditedAggregateRoot<Guid>, IMultiTenant
             throw new BusinessException(PaperbaseErrorCodes.DocumentRelationCannotTargetSelf);
         }
 
-        RelationType = Check.NotNullOrWhiteSpace(
-            relationType,
-            nameof(relationType),
-            MaxRelationTypeLength);
+        Description = Check.NotNullOrWhiteSpace(
+            description,
+            nameof(description),
+            MaxDescriptionLength);
         Source = source;
         Confidence = ValidateConfidence(source, confidence);
     }

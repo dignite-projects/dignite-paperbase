@@ -18,15 +18,11 @@ namespace Dignite.Paperbase.Documents.AI.Workflows;
 public class DocumentRelationInferenceWorkflow : ITransientDependency
 {
     private const string SystemInstructions =
-        "You are a document relationship analyst. Given a source document and a list of candidate documents, " +
-        "identify which candidates have a meaningful relationship with the source. " +
-        "Relation types: " +
-        "\"supplements\" (adds information to), " +
-        "\"supersedes\" (replaces or amends), " +
-        "\"belongs-to\" (attachment or sub-document of), " +
-        "\"related-to\" (general relevance). " +
-        "Return a JSON array. Each item must have: targetDocumentId (string), relationType (string), confidence (0.0-1.0). " +
-        "Only include pairs with confidence >= 0.5. Return [] if none qualify.";
+        "你是文档关系分析师。给定一份源文档和若干候选文档，找出与源文档有实质关系的候选，并用一句中文清楚地说明它们的关系。" +
+        "示例说明：'本合同补充了主合同第 3 条付款条款的执行细节'、'替代了 2024-03 版本，原合同作废'、" +
+        "'是主合同的附件清单'、'与主合同涉及同一项目'。" +
+        "返回一个 JSON 数组，每项包含：targetDocumentId (string)、description (string，中文一句话，不超过 200 字)、confidence (0.0-1.0)。" +
+        "仅包含 confidence >= 0.5 的项；若无符合项请返回 []。";
 
     private readonly ChatClientAgent _agent;
     private readonly PaperbaseAIOptions _options;
@@ -67,13 +63,14 @@ public class DocumentRelationInferenceWorkflow : ITransientDependency
         {
             foreach (var item in items)
             {
+                var description = item.Description?.Trim();
                 if (Guid.TryParse(item.TargetDocumentId, out var targetId)
-                    && !string.IsNullOrEmpty(item.RelationType))
+                    && !string.IsNullOrEmpty(description))
                 {
                     results.Add(new InferredDocumentRelation
                     {
                         TargetDocumentId = targetId,
-                        RelationType = item.RelationType,
+                        Description = description,
                         Confidence = item.Confidence
                     });
                 }
@@ -108,7 +105,7 @@ public class DocumentRelationInferenceWorkflow : ITransientDependency
     private sealed class RelationItem
     {
         public string? TargetDocumentId { get; set; }
-        public string? RelationType { get; set; }
+        public string? Description { get; set; }
         public double Confidence { get; set; }
     }
 }
@@ -123,6 +120,6 @@ public class RelationCandidate
 public class InferredDocumentRelation
 {
     public Guid TargetDocumentId { get; set; }
-    public string RelationType { get; set; } = default!;
+    public string Description { get; set; } = default!;
     public double Confidence { get; set; }
 }

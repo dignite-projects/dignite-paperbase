@@ -39,7 +39,7 @@ export class DocumentRelationService {
     this.restService.request<any, DocumentRelationGraphDto>({
       method: 'GET',
       url: '/api/paperbase/document-relations/graph',
-      params: { rootDocumentId: input.rootDocumentId, depth: input.depth, includeAiSuggested: input.includeAiSuggested, relationTypes: input.relationTypes },
+      params: { rootDocumentId: input.rootDocumentId, depth: input.depth, includeAiSuggested: input.includeAiSuggested },
     },
     { apiName: this.apiName,...config });
   
