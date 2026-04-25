@@ -25,7 +25,7 @@ abp install-libs
 
 ### Start the backend
 
-Before running the Angular application, make sure your backend API is running. Start the `Dignite.Paperbase` application.
+Before running the Angular application, make sure your backend API is running. Start the `Dignite.Paperbase.Host` application.
 
 ## Development server
 

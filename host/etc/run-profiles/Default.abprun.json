@@ -1,6 +1,6 @@
 ﻿{
   "applications": {
-    "Dignite.Paperbase.Angular": {
+    "Dignite.Paperbase.Host.Angular": {
       "type": "cli",
       "workingDirectory": "../../angular",
       "startCommand": "./start.ps1",

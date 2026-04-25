@@ -7,7 +7,7 @@
   "version": 1,
   "newProjectRoot": "projects",
   "projects": {
-    "Paperbase": {
+    "PaperbaseHost": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:component": {
@@ -22,7 +22,7 @@
           "builder": "@angular/build:application",
           "options": {
             "outputPath": {
-              "base": "dist/Paperbase"
+              "base": "dist/PaperbaseHost"
             },
             "index": "src/index.html",
             "polyfills": [
@@ -171,10 +171,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "Paperbase:build:production"
+              "buildTarget": "PaperbaseHost:build:production"
             },
             "development": {
-              "buildTarget": "Paperbase:build:development"
+              "buildTarget": "PaperbaseHost:build:development"
             }
           },
           "defaultConfiguration": "development"
@@ -182,14 +182,14 @@
         "extract-i18n": {
           "builder": "@angular/build:extract-i18n",
           "options": {
-            "buildTarget": "Paperbase:build"
+            "buildTarget": "PaperbaseHost:build"
           }
         },
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
             "tsConfig": "tsconfig.spec.json",
-            "buildTarget": "Paperbase:build",
+            "buildTarget": "PaperbaseHost:build",
             "runner": "vitest"
           }
         },

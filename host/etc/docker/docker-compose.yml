@@ -3,8 +3,8 @@ services:
     image: dignite/paperbase-web:latest
     container_name: paperbase-web
     build:
-      context: ../../../
-      dockerfile: angular/Dockerfile.local      
+      context: ../../angular
+      dockerfile: Dockerfile.local      
     ports:
       - "4200:80"
     depends_on:
@@ -19,7 +19,7 @@ services:
     container_name: paperbase-api-container
     build:
       context: ../../
-      dockerfile: Dignite.Paperbase/Dockerfile.local
+      dockerfile: src/Dockerfile.local
     environment:
       - ASPNETCORE_URLS=https://+:8081;http://+:8080;
       - Kestrel__Certificates__Default__Path=/app/certs/localhost.pfx
@@ -46,7 +46,7 @@ services:
     container_name: db-migrator
     build:
       context: ../../
-      dockerfile: Dignite.Paperbase/Dockerfile.local
+      dockerfile: src/Dockerfile.local
     environment:
       - ConnectionStrings__Default=Data Source=sql-server;Initial Catalog=Paperbase;User Id=sa;Password=myPassw0rd;MultipleActiveResultSets=true;TrustServerCertificate=True;
     command:

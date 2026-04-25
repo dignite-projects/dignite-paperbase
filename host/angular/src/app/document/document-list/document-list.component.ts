@@ -214,6 +214,10 @@ export class DocumentListComponent implements OnInit, OnDestroy {
     this.selectedTypeCode.set('');
   }
 
+  onTypeCodeInput(event: Event): void {
+    this.selectedTypeCode.set((event.target as HTMLInputElement).value);
+  }
+
   submitConfirmation(): void {
     const doc = this.confirmingDoc();
     if (!doc || !this.selectedTypeCode()) return;

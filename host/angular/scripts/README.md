@@ -17,14 +17,14 @@ You will need to run these scripts if you need to reference an installed package
 ### Prerequisites
 
 1. **PowerShell**: Ensure you have PowerShell Core (pwsh) installed
-2. **Dependencies**: Run `yarn install` in the main demo app directory first (`Paperbase/angular`)
+2. **Dependencies**: Run `yarn install` in the main demo app directory first (`host/angular`)
 3. **Permissions**: On Windows, you may need to run PowerShell as Administrator for symlink creation
 
 ### Basic Usage
 
 ```powershell
 # Navigate to the scripts directory
-cd Paperbase/angular/scripts
+cd host/angular/scripts
 
 # Setup symlinks (run this first)
 ./setup-symlinks.ps1

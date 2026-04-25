@@ -2,9 +2,9 @@ param ($version='latest')
 
 $currentFolder = $PSScriptRoot
 $slnFolder = Join-Path $currentFolder "../../"
-$appFolder = Join-Path $slnFolder "Dignite.Paperbase"
+$appFolder = Join-Path $slnFolder "src"
 
-$angularAppFolder = Join-Path $appFolder "../angular"
+$angularAppFolder = Join-Path $slnFolder "angular"
 
 Write-Host "********* BUILDING Angular Application *********" -ForegroundColor Green
 Set-Location $angularAppFolder

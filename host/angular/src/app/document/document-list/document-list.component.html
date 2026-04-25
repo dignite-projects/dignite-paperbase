@@ -227,7 +227,7 @@
                 type="text"
                 class="form-control"
                 [value]="selectedTypeCode()"
-                (input)="selectedTypeCode.set(($event.target as HTMLInputElement).value)"
+                (input)="onTypeCodeInput($event)"
                 placeholder="{{ '::Document:DocumentTypeCode' | abpLocalization }}"
               />
             </div>

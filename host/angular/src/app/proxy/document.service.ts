@@ -27,7 +27,6 @@ export class DocumentService {
           sorting: input.sorting,
           lifecycleStatus: input.lifecycleStatus,
           documentTypeCode: input.documentTypeCode,
-          needsManualReview: input.needsManualReview,
         },
       },
       { apiName: this.apiName }
@@ -38,7 +37,7 @@ export class DocumentService {
       {
         method: 'POST',
         url: `${this.basePath}/${id}/confirm-classification`,
-        body: documentTypeCode,
+        body: { documentTypeCode },
       },
       { apiName: this.apiName }
     );
@@ -63,13 +62,13 @@ export class DocumentService {
     );
 
   getBlobUrl = (id: string): string =>
-    `${this.env.getApiUrl()}/api/paperbase/documents/${id}/blob`;
+    `${this.env.getApiUrl(this.apiName)}/api/paperbase/documents/${id}/blob`;
 
   getExportUrl = (input: GetDocumentListInput): string => {
     const params = new URLSearchParams();
     if (input.lifecycleStatus != null) params.set('lifecycleStatus', String(input.lifecycleStatus));
     if (input.documentTypeCode) params.set('documentTypeCode', input.documentTypeCode);
     const qs = params.toString();
-    return `${this.env.getApiUrl()}${this.basePath}/export${qs ? '?' + qs : ''}`;
+    return `${this.env.getApiUrl(this.apiName)}${this.basePath}/export${qs ? '?' + qs : ''}`;
   };
 }

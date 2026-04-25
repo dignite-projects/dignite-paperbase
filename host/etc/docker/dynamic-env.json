@@ -15,7 +15,7 @@
   "apis": {
     "default": {
       "url": "https://localhost:44348",
-      "rootNamespace": "Paperbase"
+      "rootNamespace": "Dignite.Paperbase"
     }
   }
 }
