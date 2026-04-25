@@ -3,6 +3,7 @@ using Dignite.Paperbase.Contracts.EntityFrameworkCore;
 using Dignite.Paperbase.Host.Data;
 using Dignite.Paperbase.EntityFrameworkCore;
 using Dignite.Paperbase.Host.HealthChecks;
+using Dignite.Paperbase.Host.Localization;
 using Dignite.Paperbase.Localization;
 using Dignite.Paperbase.Ocr.AzureDocumentIntelligence;
 using Dignite.Paperbase.TextExtraction;
@@ -137,7 +138,7 @@ public class PaperbaseHostModule : AbpModule
         context.Services.PreConfigure<AbpMvcDataAnnotationsLocalizationOptions>(options =>
         {
             options.AddAssemblyResource(
-                typeof(PaperbaseResource)
+                typeof(PaperbaseHostResource)
             );
         });
 
@@ -288,8 +289,12 @@ public class PaperbaseHostModule : AbpModule
     {
         Configure<AbpLocalizationOptions>(options =>
         {
-            // PaperbaseResource is already registered by PaperbaseDomainSharedModule
-            options.DefaultResourceType = typeof(PaperbaseResource);
+            options.Resources
+                .Add<PaperbaseHostResource>("en")
+                .AddBaseTypes(typeof(PaperbaseResource))
+                .AddVirtualJson("/Localization/PaperbaseHost");
+
+            options.DefaultResourceType = typeof(PaperbaseHostResource);
 
             options.Languages.Add(new LanguageInfo("en", "en", "English"));
             options.Languages.Add(new LanguageInfo("zh-Hans", "zh-Hans", "Chinese (Simplified)"));

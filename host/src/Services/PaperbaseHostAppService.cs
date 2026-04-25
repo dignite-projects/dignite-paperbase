@@ -1,5 +1,5 @@
 using Volo.Abp.Application.Services;
-using Dignite.Paperbase.Localization;
+using Dignite.Paperbase.Host.Localization;
 
 namespace Dignite.Paperbase.Host.Services;
 
@@ -8,6 +8,6 @@ public abstract class PaperbaseHostAppService : ApplicationService
 {
     protected PaperbaseHostAppService()
     {
-        LocalizationResource = typeof(PaperbaseResource);
+        LocalizationResource = typeof(PaperbaseHostResource);
     }
 }
