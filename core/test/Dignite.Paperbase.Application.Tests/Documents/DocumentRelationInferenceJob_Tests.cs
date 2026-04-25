@@ -26,7 +26,8 @@ public class DocumentRelationInferenceJobTestModule : AbpModule
         context.Services.AddSingleton(Substitute.For<IDocumentRelationRepository>());
 
         var workflow = Substitute.ForPartsOf<DocumentRelationInferenceWorkflow>(
-            Substitute.For<IChatClient>());
+            Substitute.For<IChatClient>(),
+            Options.Create(new PaperbaseAIOptions { QaTopKChunks = 5 }));
         context.Services.AddSingleton(workflow);
 
         context.Services.Configure<PaperbaseAIOptions>(opt =>
