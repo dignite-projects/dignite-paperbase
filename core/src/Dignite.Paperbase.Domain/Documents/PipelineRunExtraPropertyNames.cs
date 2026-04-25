@@ -1,4 +1,4 @@
-namespace Dignite.Paperbase.Domain.Documents;
+namespace Dignite.Paperbase.Documents;
 
 /// <summary>
 /// <see cref="DocumentPipelineRun.ExtraProperties"/> 的 key 常量。

@@ -4,7 +4,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Domain.Documents;
+using Dignite.Paperbase.Documents;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Shouldly;

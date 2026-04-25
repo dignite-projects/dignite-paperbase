@@ -6,7 +6,7 @@ using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Application.Documents.BackgroundJobs;
 using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.Documents.AI.Workflows;
-using Dignite.Paperbase.Domain.Documents;
+using Dignite.Paperbase.Documents;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;

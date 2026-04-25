@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.Documents.AI.Workflows;
-using Dignite.Paperbase.Domain.Documents;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Volo.Abp.BackgroundJobs;

@@ -2,12 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Domain.Documents.Events;
+using Dignite.Paperbase.Documents.Events;
 using Volo.Abp;
 using Volo.Abp.Domain.Entities.Auditing;
 using Volo.Abp.MultiTenancy;
 
-namespace Dignite.Paperbase.Domain.Documents;
+namespace Dignite.Paperbase.Documents;
 
 public class Document : CreationAuditedAggregateRoot<Guid>, IMultiTenant
 {

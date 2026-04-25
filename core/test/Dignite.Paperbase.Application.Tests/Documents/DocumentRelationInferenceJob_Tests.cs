@@ -5,11 +5,12 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Application.Documents.BackgroundJobs;
 using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.Documents.AI.Workflows;
-using Dignite.Paperbase.Domain.Documents;
+using Dignite.Paperbase.Documents;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using Pgvector;
 using Shouldly;
 using Volo.Abp.Modularity;
 using Xunit;
@@ -95,7 +96,7 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
             .GetListByDocumentIdAsync(doc.Id, Arg.Any<CancellationToken>())
             .Returns(new List<DocumentChunk>
             {
-                new(Guid.NewGuid(), null, doc.Id, 0, "契約内容...", new float[] { 0.1f, 0.2f })
+                new(Guid.NewGuid(), null, doc.Id, 0, "契約内容...", new Vector(new float[PaperbaseDbProperties.EmbeddingVectorDimension]))
             });
 
         _chunkRepository
@@ -131,8 +132,8 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
         _documentRepository.GetAsync(sourceDoc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(sourceDoc);
         _documentRepository.FindAsync(candidateDocId, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(candidateDoc);
 
-        var sourceChunk = new DocumentChunk(Guid.NewGuid(), null, sourceDoc.Id, 0, "業務委託契約書。", new float[] { 0.5f, 0.6f });
-        var candidateChunk = new DocumentChunk(Guid.NewGuid(), null, candidateDocId, 0, "発注書。", new float[] { 0.5f, 0.6f });
+        var sourceChunk = new DocumentChunk(Guid.NewGuid(), null, sourceDoc.Id, 0, "業務委託契約書。", new Vector(new float[PaperbaseDbProperties.EmbeddingVectorDimension]));
+        var candidateChunk = new DocumentChunk(Guid.NewGuid(), null, candidateDocId, 0, "発注書。", new Vector(new float[PaperbaseDbProperties.EmbeddingVectorDimension]));
 
         _chunkRepository
             .GetListByDocumentIdAsync(sourceDoc.Id, Arg.Any<CancellationToken>())

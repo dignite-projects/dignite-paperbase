@@ -1,7 +1,6 @@
 using System;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Domain.Documents;
 using Shouldly;
 using Xunit;
 

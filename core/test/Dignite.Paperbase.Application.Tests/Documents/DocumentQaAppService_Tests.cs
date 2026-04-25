@@ -4,10 +4,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.Documents.AI.Workflows;
-using Dignite.Paperbase.Domain.Documents;
+using Dignite.Paperbase.Documents;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
+using Pgvector;
 using Shouldly;
 using Volo.Abp.Modularity;
 using Xunit;
@@ -163,7 +164,7 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
     {
         var chunk = new DocumentChunk(
             Guid.NewGuid(), null, documentId, chunkIndex, text,
-            new float[] { 0.1f, 0.2f, 0.3f });
+            new Vector(new float[PaperbaseDbProperties.EmbeddingVectorDimension]));
         return chunk;
     }
 }

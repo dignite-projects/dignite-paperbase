@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Volo.Abp.Domain.Repositories;
 
-namespace Dignite.Paperbase.Domain.Documents;
+namespace Dignite.Paperbase.Documents;
 
 public interface IDocumentRepository : IRepository<Document, Guid>
 {

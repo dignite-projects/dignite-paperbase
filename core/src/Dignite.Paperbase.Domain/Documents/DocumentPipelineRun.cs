@@ -5,7 +5,7 @@ using Volo.Abp.Domain.Entities;
 using Volo.Abp.MultiTenancy;
 using Volo.Abp.ObjectExtending;
 
-namespace Dignite.Paperbase.Domain.Documents;
+namespace Dignite.Paperbase.Documents;
 
 /// <summary>
 /// 文档流水线执行记录。

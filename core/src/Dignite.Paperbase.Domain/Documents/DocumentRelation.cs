@@ -4,7 +4,7 @@ using Volo.Abp;
 using Volo.Abp.Domain.Entities.Auditing;
 using Volo.Abp.MultiTenancy;
 
-namespace Dignite.Paperbase.Domain.Documents;
+namespace Dignite.Paperbase.Documents;
 
 /// <summary>
 /// 文档间关系。独立聚合根，不内嵌于 Document。

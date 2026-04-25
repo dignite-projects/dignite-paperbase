@@ -1,6 +1,6 @@
 using Volo.Abp.BlobStoring;
 
-namespace Dignite.Paperbase.Domain.Documents;
+namespace Dignite.Paperbase.Documents;
 
 [BlobContainerName("paperbase-documents")]
 public class PaperbaseDocumentContainer

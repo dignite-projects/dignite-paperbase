@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Domain.Documents;
 using Shouldly;
 using Volo.Abp.Data;
 using Volo.Abp.Domain.Repositories;

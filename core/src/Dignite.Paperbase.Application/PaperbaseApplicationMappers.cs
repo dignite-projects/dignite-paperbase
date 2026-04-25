@@ -1,5 +1,4 @@
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Domain.Documents;
 using Riok.Mapperly.Abstractions;
 using Volo.Abp.Mapperly;
 

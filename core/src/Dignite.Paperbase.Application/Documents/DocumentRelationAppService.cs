@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Domain.Documents;
 using Dignite.Paperbase.Permissions;
 using Microsoft.AspNetCore.Authorization;
 

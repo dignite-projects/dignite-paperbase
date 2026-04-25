@@ -1,5 +1,5 @@
 using System;
-using Dignite.Paperbase.Domain.Documents;
+using Dignite.Paperbase.Documents;
 using Shouldly;
 using Volo.Abp;
 using Xunit;

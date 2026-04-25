@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Domain.Documents;
 using Microsoft.EntityFrameworkCore;
 using Pgvector;
 using Volo.Abp;
@@ -83,7 +82,9 @@ public static class PaperbaseDbContextModelCreatingExtensions
             b.ToTable(PaperbaseDbProperties.DbTablePrefix + "DocumentChunks", PaperbaseDbProperties.DbSchema);
             b.ConfigureByConvention();
 
-            b.Property(x => x.ChunkText).IsRequired().HasColumnType("text");
+            b.Property(x => x.ChunkText)
+                .IsRequired()
+                .HasMaxLength(DocumentChunkConsts.MaxChunkTextLength);
 
             if (isNpgsql)
             {
@@ -102,7 +103,13 @@ public static class PaperbaseDbContextModelCreatingExtensions
                                         .Select(float.Parse).ToArray()));
             }
 
-            b.HasIndex(x => x.DocumentId);
+            b.HasOne<Document>()
+                .WithMany()
+                .HasForeignKey(x => x.DocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // (DocumentId, ChunkIndex) 唯一；DocumentId 单列查询命中此索引前缀
+            b.HasIndex(x => new { x.DocumentId, x.ChunkIndex }).IsUnique();
         });
     }
 }

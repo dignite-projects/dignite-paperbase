@@ -27,7 +27,7 @@ namespace Dignite.Paperbase.Host.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Dignite.Paperbase.Domain.Documents.Document", b =>
+            modelBuilder.Entity("Dignite.Paperbase.Documents.Document", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -92,7 +92,7 @@ namespace Dignite.Paperbase.Host.Migrations
                     b.ToTable("PaperbaseDocuments", (string)null);
                 });
 
-            modelBuilder.Entity("Dignite.Paperbase.Domain.Documents.DocumentPipelineRun", b =>
+            modelBuilder.Entity("Dignite.Paperbase.Documents.DocumentPipelineRun", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -140,7 +140,7 @@ namespace Dignite.Paperbase.Host.Migrations
                     b.ToTable("PaperbaseDocumentPipelineRuns", (string)null);
                 });
 
-            modelBuilder.Entity("Dignite.Paperbase.Domain.Documents.DocumentRelation", b =>
+            modelBuilder.Entity("Dignite.Paperbase.Documents.DocumentRelation", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -2060,7 +2060,7 @@ namespace Dignite.Paperbase.Host.Migrations
                     b.ToTable("AbpSettingDefinitions", (string)null);
                 });
 
-            modelBuilder.Entity("Dignite.Paperbase.Domain.Documents.Document", b =>
+            modelBuilder.Entity("Dignite.Paperbase.Documents.Document", b =>
                 {
                     b.OwnsOne("Dignite.Paperbase.Documents.FileOrigin", "FileOrigin", b1 =>
                         {
@@ -2109,9 +2109,9 @@ namespace Dignite.Paperbase.Host.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Dignite.Paperbase.Domain.Documents.DocumentPipelineRun", b =>
+            modelBuilder.Entity("Dignite.Paperbase.Documents.DocumentPipelineRun", b =>
                 {
-                    b.HasOne("Dignite.Paperbase.Domain.Documents.Document", null)
+                    b.HasOne("Dignite.Paperbase.Documents.Document", null)
                         .WithMany("PipelineRuns")
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2316,7 +2316,7 @@ namespace Dignite.Paperbase.Host.Migrations
                         .HasForeignKey("AuthorizationId");
                 });
 
-            modelBuilder.Entity("Dignite.Paperbase.Domain.Documents.Document", b =>
+            modelBuilder.Entity("Dignite.Paperbase.Documents.Document", b =>
                 {
                     b.Navigation("PipelineRuns");
                 });

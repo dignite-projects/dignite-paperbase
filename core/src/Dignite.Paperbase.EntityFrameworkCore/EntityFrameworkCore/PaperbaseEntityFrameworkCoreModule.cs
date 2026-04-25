@@ -1,5 +1,4 @@
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Domain.Documents;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.EntityFrameworkCore;
 using Volo.Abp.Modularity;

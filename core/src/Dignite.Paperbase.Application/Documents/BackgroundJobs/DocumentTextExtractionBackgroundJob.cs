@@ -3,7 +3,6 @@ using System.IO;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.TextExtraction;
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Domain.Documents;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.BlobStoring;
 using Volo.Abp.DependencyInjection;

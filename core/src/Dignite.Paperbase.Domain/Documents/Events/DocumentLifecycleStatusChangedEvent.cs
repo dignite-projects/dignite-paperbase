@@ -1,7 +1,7 @@
 using System;
 using Dignite.Paperbase.Documents;
 
-namespace Dignite.Paperbase.Domain.Documents.Events;
+namespace Dignite.Paperbase.Documents.Events;
 
 /// <summary>
 /// 文档生命周期状态变更的本地域事件。

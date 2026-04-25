@@ -1,4 +1,4 @@
-using Dignite.Paperbase.Domain.Documents;
+using Dignite.Paperbase.Documents;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp.Data;
 using Volo.Abp.EntityFrameworkCore;

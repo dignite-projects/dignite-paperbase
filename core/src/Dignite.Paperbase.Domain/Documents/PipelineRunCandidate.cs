@@ -1,4 +1,4 @@
-namespace Dignite.Paperbase.Domain.Documents;
+namespace Dignite.Paperbase.Documents;
 
 /// <summary>
 /// 分类流水线产出的 top-K 候选项 JSON payload schema，持久化在

@@ -3,11 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Domain.Documents.Events;
+using Dignite.Paperbase.Documents.Events;
 using Volo.Abp.Data;
 using Volo.Abp.Domain.Services;
 
-namespace Dignite.Paperbase.Domain.Documents;
+namespace Dignite.Paperbase.Documents;
 
 /// <summary>
 /// 流水线执行记录的统一入口。
