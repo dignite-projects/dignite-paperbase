@@ -175,8 +175,6 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
             $"blobs/{Guid.NewGuid():N}.pdf",
             SourceType.Digital,
             new FileOrigin(
-                uploadedAt: new DateTime(2026, 1, 1),
-                uploadedByUserId: Guid.NewGuid(),
                 uploadedByUserName: "test-user",
                 contentType: "application/pdf",
                 fileSize: 1024,

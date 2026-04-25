@@ -34,10 +34,13 @@ public static class PaperbaseDbContextModelCreatingExtensions
 
             b.OwnsOne(x => x.FileOrigin, fo =>
             {
-                fo.Property(x => x.UploadedByUserName).HasMaxLength(256);
-                fo.Property(x => x.OriginalFileName).HasMaxLength(512);
-                fo.Property(x => x.ContentType).IsRequired().HasMaxLength(256);
-                fo.Property(x => x.DeviceInfo).HasMaxLength(512);
+                fo.Property(x => x.UploadedByUserName)
+                    .IsRequired()
+                    .HasMaxLength(FileOrigin.MaxUploadedByUserNameLength);
+                fo.Property(x => x.OriginalFileName).HasMaxLength(FileOrigin.MaxOriginalFileNameLength);
+                fo.Property(x => x.ContentType)
+                    .IsRequired()
+                    .HasMaxLength(FileOrigin.MaxContentTypeLength);
             });
 
             b.HasMany(x => x.PipelineRuns)

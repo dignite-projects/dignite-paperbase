@@ -97,8 +97,6 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
 
         var sourceType = SourceType.Physical; // placeholder；提取完成后由 BackgroundJob 回写实际值
         var fileOrigin = new FileOrigin(
-            Clock.Now,
-            CurrentUser.Id!.Value,
             CurrentUser.UserName ?? string.Empty,
             contentType,
             fileSize,
