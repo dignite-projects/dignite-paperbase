@@ -1,17 +1,24 @@
 using System;
+using System.ComponentModel.DataAnnotations;
+using Volo.Abp.Validation;
 
 namespace Dignite.Paperbase.Contracts.Dtos;
 
 public class UpdateContractDto
 {
+    [DynamicStringLength(typeof(ContractConsts), nameof(ContractConsts.MaxTitleLength))]
     public string? Title { get; set; }
 
+    [DynamicStringLength(typeof(ContractConsts), nameof(ContractConsts.MaxContractNumberLength))]
     public string? ContractNumber { get; set; }
 
+    [DynamicStringLength(typeof(ContractConsts), nameof(ContractConsts.MaxPartyNameLength))]
     public string? PartyAName { get; set; }
 
+    [DynamicStringLength(typeof(ContractConsts), nameof(ContractConsts.MaxPartyNameLength))]
     public string? PartyBName { get; set; }
 
+    [DynamicStringLength(typeof(ContractConsts), nameof(ContractConsts.MaxPartyNameLength))]
     public string? CounterpartyName { get; set; }
 
     public DateTime? SignedDate { get; set; }
@@ -22,5 +29,6 @@ public class UpdateContractDto
 
     public decimal? TotalAmount { get; set; }
 
+    [DynamicStringLength(typeof(ContractConsts), nameof(ContractConsts.MaxCurrencyLength))]
     public string? Currency { get; set; }
 }

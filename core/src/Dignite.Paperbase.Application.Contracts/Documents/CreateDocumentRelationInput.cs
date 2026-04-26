@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel.DataAnnotations;
+using Volo.Abp.Validation;
 
 namespace Dignite.Paperbase.Documents;
 
@@ -12,6 +13,6 @@ public class CreateDocumentRelationInput
     public Guid TargetDocumentId { get; set; }
 
     [Required]
-    [StringLength(DocumentRelationConsts.MaxDescriptionLength)]
+    [DynamicStringLength(typeof(DocumentRelationConsts), nameof(DocumentRelationConsts.MaxDescriptionLength))]
     public string Description { get; set; } = default!;
 }

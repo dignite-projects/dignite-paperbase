@@ -22,9 +22,9 @@ public static class PaperbaseDbContextModelCreatingExtensions
             b.ToTable(PaperbaseDbProperties.DbTablePrefix + "Documents", PaperbaseDbProperties.DbSchema);
             b.ConfigureByConvention();
 
-            b.Property(x => x.OriginalFileBlobName).IsRequired().HasMaxLength(512);
+            b.Property(x => x.OriginalFileBlobName).IsRequired().HasMaxLength(DocumentConsts.MaxOriginalFileBlobNameLength);
             b.Property(x => x.SourceType).IsRequired();
-            b.Property(x => x.DocumentTypeCode).HasMaxLength(128);
+            b.Property(x => x.DocumentTypeCode).HasMaxLength(DocumentConsts.MaxDocumentTypeCodeLength);
             b.Property(x => x.LifecycleStatus).IsRequired();
             b.Property(x => x.ReviewStatus).IsRequired();
             b.Property(x => x.ClassificationReason).HasColumnType("text");
@@ -34,11 +34,11 @@ public static class PaperbaseDbContextModelCreatingExtensions
             {
                 fo.Property(x => x.UploadedByUserName)
                     .IsRequired()
-                    .HasMaxLength(FileOrigin.MaxUploadedByUserNameLength);
-                fo.Property(x => x.OriginalFileName).HasMaxLength(FileOrigin.MaxOriginalFileNameLength);
+                    .HasMaxLength(FileOriginConsts.MaxUploadedByUserNameLength);
+                fo.Property(x => x.OriginalFileName).HasMaxLength(FileOriginConsts.MaxOriginalFileNameLength);
                 fo.Property(x => x.ContentType)
                     .IsRequired()
-                    .HasMaxLength(FileOrigin.MaxContentTypeLength);
+                    .HasMaxLength(FileOriginConsts.MaxContentTypeLength);
             });
 
             b.HasMany(x => x.PipelineRuns)
@@ -57,8 +57,8 @@ public static class PaperbaseDbContextModelCreatingExtensions
             b.ToTable(PaperbaseDbProperties.DbTablePrefix + "DocumentPipelineRuns", PaperbaseDbProperties.DbSchema);
             b.ConfigureByConvention();
 
-            b.Property(x => x.PipelineCode).IsRequired().HasMaxLength(128);
-            b.Property(x => x.StatusMessage).HasMaxLength(2048);
+            b.Property(x => x.PipelineCode).IsRequired().HasMaxLength(DocumentPipelineRunConsts.MaxPipelineCodeLength);
+            b.Property(x => x.StatusMessage).HasMaxLength(DocumentPipelineRunConsts.MaxStatusMessageLength);
 
             // 联合索引：(DocumentId, PipelineCode, AttemptNumber DESC)
             b.HasIndex(x => new { x.DocumentId, x.PipelineCode, x.AttemptNumber });

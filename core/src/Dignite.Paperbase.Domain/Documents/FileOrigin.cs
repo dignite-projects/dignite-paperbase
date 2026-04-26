@@ -9,10 +9,6 @@ namespace Dignite.Paperbase.Documents;
 /// </summary>
 public class FileOrigin : ValueObject
 {
-    public const int MaxUploadedByUserNameLength = 256;
-    public const int MaxOriginalFileNameLength = 512;
-    public const int MaxContentTypeLength = 256;
-
     /// <summary>上传操作人名称快照（冗余存储，防止用户删除后丢失信息）</summary>
     public string UploadedByUserName { get; private set; } = default!;
 
@@ -36,10 +32,10 @@ public class FileOrigin : ValueObject
         UploadedByUserName = Check.NotNullOrWhiteSpace(
             uploadedByUserName,
             nameof(uploadedByUserName),
-            MaxUploadedByUserNameLength);
-        ContentType = Check.NotNullOrWhiteSpace(contentType, nameof(contentType), MaxContentTypeLength);
+            FileOriginConsts.MaxUploadedByUserNameLength);
+        ContentType = Check.NotNullOrWhiteSpace(contentType, nameof(contentType), FileOriginConsts.MaxContentTypeLength);
         FileSize = Check.Range(fileSize, nameof(fileSize), 0, long.MaxValue);
-        OriginalFileName = NormalizeOptionalString(originalFileName, nameof(originalFileName), MaxOriginalFileNameLength);
+        OriginalFileName = NormalizeOptionalString(originalFileName, nameof(originalFileName), FileOriginConsts.MaxOriginalFileNameLength);
     }
 
     protected override IEnumerable<object> GetAtomicValues()

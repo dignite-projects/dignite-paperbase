@@ -1,3 +1,4 @@
+using Dignite.Paperbase.Contracts;
 using Dignite.Paperbase.Contracts.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp;
@@ -21,16 +22,16 @@ public static class ContractsDbContextModelCreatingExtensions
             b.HasIndex(x => x.CounterpartyName);
             b.HasIndex(x => x.Status);
 
-            b.Property(x => x.DocumentTypeCode).HasMaxLength(128).IsRequired();
-            b.Property(x => x.Title).HasMaxLength(256);
-            b.Property(x => x.ContractNumber).HasMaxLength(64);
-            b.Property(x => x.PartyAName).HasMaxLength(256);
-            b.Property(x => x.PartyBName).HasMaxLength(256);
-            b.Property(x => x.CounterpartyName).HasMaxLength(256);
-            b.Property(x => x.Currency).HasMaxLength(8);
+            b.Property(x => x.DocumentTypeCode).HasMaxLength(ContractConsts.MaxDocumentTypeCodeLength).IsRequired();
+            b.Property(x => x.Title).HasMaxLength(ContractConsts.MaxTitleLength);
+            b.Property(x => x.ContractNumber).HasMaxLength(ContractConsts.MaxContractNumberLength);
+            b.Property(x => x.PartyAName).HasMaxLength(ContractConsts.MaxPartyNameLength);
+            b.Property(x => x.PartyBName).HasMaxLength(ContractConsts.MaxPartyNameLength);
+            b.Property(x => x.CounterpartyName).HasMaxLength(ContractConsts.MaxPartyNameLength);
+            b.Property(x => x.Currency).HasMaxLength(ContractConsts.MaxCurrencyLength);
             b.Property(x => x.TotalAmount).HasColumnType("decimal(18,2)");
-            b.Property(x => x.GoverningLaw).HasMaxLength(128);
-            b.Property(x => x.Summary).HasMaxLength(2000);
+            b.Property(x => x.GoverningLaw).HasMaxLength(ContractConsts.MaxGoverningLawLength);
+            b.Property(x => x.Summary).HasMaxLength(ContractConsts.MaxSummaryLength);
         });
     }
 }

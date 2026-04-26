@@ -11,8 +11,6 @@ namespace Dignite.Paperbase.Documents;
 /// </summary>
 public class DocumentRelation : CreationAuditedAggregateRoot<Guid>, IMultiTenant
 {
-    public const int MaxDescriptionLength = DocumentRelationConsts.MaxDescriptionLength;
-
     public virtual Guid? TenantId { get; private set; }
 
     /// <summary>来源文档 ID</summary>
@@ -60,7 +58,7 @@ public class DocumentRelation : CreationAuditedAggregateRoot<Guid>, IMultiTenant
         Description = Check.NotNullOrWhiteSpace(
             description,
             nameof(description),
-            MaxDescriptionLength);
+            DocumentRelationConsts.MaxDescriptionLength);
         Source = source;
         Confidence = ValidateConfidence(source, confidence);
     }
