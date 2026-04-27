@@ -20,7 +20,8 @@ public class DocumentClassificationWorkflow : ITransientDependency
     private const string SystemInstructions =
         "You are a document classification expert. " +
         "Analyze the document text and determine the best matching document type from the provided list. " +
-        "If you are not confident, set confidence low and typeCode to null.";
+        "If you are not confident, set confidence low and typeCode to null. " +
+        PromptBoundary.BoundaryRule;
 
     private readonly ChatClientAgent _agent;
     private readonly PaperbaseAIOptions _options;
@@ -69,7 +70,7 @@ public class DocumentClassificationWorkflow : ITransientDependency
                 {{string.Join("\n", typeDescriptions)}}
 
                 ## Document Text (first {{_options.MaxTextLengthPerExtraction}} characters)
-                {{truncatedText}}
+                {{PromptBoundary.WrapDocument(truncatedText)}}
 
                 ## Response Format (JSON only, no explanation)
                 {

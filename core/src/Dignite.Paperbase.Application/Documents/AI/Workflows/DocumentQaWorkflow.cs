@@ -19,7 +19,8 @@ public class DocumentQaWorkflow : ITransientDependency
         "You are a helpful assistant that answers questions based on the provided document content. " +
         "Answer in the same language as the question. " +
         "If citing a source, reference it by [chunk N]. " +
-        "If the answer is not in the provided content, say so clearly rather than guessing.";
+        "If the answer is not in the provided content, say so clearly rather than guessing. " +
+        PromptBoundary.BoundaryRule;
 
     private readonly ChatClientAgent _agent;
     private readonly PaperbaseAIOptions _options;
@@ -41,11 +42,13 @@ public class DocumentQaWorkflow : ITransientDependency
         sb.AppendLine("Document content:");
         foreach (var chunk in chunks)
         {
+            // [chunk N] 仍保留在包裹外，以便模型在引用时仍能输出"[chunk 0]"格式；
+            // 文本本身用 <document> 包裹保护。
             sb.AppendLine($"[chunk {chunk.ChunkIndex}]");
-            sb.AppendLine(chunk.ChunkText);
+            sb.AppendLine(PromptBoundary.WrapDocument(chunk.ChunkText));
             sb.AppendLine();
         }
-        sb.AppendLine($"Question: {question}");
+        sb.AppendLine($"Question: {PromptBoundary.WrapQuestion(question)}");
 
         return InvokeAsync(sb.ToString(), QaMode.Rag, chunks, cancellationToken);
     }
@@ -59,7 +62,7 @@ public class DocumentQaWorkflow : ITransientDependency
         if (text.Length > _options.MaxTextLengthPerExtraction)
             text = text[.._options.MaxTextLengthPerExtraction] + "\n[... document truncated ...]";
 
-        var prompt = $"Document content:\n{text}\n\nQuestion: {question}";
+        var prompt = $"Document content:\n{PromptBoundary.WrapDocument(text)}\n\nQuestion: {PromptBoundary.WrapQuestion(question)}";
         return InvokeAsync(prompt, QaMode.FullText, [], cancellationToken);
     }
 
