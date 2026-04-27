@@ -18,11 +18,15 @@ namespace Dignite.Paperbase.Documents.AI.Workflows;
 public class DocumentRelationInferenceWorkflow : ITransientDependency
 {
     private const string SystemInstructions =
-        "你是文档关系分析师。给定一份源文档和若干候选文档，找出与源文档有实质关系的候选，并用一句中文清楚地说明它们的关系。" +
-        "示例说明：'本合同补充了主合同第 3 条付款条款的执行细节'、'替代了 2024-03 版本，原合同作废'、" +
-        "'是主合同的附件清单'、'与主合同涉及同一项目'。" +
-        "返回一个 JSON 数组，每项包含：targetDocumentId (string)、description (string，中文一句话，不超过 200 字)、confidence (0.0-1.0)。" +
-        "仅包含 confidence >= 0.5 的项；若无符合项请返回 []。" +
+        "You are a document relation analyst. Given a source document and several candidate documents, " +
+        "identify candidates that have a substantive relationship with the source, and write one sentence " +
+        "that clearly states the relationship. " +
+        "Example phrasings: 'This contract supplements the payment terms in section 3 of the main contract.'; " +
+        "'This supersedes the 2024-03 version, making the original void.'; " +
+        "'This is an attachment list of the main contract.'; " +
+        "'This addresses the same project as the main contract.'. " +
+        "Return a JSON array; each item contains: targetDocumentId (string), description (one sentence, " +
+        "max 200 characters), confidence (0.0-1.0). Include only items with confidence >= 0.5; return [] if none. " +
         PromptBoundary.BoundaryRule;
 
     private readonly ChatClientAgent _agent;
@@ -100,6 +104,9 @@ public class DocumentRelationInferenceWorkflow : ITransientDependency
             sb.AppendLine($"- id: {candidate.DocumentId}, type: {candidate.DocumentTypeCode ?? "unknown"}");
             sb.AppendLine($"  excerpt: {PromptBoundary.WrapCandidate(i, candidate.Summary)}");
         }
+
+        sb.AppendLine();
+        sb.AppendLine($"Respond with each description in: {_options.DefaultLanguage}");
 
         return sb.ToString();
     }
