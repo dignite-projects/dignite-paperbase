@@ -36,4 +36,9 @@ public class PaperbaseAIOptions
     /// 关系推断最低置信度阈值；低于此值的推断项将被硬性过滤，即使 LLM 在 prompt 中已被要求排除。
     /// </summary>
     public double RelationInferenceMinConfidence { get; set; } = 0.5;
+
+    /// <summary>
+    /// 关系推断候选文档召回上限（Top-K 文档数），与 QaTopKChunks 解耦，允许独立调优。
+    /// </summary>
+    public int RelationInferenceCandidateTopK { get; set; } = 20;
 }

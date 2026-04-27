@@ -59,15 +59,15 @@ public class DocumentRelationInferenceBackgroundJob
                 return;
             }
 
-            var firstVector = sourceChunks.First().EmbeddingVector.ToArray();
+            var pooled = MeanPool(sourceChunks.Select(c => c.EmbeddingVector.ToArray()).ToList());
             var candidateChunks = await _chunkRepository.SearchByVectorAsync(
-                firstVector, topK: _aiOptions.QaTopKChunks * 3);
+                pooled, topK: _aiOptions.RelationInferenceCandidateTopK * 3);
 
             var candidateDocIds = candidateChunks
                 .Select(c => c.DocumentId)
                 .Where(id => id != document.Id)
                 .Distinct()
-                .Take(_aiOptions.QaTopKChunks)
+                .Take(_aiOptions.RelationInferenceCandidateTopK)
                 .ToList();
 
             if (candidateDocIds.Count == 0)
@@ -133,6 +133,18 @@ public class DocumentRelationInferenceBackgroundJob
             await _pipelineRunManager.FailAsync(document, run, ex.Message);
             await _documentRepository.UpdateAsync(document);
         }
+    }
+
+    private static float[] MeanPool(IReadOnlyList<float[]> vectors)
+    {
+        var dim = vectors[0].Length;
+        var result = new float[dim];
+        foreach (var v in vectors)
+            for (var i = 0; i < dim; i++)
+                result[i] += v[i];
+        for (var i = 0; i < dim; i++)
+            result[i] /= vectors.Count;
+        return result;
     }
 }
 
