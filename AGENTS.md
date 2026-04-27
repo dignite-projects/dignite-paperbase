@@ -24,3 +24,14 @@ This repository contains an ABP-based project. Before making code changes, read 
 - When developing reusable modules, all public and protected methods must be `virtual`.
 - Do not configure middleware inside reusable modules; configure middleware only in `host/`.
 - Keep changes scoped to the requested task and aligned with the existing project structure.
+
+## Issue vs Direct Change
+
+Use a lightweight standard when deciding whether to create an issue before making improvements discovered during collaboration:
+
+- Directly fix small, clear, low-risk issues when the scope is obvious, such as stale comments, typos, small documentation corrections, or narrowly scoped consistency fixes.
+- Create an issue first when the change affects business rules, domain semantics, multiple layers/modules, public APIs, migrations, or requires team discussion.
+- Create an issue for problems that are discovered but intentionally left out of the current task scope.
+- For recurring conventions or workflow standards, discuss first, then document the accepted rule in `AGENTS.md`, `.cursor/rules`, or project docs.
+- Keep direct fixes scoped. Do not expand a small correction into unrelated cleanup.
+- When unsure whether a discovered improvement should be fixed directly or tracked as an issue, prefer direct fixes only if the change is small, non-behavioral, and clearly correct; otherwise ask or create an issue.

@@ -102,3 +102,4 @@ Dignite.Paperbase.Abstractions（扩展契约层，无其他项目依赖）
 2. 开发可复用模块时，**所有公共和受保护方法必须是虚拟（virtual）的**
 3. 模块中不要配置中间件，仅在 host 中配置
 4. 遵循 ABP 的依赖注入约定，不要手动调用 AddScoped/AddTransient/AddSingleton
+5. **改动前先判断是否需要 Issue**：涉及架构决策、影响模块边界、或属于 Slice 任务的改动，在动手实现前提示用户先开 GitHub Issue；纯实现细节的 fix（如 bug fix、措辞修正）直接用 commit message 记录即可
