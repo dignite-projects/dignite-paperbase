@@ -12,4 +12,6 @@ public interface IPromptProvider
     PromptTemplate GetRelationInferencePrompt(string language, double minConfidence);
 
     PromptTemplate GetQaPrompt(string language);
+
+    PromptTemplate GetRerankPrompt(string language);
 }

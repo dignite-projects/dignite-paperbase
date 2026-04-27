@@ -49,8 +49,45 @@ public class EfCoreDocumentChunkRepository
         string? documentTypeCode = null,
         CancellationToken cancellationToken = default)
     {
-        var dbContext = await GetDbContextAsync();
+        var query = await BuildSearchQueryAsync(documentId, documentTypeCode);
         var vector = new Vector(queryVector);
+
+        return await query
+            .OrderBy(c => c.EmbeddingVector!.CosineDistance(vector))
+            .Take(topK)
+            .ToListAsync(GetCancellationToken(cancellationToken));
+    }
+
+    public virtual async Task<List<DocumentChunkSearchResult>> SearchByVectorWithScoresAsync(
+        float[] queryVector,
+        int topK,
+        Guid? documentId = null,
+        string? documentTypeCode = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = await BuildSearchQueryAsync(documentId, documentTypeCode);
+        var vector = new Vector(queryVector);
+
+        var rows = await query
+            .OrderBy(c => c.EmbeddingVector!.CosineDistance(vector))
+            .Select(c => new
+            {
+                Chunk = c,
+                Distance = c.EmbeddingVector!.CosineDistance(vector)
+            })
+            .Take(topK)
+            .ToListAsync(GetCancellationToken(cancellationToken));
+
+        return rows
+            .Select(r => new DocumentChunkSearchResult(r.Chunk, r.Distance))
+            .ToList();
+    }
+
+    protected virtual async Task<IQueryable<DocumentChunk>> BuildSearchQueryAsync(
+        Guid? documentId,
+        string? documentTypeCode)
+    {
+        var dbContext = await GetDbContextAsync();
 
         // dbContext.Set<DocumentChunk>() 与 GetDbSetAsync() 一样会应用 ABP 的
         // IMultiTenant / ISoftDelete 全局过滤；下面对 Document 的子查询同理，
@@ -69,9 +106,6 @@ public class EfCoreDocumentChunkRepository
             query = query.Where(c => matchingDocIds.Contains(c.DocumentId));
         }
 
-        return await query
-            .OrderBy(c => c.EmbeddingVector!.CosineDistance(vector))
-            .Take(topK)
-            .ToListAsync(GetCancellationToken(cancellationToken));
+        return query;
     }
 }

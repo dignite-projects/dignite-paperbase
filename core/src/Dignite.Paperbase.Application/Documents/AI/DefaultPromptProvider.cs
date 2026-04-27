@@ -37,4 +37,13 @@ public class DefaultPromptProvider : IPromptProvider, ITransientDependency
         "When citing a source chunk, use exactly [chunk N] with halfwidth square brackets, e.g. [chunk 0]. " +
         "If the answer is not in the provided content, say so clearly rather than guessing."
     );
+
+    public virtual PromptTemplate GetRerankPrompt(string language) => new(
+        "You are a passage relevance scorer for document QA. " +
+        "Given a question and several candidate passages, score each passage by how directly it can be used " +
+        "to answer the question. Use 0.0-1.0 (1.0 = directly answers; 0.5 = partially related; 0.0 = irrelevant). " +
+        "Return a JSON array; each item contains: id (the integer id provided with the passage), " +
+        "score (0.0-1.0). Output the array only, no explanation. " +
+        $"Working language for reasoning: {language}."
+    );
 }

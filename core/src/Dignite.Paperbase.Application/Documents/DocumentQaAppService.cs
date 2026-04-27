@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
@@ -7,6 +8,7 @@ using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Permissions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Dignite.Paperbase.Application.Documents;
@@ -17,6 +19,7 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentChunkRepository _chunkRepository;
     private readonly DocumentQaWorkflow _qaWorkflow;
+    private readonly DocumentRerankWorkflow _rerankWorkflow;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
     private readonly PaperbaseAIOptions _aiOptions;
 
@@ -24,12 +27,14 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
         IDocumentRepository documentRepository,
         IDocumentChunkRepository chunkRepository,
         DocumentQaWorkflow qaWorkflow,
+        DocumentRerankWorkflow rerankWorkflow,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
         IOptions<PaperbaseAIOptions> aiOptions)
     {
         _documentRepository = documentRepository;
         _chunkRepository = chunkRepository;
         _qaWorkflow = qaWorkflow;
+        _rerankWorkflow = rerankWorkflow;
         _embeddingGenerator = embeddingGenerator;
         _aiOptions = aiOptions.Value;
     }
@@ -41,15 +46,21 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
         DocumentQaOutcome outcome;
         if (document.HasEmbedding)
         {
-            var questionEmbeddings = await _embeddingGenerator.GenerateAsync([input.Question]);
-            var chunks = await _chunkRepository.SearchByVectorAsync(
-                questionEmbeddings[0].Vector.ToArray(), _aiOptions.QaTopKChunks, documentId: documentId);
+            var qaChunks = await RetrieveQaChunksAsync(
+                input.Question,
+                finalTopK: _aiOptions.QaTopKChunks,
+                baselineMultiplier: 1,
+                documentId: documentId);
 
-            var qaChunks = chunks.Select(c => new QaChunk
+            if (qaChunks.Count == 0)
             {
-                ChunkIndex = c.ChunkIndex,
-                ChunkText = c.ChunkText
-            }).ToList();
+                return new QaResultDto
+                {
+                    Answer = L["Document:NoRelevantContextFound"],
+                    ActualMode = QaMode.Rag,
+                    IsDegraded = false
+                };
+            }
 
             outcome = await _qaWorkflow.RunRagAsync(input.Question, qaChunks);
         }
@@ -73,13 +84,13 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
 
     public virtual async Task<QaResultDto> GlobalAskAsync(GlobalAskInput input)
     {
-        var questionEmbeddings = await _embeddingGenerator.GenerateAsync([input.Question]);
-        var chunks = await _chunkRepository.SearchByVectorAsync(
-            questionEmbeddings[0].Vector.ToArray(),
-            topK: _aiOptions.QaTopKChunks * 3,
+        var qaChunks = await RetrieveQaChunksAsync(
+            input.Question,
+            finalTopK: _aiOptions.QaTopKChunks,
+            baselineMultiplier: 3,
             documentTypeCode: input.DocumentTypeCode);
 
-        if (chunks.Count == 0)
+        if (qaChunks.Count == 0)
         {
             return new QaResultDto
             {
@@ -87,12 +98,6 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
                 ActualMode = QaMode.Rag
             };
         }
-
-        var qaChunks = chunks.Select(c => new QaChunk
-        {
-            ChunkIndex = c.ChunkIndex,
-            ChunkText = c.ChunkText
-        }).ToList();
 
         var outcome = await _qaWorkflow.RunRagAsync(input.Question, qaChunks);
 
@@ -107,5 +112,86 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
                 ChunkIndex = s.ChunkIndex
             }).ToList()
         };
+    }
+
+    /// <summary>
+    /// 统一的检索 + 阈值过滤 + 可选 LLM 精排管线。
+    /// <paramref name="finalTopK"/> 是最终供 RAG 使用的 chunk 数；
+    /// <paramref name="baselineMultiplier"/> 是关闭精排时的召回倍数（GlobalAsk 历史上是 3，单文档是 1）。
+    /// 启用 <see cref="PaperbaseAIOptions.EnableLlmRerank"/> 时召回 = finalTopK × RecallExpandFactor，
+    /// 然后用 LLM 重排取前 finalTopK。
+    /// </summary>
+    protected virtual async Task<List<QaChunk>> RetrieveQaChunksAsync(
+        string question,
+        int finalTopK,
+        int baselineMultiplier,
+        Guid? documentId = null,
+        string? documentTypeCode = null)
+    {
+        var rerank = _aiOptions.EnableLlmRerank;
+        var recallTopK = rerank
+            ? finalTopK * Math.Max(1, _aiOptions.RecallExpandFactor)
+            : finalTopK * Math.Max(1, baselineMultiplier);
+
+        var questionEmbeddings = await _embeddingGenerator.GenerateAsync([question]);
+        var rawResults = await _chunkRepository.SearchByVectorWithScoresAsync(
+            questionEmbeddings[0].Vector.ToArray(),
+            recallTopK,
+            documentId: documentId,
+            documentTypeCode: documentTypeCode);
+
+        var filtered = ApplyMinScoreFilter(rawResults);
+        if (filtered.Count == 0)
+            return new List<QaChunk>();
+
+        if (rerank && filtered.Count > finalTopK)
+        {
+            var candidates = filtered
+                .Select(r => new RerankCandidate(r.Chunk.ChunkText, r.Similarity, r.Chunk))
+                .ToList();
+
+            var reranked = await _rerankWorkflow.RerankAsync(question, candidates, finalTopK);
+
+            return reranked
+                .Select(r =>
+                {
+                    var chunk = (DocumentChunk)r.Candidate.Tag!;
+                    return new QaChunk { ChunkIndex = chunk.ChunkIndex, ChunkText = chunk.ChunkText };
+                })
+                .ToList();
+        }
+
+        return filtered
+            .Take(finalTopK)
+            .Select(r => new QaChunk { ChunkIndex = r.Chunk.ChunkIndex, ChunkText = r.Chunk.ChunkText })
+            .ToList();
+    }
+
+    /// <summary>
+    /// 按 <see cref="PaperbaseAIOptions.QaMinScore"/> 过滤掉相似度过低的检索结果。
+    /// 当全部命中均低于阈值时记录信息日志，便于事后调优。
+    /// </summary>
+    protected virtual IReadOnlyList<DocumentChunkSearchResult> ApplyMinScoreFilter(
+        IReadOnlyList<DocumentChunkSearchResult> rawResults)
+    {
+        if (_aiOptions.QaMinScore <= 0 || rawResults.Count == 0)
+        {
+            return rawResults;
+        }
+
+        var filtered = rawResults
+            .Where(r => r.Similarity >= _aiOptions.QaMinScore)
+            .ToList();
+
+        if (filtered.Count == 0)
+        {
+            Logger.LogInformation(
+                "All {Count} retrieved chunks below QaMinScore={MinScore}; top similarity={TopSim:F3}",
+                rawResults.Count,
+                _aiOptions.QaMinScore,
+                rawResults[0].Similarity);
+        }
+
+        return filtered;
     }
 }

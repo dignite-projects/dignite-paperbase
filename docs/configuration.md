@@ -79,8 +79,13 @@ Fine-tune AI pipeline behavior via `PaperbaseAIOptions`. These affect processing
   "MaxDocumentTypesInClassificationPrompt": 50,
   "ChunkSize": 800,
   "ChunkOverlap": 100,
+  "ChunkBoundaryTolerance": 120,
   "MaxTextLengthPerExtraction": 8000,
   "QaTopKChunks": 5,
+  "QaMinScore": 0.65,
+  "EnableLlmRerank": false,
+  "RecallExpandFactor": 4,
+  "EmbeddingVectorDimension": 1536,
   "DefaultLanguage": "ja"
 }
 ```
@@ -90,9 +95,25 @@ Fine-tune AI pipeline behavior via `PaperbaseAIOptions`. These affect processing
 | `MaxDocumentTypesInClassificationPrompt` | `50` | Max candidate document types included in classification prompt; truncated by priority when exceeded |
 | `ChunkSize` | `800` | Characters per text chunk for vectorization (~400 Japanese characters) |
 | `ChunkOverlap` | `100` | Overlap between adjacent chunks to preserve semantic continuity |
+| `ChunkBoundaryTolerance` | `120` | Characters of backtrack tolerance to snap chunk boundaries to natural breaks (paragraph / sentence end / clause). Set to `0` to disable and fall back to fixed-width slicing |
 | `MaxTextLengthPerExtraction` | `8000` | Max characters sent per structured extraction call; truncated when exceeded |
 | `QaTopKChunks` | `5` | Number of top vector-matched chunks retrieved for QA context |
+| `QaMinScore` | `0.65` | Minimum cosine similarity (0-1) a chunk must reach to enter the RAG prompt; chunks below are discarded. Set to `0` to disable threshold filtering |
+| `EnableLlmRerank` | `false` | When `true`, recall `QaTopKChunks × RecallExpandFactor` candidates and let the LLM rescore them, picking the top `QaTopKChunks` for the RAG prompt. Trades extra LLM tokens for better precision |
+| `RecallExpandFactor` | `4` | Multiplier applied to `QaTopKChunks` for the recall stage when `EnableLlmRerank` is `true` |
+| `EmbeddingVectorDimension` | `1536` | Embedding model output dimension. **Must match the schema-side `PaperbaseDbProperties.EmbeddingVectorDimension`** — startup validation fails otherwise. See "Switching the embedding model" below |
 | `DefaultLanguage` | `"ja"` | Language hint appended to AI prompts (BCP 47 format) |
+
+### Switching the embedding model
+
+Switching to a model with a different vector dimension (e.g. `text-embedding-3-small` → `bge-m3`, `multilingual-e5-large`) is a four-step process. Skipping any step results in either startup failure or runtime SQL errors:
+
+1. **Update `appsettings.json`**: change `PaperbaseAI:EmbeddingModelId` and `PaperbaseAI:EmbeddingVectorDimension` to the new model's dimension.
+2. **Update `PaperbaseDbProperties.EmbeddingVectorDimension`** (in `core/src/Dignite.Paperbase.Domain/PaperbaseDbProperties.cs`) to the same value. This is the constant the EF Core mapping writes into the `vector(N)` column type.
+3. **Generate a new EF Core migration** that alters the `EmbeddingVector` column type and rebuilds the HNSW index. Apply via the DB migrator host.
+4. **Re-embed existing documents**: previously stored vectors have the old dimension and cannot be queried against the new column type. Trigger a rebuild via `DocumentEmbeddingBackgroundJob` for each document, or run a maintenance task that re-runs the embedding pipeline tenant-wide.
+
+> **Why startup validation:** the `Validate(...).ValidateOnStart()` check in `PaperbaseApplicationModule` rejects mismatched configurations before any vector INSERT/SELECT runs. Without it, the host would boot and only fail on the first embedding-related SQL.
 
 ### Code
 

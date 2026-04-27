@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents.AI;
@@ -7,6 +8,7 @@ using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Documents;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using Pgvector;
 using Shouldly;
@@ -41,6 +43,12 @@ public class DocumentQaAppServiceTestModule : AbpModule
             new DefaultPromptProvider());
         context.Services.AddSingleton(qaWorkflow);
 
+        var rerankWorkflow = Substitute.ForPartsOf<DocumentRerankWorkflow>(
+            Substitute.For<IChatClient>(),
+            Microsoft.Extensions.Options.Options.Create(new PaperbaseAIOptions { QaTopKChunks = 5 }),
+            new DefaultPromptProvider());
+        context.Services.AddSingleton(rerankWorkflow);
+
         context.Services.Configure<PaperbaseAIOptions>(opt =>
         {
             opt.QaTopKChunks = 5;
@@ -53,6 +61,7 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
     private readonly IDocumentQaAppService _qaAppService;
     private readonly IDocumentChunkRepository _chunkRepository;
     private readonly DocumentQaWorkflow _qaWorkflow;
+    private readonly DocumentRerankWorkflow _rerankWorkflow;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
 
     public DocumentQaAppService_Tests()
@@ -60,6 +69,7 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
         _qaAppService = GetRequiredService<IDocumentQaAppService>();
         _chunkRepository = GetRequiredService<IDocumentChunkRepository>();
         _qaWorkflow = GetRequiredService<DocumentQaWorkflow>();
+        _rerankWorkflow = GetRequiredService<DocumentRerankWorkflow>();
         _embeddingGenerator = GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
 
         SetupDefaultEmbedding();
@@ -69,11 +79,11 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
     public async Task GlobalAsk_Returns_NoRelevant_When_No_Chunks_Found()
     {
         _chunkRepository
-            .SearchByVectorAsync(
+            .SearchByVectorWithScoresAsync(
                 Arg.Any<float[]>(), Arg.Any<int>(),
                 documentId: null, documentTypeCode: null,
                 Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentChunk>());
+            .Returns(new List<DocumentChunkSearchResult>());
 
         var result = await _qaAppService.GlobalAskAsync(new GlobalAskInput
         {
@@ -88,18 +98,18 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
     [Fact]
     public async Task GlobalAsk_Delegates_To_Workflow_When_Chunks_Found()
     {
-        var fakeChunks = new List<DocumentChunk>
+        var fakeResults = new List<DocumentChunkSearchResult>
         {
-            CreateFakeChunk(Guid.NewGuid(), 0, "合同期間は2026年4月から2027年3月まで。"),
-            CreateFakeChunk(Guid.NewGuid(), 1, "契約金額は1,200,000円（税別）。")
+            new(CreateFakeChunk(Guid.NewGuid(), 0, "合同期間は2026年4月から2027年3月まで。"), cosineDistance: 0.05),
+            new(CreateFakeChunk(Guid.NewGuid(), 1, "契約金額は1,200,000円（税別）。"), cosineDistance: 0.10)
         };
 
         _chunkRepository
-            .SearchByVectorAsync(
+            .SearchByVectorWithScoresAsync(
                 Arg.Any<float[]>(), Arg.Any<int>(),
                 documentId: null, documentTypeCode: null,
                 Arg.Any<CancellationToken>())
-            .Returns(fakeChunks);
+            .Returns(fakeResults);
 
         var outcome = new DocumentQaOutcome
         {
@@ -133,11 +143,11 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
     public async Task GlobalAsk_Passes_DocumentTypeCode_To_ChunkSearch()
     {
         _chunkRepository
-            .SearchByVectorAsync(
+            .SearchByVectorWithScoresAsync(
                 Arg.Any<float[]>(), Arg.Any<int>(),
                 documentId: null, documentTypeCode: Arg.Any<string>(),
                 Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentChunk>());
+            .Returns(new List<DocumentChunkSearchResult>());
 
         await _qaAppService.GlobalAskAsync(new GlobalAskInput
         {
@@ -146,10 +156,154 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
         });
 
         await _chunkRepository.Received(1)
-            .SearchByVectorAsync(
+            .SearchByVectorWithScoresAsync(
                 Arg.Any<float[]>(), Arg.Any<int>(),
                 documentId: null, documentTypeCode: "contract.general",
                 Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GlobalAsk_Filters_Chunks_Below_QaMinScore()
+    {
+        // 默认 QaMinScore = 0.65；构造一组结果只有"远低于阈值"的低相似度 chunk。
+        // 期望 AppService 视同空结果，不调用 RunRagAsync，并返回 NoRelevant 兜底答案。
+        var lowScoreResults = new List<DocumentChunkSearchResult>
+        {
+            new(CreateFakeChunk(Guid.NewGuid(), 0, "完全无关的内容片段。"), cosineDistance: 0.95),
+            new(CreateFakeChunk(Guid.NewGuid(), 1, "另一段无关内容。"), cosineDistance: 0.90)
+        };
+
+        _chunkRepository
+            .SearchByVectorWithScoresAsync(
+                Arg.Any<float[]>(), Arg.Any<int>(),
+                documentId: null, documentTypeCode: null,
+                Arg.Any<CancellationToken>())
+            .Returns(lowScoreResults);
+
+        var result = await _qaAppService.GlobalAskAsync(new GlobalAskInput
+        {
+            Question = "完全不相关的问题"
+        });
+
+        result.ShouldNotBeNull();
+        await _qaWorkflow.DidNotReceive()
+            .RunRagAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<QaChunk>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GlobalAsk_Without_Rerank_Does_Not_Invoke_Rerank_Workflow()
+    {
+        var fakeResults = new List<DocumentChunkSearchResult>
+        {
+            new(CreateFakeChunk(Guid.NewGuid(), 0, "高度相关。"), cosineDistance: 0.10)
+        };
+        _chunkRepository
+            .SearchByVectorWithScoresAsync(
+                Arg.Any<float[]>(), Arg.Any<int>(),
+                documentId: null, documentTypeCode: null,
+                Arg.Any<CancellationToken>())
+            .Returns(fakeResults);
+
+        _qaWorkflow
+            .RunRagAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<QaChunk>>(), Arg.Any<CancellationToken>())
+            .Returns(new DocumentQaOutcome { Answer = "ans", ActualMode = QaMode.Rag });
+
+        await _qaAppService.GlobalAskAsync(new GlobalAskInput { Question = "问题" });
+
+        await _rerankWorkflow.DidNotReceive().RerankAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<RerankCandidate>>(),
+            Arg.Any<int>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GlobalAsk_With_Rerank_Enabled_Invokes_Rerank_And_Uses_Its_Order()
+    {
+        var rerankOptions = GetRequiredService<IOptions<PaperbaseAIOptions>>().Value;
+        rerankOptions.EnableLlmRerank = true;
+        rerankOptions.RecallExpandFactor = 4;
+
+        try
+        {
+            // 召回 6 个高分 chunks，rerank 取前 5。
+            var fakeResults = Enumerable.Range(0, 6)
+                .Select(i => new DocumentChunkSearchResult(
+                    CreateFakeChunk(Guid.NewGuid(), i, $"chunk-{i}"),
+                    cosineDistance: 0.05 + i * 0.01))
+                .ToList();
+
+            _chunkRepository
+                .SearchByVectorWithScoresAsync(
+                    Arg.Any<float[]>(), Arg.Any<int>(),
+                    documentId: null, documentTypeCode: null,
+                    Arg.Any<CancellationToken>())
+                .Returns(fakeResults);
+
+            // mock rerank：把第 5 个候选（id=5）作为最高分；返回的 RerankedChunk 应保留其 ChunkText
+            _rerankWorkflow
+                .RerankAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<RerankCandidate>>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+                .Returns(ci =>
+                {
+                    var candidates = ci.Arg<IReadOnlyList<RerankCandidate>>();
+                    var top = candidates[^1]; // 把最后一个（chunk-5）排到最前
+                    return (IReadOnlyList<RerankedChunk>)
+                    [
+                        new(top, score: 1.0, originalIndex: candidates.Count - 1),
+                        new(candidates[0], score: 0.9, originalIndex: 0),
+                    ];
+                });
+
+            IReadOnlyList<QaChunk>? capturedChunks = null;
+            _qaWorkflow
+                .RunRagAsync(Arg.Any<string>(), Arg.Do<IReadOnlyList<QaChunk>>(c => capturedChunks = c), Arg.Any<CancellationToken>())
+                .Returns(new DocumentQaOutcome { Answer = "ans", ActualMode = QaMode.Rag });
+
+            await _qaAppService.GlobalAskAsync(new GlobalAskInput { Question = "问题" });
+
+            await _rerankWorkflow.Received(1).RerankAsync(
+                Arg.Any<string>(),
+                Arg.Is<IReadOnlyList<RerankCandidate>>(c => c.Count == 6),
+                Arg.Any<int>(),
+                Arg.Any<CancellationToken>());
+
+            capturedChunks.ShouldNotBeNull();
+            capturedChunks!.Count.ShouldBe(2);
+            capturedChunks[0].ChunkIndex.ShouldBe(5); // rerank 把 chunk-5 排到最前
+        }
+        finally
+        {
+            rerankOptions.EnableLlmRerank = false;
+        }
+    }
+
+    [Fact]
+    public async Task GlobalAsk_Keeps_Chunks_Above_QaMinScore()
+    {
+        // 一半高分 / 一半低分；预期只有高分 chunks 进入 RunRagAsync
+        var mixed = new List<DocumentChunkSearchResult>
+        {
+            new(CreateFakeChunk(Guid.NewGuid(), 0, "高度相关。"), cosineDistance: 0.10),
+            new(CreateFakeChunk(Guid.NewGuid(), 1, "毫不相关。"), cosineDistance: 0.95)
+        };
+
+        _chunkRepository
+            .SearchByVectorWithScoresAsync(
+                Arg.Any<float[]>(), Arg.Any<int>(),
+                documentId: null, documentTypeCode: null,
+                Arg.Any<CancellationToken>())
+            .Returns(mixed);
+
+        IReadOnlyList<QaChunk>? capturedChunks = null;
+        _qaWorkflow
+            .RunRagAsync(Arg.Any<string>(), Arg.Do<IReadOnlyList<QaChunk>>(c => capturedChunks = c), Arg.Any<CancellationToken>())
+            .Returns(new DocumentQaOutcome { Answer = "ans", ActualMode = QaMode.Rag });
+
+        await _qaAppService.GlobalAskAsync(new GlobalAskInput { Question = "问题" });
+
+        capturedChunks.ShouldNotBeNull();
+        capturedChunks!.Count.ShouldBe(1);
+        capturedChunks[0].ChunkIndex.ShouldBe(0);
     }
 
     private void SetupDefaultEmbedding()

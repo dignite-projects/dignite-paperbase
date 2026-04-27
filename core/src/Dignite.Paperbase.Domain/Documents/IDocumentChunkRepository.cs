@@ -29,4 +29,15 @@ public interface IDocumentChunkRepository : IRepository<DocumentChunk, Guid>
         Guid? documentId = null,
         string? documentTypeCode = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// <see cref="SearchByVectorAsync"/> 的"带分数"版本：除返回 chunks 外还附带每条的 cosine 距离，
+    /// 用于 Application 层的阈值过滤 / Rerank 输入。语义、过滤规则和租户隔离与不带分数版本完全一致。
+    /// </summary>
+    Task<List<DocumentChunkSearchResult>> SearchByVectorWithScoresAsync(
+        float[] queryVector,
+        int topK,
+        Guid? documentId = null,
+        string? documentTypeCode = null,
+        CancellationToken cancellationToken = default);
 }

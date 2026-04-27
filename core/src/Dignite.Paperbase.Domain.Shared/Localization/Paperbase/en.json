@@ -77,6 +77,7 @@
     "Document:Ask": "Ask",
     "Document:DegradedModeNotice": "Vector index not ready — answering from full text.",
     "Document:NoRelevantDocumentsFound": "No relevant documents found.",
+    "Document:NoRelevantContextFound": "No relevant content found in this document.",
     "Document:Relations": "Relations",
     "Document:ConfirmRelation": "Confirm Relation",
     "Document:NoRelations": "No relations found.",

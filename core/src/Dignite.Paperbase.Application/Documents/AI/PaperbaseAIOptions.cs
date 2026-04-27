@@ -3,6 +3,15 @@ namespace Dignite.Paperbase.Documents.AI;
 public class PaperbaseAIOptions
 {
     /// <summary>
+    /// 向量列维度。pgvector 列由 EFCore Mapping 用 <see cref="PaperbaseDbProperties.EmbeddingVectorDimension"/>
+    /// 写入 schema；本配置项是"逻辑维度"，必须与 schema 维度严格一致。
+    /// 启动时由 <c>PaperbaseApplicationModule</c> 通过 Options 校验拒绝不一致的配置，避免上线后才发现 SQL 执行错误。
+    /// 切换 embedding 模型的标准流程参见 <c>docs/configuration.md</c>。
+    /// </summary>
+    public int EmbeddingVectorDimension { get; set; } = PaperbaseDbProperties.EmbeddingVectorDimension;
+
+
+    /// <summary>
     /// 分类提示词中最多包含的候选类型数量，超出时按 Priority 降序截断。
     /// </summary>
     public int MaxDocumentTypesInClassificationPrompt { get; set; } = 50;
@@ -18,6 +27,13 @@ public class PaperbaseAIOptions
     public int ChunkOverlap { get; set; } = 100;
 
     /// <summary>
+    /// 分块边界回溯容差（字符数）。在 <c>[ChunkSize - ChunkBoundaryTolerance, ChunkSize]</c>
+    /// 范围内向后查找最近的自然断点（段落/句末/标点）作为切点，避免硬切句子。
+    /// 设为 0 退化为原"固定字符长度"分块。建议值约 ChunkSize 的 15%。
+    /// </summary>
+    public int ChunkBoundaryTolerance { get; set; } = 120;
+
+    /// <summary>
     /// 结构化提取单次调用最大文本长度，超出时截断。
     /// </summary>
     public int MaxTextLengthPerExtraction { get; set; } = 8000;
@@ -26,6 +42,26 @@ public class PaperbaseAIOptions
     /// 向量检索返回的最大 Chunk 数（Top-K）。
     /// </summary>
     public int QaTopKChunks { get; set; } = 5;
+
+    /// <summary>
+    /// QA 检索的最低 cosine 相似度阈值，取值范围 [0, 1]，越大越严格。
+    /// 命中 chunk 的相似度低于此值时将被丢弃，避免无关上下文污染 prompt。
+    /// 设为 0 关闭阈值过滤（保持 Slice 4 之前的行为）。
+    /// </summary>
+    public double QaMinScore { get; set; } = 0.65;
+
+    /// <summary>
+    /// 启用 LLM 精排：先按 <see cref="QaTopKChunks"/> × <see cref="RecallExpandFactor"/>
+    /// 召回扩大，再让 LLM 给每个候选 chunk 打分，取分数最高的 <see cref="QaTopKChunks"/> 个进入 RAG。
+    /// 默认关闭以保守 token 成本；中文/多语言场景或召回质量不佳时建议启用。
+    /// </summary>
+    public bool EnableLlmRerank { get; set; } = false;
+
+    /// <summary>
+    /// 启用 <see cref="EnableLlmRerank"/> 时的召回扩大倍数（实际召回 = QaTopKChunks × 此值）。
+    /// 默认 4，意味着 TopK=5 时召回 20 个候选，由 LLM 重排后取前 5。
+    /// </summary>
+    public int RecallExpandFactor { get; set; } = 4;
 
     /// <summary>
     /// AI 交互默认语言（影响系统提示词语言）。
