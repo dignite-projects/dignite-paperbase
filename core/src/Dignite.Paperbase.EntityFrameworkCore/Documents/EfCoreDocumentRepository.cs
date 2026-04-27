@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Paperbase;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -48,7 +49,6 @@ public class EfCoreDocumentRepository
 
     public override async Task<IQueryable<Document>> WithDetailsAsync()
     {
-        return (await GetQueryableAsync())
-            .Include(d => d.PipelineRuns);
+        return (await GetQueryableAsync()).IncludeDetails();
     }
 }
