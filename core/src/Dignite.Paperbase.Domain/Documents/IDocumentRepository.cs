@@ -12,6 +12,10 @@ public interface IDocumentRepository : IRepository<Document, Guid>
         string blobName,
         CancellationToken cancellationToken = default);
 
+    Task<Document?> FindByContentHashAsync(
+        string contentHash,
+        CancellationToken cancellationToken = default);
+
     Task<List<Document>> GetListByIdsAsync(
         IReadOnlyCollection<Guid> ids,
         CancellationToken cancellationToken = default);

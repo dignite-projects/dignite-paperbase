@@ -7,4 +7,6 @@ public static class FileOriginConsts
     public static int MaxOriginalFileNameLength { get; set; } = 512;
 
     public static int MaxContentTypeLength { get; set; } = 256;
+
+    public static int MaxContentHashLength { get; set; } = 64;
 }

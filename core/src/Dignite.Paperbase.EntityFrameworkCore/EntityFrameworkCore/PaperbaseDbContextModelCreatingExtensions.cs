@@ -39,6 +39,9 @@ public static class PaperbaseDbContextModelCreatingExtensions
                 fo.Property(x => x.ContentType)
                     .IsRequired()
                     .HasMaxLength(FileOriginConsts.MaxContentTypeLength);
+                fo.Property(x => x.ContentHash)
+                    .IsRequired()
+                    .HasMaxLength(FileOriginConsts.MaxContentHashLength);
             });
 
             b.HasMany(x => x.PipelineRuns)
@@ -50,6 +53,9 @@ public static class PaperbaseDbContextModelCreatingExtensions
             b.HasIndex(x => x.ReviewStatus);
             b.HasIndex(x => x.DocumentTypeCode);
             b.HasIndex(x => x.CreationTime);
+
+            // 每租户范围内按文件字节级 SHA-256 唯一；NULLS NOT DISTINCT 让单租户场景下 (NULL, hash) 也能正确判重。
+            // 跨 owned-entity 索引 EF Core 不直接支持，由迁移文件用 raw SQL 创建唯一索引。
         });
 
         builder.Entity<DocumentPipelineRun>(b =>

@@ -31,6 +31,17 @@ public class EfCoreDocumentRepository
                 GetCancellationToken(cancellationToken));
     }
 
+    public virtual async Task<Document?> FindByContentHashAsync(
+        string contentHash,
+        CancellationToken cancellationToken = default)
+    {
+        var dbSet = await GetDbSetAsync();
+        return await dbSet
+            .FirstOrDefaultAsync(
+                d => d.FileOrigin.ContentHash == contentHash,
+                GetCancellationToken(cancellationToken));
+    }
+
     public virtual async Task<List<Document>> GetListByIdsAsync(
         IReadOnlyCollection<Guid> ids,
         CancellationToken cancellationToken = default)

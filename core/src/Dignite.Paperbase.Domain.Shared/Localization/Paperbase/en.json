@@ -95,6 +95,7 @@
     "Permission:DocumentRelations.ConfirmRelation": "Confirm Document Relation",
 
     "Paperbase:InvalidDocumentTypeCode": "Invalid document type code: '{documentTypeCode}'.",
-    "Paperbase:ExtractedTextIsImmutable": "Extracted text has already been set and cannot be changed."
+    "Paperbase:ExtractedTextIsImmutable": "Extracted text has already been set and cannot be changed.",
+    "Paperbase:DocumentDuplicate": "This file has already been uploaded ({FileName})."
   }
 }

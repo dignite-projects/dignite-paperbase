@@ -18,6 +18,9 @@ public class FileOrigin : ValueObject
     /// <summary>文件 MIME 类型</summary>
     public string ContentType { get; private set; } = default!;
 
+    /// <summary>文件内容 SHA-256 哈希（十六进制小写，长度 64）。用于每租户范围内的字节级去重。</summary>
+    public string ContentHash { get; private set; } = default!;
+
     /// <summary>文件大小（字节）</summary>
     public long FileSize { get; private set; }
 
@@ -26,6 +29,7 @@ public class FileOrigin : ValueObject
     public FileOrigin(
         string uploadedByUserName,
         string contentType,
+        string contentHash,
         long fileSize,
         string? originalFileName = null)
     {
@@ -34,6 +38,7 @@ public class FileOrigin : ValueObject
             nameof(uploadedByUserName),
             FileOriginConsts.MaxUploadedByUserNameLength);
         ContentType = Check.NotNullOrWhiteSpace(contentType, nameof(contentType), FileOriginConsts.MaxContentTypeLength);
+        ContentHash = Check.NotNullOrWhiteSpace(contentHash, nameof(contentHash), FileOriginConsts.MaxContentHashLength);
         FileSize = Check.Range(fileSize, nameof(fileSize), 0, long.MaxValue);
         OriginalFileName = NormalizeOptionalString(originalFileName, nameof(originalFileName), FileOriginConsts.MaxOriginalFileNameLength);
     }
@@ -43,6 +48,7 @@ public class FileOrigin : ValueObject
         yield return UploadedByUserName;
         yield return OriginalFileName ?? string.Empty;
         yield return ContentType;
+        yield return ContentHash;
         yield return FileSize;
     }
 

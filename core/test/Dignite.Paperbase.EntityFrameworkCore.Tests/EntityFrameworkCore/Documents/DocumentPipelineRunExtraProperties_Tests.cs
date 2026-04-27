@@ -79,6 +79,7 @@ public class DocumentPipelineRunExtraProperties_Tests
             fileOrigin: new FileOrigin(
                 uploadedByUserName: "test-user",
                 contentType: "application/pdf",
+                contentHash: $"{Guid.NewGuid():N}{Guid.NewGuid():N}",
                 fileSize: 1024,
                 originalFileName: "test.pdf"));
     }

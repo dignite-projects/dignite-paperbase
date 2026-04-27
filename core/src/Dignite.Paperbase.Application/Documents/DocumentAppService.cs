@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Documents;
@@ -9,6 +10,7 @@ using Dignite.Paperbase.Application.Documents.BackgroundJobs;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Permissions;
 using Microsoft.AspNetCore.Authorization;
+using Volo.Abp;
 using Volo.Abp.Application.Dtos;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.BlobStoring;
@@ -71,17 +73,34 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     {
         var fileName = input.File.FileName ?? "document";
         var contentType = input.File.ContentType ?? "application/octet-stream";
-        var fileSize = input.File.ContentLength ?? 0;
         var extension = Path.GetExtension(fileName);
-        var blobName = GuidGenerator.Create().ToString("N") + extension;
 
-        await using var stream = input.File.GetStream();
-        await _blobContainer.SaveAsync(blobName, stream);
+        await using var source = input.File.GetStream();
+        using var buffer = new MemoryStream();
+        await source.CopyToAsync(buffer);
+        var bytes = buffer.ToArray();
+        var fileSize = bytes.LongLength;
+
+        var contentHash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+
+        var existing = await _documentRepository.FindByContentHashAsync(contentHash);
+        if (existing != null)
+        {
+            throw new BusinessException("Paperbase:DocumentDuplicate")
+                .WithData("FileName", fileName);
+        }
+
+        var blobName = GuidGenerator.Create().ToString("N") + extension;
+        using (var saveStream = new MemoryStream(bytes, writable: false))
+        {
+            await _blobContainer.SaveAsync(blobName, saveStream);
+        }
 
         var sourceType = SourceType.Physical; // placeholder；提取完成后由 BackgroundJob 回写实际值
         var fileOrigin = new FileOrigin(
             CurrentUser.UserName ?? string.Empty,
             contentType,
+            contentHash,
             fileSize,
             originalFileName: fileName);
 

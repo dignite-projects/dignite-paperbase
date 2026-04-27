@@ -5,6 +5,7 @@
     "SamplePageMessage": "Paperbase 模块的示例页面",
 
     "Paperbase:InvalidDocumentTypeCode": "文档类型代码无效：'{documentTypeCode}'。",
-    "Paperbase:ExtractedTextIsImmutable": "已写入提取文本，不允许修改。"
+    "Paperbase:ExtractedTextIsImmutable": "已写入提取文本，不允许修改。",
+    "Paperbase:DocumentDuplicate": "该文件已经上传过 ({FileName})。"
   }
 }
