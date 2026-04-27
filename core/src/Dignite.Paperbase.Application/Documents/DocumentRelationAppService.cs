@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Permissions;
 using Microsoft.AspNetCore.Authorization;
+using Volo.Abp.Application.Dtos;
 
 namespace Dignite.Paperbase.Application.Documents;
 
@@ -24,11 +25,12 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
         _relationRepository = relationRepository;
     }
 
-    public virtual async Task<List<DocumentRelationDto>> GetListAsync(Guid documentId)
+    public virtual async Task<ListResultDto<DocumentRelationDto>> GetListAsync(Guid documentId)
     {
         await CheckPolicyAsync(PaperbasePermissions.DocumentRelations.Default);
         var relations = await _relationRepository.GetListByDocumentIdAsync(documentId);
-        return ObjectMapper.Map<List<DocumentRelation>, List<DocumentRelationDto>>(relations);
+        return new ListResultDto<DocumentRelationDto>(
+            ObjectMapper.Map<List<DocumentRelation>, List<DocumentRelationDto>>(relations));
     }
 
     public virtual async Task<DocumentRelationGraphDto> GetGraphAsync(GetDocumentRelationGraphInput input)

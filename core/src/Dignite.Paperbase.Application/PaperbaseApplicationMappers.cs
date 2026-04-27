@@ -32,6 +32,13 @@ public partial class DocumentPipelineRunToDocumentPipelineRunDtoMapper : MapperB
 }
 
 [Mapper(RequiredMappingStrategy = RequiredMappingStrategy.Target)]
+public partial class DocumentToDocumentListItemDtoMapper : MapperBase<Document, DocumentListItemDto>
+{
+    public override partial DocumentListItemDto Map(Document source);
+    public override partial void Map(Document source, DocumentListItemDto destination);
+}
+
+[Mapper(RequiredMappingStrategy = RequiredMappingStrategy.Target)]
 public partial class DocumentRelationToDocumentRelationDtoMapper : MapperBase<DocumentRelation, DocumentRelationDto>
 {
     public override partial DocumentRelationDto Map(DocumentRelation source);

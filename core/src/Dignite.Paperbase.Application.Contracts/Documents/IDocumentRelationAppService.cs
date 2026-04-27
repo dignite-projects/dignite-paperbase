@@ -1,13 +1,13 @@
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
+using Volo.Abp.Application.Dtos;
 using Volo.Abp.Application.Services;
 
 namespace Dignite.Paperbase.Documents;
 
 public interface IDocumentRelationAppService : IApplicationService
 {
-    Task<List<DocumentRelationDto>> GetListAsync(Guid documentId);
+    Task<ListResultDto<DocumentRelationDto>> GetListAsync(Guid documentId);
 
     Task<DocumentRelationGraphDto> GetGraphAsync(GetDocumentRelationGraphInput input);
 

@@ -7,12 +7,8 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Application.Documents.BackgroundJobs;
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Documents.AI;
-using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Permissions;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Options;
 using Volo.Abp.Application.Dtos;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.BlobStoring;
@@ -29,31 +25,19 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     private readonly IBackgroundJobManager _backgroundJobManager;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly IDistributedEventBus _distributedEventBus;
-    private readonly DocumentQaWorkflow _qaWorkflow;
-    private readonly IDocumentChunkRepository _chunkRepository;
-    private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
-    private readonly PaperbaseAIOptions _aiOptions;
 
     public DocumentAppService(
         IDocumentRepository documentRepository,
         IBlobContainer<PaperbaseDocumentContainer> blobContainer,
         IBackgroundJobManager backgroundJobManager,
         DocumentPipelineRunManager pipelineRunManager,
-        IDistributedEventBus distributedEventBus,
-        DocumentQaWorkflow qaWorkflow,
-        IDocumentChunkRepository chunkRepository,
-        IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
-        IOptions<PaperbaseAIOptions> aiOptions)
+        IDistributedEventBus distributedEventBus)
     {
         _documentRepository = documentRepository;
         _blobContainer = blobContainer;
         _backgroundJobManager = backgroundJobManager;
         _pipelineRunManager = pipelineRunManager;
         _distributedEventBus = distributedEventBus;
-        _qaWorkflow = qaWorkflow;
-        _chunkRepository = chunkRepository;
-        _embeddingGenerator = embeddingGenerator;
-        _aiOptions = aiOptions.Value;
     }
 
     public virtual async Task<DocumentDto> GetAsync(Guid id)
@@ -63,7 +47,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         return ObjectMapper.Map<Document, DocumentDto>(document);
     }
 
-    public virtual async Task<PagedResultDto<DocumentDto>> GetListAsync(GetDocumentListInput input)
+    public virtual async Task<PagedResultDto<DocumentListItemDto>> GetListAsync(GetDocumentListInput input)
     {
         await CheckPolicyAsync(PaperbasePermissions.Documents.Default);
 
@@ -77,9 +61,9 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
 
         var documents = await AsyncExecuter.ToListAsync(query);
 
-        return new PagedResultDto<DocumentDto>(
+        return new PagedResultDto<DocumentListItemDto>(
             totalCount,
-            ObjectMapper.Map<List<Document>, List<DocumentDto>>(documents));
+            ObjectMapper.Map<List<Document>, List<DocumentListItemDto>>(documents));
     }
 
     [Authorize(PaperbasePermissions.Documents.Upload)]
@@ -139,7 +123,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     }
 
     [Authorize(PaperbasePermissions.Documents.Export)]
-    public virtual async Task<IRemoteStreamContent> ExportAsync(GetDocumentListInput input)
+    public virtual async Task<IRemoteStreamContent> GetExportAsync(GetDocumentListInput input)
     {
         var query = await _documentRepository.GetQueryableAsync();
         query = ApplyFilter(query, input);
@@ -153,18 +137,18 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     }
 
     [Authorize(PaperbasePermissions.Documents.ConfirmClassification)]
-    public virtual async Task<DocumentDto> ConfirmClassificationAsync(Guid id, string documentTypeCode)
+    public virtual async Task<DocumentDto> ConfirmClassificationAsync(Guid id, ConfirmClassificationInput input)
     {
         var document = await _documentRepository.GetAsync(id);
         var run = await _pipelineRunManager.StartAsync(document, PaperbasePipelines.Classification);
 
-        await _pipelineRunManager.CompleteManualClassificationAsync(document, run, documentTypeCode);
+        await _pipelineRunManager.CompleteManualClassificationAsync(document, run, input.DocumentTypeCode);
 
         await _distributedEventBus.PublishAsync(new DocumentClassifiedEto
         {
             DocumentId = document.Id,
             TenantId = document.TenantId,
-            DocumentTypeCode = documentTypeCode,
+            DocumentTypeCode = input.DocumentTypeCode,
             ClassificationConfidence = 1.0,
             ExtractedText = document.ExtractedText
         });
@@ -174,53 +158,6 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
 
         await _documentRepository.UpdateAsync(document);
         return ObjectMapper.Map<Document, DocumentDto>(document);
-    }
-
-    [Authorize(PaperbasePermissions.Documents.Ask)]
-    public virtual async Task<QaResultDto> AskAsync(Guid id, AskDocumentInput input)
-    {
-        var document = await _documentRepository.GetAsync(id);
-
-        var actualMode = DetermineActualMode(input.Mode, document.HasEmbedding);
-
-        DocumentQaOutcome outcome;
-        if (actualMode == QaMode.Rag)
-        {
-            var questionEmbeddings = await _embeddingGenerator.GenerateAsync([input.Question]);
-            var chunks = await _chunkRepository.SearchByVectorAsync(
-                questionEmbeddings[0].Vector.ToArray(), _aiOptions.QaTopKChunks, documentId: id);
-
-            var qaChunks = chunks.Select(c => new QaChunk
-            {
-                ChunkIndex = c.ChunkIndex,
-                ChunkText = c.ChunkText
-            }).ToList();
-
-            outcome = await _qaWorkflow.RunRagAsync(input.Question, qaChunks);
-        }
-        else
-        {
-            outcome = await _qaWorkflow.RunFullTextAsync(input.Question, document.ExtractedText);
-        }
-
-        return new QaResultDto
-        {
-            Answer = outcome.Answer,
-            ActualMode = outcome.ActualMode.ToString(),
-            IsDegraded = input.Mode == QaMode.Auto && !document.HasEmbedding,
-            Sources = outcome.Sources.Select(s => new QaSourceDto
-            {
-                Text = s.Text,
-                ChunkIndex = s.ChunkIndex
-            }).ToList()
-        };
-    }
-
-    private static QaMode DetermineActualMode(QaMode requested, bool hasEmbedding)
-    {
-        if (requested == QaMode.Rag) return QaMode.Rag;
-        if (requested == QaMode.FullText) return QaMode.FullText;
-        return hasEmbedding ? QaMode.Rag : QaMode.FullText;
     }
 
     protected virtual IQueryable<Document> ApplyFilter(IQueryable<Document> query, GetDocumentListInput input)

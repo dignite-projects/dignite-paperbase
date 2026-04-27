@@ -25,7 +25,7 @@ public class DocumentController : PaperbaseController, IDocumentAppService
     }
 
     [HttpGet]
-    public virtual Task<PagedResultDto<DocumentDto>> GetListAsync(GetDocumentListInput input)
+    public virtual Task<PagedResultDto<DocumentListItemDto>> GetListAsync(GetDocumentListInput input)
     {
         return _documentAppService.GetListAsync(input);
     }
@@ -50,21 +50,14 @@ public class DocumentController : PaperbaseController, IDocumentAppService
     }
 
     [HttpGet("export")]
-    public virtual Task<IRemoteStreamContent> ExportAsync(GetDocumentListInput input)
+    public virtual Task<IRemoteStreamContent> GetExportAsync(GetDocumentListInput input)
     {
-        return _documentAppService.ExportAsync(input);
+        return _documentAppService.GetExportAsync(input);
     }
 
     [HttpPost("{id}/confirm-classification")]
-    public virtual Task<DocumentDto> ConfirmClassificationAsync(Guid id, [FromBody] string documentTypeCode)
+    public virtual Task<DocumentDto> ConfirmClassificationAsync(Guid id, [FromBody] ConfirmClassificationInput input)
     {
-        return _documentAppService.ConfirmClassificationAsync(id, documentTypeCode);
+        return _documentAppService.ConfirmClassificationAsync(id, input);
     }
-
-    [HttpPost("{id}/ask")]
-    public virtual Task<QaResultDto> AskAsync(Guid id, [FromBody] AskDocumentInput input)
-    {
-        return _documentAppService.AskAsync(id, input);
-    }
-
 }

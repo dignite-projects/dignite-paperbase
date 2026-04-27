@@ -6,10 +6,8 @@ namespace Dignite.Paperbase.Documents;
 
 public class CreateDocumentRelationInput
 {
-    [Required]
     public Guid SourceDocumentId { get; set; }
 
-    [Required]
     public Guid TargetDocumentId { get; set; }
 
     [Required]

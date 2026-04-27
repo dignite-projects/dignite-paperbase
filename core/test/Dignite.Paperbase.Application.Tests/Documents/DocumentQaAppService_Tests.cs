@@ -20,6 +20,11 @@ public class DocumentQaAppServiceTestModule : AbpModule
 {
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
+        // GlobalAskAsync 不会调用 _documentRepository，但 DocumentQaAppService 构造
+        // 函数依赖它，必须注册 mock 才能由 DI 容器构造。
+        context.Services.AddSingleton(
+            Substitute.For<IDocumentRepository>());
+
         context.Services.AddSingleton(
             Substitute.For<IDocumentChunkRepository>());
 
@@ -117,7 +122,7 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
 
         result.ShouldNotBeNull();
         result.Answer.ShouldBe("有効期限は2027年3月31日です。");
-        result.ActualMode.ShouldBe(QaMode.Rag.ToString());
+        result.ActualMode.ShouldBe(QaMode.Rag);
         result.IsDegraded.ShouldBeFalse();
         result.Sources.Count.ShouldBe(1);
         result.Sources[0].ChunkIndex.ShouldBe(0);

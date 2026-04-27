@@ -6,7 +6,7 @@ public class QaResultDto
 {
     public string Answer { get; set; } = default!;
     public IList<QaSourceDto> Sources { get; set; } = new List<QaSourceDto>();
-    public string ActualMode { get; set; } = default!;
+    public QaMode ActualMode { get; set; }
     public bool IsDegraded { get; set; }
 }
 

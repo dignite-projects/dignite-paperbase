@@ -1,8 +1,8 @@
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
 using Microsoft.AspNetCore.Mvc;
+using Volo.Abp.Application.Dtos;
 
 namespace Dignite.Paperbase.HttpApi.Documents;
 
@@ -18,7 +18,7 @@ public class DocumentRelationController : PaperbaseController, IDocumentRelation
     }
 
     [HttpGet]
-    public virtual Task<List<DocumentRelationDto>> GetListAsync(Guid documentId)
+    public virtual Task<ListResultDto<DocumentRelationDto>> GetListAsync(Guid documentId)
     {
         return _relationAppService.GetListAsync(documentId);
     }
