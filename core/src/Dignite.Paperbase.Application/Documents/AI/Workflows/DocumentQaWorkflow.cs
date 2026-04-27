@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Agents.AI;
@@ -86,10 +87,10 @@ public class DocumentQaWorkflow : ITransientDependency
             ActualMode = mode
         };
 
+        var citedIndices = ParseCitedChunkIndices(run.Text);
         foreach (var chunk in chunks)
         {
-            var citation = $"[chunk {chunk.ChunkIndex}]";
-            if (run.Text.Contains(citation, StringComparison.OrdinalIgnoreCase))
+            if (citedIndices.Contains(chunk.ChunkIndex))
             {
                 outcome.Sources.Add(new QaSourceItem
                 {
@@ -100,6 +101,18 @@ public class DocumentQaWorkflow : ITransientDependency
         }
 
         return outcome;
+    }
+
+    // Tolerates uppercase, multiple spaces, and full-width brackets produced by some LLMs.
+    private static readonly Regex CitationPattern =
+        new(@"[\[\【]chunk\s*(\d+)[\]\】]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    protected virtual HashSet<int> ParseCitedChunkIndices(string text)
+    {
+        var indices = new HashSet<int>();
+        foreach (Match m in CitationPattern.Matches(text))
+            indices.Add(int.Parse(m.Groups[1].Value));
+        return indices;
     }
 }
 

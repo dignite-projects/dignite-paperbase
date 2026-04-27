@@ -34,7 +34,7 @@ public class DefaultPromptProvider : IPromptProvider, ITransientDependency
     public virtual PromptTemplate GetQaPrompt(string language) => new(
         "You are a helpful assistant that answers questions based on the provided document content. " +
         "Answer in the same language as the question. " +
-        "If citing a source, reference it by [chunk N]. " +
+        "When citing a source chunk, use exactly [chunk N] with halfwidth square brackets, e.g. [chunk 0]. " +
         "If the answer is not in the provided content, say so clearly rather than guessing."
     );
 }
