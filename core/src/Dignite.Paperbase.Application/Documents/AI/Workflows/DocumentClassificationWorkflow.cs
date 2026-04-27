@@ -17,12 +17,6 @@ namespace Dignite.Paperbase.Documents.AI.Workflows;
 /// </summary>
 public class DocumentClassificationWorkflow : ITransientDependency
 {
-    private const string SystemInstructions =
-        "You are a document classification expert. " +
-        "Analyze the document text and determine the best matching document type from the provided list. " +
-        "If you are not confident, set confidence low and typeCode to null. " +
-        PromptBoundary.BoundaryRule;
-
     private readonly ChatClientAgent _agent;
     private readonly PaperbaseAIOptions _options;
 
@@ -31,10 +25,13 @@ public class DocumentClassificationWorkflow : ITransientDependency
 
     public DocumentClassificationWorkflow(
         IChatClient chatClient,
-        IOptions<PaperbaseAIOptions> options)
+        IOptions<PaperbaseAIOptions> options,
+        IPromptProvider promptProvider)
     {
         _options = options.Value;
-        _agent = new ChatClientAgent(chatClient, instructions: SystemInstructions);
+        var template = promptProvider.GetClassificationPrompt(_options.DefaultLanguage);
+        var instructions = template.SystemInstructions + " " + PromptBoundary.BoundaryRule;
+        _agent = new ChatClientAgent(chatClient, instructions: instructions);
     }
 
     public virtual async Task<DocumentClassificationOutcome> RunAsync(
@@ -87,8 +84,6 @@ public class DocumentClassificationWorkflow : ITransientDependency
                     {"typeCode": "TypeCode", "confidence": <number>}
                   ]
                 }
-
-                Respond in: {{_options.DefaultLanguage}}
                 """;
 
         var response = await _agent.RunAsync<ClassificationResponse>(

@@ -25,24 +25,15 @@ public class DocumentRelationInferenceWorkflow : ITransientDependency
 
     public DocumentRelationInferenceWorkflow(
         IChatClient chatClient,
-        IOptions<PaperbaseAIOptions> options)
+        IOptions<PaperbaseAIOptions> options,
+        IPromptProvider promptProvider)
     {
         _options = options.Value;
-        _agent = new ChatClientAgent(chatClient, instructions: BuildSystemInstructions(_options.RelationInferenceMinConfidence));
+        var template = promptProvider.GetRelationInferencePrompt(
+            _options.DefaultLanguage, _options.RelationInferenceMinConfidence);
+        var instructions = template.SystemInstructions + " " + PromptBoundary.BoundaryRule;
+        _agent = new ChatClientAgent(chatClient, instructions: instructions);
     }
-
-    private static string BuildSystemInstructions(double minConfidence) =>
-        "You are a document relation analyst. Given a source document and several candidate documents, " +
-        "identify candidates that have a substantive relationship with the source, and write one sentence " +
-        "that clearly states the relationship. " +
-        "Example phrasings: 'This contract supplements the payment terms in section 3 of the main contract.'; " +
-        "'This supersedes the 2024-03 version, making the original void.'; " +
-        "'This is an attachment list of the main contract.'; " +
-        "'This addresses the same project as the main contract.'. " +
-        "Return a JSON array; each item contains: targetDocumentId (string), description (one sentence, " +
-        "max 200 characters), confidence (0.0-1.0). " +
-        $"Include only items with confidence >= {minConfidence:F1}; return [] if none. " +
-        PromptBoundary.BoundaryRule;
 
     public virtual async Task<IReadOnlyList<InferredDocumentRelation>> RunAsync(
         Guid sourceDocumentId,
@@ -136,9 +127,6 @@ public class DocumentRelationInferenceWorkflow : ITransientDependency
             sb.AppendLine($"- id: {candidate.DocumentId}, type: {candidate.DocumentTypeCode ?? "unknown"}");
             sb.AppendLine($"  excerpt: {PromptBoundary.WrapCandidate(i, candidate.Summary)}");
         }
-
-        sb.AppendLine();
-        sb.AppendLine($"Respond with each description in: {_options.DefaultLanguage}");
 
         return sb.ToString();
     }

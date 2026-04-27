@@ -37,7 +37,8 @@ public class DocumentQaAppServiceTestModule : AbpModule
         // 用 Substitute 替换默认 Workflow，便于断言调用与返回
         var qaWorkflow = Substitute.ForPartsOf<DocumentQaWorkflow>(
             Substitute.For<IChatClient>(),
-            Microsoft.Extensions.Options.Options.Create(new PaperbaseAIOptions { QaTopKChunks = 5 }));
+            Microsoft.Extensions.Options.Options.Create(new PaperbaseAIOptions { QaTopKChunks = 5 }),
+            new DefaultPromptProvider());
         context.Services.AddSingleton(qaWorkflow);
 
         context.Services.Configure<PaperbaseAIOptions>(opt =>

@@ -17,13 +17,6 @@ namespace Dignite.Paperbase.Documents.AI.Workflows;
 /// </summary>
 public class DocumentQaWorkflow : ITransientDependency
 {
-    private const string SystemInstructions =
-        "You are a helpful assistant that answers questions based on the provided document content. " +
-        "Answer in the same language as the question. " +
-        "If citing a source, reference it by [chunk N]. " +
-        "If the answer is not in the provided content, say so clearly rather than guessing. " +
-        PromptBoundary.BoundaryRule;
-
     private readonly ChatClientAgent _agent;
     private readonly PaperbaseAIOptions _options;
 
@@ -32,10 +25,13 @@ public class DocumentQaWorkflow : ITransientDependency
 
     public DocumentQaWorkflow(
         IChatClient chatClient,
-        IOptions<PaperbaseAIOptions> options)
+        IOptions<PaperbaseAIOptions> options,
+        IPromptProvider promptProvider)
     {
         _options = options.Value;
-        _agent = new ChatClientAgent(chatClient, instructions: SystemInstructions);
+        var template = promptProvider.GetQaPrompt(_options.DefaultLanguage);
+        var instructions = template.SystemInstructions + " " + PromptBoundary.BoundaryRule;
+        _agent = new ChatClientAgent(chatClient, instructions: instructions);
     }
 
     public virtual Task<DocumentQaOutcome> RunRagAsync(
