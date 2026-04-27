@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\..\common.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Dignite.Paperbase.Rag.Pgvector</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dignite.Paperbase.Rag\Dignite.Paperbase.Rag.csproj" />
+    <ProjectReference Include="..\Dignite.Paperbase.EntityFrameworkCore\Dignite.Paperbase.EntityFrameworkCore.csproj" />
+  </ItemGroup>
+
+</Project>
