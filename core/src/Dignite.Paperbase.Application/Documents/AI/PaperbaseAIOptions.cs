@@ -52,4 +52,11 @@ public class PaperbaseAIOptions
     /// 超出时从低优先级候选末尾依次丢弃并记录警告。
     /// </summary>
     public int MaxRelationInferencePromptCharacters { get; set; } = 30000;
+
+    /// <summary>
+    /// 启用时向 LLM 传递 <c>ChatOptions.ResponseFormat = Json</c>，
+    /// 由 SDK 注入类型 schema 约束，同时从 prompt 中移除手写的 JSON schema 文本。
+    /// 关闭时回退到旧的 prompt 内联 schema（适用于不支持 JSON mode 的 Provider）。
+    /// </summary>
+    public bool UseStrictJsonMode { get; set; } = true;
 }
