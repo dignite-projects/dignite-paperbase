@@ -32,7 +32,8 @@ public class DocumentClassificationJobTestModule : AbpModule
 
         var workflow = Substitute.ForPartsOf<DocumentClassificationWorkflow>(
             Substitute.For<IChatClient>(),
-            Options.Create(new PaperbaseAIOptions()));
+            Options.Create(new PaperbaseAIOptions()),
+            new DefaultPromptProvider());
         context.Services.AddSingleton(workflow);
 
         // 注册一个合同类型，阈值 0.75，含关键词"契約書"供关键词分类器使用
