@@ -23,7 +23,7 @@ public class Document : CreationAuditedAggregateRoot<Guid>, IMultiTenant
 
     /// <summary>
     /// 文档类型标识（由分类流水线 Run 成功后写入）。
-    /// null 表示尚未分类，或分类 Run 结果为 LowConfidence（等待人工确认）。
+    /// null 表示当前没有已确认/可用的文档类型；是否等待人工确认由 <see cref="ReviewStatus"/> 表达。
     /// </summary>
     public virtual string? DocumentTypeCode { get; private set; }
 
@@ -45,7 +45,7 @@ public class Document : CreationAuditedAggregateRoot<Guid>, IMultiTenant
 
     /// <summary>
     /// 文档分类置信度（0.0 ~ 1.0），为最后一次成功分类 Run 的快照。
-    /// 当 <see cref="DocumentTypeCode"/> 为 null（尚未分类或 LowConfidence）时此值为 0。
+    /// 当 <see cref="DocumentTypeCode"/> 为 null 时此值为 0；是否等待人工确认由 <see cref="ReviewStatus"/> 表达。
     /// 人工确认（<see cref="DocumentReviewStatus.Reviewed"/>）时固定写入 1.0。
     /// </summary>
     public virtual double ClassificationConfidence { get; private set; }
