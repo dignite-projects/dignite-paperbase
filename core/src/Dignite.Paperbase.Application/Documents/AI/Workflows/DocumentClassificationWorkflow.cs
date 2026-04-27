@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Documents;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Volo.Abp.DependencyInjection;
 
@@ -22,6 +24,9 @@ public class DocumentClassificationWorkflow : ITransientDependency
 
     private readonly ChatClientAgent _agent;
     private readonly PaperbaseAIOptions _options;
+
+    public ILogger<DocumentClassificationWorkflow> Logger { get; set; }
+        = NullLogger<DocumentClassificationWorkflow>.Instance;
 
     public DocumentClassificationWorkflow(
         IChatClient chatClient,
@@ -88,10 +93,25 @@ public class DocumentClassificationWorkflow : ITransientDependency
 
         var parsed = response.Result;
 
+        // LLM 偶发返回越界置信度（NaN / <0 / >1）。按"无可信结论"处理：
+        // typeCode 置 null、confidence 置 0，由 BackgroundJob 走 LowConfidence 分支
+        // 触发 PendingReview，避免 Document.ApplyAutomaticClassificationResult 的
+        // Check.Range 抛异常导致整条 PipelineRun 翻成 Failed。
+        var rawConfidence = parsed?.Confidence ?? 0d;
+        var typeCode = parsed?.TypeCode;
+        if (!IsValidConfidence(rawConfidence))
+        {
+            Logger.LogWarning(
+                "LLM returned out-of-range classification confidence {Confidence} (typeCode={TypeCode}); routing to PendingReview.",
+                rawConfidence, typeCode);
+            typeCode = null;
+            rawConfidence = 0d;
+        }
+
         var outcome = new DocumentClassificationOutcome
         {
-            TypeCode = parsed?.TypeCode,
-            ConfidenceScore = parsed?.Confidence ?? 0,
+            TypeCode = typeCode,
+            ConfidenceScore = rawConfidence,
             Reason = parsed?.Reason
         };
 
@@ -99,15 +119,33 @@ public class DocumentClassificationWorkflow : ITransientDependency
         {
             foreach (var c in parsed.Candidates)
             {
+                // 候选项的 confidence 仅用于 UI 展示与 Run 持久化（PipelineRunCandidate 是纯
+                // record，不做 Check.Range），越界不会破坏聚合根；这里 Clamp 保证展示侧不出
+                // 现 1.5 之类的脏数据。
                 outcome.Candidates.Add(new TypeCandidateOutcome
                 {
                     TypeCode = c.TypeCode,
-                    ConfidenceScore = c.Confidence
+                    ConfidenceScore = ClampConfidence(c.Confidence)
                 });
             }
         }
 
         return outcome;
+    }
+
+    // internal so Application.Tests can directly verify the regression-critical
+    // out-of-range coercion logic (the surrounding 4-line branch in RunAsync is
+    // trivially correct given correct helpers).
+    internal static bool IsValidConfidence(double value)
+        => !double.IsNaN(value) && value >= 0d && value <= 1d;
+
+    internal static double ClampConfidence(double value)
+    {
+        if (double.IsNaN(value))
+            return 0d;
+        if (value < 0d) return 0d;
+        if (value > 1d) return 1d;
+        return value;
     }
 
     private sealed class ClassificationResponse
