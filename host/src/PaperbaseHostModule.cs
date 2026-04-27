@@ -399,12 +399,16 @@ public class PaperbaseHostModule : AbpModule
             new System.ClientModel.ApiKeyCredential(configuration["PaperbaseAI:ApiKey"]!),
             new OpenAIClientOptions { Endpoint = new Uri(configuration["PaperbaseAI:Endpoint"]!) });
 
-        context.Services
+        var chatBuilder = context.Services
             .AddChatClient(_ => openAIClient
                 .GetChatClient(configuration["PaperbaseAI:ChatModelId"]!)
                 .AsIChatClient())
-            .UseFunctionInvocation()
-            .UseLogging();
+            .UseFunctionInvocation();
+
+        if (configuration.GetValue("PaperbaseAI:PromptCachingEnabled", defaultValue: true))
+            chatBuilder = chatBuilder.UseDistributedCache();
+
+        chatBuilder.UseLogging();
 
         context.Services
             .AddEmbeddingGenerator(_ => openAIClient
