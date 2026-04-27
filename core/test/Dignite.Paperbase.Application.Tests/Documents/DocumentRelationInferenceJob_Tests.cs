@@ -229,6 +229,41 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
             Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task MeanPooled_Vector_Is_Used_For_Candidate_Retrieval()
+    {
+        var doc = CreateDocument(extractedText: "契約内容...");
+        _documentRepository.GetAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
+
+        var vec1 = new float[PaperbaseDbProperties.EmbeddingVectorDimension];
+        var vec2 = new float[PaperbaseDbProperties.EmbeddingVectorDimension];
+        vec1[0] = 2.0f;
+        vec2[0] = 4.0f;
+
+        _chunkRepository
+            .GetListByDocumentIdAsync(doc.Id, Arg.Any<CancellationToken>())
+            .Returns(new List<DocumentChunk>
+            {
+                new(Guid.NewGuid(), null, doc.Id, 0, "chunk1", new Vector(vec1)),
+                new(Guid.NewGuid(), null, doc.Id, 1, "chunk2", new Vector(vec2))
+            });
+
+        _chunkRepository
+            .SearchByVectorAsync(
+                Arg.Any<float[]>(), Arg.Any<int>(),
+                Arg.Any<Guid?>(), Arg.Any<string?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new List<DocumentChunk>());
+
+        await _job.ExecuteAsync(new DocumentRelationInferenceJobArgs { DocumentId = doc.Id });
+
+        await _chunkRepository.Received(1).SearchByVectorAsync(
+            Arg.Is<float[]>(v => Math.Abs(v[0] - 3.0f) < 1e-5f),
+            Arg.Any<int>(),
+            Arg.Any<Guid?>(), Arg.Any<string?>(),
+            Arg.Any<CancellationToken>());
+    }
+
     private static Document CreateDocument(string? extractedText = null)
     {
         var doc = new Document(
