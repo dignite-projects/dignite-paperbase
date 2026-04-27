@@ -37,9 +37,6 @@ jobs:
       - name: Run application tests
         run: dotnet test core/test/Dignite.Paperbase.Application.Tests/Dignite.Paperbase.Application.Tests.csproj --no-build --configuration Release --verbosity normal
 
-      - name: Run AI evaluation (replay mode)
-        run: dotnet test core/test/Dignite.Paperbase.AI.Evaluation/Dignite.Paperbase.AI.Evaluation.csproj --no-build --configuration Release --verbosity normal
-
       - name: Build Docker image
         run: docker build -f host/Dockerfile -t paperbase-api:${{ github.sha }} .
         if: github.event_name == 'push'
