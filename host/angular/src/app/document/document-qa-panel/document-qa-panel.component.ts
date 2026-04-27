@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LocalizationPipe } from '@abp/ng.core';
 import { DocumentQaService } from '../../proxy/document-qa.service';
-import { QaMode, QaResultDto } from '../../proxy/models';
+import { QaResultDto } from '../../proxy/models';
 
 @Component({
   selector: 'app-document-qa-panel',
@@ -29,7 +29,7 @@ export class DocumentQaPanelComponent {
     this.result.set(null);
     this.error.set(null);
 
-    this.qaService.ask(this.documentId, { question: q, mode: QaMode.Auto }).subscribe({
+    this.qaService.ask(this.documentId, { question: q }).subscribe({
       next: res => {
         this.result.set(res);
         this.isAsking.set(false);

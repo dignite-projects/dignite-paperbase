@@ -37,10 +37,9 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
     public virtual async Task<QaResultDto> AskAsync(Guid documentId, AskDocumentInput input)
     {
         var document = await _documentRepository.GetAsync(documentId);
-        var actualMode = DetermineActualMode(input.Mode, document.HasEmbedding);
 
         DocumentQaOutcome outcome;
-        if (actualMode == QaMode.Rag)
+        if (document.HasEmbedding)
         {
             var questionEmbeddings = await _embeddingGenerator.GenerateAsync([input.Question]);
             var chunks = await _chunkRepository.SearchByVectorAsync(
@@ -63,20 +62,13 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
         {
             Answer = outcome.Answer,
             ActualMode = outcome.ActualMode,
-            IsDegraded = input.Mode == QaMode.Auto && !document.HasEmbedding,
+            IsDegraded = !document.HasEmbedding,
             Sources = outcome.Sources.Select(s => new QaSourceDto
             {
                 Text = s.Text,
                 ChunkIndex = s.ChunkIndex
             }).ToList()
         };
-    }
-
-    private static QaMode DetermineActualMode(QaMode requested, bool hasEmbedding)
-    {
-        if (requested == QaMode.Rag) return QaMode.Rag;
-        if (requested == QaMode.FullText) return QaMode.FullText;
-        return hasEmbedding ? QaMode.Rag : QaMode.FullText;
     }
 
     public virtual async Task<QaResultDto> GlobalAskAsync(GlobalAskInput input)

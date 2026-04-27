@@ -1,4 +1,3 @@
-import type { QaMode } from './qa-mode.enum';
 import type { EntityDto, ExtensibleObject, PagedAndSortedResultRequestDto } from '@abp/ng.core';
 import type { SourceType } from './source-type.enum';
 import type { DocumentLifecycleStatus } from './document-lifecycle-status.enum';
@@ -9,7 +8,6 @@ import type { IRemoteStreamContent } from '../volo/abp/content/models';
 
 export interface AskDocumentInput {
   question: string;
-  mode?: QaMode;
 }
 
 export interface CreateDocumentRelationInput {

@@ -85,7 +85,6 @@ export enum QaMode {
 
 export interface AskDocumentInput {
   question: string;
-  mode?: QaMode;
 }
 
 export interface GlobalAskInput {
