@@ -41,4 +41,15 @@ public class PaperbaseAIOptions
     /// 关系推断候选文档召回上限（Top-K 文档数），与 QaTopKChunks 解耦，允许独立调优。
     /// </summary>
     public int RelationInferenceCandidateTopK { get; set; } = 20;
+
+    /// <summary>
+    /// 每个候选文档摘要的最大字符数，超出时截断。
+    /// </summary>
+    public int MaxRelationCandidateSummaryLength { get; set; } = 500;
+
+    /// <summary>
+    /// 关系推断 Prompt 总字符预算（源文档摘要 + 所有候选摘要之和），
+    /// 超出时从低优先级候选末尾依次丢弃并记录警告。
+    /// </summary>
+    public int MaxRelationInferencePromptCharacters { get; set; } = 30000;
 }

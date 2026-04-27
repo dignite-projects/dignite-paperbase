@@ -83,8 +83,9 @@ public class DocumentRelationInferenceBackgroundJob
                 var candidate = await _documentRepository.FindAsync(candidateId);
                 if (candidate?.ExtractedText != null)
                 {
-                    var summary = candidate.ExtractedText.Length > 500
-                        ? candidate.ExtractedText[..500]
+                    var maxLen = _aiOptions.MaxRelationCandidateSummaryLength;
+                    var summary = candidate.ExtractedText.Length > maxLen
+                        ? candidate.ExtractedText[..maxLen]
                         : candidate.ExtractedText;
 
                     candidates.Add(new RelationCandidate
@@ -103,8 +104,33 @@ public class DocumentRelationInferenceBackgroundJob
                 return;
             }
 
+            var sourceText = document.ExtractedText ?? string.Empty;
+            var budget = _aiOptions.MaxRelationInferencePromptCharacters;
+            var usedChars = sourceText.Length + candidates.Sum(c => c.Summary.Length);
+            if (usedChars > budget)
+            {
+                var beforeDrop = candidates.Count;
+                while (candidates.Count > 0 && usedChars > budget)
+                {
+                    var last = candidates[^1];
+                    usedChars -= last.Summary.Length;
+                    candidates.RemoveAt(candidates.Count - 1);
+                }
+                Logger.LogWarning(
+                    "RelationInference prompt budget exceeded for document {DocumentId}: " +
+                    "{Before} candidates → {After} after drop (budget {Budget} chars).",
+                    document.Id, beforeDrop, candidates.Count, budget);
+            }
+
+            if (candidates.Count == 0)
+            {
+                await _pipelineRunManager.CompleteAsync(document, run);
+                await _documentRepository.UpdateAsync(document);
+                return;
+            }
+
             var inferred = await _workflow.RunAsync(
-                document.Id, document.ExtractedText ?? string.Empty, candidates);
+                document.Id, sourceText, candidates);
 
             var filtered = inferred
                 .Where(r => r.Confidence >= _aiOptions.RelationInferenceMinConfidence)
