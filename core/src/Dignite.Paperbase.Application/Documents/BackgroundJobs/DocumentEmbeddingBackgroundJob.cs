@@ -40,18 +40,15 @@ public class DocumentEmbeddingBackgroundJob
     public override async Task ExecuteAsync(DocumentEmbeddingJobArgs args)
     {
         var document = await _documentRepository.GetAsync(args.DocumentId);
+
+        if (string.IsNullOrWhiteSpace(document.ExtractedText))
+            return;
+
         var run = await _pipelineRunManager.StartAsync(document, PaperbasePipelines.Embedding);
         await _documentRepository.UpdateAsync(document);
 
         try
         {
-            if (string.IsNullOrWhiteSpace(document.ExtractedText))
-            {
-                await _pipelineRunManager.SkipAsync(document, run, "No extracted text.");
-                await _documentRepository.UpdateAsync(document);
-                return;
-            }
-
             await _chunkRepository.DeleteByDocumentIdAsync(document.Id);
 
             var chunks = await _workflow.RunAsync(document.ExtractedText);
@@ -80,6 +77,7 @@ public class DocumentEmbeddingBackgroundJob
                 document.Id);
             await _pipelineRunManager.FailAsync(document, run, ex.Message);
             await _documentRepository.UpdateAsync(document);
+            throw;
         }
     }
 }
