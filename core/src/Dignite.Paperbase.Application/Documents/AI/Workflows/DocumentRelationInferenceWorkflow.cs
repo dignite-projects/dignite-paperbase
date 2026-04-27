@@ -17,7 +17,8 @@ namespace Dignite.Paperbase.Documents.AI.Workflows;
 /// </summary>
 public class DocumentRelationInferenceWorkflow : ITransientDependency
 {
-    private readonly ChatClientAgent _agent;
+    private readonly IChatClient _chatClient;
+    private readonly IPromptProvider _promptProvider;
     private readonly PaperbaseAIOptions _options;
 
     public ILogger<DocumentRelationInferenceWorkflow> Logger { get; set; }
@@ -28,11 +29,9 @@ public class DocumentRelationInferenceWorkflow : ITransientDependency
         IOptions<PaperbaseAIOptions> options,
         IPromptProvider promptProvider)
     {
+        _chatClient = chatClient;
+        _promptProvider = promptProvider;
         _options = options.Value;
-        var template = promptProvider.GetRelationInferencePrompt(
-            _options.DefaultLanguage, _options.RelationInferenceMinConfidence);
-        var instructions = template.SystemInstructions + " " + PromptBoundary.BoundaryRule;
-        _agent = new ChatClientAgent(chatClient, instructions: instructions);
     }
 
     public virtual async Task<IReadOnlyList<InferredDocumentRelation>> RunAsync(
@@ -46,7 +45,13 @@ public class DocumentRelationInferenceWorkflow : ITransientDependency
 
         var userMessage = BuildUserMessage(sourceText, candidates);
 
-        var response = await _agent.RunAsync<List<RelationItem>>(
+        var template = _promptProvider.GetRelationInferencePrompt(
+            _options.DefaultLanguage, _options.RelationInferenceMinConfidence);
+        var agent = new ChatClientAgent(
+            _chatClient,
+            instructions: template.SystemInstructions + " " + PromptBoundary.BoundaryRule);
+
+        var response = await agent.RunAsync<List<RelationItem>>(
             userMessage,
             session: null,
             serializerOptions: null,

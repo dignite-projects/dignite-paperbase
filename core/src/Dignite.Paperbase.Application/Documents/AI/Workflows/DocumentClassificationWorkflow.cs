@@ -17,7 +17,8 @@ namespace Dignite.Paperbase.Documents.AI.Workflows;
 /// </summary>
 public class DocumentClassificationWorkflow : ITransientDependency
 {
-    private readonly ChatClientAgent _agent;
+    private readonly IChatClient _chatClient;
+    private readonly IPromptProvider _promptProvider;
     private readonly PaperbaseAIOptions _options;
 
     public ILogger<DocumentClassificationWorkflow> Logger { get; set; }
@@ -28,10 +29,9 @@ public class DocumentClassificationWorkflow : ITransientDependency
         IOptions<PaperbaseAIOptions> options,
         IPromptProvider promptProvider)
     {
+        _chatClient = chatClient;
+        _promptProvider = promptProvider;
         _options = options.Value;
-        var template = promptProvider.GetClassificationPrompt(_options.DefaultLanguage);
-        var instructions = template.SystemInstructions + " " + PromptBoundary.BoundaryRule;
-        _agent = new ChatClientAgent(chatClient, instructions: instructions);
     }
 
     public virtual async Task<DocumentClassificationOutcome> RunAsync(
@@ -93,7 +93,12 @@ public class DocumentClassificationWorkflow : ITransientDependency
                 """;
         }
 
-        var response = await _agent.RunAsync<ClassificationResponse>(
+        var template = _promptProvider.GetClassificationPrompt(_options.DefaultLanguage);
+        var agent = new ChatClientAgent(
+            _chatClient,
+            instructions: template.SystemInstructions + " " + PromptBoundary.BoundaryRule);
+
+        var response = await agent.RunAsync<ClassificationResponse>(
             userMessage,
             session: null,
             serializerOptions: null,

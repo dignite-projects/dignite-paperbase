@@ -18,7 +18,8 @@ namespace Dignite.Paperbase.Documents.AI.Workflows;
 /// </summary>
 public class DocumentQaWorkflow : ITransientDependency
 {
-    private readonly ChatClientAgent _agent;
+    private readonly IChatClient _chatClient;
+    private readonly IPromptProvider _promptProvider;
     private readonly PaperbaseAIOptions _options;
 
     public ILogger<DocumentQaWorkflow> Logger { get; set; }
@@ -29,10 +30,9 @@ public class DocumentQaWorkflow : ITransientDependency
         IOptions<PaperbaseAIOptions> options,
         IPromptProvider promptProvider)
     {
+        _chatClient = chatClient;
+        _promptProvider = promptProvider;
         _options = options.Value;
-        var template = promptProvider.GetQaPrompt(_options.DefaultLanguage);
-        var instructions = template.SystemInstructions + " " + PromptBoundary.BoundaryRule;
-        _agent = new ChatClientAgent(chatClient, instructions: instructions);
     }
 
     public virtual Task<DocumentQaOutcome> RunRagAsync(
@@ -79,7 +79,12 @@ public class DocumentQaWorkflow : ITransientDependency
         IReadOnlyList<QaChunk> chunks,
         CancellationToken cancellationToken)
     {
-        var run = await _agent.RunAsync(userMessage, session: null, options: null, cancellationToken);
+        var template = _promptProvider.GetQaPrompt(_options.DefaultLanguage);
+        var agent = new ChatClientAgent(
+            _chatClient,
+            instructions: template.SystemInstructions + " " + PromptBoundary.BoundaryRule);
+
+        var run = await agent.RunAsync(userMessage, session: null, options: null, cancellationToken);
 
         var outcome = new DocumentQaOutcome
         {
