@@ -63,23 +63,49 @@ public class DocumentRelationInferenceWorkflow : ITransientDependency
 
         var results = new List<InferredDocumentRelation>();
         var items = response.Result;
+        var droppedInvalidGuid = 0;
+        var droppedEmptyDescription = 0;
+        var clampedConfidence = 0;
 
         if (items != null)
         {
             foreach (var item in items)
             {
-                var description = item.Description?.Trim();
-                if (Guid.TryParse(item.TargetDocumentId, out var targetId)
-                    && !string.IsNullOrEmpty(description))
+                if (!Guid.TryParse(item.TargetDocumentId, out var targetId))
                 {
-                    results.Add(new InferredDocumentRelation
-                    {
-                        TargetDocumentId = targetId,
-                        Description = description,
-                        Confidence = item.Confidence
-                    });
+                    droppedInvalidGuid++;
+                    continue;
                 }
+
+                var description = item.Description?.Trim();
+                if (string.IsNullOrEmpty(description))
+                {
+                    droppedEmptyDescription++;
+                    continue;
+                }
+
+                var confidence = item.Confidence;
+                if (double.IsNaN(confidence) || confidence < 0d || confidence > 1d)
+                {
+                    // Clamp 而非丢弃：description 已经成立时，置信度的"漂移"不应导致条目消失。
+                    clampedConfidence++;
+                    confidence = double.IsNaN(confidence) ? 0d : Math.Clamp(confidence, 0d, 1d);
+                }
+
+                results.Add(new InferredDocumentRelation
+                {
+                    TargetDocumentId = targetId,
+                    Description = description,
+                    Confidence = confidence
+                });
             }
+        }
+
+        if (droppedInvalidGuid + droppedEmptyDescription + clampedConfidence > 0)
+        {
+            Logger.LogWarning(
+                "Relation inference parsing for source {SourceDocumentId}: dropped {InvalidGuid} for invalid GUID, {EmptyDescription} for empty description; clamped {Clamped} out-of-range confidence values.",
+                sourceDocumentId, droppedInvalidGuid, droppedEmptyDescription, clampedConfidence);
         }
 
         return results;
@@ -91,9 +117,14 @@ public class DocumentRelationInferenceWorkflow : ITransientDependency
     {
         var sb = new StringBuilder();
         sb.AppendLine("Source document excerpt:");
-        var truncated = sourceText.Length > _options.MaxTextLengthPerExtraction
-            ? sourceText[.._options.MaxTextLengthPerExtraction] + "..."
-            : sourceText;
+        var truncated = sourceText;
+        if (sourceText.Length > _options.MaxTextLengthPerExtraction)
+        {
+            Logger.LogWarning(
+                "Relation inference source text truncated from {OriginalLength} to {TruncatedLength} characters.",
+                sourceText.Length, _options.MaxTextLengthPerExtraction);
+            truncated = sourceText[.._options.MaxTextLengthPerExtraction] + "...";
+        }
         sb.AppendLine(PromptBoundary.WrapDocument(truncated));
         sb.AppendLine();
         sb.AppendLine("Candidate documents:");

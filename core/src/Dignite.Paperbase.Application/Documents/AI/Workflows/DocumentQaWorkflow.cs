@@ -5,6 +5,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Volo.Abp.DependencyInjection;
 
@@ -24,6 +26,9 @@ public class DocumentQaWorkflow : ITransientDependency
 
     private readonly ChatClientAgent _agent;
     private readonly PaperbaseAIOptions _options;
+
+    public ILogger<DocumentQaWorkflow> Logger { get; set; }
+        = NullLogger<DocumentQaWorkflow>.Instance;
 
     public DocumentQaWorkflow(
         IChatClient chatClient,
@@ -60,7 +65,12 @@ public class DocumentQaWorkflow : ITransientDependency
     {
         var text = extractedText ?? string.Empty;
         if (text.Length > _options.MaxTextLengthPerExtraction)
+        {
+            Logger.LogWarning(
+                "QA full-text input truncated from {OriginalLength} to {TruncatedLength} characters; answer may miss content beyond the cutoff.",
+                text.Length, _options.MaxTextLengthPerExtraction);
             text = text[.._options.MaxTextLengthPerExtraction] + "\n[... document truncated ...]";
+        }
 
         var prompt = $"Document content:\n{PromptBoundary.WrapDocument(text)}\n\nQuestion: {PromptBoundary.WrapQuestion(question)}";
         return InvokeAsync(prompt, QaMode.FullText, [], cancellationToken);

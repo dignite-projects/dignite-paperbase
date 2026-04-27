@@ -54,9 +54,15 @@ public class DocumentClassificationWorkflow : ITransientDependency
 
         // 候选集排序与数量上限由调用方（DocumentClassificationBackgroundJob）决定，
         // 以保证 LLM 路径与 KeywordDocumentClassifier 兜底路径使用同一组候选。
-        var truncatedText = extractedText.Length > _options.MaxTextLengthPerExtraction
-            ? extractedText[.._options.MaxTextLengthPerExtraction]
-            : extractedText;
+        var truncatedText = extractedText;
+        if (extractedText.Length > _options.MaxTextLengthPerExtraction)
+        {
+            // 截断会丢弃文档尾部，关键字段若位于尾部将无法分类——运营侧需要可见性。
+            Logger.LogWarning(
+                "Classification input truncated from {OriginalLength} to {TruncatedLength} characters; key fields beyond the cutoff will be missed.",
+                extractedText.Length, _options.MaxTextLengthPerExtraction);
+            truncatedText = extractedText[.._options.MaxTextLengthPerExtraction];
+        }
 
         var typeDescriptions = candidateTypes.Select(t =>
             $"- TypeCode: {t.TypeCode}\n" +
