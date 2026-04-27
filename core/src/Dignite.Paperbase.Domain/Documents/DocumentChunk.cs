@@ -1,6 +1,5 @@
 using System;
 using Dignite.Paperbase.Documents;
-using Pgvector;
 using Volo.Abp;
 using Volo.Abp.Domain.Entities.Auditing;
 using Volo.Abp.MultiTenancy;
@@ -23,7 +22,7 @@ public class DocumentChunk : CreationAuditedAggregateRoot<Guid>, IMultiTenant
 
     public virtual string ChunkText { get; private set; } = default!;
 
-    public virtual Vector EmbeddingVector { get; private set; } = default!;
+    public virtual float[] EmbeddingVector { get; private set; } = default!;
 
     protected DocumentChunk() { }
 
@@ -33,7 +32,7 @@ public class DocumentChunk : CreationAuditedAggregateRoot<Guid>, IMultiTenant
         Guid documentId,
         int chunkIndex,
         string chunkText,
-        Vector embeddingVector)
+        float[] embeddingVector)
         : base(id)
     {
         TenantId = tenantId;
@@ -46,7 +45,7 @@ public class DocumentChunk : CreationAuditedAggregateRoot<Guid>, IMultiTenant
         EmbeddingVector = ValidateVector(embeddingVector);
     }
 
-    public virtual void UpdateEmbedding(Vector embeddingVector)
+    public virtual void UpdateEmbedding(float[] embeddingVector)
     {
         EmbeddingVector = ValidateVector(embeddingVector);
     }
@@ -70,15 +69,14 @@ public class DocumentChunk : CreationAuditedAggregateRoot<Guid>, IMultiTenant
         return chunkIndex;
     }
 
-    protected virtual Vector ValidateVector(Vector embeddingVector)
+    protected virtual float[] ValidateVector(float[] embeddingVector)
     {
         Check.NotNull(embeddingVector, nameof(embeddingVector));
-        var dimension = embeddingVector.ToArray().Length;
-        if (dimension != PaperbaseDbProperties.EmbeddingVectorDimension)
+        if (embeddingVector.Length != PaperbaseDbProperties.EmbeddingVectorDimension)
         {
             throw new BusinessException(PaperbaseErrorCodes.EmbeddingDimensionMismatch)
                 .WithData("Expected", PaperbaseDbProperties.EmbeddingVectorDimension)
-                .WithData("Actual", dimension);
+                .WithData("Actual", embeddingVector.Length);
         }
         return embeddingVector;
     }

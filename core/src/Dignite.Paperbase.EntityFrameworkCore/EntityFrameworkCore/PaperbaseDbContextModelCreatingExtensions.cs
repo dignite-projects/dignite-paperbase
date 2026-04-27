@@ -93,9 +93,14 @@ public static class PaperbaseDbContextModelCreatingExtensions
 
             if (isNpgsql)
             {
+                // EmbeddingVector CLR 类型是 float[]；pgvector 列类型保持 vector(N)。
+                // HasConversion 负责在写入/读取时转换，CosineDistance 查询仍由 EFCore repository 通过 EF.Property<Vector>() 完成。
                 b.Property(x => x.EmbeddingVector)
                     .IsRequired()
-                    .HasColumnType($"vector({PaperbaseDbProperties.EmbeddingVectorDimension})");
+                    .HasColumnType($"vector({PaperbaseDbProperties.EmbeddingVectorDimension})")
+                    .HasConversion(
+                        v => new Vector(v),
+                        v => v.ToArray());
             }
             else
             {
@@ -103,9 +108,9 @@ public static class PaperbaseDbContextModelCreatingExtensions
                 b.Property(x => x.EmbeddingVector)
                     .IsRequired()
                     .HasConversion(
-                        v => string.Join(",", v.ToArray()),
-                        s => new Vector(s.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                                        .Select(float.Parse).ToArray()));
+                        v => string.Join(",", v),
+                        s => s.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                              .Select(float.Parse).ToArray());
             }
 
             b.HasOne<Document>()

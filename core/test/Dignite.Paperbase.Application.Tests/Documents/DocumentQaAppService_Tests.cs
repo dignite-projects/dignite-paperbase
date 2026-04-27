@@ -10,7 +10,6 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NSubstitute;
-using Pgvector;
 using Shouldly;
 using Volo.Abp.Modularity;
 using Xunit;
@@ -324,7 +323,7 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
     {
         var chunk = new DocumentChunk(
             Guid.NewGuid(), null, documentId, chunkIndex, text,
-            new Vector(new float[PaperbaseDbProperties.EmbeddingVectorDimension]));
+            new float[PaperbaseDbProperties.EmbeddingVectorDimension]);
         return chunk;
     }
 }

@@ -10,7 +10,6 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NSubstitute;
-using Pgvector;
 using Shouldly;
 using Volo.Abp.Modularity;
 using Xunit;
@@ -97,7 +96,7 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
             .GetListByDocumentIdAsync(doc.Id, Arg.Any<CancellationToken>())
             .Returns(new List<DocumentChunk>
             {
-                new(Guid.NewGuid(), null, doc.Id, 0, "契約内容...", new Vector(new float[PaperbaseDbProperties.EmbeddingVectorDimension]))
+                new(Guid.NewGuid(), null, doc.Id, 0, "契約内容...", new float[PaperbaseDbProperties.EmbeddingVectorDimension])
             });
 
         _chunkRepository
@@ -133,8 +132,8 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
         _documentRepository.GetAsync(sourceDoc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(sourceDoc);
         _documentRepository.FindAsync(candidateDocId, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(candidateDoc);
 
-        var sourceChunk = new DocumentChunk(Guid.NewGuid(), null, sourceDoc.Id, 0, "業務委託契約書。", new Vector(new float[PaperbaseDbProperties.EmbeddingVectorDimension]));
-        var candidateChunk = new DocumentChunk(Guid.NewGuid(), null, candidateDocId, 0, "発注書。", new Vector(new float[PaperbaseDbProperties.EmbeddingVectorDimension]));
+        var sourceChunk = new DocumentChunk(Guid.NewGuid(), null, sourceDoc.Id, 0, "業務委託契約書。", new float[PaperbaseDbProperties.EmbeddingVectorDimension]);
+        var candidateChunk = new DocumentChunk(Guid.NewGuid(), null, candidateDocId, 0, "発注書。", new float[PaperbaseDbProperties.EmbeddingVectorDimension]);
 
         _chunkRepository
             .GetListByDocumentIdAsync(sourceDoc.Id, Arg.Any<CancellationToken>())
@@ -185,11 +184,11 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
             .Returns(CreateDocument(extractedText: "メモ。特に関係なし。"));
 
         var sourceChunk = new DocumentChunk(Guid.NewGuid(), null, sourceDoc.Id, 0, "業務委託契約書。",
-            new Vector(new float[PaperbaseDbProperties.EmbeddingVectorDimension]));
+            new float[PaperbaseDbProperties.EmbeddingVectorDimension]);
         var highChunk = new DocumentChunk(Guid.NewGuid(), null, highConfidenceId, 0, "発注書。",
-            new Vector(new float[PaperbaseDbProperties.EmbeddingVectorDimension]));
+            new float[PaperbaseDbProperties.EmbeddingVectorDimension]);
         var lowChunk = new DocumentChunk(Guid.NewGuid(), null, lowConfidenceId, 0, "メモ。",
-            new Vector(new float[PaperbaseDbProperties.EmbeddingVectorDimension]));
+            new float[PaperbaseDbProperties.EmbeddingVectorDimension]);
 
         _chunkRepository
             .GetListByDocumentIdAsync(sourceDoc.Id, Arg.Any<CancellationToken>())
@@ -244,8 +243,8 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
             .GetListByDocumentIdAsync(doc.Id, Arg.Any<CancellationToken>())
             .Returns(new List<DocumentChunk>
             {
-                new(Guid.NewGuid(), null, doc.Id, 0, "chunk1", new Vector(vec1)),
-                new(Guid.NewGuid(), null, doc.Id, 1, "chunk2", new Vector(vec2))
+                new(Guid.NewGuid(), null, doc.Id, 0, "chunk1", vec1),
+                new(Guid.NewGuid(), null, doc.Id, 1, "chunk2", vec2)
             });
 
         _chunkRepository

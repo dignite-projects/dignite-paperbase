@@ -59,7 +59,7 @@ public class DocumentRelationInferenceBackgroundJob
                 return;
             }
 
-            var pooled = MeanPool(sourceChunks.Select(c => c.EmbeddingVector.ToArray()).ToList());
+            var pooled = MeanPool(sourceChunks.Select(c => c.EmbeddingVector).ToList());
             var candidateChunks = await _chunkRepository.SearchByVectorAsync(
                 pooled, topK: _aiOptions.RelationInferenceCandidateTopK * 3);
 

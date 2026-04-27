@@ -52,8 +52,10 @@ public class EfCoreDocumentChunkRepository
         var query = await BuildSearchQueryAsync(documentId, documentTypeCode);
         var vector = new Vector(queryVector);
 
+        // EmbeddingVector CLR 类型是 float[]，但 DB 列是 vector(N)。
+        // EF.Property<Vector>() 以 Vector 类型访问列，使 pgvector 的 CosineDistance SQL 翻译得以正常工作。
         return await query
-            .OrderBy(c => c.EmbeddingVector!.CosineDistance(vector))
+            .OrderBy(c => EF.Property<Vector>(c, nameof(DocumentChunk.EmbeddingVector))!.CosineDistance(vector))
             .Take(topK)
             .ToListAsync(GetCancellationToken(cancellationToken));
     }
@@ -69,11 +71,11 @@ public class EfCoreDocumentChunkRepository
         var vector = new Vector(queryVector);
 
         var rows = await query
-            .OrderBy(c => c.EmbeddingVector!.CosineDistance(vector))
+            .OrderBy(c => EF.Property<Vector>(c, nameof(DocumentChunk.EmbeddingVector))!.CosineDistance(vector))
             .Select(c => new
             {
                 Chunk = c,
-                Distance = c.EmbeddingVector!.CosineDistance(vector)
+                Distance = EF.Property<Vector>(c, nameof(DocumentChunk.EmbeddingVector))!.CosineDistance(vector)
             })
             .Take(topK)
             .ToListAsync(GetCancellationToken(cancellationToken));

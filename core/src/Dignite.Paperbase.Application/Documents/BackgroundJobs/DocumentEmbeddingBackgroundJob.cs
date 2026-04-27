@@ -3,7 +3,6 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.AI.Workflows;
 using Microsoft.Extensions.Logging;
-using Pgvector;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.Guids;
@@ -61,7 +60,7 @@ public class DocumentEmbeddingBackgroundJob
                     document.Id,
                     chunk.ChunkIndex,
                     chunk.ChunkText,
-                    new Vector(chunk.Vector)));
+                    chunk.Vector));
             }
 
             await _pipelineRunManager.CompleteAsync(document, run);
