@@ -170,6 +170,64 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
         latestRun.Status.ShouldBe(PipelineRunStatus.Succeeded);
     }
 
+    [Fact]
+    public async Task LowConfidence_Relations_Are_Filtered_Before_Persisting()
+    {
+        var sourceDoc = CreateDocument(extractedText: "業務委託契約書。甲：A社。乙：B社。");
+        var highConfidenceId = Guid.NewGuid();
+        var lowConfidenceId = Guid.NewGuid();
+
+        _documentRepository.GetAsync(sourceDoc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(sourceDoc);
+        _documentRepository.FindAsync(highConfidenceId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(CreateDocument(extractedText: "発注書。金額900,000円。"));
+        _documentRepository.FindAsync(lowConfidenceId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(CreateDocument(extractedText: "メモ。特に関係なし。"));
+
+        var sourceChunk = new DocumentChunk(Guid.NewGuid(), null, sourceDoc.Id, 0, "業務委託契約書。",
+            new Vector(new float[PaperbaseDbProperties.EmbeddingVectorDimension]));
+        var highChunk = new DocumentChunk(Guid.NewGuid(), null, highConfidenceId, 0, "発注書。",
+            new Vector(new float[PaperbaseDbProperties.EmbeddingVectorDimension]));
+        var lowChunk = new DocumentChunk(Guid.NewGuid(), null, lowConfidenceId, 0, "メモ。",
+            new Vector(new float[PaperbaseDbProperties.EmbeddingVectorDimension]));
+
+        _chunkRepository
+            .GetListByDocumentIdAsync(sourceDoc.Id, Arg.Any<CancellationToken>())
+            .Returns(new List<DocumentChunk> { sourceChunk });
+
+        _chunkRepository
+            .SearchByVectorAsync(
+                Arg.Any<float[]>(), Arg.Any<int>(),
+                Arg.Any<Guid?>(), Arg.Any<string?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new List<DocumentChunk> { highChunk, lowChunk });
+
+        // Workflow returns two results: one above threshold (0.9), one below (0.3)
+        _workflow
+            .RunAsync(Arg.Any<Guid>(), Arg.Any<string>(),
+                Arg.Any<IReadOnlyList<RelationCandidate>>(), Arg.Any<CancellationToken>())
+            .Returns(new List<InferredDocumentRelation>
+            {
+                new() { TargetDocumentId = highConfidenceId, Description = "本文書は発注書の委託元契約です", Confidence = 0.9 },
+                new() { TargetDocumentId = lowConfidenceId, Description = "弱い関係性", Confidence = 0.3 }
+            });
+
+        await _job.ExecuteAsync(new DocumentRelationInferenceJobArgs { DocumentId = sourceDoc.Id });
+
+        // Only the high-confidence relation reaches the aggregate
+        await _relationRepository.Received(1).InsertAsync(
+            Arg.Is<DocumentRelation>(r =>
+                r.TargetDocumentId == highConfidenceId &&
+                r.Source == RelationSource.AiSuggested),
+            Arg.Any<bool>(),
+            Arg.Any<CancellationToken>());
+
+        // The 0.3-confidence relation must never reach the aggregate, even if LLM ignores the prompt rule
+        await _relationRepository.DidNotReceive().InsertAsync(
+            Arg.Is<DocumentRelation>(r => r.TargetDocumentId == lowConfidenceId),
+            Arg.Any<bool>(),
+            Arg.Any<CancellationToken>());
+    }
+
     private static Document CreateDocument(string? extractedText = null)
     {
         var doc = new Document(

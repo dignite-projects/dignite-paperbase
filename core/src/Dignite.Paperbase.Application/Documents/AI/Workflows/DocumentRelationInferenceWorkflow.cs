@@ -17,18 +17,6 @@ namespace Dignite.Paperbase.Documents.AI.Workflows;
 /// </summary>
 public class DocumentRelationInferenceWorkflow : ITransientDependency
 {
-    private const string SystemInstructions =
-        "You are a document relation analyst. Given a source document and several candidate documents, " +
-        "identify candidates that have a substantive relationship with the source, and write one sentence " +
-        "that clearly states the relationship. " +
-        "Example phrasings: 'This contract supplements the payment terms in section 3 of the main contract.'; " +
-        "'This supersedes the 2024-03 version, making the original void.'; " +
-        "'This is an attachment list of the main contract.'; " +
-        "'This addresses the same project as the main contract.'. " +
-        "Return a JSON array; each item contains: targetDocumentId (string), description (one sentence, " +
-        "max 200 characters), confidence (0.0-1.0). Include only items with confidence >= 0.5; return [] if none. " +
-        PromptBoundary.BoundaryRule;
-
     private readonly ChatClientAgent _agent;
     private readonly PaperbaseAIOptions _options;
 
@@ -40,8 +28,21 @@ public class DocumentRelationInferenceWorkflow : ITransientDependency
         IOptions<PaperbaseAIOptions> options)
     {
         _options = options.Value;
-        _agent = new ChatClientAgent(chatClient, instructions: SystemInstructions);
+        _agent = new ChatClientAgent(chatClient, instructions: BuildSystemInstructions(_options.RelationInferenceMinConfidence));
     }
+
+    private static string BuildSystemInstructions(double minConfidence) =>
+        "You are a document relation analyst. Given a source document and several candidate documents, " +
+        "identify candidates that have a substantive relationship with the source, and write one sentence " +
+        "that clearly states the relationship. " +
+        "Example phrasings: 'This contract supplements the payment terms in section 3 of the main contract.'; " +
+        "'This supersedes the 2024-03 version, making the original void.'; " +
+        "'This is an attachment list of the main contract.'; " +
+        "'This addresses the same project as the main contract.'. " +
+        "Return a JSON array; each item contains: targetDocumentId (string), description (one sentence, " +
+        "max 200 characters), confidence (0.0-1.0). " +
+        $"Include only items with confidence >= {minConfidence:F1}; return [] if none. " +
+        PromptBoundary.BoundaryRule;
 
     public virtual async Task<IReadOnlyList<InferredDocumentRelation>> RunAsync(
         Guid sourceDocumentId,

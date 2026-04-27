@@ -106,7 +106,11 @@ public class DocumentRelationInferenceBackgroundJob
             var inferred = await _workflow.RunAsync(
                 document.Id, document.ExtractedText ?? string.Empty, candidates);
 
-            foreach (var rel in inferred)
+            var filtered = inferred
+                .Where(r => r.Confidence >= _aiOptions.RelationInferenceMinConfidence)
+                .ToList();
+
+            foreach (var rel in filtered)
             {
                 await _relationRepository.InsertAsync(new DocumentRelation(
                     _guidGenerator.Create(),
