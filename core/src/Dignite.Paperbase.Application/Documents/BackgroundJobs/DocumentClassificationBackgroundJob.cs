@@ -1,5 +1,7 @@
 using System;
 using System.Linq;
+using System.Net.Http;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Application.Documents.Classification;
@@ -68,12 +70,29 @@ public class DocumentClassificationBackgroundJob
                 outcome = await _workflow.RunAsync(
                     candidates, document.ExtractedText ?? string.Empty);
             }
-            catch (Exception ex) when (IsAiProviderError(ex))
+            catch (Exception ex) when (IsTransientProviderError(ex))
             {
+                // 网络/超时类故障：LLM 暂时不可用，关键词兜底是合理替代——
+                // 关键词命中即按兜底结果完成分类，未命中走 LowConfidence → PendingReview。
                 Logger.LogWarning(ex,
-                    "AI classification workflow failed for document {DocumentId}, falling back to keyword classifier.",
+                    "AI classification provider unavailable for document {DocumentId}; falling back to keyword classifier.",
                     document.Id);
                 outcome = _keywordClassifier.Classify(candidates, document.ExtractedText ?? string.Empty);
+            }
+            catch (Exception ex) when (IsSchemaDeserializationError(ex))
+            {
+                // Schema 漂移：LLM 输出无法反序列化。这类问题不能用关键词兜底"修复"——
+                // 关键词命中只反映文本表面特征，不能替代被破坏的 LLM 语义判定。
+                // 直接走 PendingReview，由人工确认。
+                Logger.LogWarning(ex,
+                    "AI classification response failed JSON deserialization for document {DocumentId}; routing to PendingReview.",
+                    document.Id);
+                outcome = new DocumentClassificationOutcome
+                {
+                    TypeCode = null,
+                    ConfidenceScore = 0,
+                    Reason = "AI response could not be parsed (schema drift)."
+                };
             }
 
             await ApplyClassificationResultAsync(document, run, outcome);
@@ -85,6 +104,25 @@ public class DocumentClassificationBackgroundJob
             await _documentRepository.UpdateAsync(document);
         }
     }
+
+    /// <summary>
+    /// 网络/超时类瞬时故障：HTTP 通信失败、超时、操作取消。这类 LLM 不可用
+    /// 的情形下，关键词兜底是合理替代，因为产品语义上"分类未必基于深层语义
+    /// 理解"——关键词命中可信度足以推动流水线。
+    /// </summary>
+    private static bool IsTransientProviderError(Exception ex)
+        => ex is HttpRequestException
+            || ex is TimeoutException
+            || ex is OperationCanceledException
+            || ex.GetBaseException() is HttpRequestException
+            || ex.GetBaseException() is TimeoutException;
+
+    /// <summary>
+    /// LLM 输出 JSON 反序列化失败（包括 SDK 包装的内层异常）。这类问题
+    /// 必须走 PendingReview——schema 被破坏时关键词兜底无法替代语义判定。
+    /// </summary>
+    private static bool IsSchemaDeserializationError(Exception ex)
+        => ex is JsonException || ex.GetBaseException() is JsonException;
 
     private async Task ApplyClassificationResultAsync(
         Document document,
@@ -122,13 +160,6 @@ public class DocumentClassificationBackgroundJob
             document, run, outcome.Reason, candidates);
     }
 
-    private static bool IsAiProviderError(Exception ex)
-    {
-        return ex is TimeoutException
-            || ex is OperationCanceledException
-            || ex.GetType().Name.Contains("HttpRequestException", StringComparison.OrdinalIgnoreCase)
-            || (ex.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase));
-    }
 }
 
 public class DocumentClassificationJobArgs

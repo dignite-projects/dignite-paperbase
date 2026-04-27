@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Net.Http;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Documents;
@@ -263,6 +265,98 @@ public class DocumentClassificationBackgroundJob_Tests
         var run = doc.GetLatestRun(PaperbasePipelines.Classification);
         run.ShouldNotBeNull();
         run.Status.ShouldBe(PipelineRunStatus.Succeeded);
+        doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
+
+        await _eventBus.DidNotReceive().PublishAsync(
+            Arg.Any<DocumentClassifiedEto>(), Arg.Any<bool>());
+    }
+
+    [Fact]
+    public async Task HttpRequestException_FallsBack_To_Keyword_Classifier()
+    {
+        // HTTP 通信故障是 transient provider error，关键词兜底是合理替代。
+        // 旧实现用 ex.GetType().Name.Contains("HttpRequestException") 字符串匹配，
+        // 现在改为 typed catch (HttpRequestException) — 这个测试锁定新路径。
+        var doc = CreateDocument("業務委託契約書。甲：A社。乙：B社。");
+        SetupDocumentRepository(doc);
+
+        _workflow
+            .RunAsync(
+                Arg.Any<IReadOnlyList<DocumentTypeDefinition>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns<DocumentClassificationOutcome>(_ => throw new HttpRequestException("503 service unavailable"));
+
+        await _job.ExecuteAsync(new DocumentClassificationJobArgs { DocumentId = doc.Id });
+
+        // 关键词兜底命中 contract.general
+        var run = doc.GetLatestRun(PaperbasePipelines.Classification);
+        run.ShouldNotBeNull();
+        run.Status.ShouldBe(PipelineRunStatus.Succeeded);
+
+        await _eventBus.Received(1).PublishAsync(
+            Arg.Is<DocumentClassifiedEto>(e => e.DocumentTypeCode == "contract.general"),
+            Arg.Any<bool>());
+    }
+
+    [Fact]
+    public async Task JsonException_Routes_To_PendingReview_Even_When_Keyword_Would_Match()
+    {
+        // 关键回归测试：schema 漂移类异常（JsonException）必须直接走 PendingReview，
+        // 不能用关键词兜底替代——关键词命中只反映文本表面，无法弥补 LLM 语义判定失效。
+        // 文本故意包含已注册关键词 "契約書"，如果错误地走了关键词兜底路径，文档会被
+        // 高置信度分类成 contract.general，测试断言失败。正确实现下，文档落入
+        // PendingReview，TypeCode 为 null。
+        var doc = CreateDocument("業務委託契約書。甲：A社。乙：B社。");
+        SetupDocumentRepository(doc);
+
+        _workflow
+            .RunAsync(
+                Arg.Any<IReadOnlyList<DocumentTypeDefinition>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns<DocumentClassificationOutcome>(_ => throw new JsonException("schema mismatch: missing required field"));
+
+        await _job.ExecuteAsync(new DocumentClassificationJobArgs { DocumentId = doc.Id });
+
+        var run = doc.GetLatestRun(PaperbasePipelines.Classification);
+        run.ShouldNotBeNull();
+        run.Status.ShouldBe(PipelineRunStatus.Succeeded);
+
+        // 没有走关键词兜底——TypeCode 为 null，ReviewStatus 为 PendingReview
+        doc.DocumentTypeCode.ShouldBeNull();
+        doc.ClassificationConfidence.ShouldBe(0);
+        doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
+
+        // 不发布事件，不入队 Embedding
+        await _eventBus.DidNotReceive().PublishAsync(
+            Arg.Any<DocumentClassifiedEto>(), Arg.Any<bool>());
+        await _backgroundJobManager.DidNotReceive().EnqueueAsync(
+            Arg.Any<DocumentEmbeddingJobArgs>(),
+            Arg.Any<BackgroundJobPriority>(),
+            Arg.Any<TimeSpan?>());
+    }
+
+    [Fact]
+    public async Task Wrapped_JsonException_Also_Routes_To_PendingReview()
+    {
+        // SDK 把 JsonException 包在外层异常里也算 schema drift。
+        var doc = CreateDocument("業務委託契約書。");
+        SetupDocumentRepository(doc);
+
+        var inner = new JsonException("invalid token");
+        var outer = new InvalidOperationException("LLM response could not be parsed", inner);
+
+        _workflow
+            .RunAsync(
+                Arg.Any<IReadOnlyList<DocumentTypeDefinition>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns<DocumentClassificationOutcome>(_ => throw outer);
+
+        await _job.ExecuteAsync(new DocumentClassificationJobArgs { DocumentId = doc.Id });
+
+        doc.DocumentTypeCode.ShouldBeNull();
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
 
         await _eventBus.DidNotReceive().PublishAsync(
