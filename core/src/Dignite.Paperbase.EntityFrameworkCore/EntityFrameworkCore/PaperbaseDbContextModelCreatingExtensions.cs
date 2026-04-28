@@ -92,6 +92,13 @@ public static class PaperbaseDbContextModelCreatingExtensions
                 .IsRequired()
                 .HasMaxLength(DocumentChunkConsts.MaxChunkTextLength);
 
+            // 反范式化字段（来自 Document 聚合）。让 provider 检索路径不再 JOIN Documents 表，
+            // 为 Slice C 切独立 PgvectorRagDbContext 做物理前置——跨 DbContext / 跨 DBMS 不能 JOIN。
+            b.Property(x => x.DocumentTypeCode)
+                .HasMaxLength(DocumentConsts.MaxDocumentTypeCodeLength);
+            b.Property(x => x.Title)
+                .HasMaxLength(DocumentChunkConsts.MaxTitleLength);
+
             if (isNpgsql)
             {
                 // EmbeddingVector CLR 类型是 float[]；pgvector 列类型保持 vector(N)。
@@ -121,6 +128,10 @@ public static class PaperbaseDbContextModelCreatingExtensions
 
             // (DocumentId, ChunkIndex) 唯一；DocumentId 单列查询命中此索引前缀
             b.HasIndex(x => new { x.DocumentId, x.ChunkIndex }).IsUnique();
+
+            // (TenantId, DocumentTypeCode) 复合索引：跨文档按文档类型 QA 的主路径
+            // （PgvectorDocumentVectorStore 在 vector / keyword 检索前先按这两个字段过滤）。
+            b.HasIndex(x => new { x.TenantId, x.DocumentTypeCode });
         });
     }
 }
