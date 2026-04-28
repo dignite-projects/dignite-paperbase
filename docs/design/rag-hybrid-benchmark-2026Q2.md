@@ -1,12 +1,12 @@
 # Hybrid Search Benchmark — 2026 Q2 Synthetic Baseline
 
-**Status**: Synthetic baseline only. Real-data validation is the follow-up of [#30](https://github.com/dignite-projects/dignite-paperbase/issues/30).
+**Status**: Synthetic baseline only. Real-data validation is tracked separately in [#31](https://github.com/dignite-projects/dignite-paperbase/issues/31).
 
 **Reference**: [`rag-vector-store-decoupling.md`](rag-vector-store-decoupling.md) § Slice 7. Implementation in [#28](https://github.com/dignite-projects/dignite-paperbase/issues/28).
 
 ## Why this report exists
 
-Slice 7 ([#28](https://github.com/dignite-projects/dignite-paperbase/issues/28)) shipped hybrid search via `pgvector + tsvector + RRF`, with the design claim that hybrid retrieval should outperform pure vector search on **precise-text queries** (contract numbers, invoice IDs, names, dates, amounts) without regressing **semantic queries** (clause semantics, paraphrases). #30 tracks the obligation to back that claim with measurements.
+Slice 7 ([#28](https://github.com/dignite-projects/dignite-paperbase/issues/28)) shipped hybrid search via `pgvector + tsvector + RRF`, with the design claim that hybrid retrieval should outperform pure vector search on **precise-text queries** (contract numbers, invoice IDs, names, dates, amounts) without regressing **semantic queries** (clause semantics, paraphrases). #30 established the synthetic baseline; [#31](https://github.com/dignite-projects/dignite-paperbase/issues/31) tracks the remaining production validation with real infrastructure and desensitized data.
 
 This report establishes a **synthetic baseline** that can run in CI without external services. It validates the RRF math + mode dispatch in `Dignite.Paperbase.Rag.RrfFusion` and `PgvectorDocumentVectorStore`. It does **not** replace a real-data benchmark; that requires a脱敏 corpus + real LLM + Postgres and is explicitly out of scope here.
 
@@ -133,7 +133,8 @@ The test prints the markdown table to stdout and writes it to `bin/Debug/.../hyb
 
 - [`rag-vector-store-decoupling.md`](rag-vector-store-decoupling.md) — full RAG decoupling design (Slices 2–8)
 - [#28](https://github.com/dignite-projects/dignite-paperbase/issues/28) — Slice 7 implementation
-- [#30](https://github.com/dignite-projects/dignite-paperbase/issues/30) — this report's tracking issue
+- [#30](https://github.com/dignite-projects/dignite-paperbase/issues/30) — synthetic benchmark baseline
+- [#31](https://github.com/dignite-projects/dignite-paperbase/issues/31) — production validation with real infrastructure and desensitized data
 - [`HybridSearchBenchmark.cs`](../../core/test/Dignite.Paperbase.Application.Tests/Benchmarks/HybridSearchBenchmark.cs)
 - [`InMemoryHybridDocumentVectorStore.cs`](../../core/test/Dignite.Paperbase.Application.Tests/Benchmarks/InMemoryHybridDocumentVectorStore.cs)
 - [`BenchmarkDataset.cs`](../../core/test/Dignite.Paperbase.Application.Tests/Benchmarks/BenchmarkDataset.cs)

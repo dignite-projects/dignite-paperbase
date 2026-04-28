@@ -72,6 +72,7 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
         _rerankWorkflow = GetRequiredService<DocumentRerankWorkflow>();
         _embeddingGenerator = GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
 
+        SetupDefaultCapabilities();
         SetupDefaultEmbedding();
     }
 
@@ -195,6 +196,107 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
         {
             ragOptions.DefaultSearchMode = originalMode;
         }
+    }
+
+    [Fact]
+    public async Task Configured_Hybrid_Mode_Falls_Back_To_Vector_When_Provider_Does_Not_Support_Hybrid()
+    {
+        var ragOptions = GetRequiredService<IOptions<PaperbaseRagOptions>>().Value;
+        var originalMode = ragOptions.DefaultSearchMode;
+        ragOptions.DefaultSearchMode = VectorSearchMode.Hybrid;
+
+        _vectorStore.Capabilities.Returns(new VectorStoreCapabilities
+        {
+            SupportsVectorSearch = true,
+            SupportsKeywordSearch = true,
+            SupportsHybridSearch = false,
+            SupportsStructuredFilter = true,
+            SupportsDeleteByDocumentId = true,
+            NormalizesScore = true
+        });
+
+        try
+        {
+            VectorSearchRequest? captured = null;
+            _vectorStore
+                .SearchAsync(Arg.Do<VectorSearchRequest>(r => captured = r), Arg.Any<CancellationToken>())
+                .Returns(new List<VectorSearchResult>());
+
+            await _qaAppService.GlobalAskAsync(new GlobalAskInput { Question = "ANYTHING" });
+
+            captured.ShouldNotBeNull();
+            captured!.Mode.ShouldBe(VectorSearchMode.Vector);
+        }
+        finally
+        {
+            ragOptions.DefaultSearchMode = originalMode;
+            SetupDefaultCapabilities();
+        }
+    }
+
+    [Fact]
+    public async Task GlobalAsk_Does_Not_Apply_MinScore_When_Provider_Does_Not_Normalize_Score()
+    {
+        _vectorStore.Capabilities.Returns(new VectorStoreCapabilities
+        {
+            SupportsVectorSearch = true,
+            SupportsKeywordSearch = true,
+            SupportsHybridSearch = true,
+            SupportsStructuredFilter = true,
+            SupportsDeleteByDocumentId = true,
+            NormalizesScore = false
+        });
+
+        var rawProviderScores = new List<VectorSearchResult>
+        {
+            new() { RecordId = Guid.NewGuid(), DocumentId = Guid.NewGuid(), ChunkIndex = 0, Text = "raw score result", Score = 0.05 }
+        };
+
+        _vectorStore
+            .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
+            .Returns(rawProviderScores);
+
+        IReadOnlyList<QaChunk>? capturedChunks = null;
+        _qaWorkflow
+            .RunRagAsync(Arg.Any<string>(), Arg.Do<IReadOnlyList<QaChunk>>(c => capturedChunks = c), Arg.Any<CancellationToken>())
+            .Returns(new DocumentQaOutcome { Answer = "ans", ActualMode = QaMode.Rag });
+
+        try
+        {
+            await _qaAppService.GlobalAskAsync(new GlobalAskInput { Question = "问题" });
+
+            capturedChunks.ShouldNotBeNull();
+            capturedChunks!.Count.ShouldBe(1);
+
+            await _vectorStore.Received(1).SearchAsync(
+                Arg.Is<VectorSearchRequest>(r => r.MinScore == null),
+                Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            SetupDefaultCapabilities();
+        }
+    }
+
+    [Fact]
+    public async Task GlobalAsk_Rejects_Provider_Without_Structured_Filter()
+    {
+        _vectorStore.Capabilities.Returns(new VectorStoreCapabilities
+        {
+            SupportsVectorSearch = true,
+            SupportsKeywordSearch = true,
+            SupportsHybridSearch = true,
+            SupportsStructuredFilter = false,
+            SupportsDeleteByDocumentId = true,
+            NormalizesScore = true
+        });
+
+        await Should.ThrowAsync<InvalidOperationException>(async () =>
+        {
+            await _qaAppService.GlobalAskAsync(new GlobalAskInput { Question = "问题" });
+        });
+
+        SetupDefaultCapabilities();
     }
 
     [Fact]
@@ -346,5 +448,18 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
                 Arg.Any<EmbeddingGenerationOptions?>(),
                 Arg.Any<CancellationToken>())
             .Returns(embeddings);
+    }
+
+    private void SetupDefaultCapabilities()
+    {
+        _vectorStore.Capabilities.Returns(new VectorStoreCapabilities
+        {
+            SupportsVectorSearch = true,
+            SupportsKeywordSearch = true,
+            SupportsHybridSearch = true,
+            SupportsStructuredFilter = true,
+            SupportsDeleteByDocumentId = true,
+            NormalizesScore = true
+        });
     }
 }

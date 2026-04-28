@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using Pgvector;
 using Pgvector.EntityFrameworkCore;
 using Volo.Abp.DependencyInjection;
@@ -85,7 +87,12 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
             {
                 if (existingById.TryGetValue(record.Id, out var existing))
                 {
-                    existing.UpdateEmbedding(record.Vector.ToArray());
+                    existing.UpdateRecord(
+                        record.TenantId,
+                        record.DocumentId,
+                        record.ChunkIndex,
+                        record.Text,
+                        record.Vector.ToArray());
                 }
                 else
                 {
@@ -104,7 +111,14 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
     /// <summary>
     /// Bulk-delete all chunks for a document. Executes immediately (bypasses UoW),
     /// consistent with <see cref="Documents.EfCoreDocumentChunkRepository.DeleteByDocumentIdAsync"/>.
-    /// Tenant isolation is guaranteed by ABP's global IMultiTenant query filter.
+    ///
+    /// Tenant scoping note: this method relies on ABP's <see cref="Volo.Abp.MultiTenancy.IMultiTenant"/>
+    /// global filter being aligned with the document's owning tenant <em>before</em> the call.
+    /// The interface <see cref="IDocumentVectorStore.DeleteByDocumentIdAsync"/> does not yet
+    /// carry an explicit TenantId, so callers running outside the HTTP pipeline (Hangfire
+    /// jobs, CLI tools, system processes) must wrap the call in
+    /// <c>using (currentTenant.Change(document.TenantId))</c>. Tracked as a follow-up to
+    /// promote TenantId to an explicit parameter on the abstraction.
     /// </summary>
     public virtual async Task DeleteByDocumentIdAsync(
         Guid documentId,
@@ -190,11 +204,17 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
         // EF.Property<Vector>() accesses the column as Vector so pgvector's
         // CosineDistance SQL translation works correctly.
         var rows = await query
-            .OrderBy(c => EF.Property<Vector>(c, nameof(DocumentChunk.EmbeddingVector))!.CosineDistance(pgVector))
+            .Join(
+                dbContext.Set<Document>().AsNoTracking(),
+                c => c.DocumentId,
+                d => d.Id,
+                (c, d) => new { Chunk = c, Document = d })
+            .OrderBy(c => EF.Property<Vector>(c.Chunk, nameof(DocumentChunk.EmbeddingVector))!.CosineDistance(pgVector))
             .Select(c => new
             {
-                Chunk = c,
-                Distance = EF.Property<Vector>(c, nameof(DocumentChunk.EmbeddingVector))!.CosineDistance(pgVector)
+                c.Chunk,
+                c.Document.DocumentTypeCode,
+                Distance = EF.Property<Vector>(c.Chunk, nameof(DocumentChunk.EmbeddingVector))!.CosineDistance(pgVector)
             })
             .Take(topK)
             .ToListAsync(cancellationToken);
@@ -204,13 +224,12 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
             {
                 RecordId = r.Chunk.Id,
                 DocumentId = r.Chunk.DocumentId,
-                // DocumentTypeCode is not stored on DocumentChunk; null until a follow-up
-                // slice wires the join in the projection.
-                DocumentTypeCode = null,
+                DocumentTypeCode = r.DocumentTypeCode,
                 ChunkIndex = r.Chunk.ChunkIndex,
                 Text = r.Chunk.ChunkText,
-                // Normalize: cosine distance ∈ [0, 1] for unit vectors → similarity ∈ [0, 1]
-                Score = 1.0 - r.Distance,
+                // Keep legacy cosine similarity semantics while enforcing the
+                // provider contract: Score must stay in [0, 1].
+                Score = Math.Clamp(1.0 - r.Distance, 0.0, 1.0),
                 Title = null,
                 PageNumber = null
             })
@@ -241,6 +260,8 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
             return new List<VectorSearchResult>();
 
         var dbContext = await _dbContextProvider.GetDbContextAsync();
+        var chunkTable = GetDelimitedTableName(dbContext, typeof(DocumentChunk));
+        var documentTable = GetDelimitedTableName(dbContext, typeof(Document));
 
         // Build the SQL with positional parameters. Filter precedence matches
         // SearchVectorAsync: DocumentId wins over DocumentTypeCode, both optional.
@@ -275,11 +296,12 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
             SELECT
                 c.""Id""           AS ""Id"",
                 c.""DocumentId""   AS ""DocumentId"",
+                d.""DocumentTypeCode"" AS ""DocumentTypeCode"",
                 c.""ChunkIndex""   AS ""ChunkIndex"",
                 c.""ChunkText""    AS ""ChunkText"",
                 ts_rank_cd(c.""SearchVector"", plainto_tsquery('simple', {{0}})) AS ""Rank""
-            FROM ""PaperbaseDocumentChunks"" c
-            INNER JOIN ""PaperbaseDocuments"" d ON d.""Id"" = c.""DocumentId""
+            FROM {chunkTable} c
+            INNER JOIN {documentTable} d ON d.""Id"" = c.""DocumentId""
             WHERE c.""SearchVector"" @@ plainto_tsquery('simple', {{0}})
               AND c.""TenantId"" IS NOT DISTINCT FROM CAST({{1}} AS uuid)
               {optionalFilter}
@@ -295,7 +317,7 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
             {
                 RecordId = r.Id,
                 DocumentId = r.DocumentId,
-                DocumentTypeCode = null,
+                DocumentTypeCode = r.DocumentTypeCode,
                 ChunkIndex = r.ChunkIndex,
                 Text = r.ChunkText,
                 Score = r.Rank,
@@ -366,6 +388,17 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
             .ToList();
     }
 
+    protected virtual string GetDelimitedTableName(PaperbaseDbContext dbContext, Type entityClrType)
+    {
+        var entityType = dbContext.Model.FindEntityType(entityClrType)
+            ?? throw new InvalidOperationException($"Entity type {entityClrType.Name} is not part of the Paperbase EF Core model.");
+        var tableName = entityType.GetTableName()
+            ?? throw new InvalidOperationException($"Entity type {entityClrType.Name} is not mapped to a table.");
+
+        var sqlGenerationHelper = dbContext.GetService<ISqlGenerationHelper>();
+        return sqlGenerationHelper.DelimitIdentifier(tableName, entityType.GetSchema());
+    }
+
     /// <summary>
     /// Internal projection type for the keyword-path raw SQL query. Property
     /// names must match the SELECT aliases exactly (EF Core SqlQueryRaw maps
@@ -375,6 +408,7 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
     {
         public Guid Id { get; set; }
         public Guid DocumentId { get; set; }
+        public string? DocumentTypeCode { get; set; }
         public int ChunkIndex { get; set; }
         public string ChunkText { get; set; } = default!;
         public double Rank { get; set; }

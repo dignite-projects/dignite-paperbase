@@ -10,6 +10,13 @@ namespace Dignite.Paperbase.Host.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            var chunkTable = DelimitIdentifier(
+                PaperbaseDbProperties.DbTablePrefix + "DocumentChunks",
+                PaperbaseDbProperties.DbSchema);
+            var searchVectorIndex = DelimitIdentifier(
+                "IX_" + PaperbaseDbProperties.DbTablePrefix + "DocumentChunks_SearchVector",
+                PaperbaseDbProperties.DbSchema);
+
             // Slice 7 — Hybrid search (pgvector + tsvector + RRF).
             //
             // Adds a generated tsvector column on PaperbaseDocumentChunks for the
@@ -46,15 +53,15 @@ namespace Dignite.Paperbase.Host.Migrations
             // Regconfig symmetry: 'simple' must match the regconfig used by the query
             // path in PgvectorDocumentVectorStore.SearchKeywordAsync. If they diverge,
             // the GIN index will silently not be used and queries fall back to seq scan.
-            migrationBuilder.Sql(@"
-                ALTER TABLE ""PaperbaseDocumentChunks""
+            migrationBuilder.Sql($@"
+                ALTER TABLE {chunkTable}
                 ADD COLUMN ""SearchVector"" tsvector
                 GENERATED ALWAYS AS (to_tsvector('simple', ""ChunkText"")) STORED;
             ");
 
-            migrationBuilder.Sql(@"
-                CREATE INDEX ""IX_PaperbaseDocumentChunks_SearchVector""
-                ON ""PaperbaseDocumentChunks""
+            migrationBuilder.Sql($@"
+                CREATE INDEX {searchVectorIndex}
+                ON {chunkTable}
                 USING GIN (""SearchVector"");
             ");
         }
@@ -62,10 +69,25 @@ namespace Dignite.Paperbase.Host.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            var chunkTable = DelimitIdentifier(
+                PaperbaseDbProperties.DbTablePrefix + "DocumentChunks",
+                PaperbaseDbProperties.DbSchema);
+            var searchVectorIndex = DelimitIdentifier(
+                "IX_" + PaperbaseDbProperties.DbTablePrefix + "DocumentChunks_SearchVector",
+                PaperbaseDbProperties.DbSchema);
+
             // DROP order: index first, then column. IF EXISTS on both makes Down
             // re-runnable if a partial rollback already happened.
-            migrationBuilder.Sql(@"DROP INDEX IF EXISTS ""IX_PaperbaseDocumentChunks_SearchVector"";");
-            migrationBuilder.Sql(@"ALTER TABLE ""PaperbaseDocumentChunks"" DROP COLUMN IF EXISTS ""SearchVector"";");
+            migrationBuilder.Sql($@"DROP INDEX IF EXISTS {searchVectorIndex};");
+            migrationBuilder.Sql($@"ALTER TABLE {chunkTable} DROP COLUMN IF EXISTS ""SearchVector"";");
+        }
+
+        private static string DelimitIdentifier(string name, string schema = null)
+        {
+            var delimitedName = "\"" + name.Replace("\"", "\"\"") + "\"";
+            return schema == null
+                ? delimitedName
+                : "\"" + schema.Replace("\"", "\"\"") + "\"." + delimitedName;
         }
     }
 }

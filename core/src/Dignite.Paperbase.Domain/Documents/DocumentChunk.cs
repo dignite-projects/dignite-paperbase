@@ -50,6 +50,23 @@ public class DocumentChunk : CreationAuditedAggregateRoot<Guid>, IMultiTenant
         EmbeddingVector = ValidateVector(embeddingVector);
     }
 
+    public virtual void UpdateRecord(
+        Guid? tenantId,
+        Guid documentId,
+        int chunkIndex,
+        string chunkText,
+        float[] embeddingVector)
+    {
+        TenantId = tenantId;
+        DocumentId = ValidateDocumentId(documentId);
+        ChunkIndex = ValidateChunkIndex(chunkIndex);
+        ChunkText = Check.NotNullOrWhiteSpace(
+            chunkText,
+            nameof(chunkText),
+            DocumentChunkConsts.MaxChunkTextLength);
+        EmbeddingVector = ValidateVector(embeddingVector);
+    }
+
     protected virtual Guid ValidateDocumentId(Guid documentId)
     {
         if (documentId == Guid.Empty)
