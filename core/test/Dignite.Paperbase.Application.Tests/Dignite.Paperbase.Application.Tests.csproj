@@ -16,6 +16,10 @@
     <ProjectReference Include="..\..\src\Dignite.Paperbase.TextExtraction\Dignite.Paperbase.TextExtraction.csproj" />
     <ProjectReference Include="..\Dignite.Paperbase.Domain.Tests\Dignite.Paperbase.Domain.Tests.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <!-- Manual integration test: spawns two PostgreSQL containers for the
+         hybrid (cross-DB) deployment scenario. Skipped on CI by default
+         via [Trait("Category","Manual")]; requires Docker locally. -->
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.0.0" />
   </ItemGroup>
 
 </Project>

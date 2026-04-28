@@ -176,15 +176,34 @@ Configure<PaperbaseOcrOptions>(options =>
 
 ---
 
-## Connection String
+## Connection Strings
+
+Paperbase uses two named connection strings — one for the main DB and one for the vector DB:
 
 ```json
 "ConnectionStrings": {
-  "Default": "Host=127.0.0.1;Port=5432;Database=paperbase;Username=postgres;Password=postgres"
+  "Default":      "Host=127.0.0.1;Port=5432;Database=paperbase;Username=postgres;Password=postgres",
+  "Paperbase":    "Host=127.0.0.1;Port=5432;Database=paperbase;Username=postgres;Password=postgres",
+  "PaperbaseRag": "Host=127.0.0.1;Port=5432;Database=paperbase;Username=postgres;Password=postgres"
 }
 ```
 
-Paperbase uses PostgreSQL with the `pgvector` extension for vector storage. Ensure `pgvector` is installed before running migrations.
+| Key | Used by | Notes |
+|-----|---------|-------|
+| `Default` | ABP fallback when a named string is missing | Keep set in development |
+| `Paperbase` | `PaperbaseHostDbContext`, `ContractsDbContext` (and any other business-module DbContext) | Main DB |
+| `PaperbaseRag` | `PgvectorRagDbContext` (chunks + document-level vectors) | Must allow `CREATE EXTENSION vector` — pgvector is required |
+
+For local development, all three point at the same database. For production splits — vector
+DB on a different cluster, mixed DBMS, or a different vector provider altogether — see the
+[Mixed-DB Deployment Guide](deployment-mixed-db.md). The sample
+[`host/src/appsettings.MixedDb.Sample.json`](../host/src/appsettings.MixedDb.Sample.json)
+shows the same-DBMS cross-database topology end to end.
+
+> **Independent migration history.** `PgvectorRagDbContext` records its applied migrations in
+> `__EFMigrationsHistory_PgvectorRag`; the main DbContext continues to use the default
+> `__EFMigrationsHistory`. The two contexts can share one physical database without colliding,
+> and they can split onto separate clusters without any code change.
 
 ---
 
