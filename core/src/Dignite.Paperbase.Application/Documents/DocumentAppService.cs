@@ -9,8 +9,8 @@ using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Application.Documents.BackgroundJobs;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Permissions;
-using Dignite.Paperbase.Rag;
 using Microsoft.AspNetCore.Authorization;
+using Dignite.Paperbase.Documents.Events;
 using Volo.Abp;
 using Volo.Abp.Application.Dtos;
 using Volo.Abp.BackgroundJobs;
@@ -18,6 +18,7 @@ using Volo.Abp.BlobStoring;
 using Volo.Abp.Content;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.EventBus.Distributed;
+using Volo.Abp.EventBus.Local;
 
 namespace Dignite.Paperbase.Application.Documents;
 
@@ -28,7 +29,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     private readonly IBackgroundJobManager _backgroundJobManager;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly IDistributedEventBus _distributedEventBus;
-    private readonly IDocumentVectorStore _vectorStore;
+    private readonly ILocalEventBus _localEventBus;
 
     public DocumentAppService(
         IDocumentRepository documentRepository,
@@ -36,14 +37,14 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         IBackgroundJobManager backgroundJobManager,
         DocumentPipelineRunManager pipelineRunManager,
         IDistributedEventBus distributedEventBus,
-        IDocumentVectorStore vectorStore)
+        ILocalEventBus localEventBus)
     {
         _documentRepository = documentRepository;
         _blobContainer = blobContainer;
         _backgroundJobManager = backgroundJobManager;
         _pipelineRunManager = pipelineRunManager;
         _distributedEventBus = distributedEventBus;
-        _vectorStore = vectorStore;
+        _localEventBus = localEventBus;
     }
 
     public virtual async Task<DocumentDto> GetAsync(Guid id)
@@ -142,10 +143,11 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     {
         var document = await _documentRepository.GetAsync(id);
 
-        // Provider-neutral vector cleanup. For pgvector this is redundant with EF
-        // cascade on the FK, but for external providers (Azure AI Search, Qdrant)
-        // it is the only path that purges chunks outside the relational store.
-        await _vectorStore.DeleteByDocumentIdAsync(id, document.TenantId);
+        // 立即投递本地事件（onUnitOfWorkComplete:false），handler 在主 UoW 仍活跃时
+        // 注册 after-commit 回调，主事务提交后再以新 UoW 清理各 provider 的 chunks。
+        await _localEventBus.PublishAsync(
+            new DocumentDeletingEvent(id, document.TenantId),
+            onUnitOfWorkComplete: false);
 
         await _blobContainer.DeleteAsync(document.OriginalFileBlobName);
         await _documentRepository.DeleteAsync(id);

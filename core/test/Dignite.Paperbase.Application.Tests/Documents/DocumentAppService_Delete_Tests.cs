@@ -3,13 +3,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Application.Documents;
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Rag;
+using Dignite.Paperbase.Documents.Events;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Shouldly;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.BlobStoring;
 using Volo.Abp.EventBus.Distributed;
+using Volo.Abp.EventBus.Local;
 using Volo.Abp.Modularity;
 using Xunit;
 
@@ -21,36 +22,36 @@ public class DocumentAppServiceDeleteTestModule : AbpModule
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
         context.Services.AddSingleton(Substitute.For<IDocumentRepository>());
-        context.Services.AddSingleton(Substitute.For<IDocumentVectorStore>());
         context.Services.AddSingleton(Substitute.For<IBlobContainer<PaperbaseDocumentContainer>>());
         context.Services.AddSingleton(Substitute.For<IBackgroundJobManager>());
         context.Services.AddSingleton(Substitute.For<IDistributedEventBus>());
+        context.Services.AddSingleton(Substitute.For<ILocalEventBus>());
     }
 }
 
 /// <summary>
-/// Slice 6 守护：删除 Document 时必须显式调用 <see cref="IDocumentVectorStore.DeleteByDocumentIdAsync"/>，
-/// 不能只依赖 EF FK cascade —— 否则切到外部 vector store（Azure AI Search / Qdrant）后，
-/// 关系数据库删除不会传播到外部索引，旧 chunk 会永远残留。
+/// Slice E 守护：<see cref="DocumentAppService.DeleteAsync"/> 必须
+/// 通过 <see cref="ILocalEventBus"/> 发布 <see cref="DocumentDeletingEvent"/>
+/// 以触发 after-commit chunk 清理，而非在主 UoW 内直接调用 vector store。
 /// </summary>
 public class DocumentAppService_Delete_Tests
     : PaperbaseApplicationTestBase<DocumentAppServiceDeleteTestModule>
 {
     private readonly IDocumentAppService _appService;
     private readonly IDocumentRepository _documentRepository;
-    private readonly IDocumentVectorStore _vectorStore;
+    private readonly ILocalEventBus _localEventBus;
     private readonly IBlobContainer<PaperbaseDocumentContainer> _blobContainer;
 
     public DocumentAppService_Delete_Tests()
     {
         _appService = GetRequiredService<IDocumentAppService>();
         _documentRepository = GetRequiredService<IDocumentRepository>();
-        _vectorStore = GetRequiredService<IDocumentVectorStore>();
+        _localEventBus = GetRequiredService<ILocalEventBus>();
         _blobContainer = GetRequiredService<IBlobContainer<PaperbaseDocumentContainer>>();
     }
 
     [Fact]
-    public async Task DeleteAsync_Calls_VectorStore_DeleteByDocumentIdAsync()
+    public async Task DeleteAsync_Publishes_DocumentDeletingEvent()
     {
         var doc = CreateDocument();
         _documentRepository.GetAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>())
@@ -58,15 +59,16 @@ public class DocumentAppService_Delete_Tests
 
         await _appService.DeleteAsync(doc.Id);
 
-        await _vectorStore.Received(1).DeleteByDocumentIdAsync(
-            doc.Id, doc.TenantId, Arg.Any<CancellationToken>());
+        await _localEventBus.Received(1).PublishAsync(
+            Arg.Is<DocumentDeletingEvent>(e =>
+                e.DocumentId == doc.Id &&
+                e.TenantId == doc.TenantId),
+            onUnitOfWorkComplete: false);
     }
 
     [Fact]
     public async Task DeleteAsync_Also_Removes_Blob_And_Document()
     {
-        // 守护其他清理路径仍然在位（blob、aggregate）。Slice 6 只追加 vector store 清理，
-        // 不能不小心移除 existing blob/repository delete。
         var doc = CreateDocument();
         _documentRepository.GetAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(doc);
