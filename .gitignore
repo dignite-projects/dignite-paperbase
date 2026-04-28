@@ -443,3 +443,10 @@ appsettings.Development.json
 appsettings.Production.json
 appsettings.Staging.json
 
+# Benchmark dataset (desensitized real data — not committed)
+docs/benchmarks/rag-gold-dataset.json
+
+# Node.js artifacts from benchmark embedding generation script
+package.json
+package-lock.json
+

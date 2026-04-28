@@ -14,6 +14,8 @@
     <ProjectReference Include="..\..\src\Dignite.Paperbase.TextExtraction\Dignite.Paperbase.TextExtraction.csproj" />
     <ProjectReference Include="..\Dignite.Paperbase.Domain.Tests\Dignite.Paperbase.Domain.Tests.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <!-- Production benchmark (Category=Production): direct ADO.NET for real PostgreSQL -->
+    <PackageReference Include="Npgsql" Version="9.0.4" />
   </ItemGroup>
 
 </Project>

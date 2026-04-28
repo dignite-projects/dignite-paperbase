@@ -1,0 +1,99 @@
+{
+  "_comment": "SAMPLE ONLY — embeddings are zero placeholders. Replace with real desensitized data + real embeddings before running the production benchmark. See docs/benchmarks/README.md.",
+  "version": "1",
+  "privacy": "All texts are synthetic placeholders. Real dataset is prepared offline and not committed to the repo.",
+  "embeddingModel": "text-embedding-3-small",
+  "embeddingDimension": 1536,
+  "chunks": [
+    {
+      "id": "11111111-0001-0000-0000-000000000001",
+      "text": "業務委託契約書 CNT-2025-0001。契約番号: CNT-2025-0001。契約期間: 2025-04-01 から 2026-03-31 まで。甲は乙に対して業務を委託し、乙はこれを受託する。",
+      "documentTypeCode": "contract",
+      "_embeddingNote": "Replace embeddingBase64 with Base64(struct.pack('1536f', *real_embeddings))",
+      "embeddingBase64": ""
+    },
+    {
+      "id": "11111111-0001-0000-0000-000000000002",
+      "text": "業務委託契約書 CNT-2025-0001。契約金額: 1,200,000円（税別）。支払条件は月末締め翌月末払い。甲: 株式会社サンプルA、乙: 株式会社サンプルB。",
+      "documentTypeCode": "contract",
+      "embeddingBase64": ""
+    },
+    {
+      "id": "11111111-0002-0000-0000-000000000001",
+      "text": "業務委託契約書 CNT-2025-0002。契約番号: CNT-2025-0002。契約期間: 2025-07-01 から 2026-06-30 まで。本契約期間中、双方は秘密保持義務を負う。",
+      "documentTypeCode": "contract",
+      "embeddingBase64": ""
+    },
+    {
+      "id": "22222222-0001-0000-0000-000000000001",
+      "text": "請求書 INV-2025-04-001。請求金額: 550,000円。支払期限: 2025-05-31。発行者: 株式会社サンプルC。受取人: 株式会社サンプルD。請求書番号: INV-2025-04-001。",
+      "documentTypeCode": "invoice",
+      "embeddingBase64": ""
+    },
+    {
+      "id": "22222222-0002-0000-0000-000000000001",
+      "text": "請求書 INV-2025-04-002。請求金額: 780,000円。支払期限: 2025-05-31。発行者: 株式会社サンプルE。請求書番号: INV-2025-04-002。",
+      "documentTypeCode": "invoice",
+      "embeddingBase64": ""
+    },
+    {
+      "id": "33333333-0001-0000-0000-000000000001",
+      "text": "在職証明書。氏名: 山田サンプル太郎。社員番号: EMP-S-12345。所属: 開発部。上記の者は当社に在職していることを証明する。",
+      "documentTypeCode": "certificate",
+      "embeddingBase64": ""
+    },
+    {
+      "id": "44444444-0001-0000-0000-000000000001",
+      "text": "本サービスは、お客様のプライバシーを尊重し、個人情報を適切に管理します。個人情報の収集、利用、開示は法令に従って行います。",
+      "documentTypeCode": "policy",
+      "embeddingBase64": ""
+    }
+  ],
+  "queries": [
+    {
+      "id": "q-precise-001",
+      "text": "CNT-2025-0001 の契約期間は？",
+      "category": "precise-text",
+      "expectedChunkIds": ["11111111-0001-0000-0000-000000000001"],
+      "embeddingBase64": ""
+    },
+    {
+      "id": "q-precise-002",
+      "text": "CNT-2025-0001 の契約金額",
+      "category": "precise-text",
+      "expectedChunkIds": ["11111111-0001-0000-0000-000000000002"],
+      "embeddingBase64": ""
+    },
+    {
+      "id": "q-precise-003",
+      "text": "INV-2025-04-001 の請求金額",
+      "category": "precise-text",
+      "expectedChunkIds": ["22222222-0001-0000-0000-000000000001"],
+      "embeddingBase64": ""
+    },
+    {
+      "id": "q-precise-004",
+      "text": "EMP-S-12345 の在職証明",
+      "category": "precise-text",
+      "expectedChunkIds": ["33333333-0001-0000-0000-000000000001"],
+      "embeddingBase64": ""
+    },
+    {
+      "id": "q-semantic-001",
+      "text": "業務委託の秘密保持義務について",
+      "category": "semantic",
+      "expectedChunkIds": [
+        "11111111-0001-0000-0000-000000000001",
+        "11111111-0002-0000-0000-000000000001"
+      ],
+      "embeddingBase64": ""
+    },
+    {
+      "id": "q-semantic-002",
+      "text": "個人情報の取扱い方針",
+      "category": "semantic",
+      "expectedChunkIds": ["44444444-0001-0000-0000-000000000001"],
+      "embeddingBase64": ""
+    }
+  ]
+}
