@@ -20,4 +20,11 @@ public class DocumentKnowledgeIndexCapabilities
     /// When false, Application layer must not apply MinScore directly.
     /// </summary>
     public bool NormalizesScore { get; init; }
+
+    /// <summary>
+    /// Whether the provider supports document-level similarity search via
+    /// <see cref="IDocumentKnowledgeIndex.SearchSimilarDocumentsAsync"/>.
+    /// Requires a document-level vector index (e.g., mean-pooled chunk embeddings).
+    /// </summary>
+    public bool SupportsSearchSimilarDocuments { get; init; }
 }

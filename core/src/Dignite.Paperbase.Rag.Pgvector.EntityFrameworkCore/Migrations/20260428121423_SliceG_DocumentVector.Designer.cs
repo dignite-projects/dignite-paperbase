@@ -3,6 +3,7 @@ using System;
 using Dignite.Paperbase.Rag.Pgvector.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -13,9 +14,11 @@ using Volo.Abp.EntityFrameworkCore;
 namespace Dignite.Paperbase.Rag.Pgvector.Migrations
 {
     [DbContext(typeof(PgvectorRagDbContext))]
-    partial class PgvectorRagDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260428121423_SliceG_DocumentVector")]
+    partial class SliceG_DocumentVector
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

@@ -18,17 +18,20 @@ public interface IDocumentKnowledgeIndex
     DocumentKnowledgeIndexCapabilities Capabilities { get; }
 
     /// <summary>
-    /// Insert or update a batch of chunk records in the index.
-    /// Implementations must be idempotent: upserting an existing record by Id
-    /// updates mutable chunk fields while preserving tenant and document ownership.
+    /// Insert or update all chunk records for one document atomically (whole-document replace).
+    /// Idempotent: calling with the same DocumentId replaces existing chunks and recalculates
+    /// the document-level vector in the same Unit of Work.
+    /// Passing an empty <see cref="DocumentVectorIndexUpdate.Chunks"/> list removes all index
+    /// data (chunks + document vector) for the document.
     /// </summary>
-    Task UpsertAsync(
-        IReadOnlyList<DocumentVectorRecord> records,
+    Task UpsertDocumentAsync(
+        DocumentVectorIndexUpdate update,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Remove all chunk records belonging to the specified document.
-    /// Used during document deletion and embedding rebuild.
+    /// Remove all chunk records and the document-level vector for the specified document.
+    /// Used during document deletion when the deletion path is not already covered by
+    /// <see cref="UpsertDocumentAsync"/> (e.g., cascaded from an event handler).
     /// </summary>
     Task DeleteByDocumentIdAsync(
         Guid documentId,
@@ -41,5 +44,16 @@ public interface IDocumentKnowledgeIndex
     /// </summary>
     Task<IReadOnlyList<VectorSearchResult>> SearchAsync(
         VectorSearchRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Find documents similar to the given document using document-level mean-pooled embeddings.
+    /// Returns results ordered by similarity descending, excluding the source document itself.
+    /// Only available when <see cref="DocumentKnowledgeIndexCapabilities.SupportsSearchSimilarDocuments"/> is true.
+    /// </summary>
+    Task<IReadOnlyList<DocumentSimilarityResult>> SearchSimilarDocumentsAsync(
+        Guid documentId,
+        Guid? tenantId,
+        int topK,
         CancellationToken cancellationToken = default);
 }

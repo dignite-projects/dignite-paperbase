@@ -35,6 +35,7 @@ public class DocumentDeletingEventHandler_Tests
     private readonly IUnitOfWork _ambientUow;
     private readonly IUnitOfWork _innerUow;
     private readonly IDocumentChunkRepository _chunkRepository;
+    private readonly IDocumentVectorRepository _vectorRepository;
     private readonly ICurrentTenant _currentTenant;
     private readonly DocumentDeletingEventHandler _handler;
 
@@ -43,6 +44,7 @@ public class DocumentDeletingEventHandler_Tests
         _ambientUow = Substitute.For<IUnitOfWork>();
         _innerUow = Substitute.For<IUnitOfWork>();
         _chunkRepository = Substitute.For<IDocumentChunkRepository>();
+        _vectorRepository = Substitute.For<IDocumentVectorRepository>();
         _currentTenant = Substitute.For<ICurrentTenant>();
 
         _uowManager = Substitute.For<IUnitOfWorkManager>();
@@ -57,7 +59,7 @@ public class DocumentDeletingEventHandler_Tests
             .Returns(Substitute.For<IDisposable>());
 
         _handler = new DocumentDeletingEventHandler(
-            _uowManager, _chunkRepository, _currentTenant);
+            _uowManager, _chunkRepository, _vectorRepository, _currentTenant);
     }
 
     [Fact]
@@ -79,6 +81,8 @@ public class DocumentDeletingEventHandler_Tests
 
         // chunk 删除不能在 handler 返回时同步发生，必须推迟到 OnCompleted 回调
         await _chunkRepository.DidNotReceive()
+            .DeleteByDocumentIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        await _vectorRepository.DidNotReceive()
             .DeleteByDocumentIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 
@@ -103,7 +107,7 @@ public class DocumentDeletingEventHandler_Tests
     }
 
     [Fact]
-    public async Task OnCompleted_Callback_Deletes_Chunks_For_Document()
+    public async Task OnCompleted_Callback_Deletes_Chunks_And_Vector_For_Document()
     {
         var documentId = Guid.NewGuid();
         var tenantId = Guid.NewGuid();
@@ -118,6 +122,8 @@ public class DocumentDeletingEventHandler_Tests
         await capturedCallback!();
 
         await _chunkRepository.Received(1)
+            .DeleteByDocumentIdAsync(documentId, Arg.Any<CancellationToken>());
+        await _vectorRepository.Received(1)
             .DeleteByDocumentIdAsync(documentId, Arg.Any<CancellationToken>());
     }
 
@@ -146,6 +152,8 @@ public class DocumentDeletingEventHandler_Tests
 
         _ambientUow.DidNotReceive().OnCompleted(Arg.Any<Func<Task>>());
         await _chunkRepository.DidNotReceive()
+            .DeleteByDocumentIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        await _vectorRepository.DidNotReceive()
             .DeleteByDocumentIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 }

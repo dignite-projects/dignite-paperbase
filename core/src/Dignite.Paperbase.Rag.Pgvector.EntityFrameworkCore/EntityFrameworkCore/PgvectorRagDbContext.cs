@@ -6,8 +6,9 @@ using Volo.Abp.EntityFrameworkCore;
 namespace Dignite.Paperbase.Rag.Pgvector.EntityFrameworkCore;
 
 /// <summary>
-/// pgvector-backed RAG provider 的独立 DbContext。仅承载 <see cref="DocumentChunk"/>（以及未来
-/// document-level vector 等向量索引相关聚合）；不感知 Paperbase 的业务实体（Document / PipelineRun…）。
+/// pgvector-backed RAG provider 的独立 DbContext。承载 <see cref="DocumentChunk"/>
+/// 和 <see cref="DocumentVector"/>（document-level mean-pooled embedding）；
+/// 不感知 Paperbase 的业务实体（Document / PipelineRun…）。
 ///
 /// <para>
 /// <b>分库的物理前置：</b>
@@ -24,6 +25,8 @@ namespace Dignite.Paperbase.Rag.Pgvector.EntityFrameworkCore;
 public class PgvectorRagDbContext : AbpDbContext<PgvectorRagDbContext>
 {
     public DbSet<DocumentChunk> DocumentChunks { get; set; } = default!;
+
+    public DbSet<DocumentVector> DocumentVectors { get; set; } = default!;
 
     public PgvectorRagDbContext(DbContextOptions<PgvectorRagDbContext> options)
         : base(options)

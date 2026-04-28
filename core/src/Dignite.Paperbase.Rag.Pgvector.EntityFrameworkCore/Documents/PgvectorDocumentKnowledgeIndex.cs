@@ -18,13 +18,20 @@ namespace Dignite.Paperbase.Rag.Pgvector.Documents;
 
 /// <summary>
 /// pgvector-backed implementation of <see cref="IDocumentKnowledgeIndex"/>.
-/// Slice C 起改用独立的 <see cref="PgvectorRagDbContext"/>——在 Slice B 完成 chunk
-/// 反范式化（去 JOIN <c>Documents</c> 表）之后这次切换是干净的，没有任何 fallback 路径。
 ///
-/// <para>
-/// 类名暂保留 <c>PgvectorDocumentVectorStore</c>；Slice G 引入 <c>UpsertDocumentAsync</c>
-/// 时一并改为 <c>PgvectorDocumentKnowledgeIndex</c>。
-/// </para>
+/// Slice G adds two capabilities over the former <c>PgvectorDocumentVectorStore</c>:
+/// <list type="bullet">
+///   <item><description>
+///     <see cref="UpsertDocumentAsync"/> — whole-document atomic replace: deletes stale chunks,
+///     inserts new ones, then mean-pools the chunk vectors into a <see cref="DocumentVector"/>
+///     row — all within the caller's Unit of Work so chunks + document vector commit together.
+///   </description></item>
+///   <item><description>
+///     <see cref="SearchSimilarDocumentsAsync"/> — document-level cosine similarity search
+///     over the <see cref="DocumentVector"/> table, replacing the chunk-fetch + mean-pool
+///     approach that <c>DocumentRelationInferenceBackgroundJob</c> previously performed.
+///   </description></item>
+/// </list>
 ///
 /// Supports three search modes:
 ///   - <see cref="VectorSearchMode.Vector"/>  — pgvector cosine similarity.
@@ -37,13 +44,11 @@ namespace Dignite.Paperbase.Rag.Pgvector.Documents;
 /// on ABP global filters, so the explicit clause is mandatory.
 /// </summary>
 [ExposeServices(typeof(IDocumentKnowledgeIndex))]
-public class PgvectorDocumentVectorStore : IDocumentKnowledgeIndex, ITransientDependency
+public class PgvectorDocumentKnowledgeIndex : IDocumentKnowledgeIndex, ITransientDependency
 {
     /// <summary>
     /// Per-path recall multiplier in Hybrid mode. Each of vector / keyword recalls
-    /// <c>TopK × HybridRecallMultiplier</c> candidates before RRF merging. Larger
-    /// values trade query cost for better fusion quality; 2× is a reasonable
-    /// starting point and matches common RRF tuning advice.
+    /// <c>TopK × HybridRecallMultiplier</c> candidates before RRF merging.
     /// </summary>
     protected const int HybridRecallMultiplier = 2;
 
@@ -51,7 +56,7 @@ public class PgvectorDocumentVectorStore : IDocumentKnowledgeIndex, ITransientDe
     private readonly ICurrentTenant _currentTenant;
     private readonly IDataFilter _dataFilter;
 
-    public PgvectorDocumentVectorStore(
+    public PgvectorDocumentKnowledgeIndex(
         IDbContextProvider<PgvectorRagDbContext> dbContextProvider,
         ICurrentTenant currentTenant,
         IDataFilter dataFilter)
@@ -68,67 +73,106 @@ public class PgvectorDocumentVectorStore : IDocumentKnowledgeIndex, ITransientDe
         SupportsHybridSearch = true,
         SupportsStructuredFilter = true,
         SupportsDeleteByDocumentId = true,
-        NormalizesScore = true
+        NormalizesScore = true,
+        SupportsSearchSimilarDocuments = true
     };
 
     /// <summary>
-    /// Insert or update chunk records. Groups by TenantId to minimise context switches.
-    /// Changes are committed by the caller's Unit of Work — do not call SaveChanges here.
+    /// Whole-document atomic replace:
+    /// <list type="number">
+    ///   <item><description>Deletes all existing chunks for the document (ExecuteDeleteAsync — immediate).</description></item>
+    ///   <item><description>Inserts the new chunks into the EF change tracker (committed by caller's UoW).</description></item>
+    ///   <item><description>Mean-pools the chunk vectors and upserts a <see cref="DocumentVector"/> row (same UoW).</description></item>
+    /// </list>
+    /// When <see cref="DocumentVectorIndexUpdate.Chunks"/> is empty, all index data is removed
+    /// (chunks via ExecuteDeleteAsync, DocumentVector via ExecuteDeleteAsync).
+    ///
+    /// Recovery path: ExecuteDeleteAsync for chunks is immediate and bypasses UoW; if the process
+    /// crashes before the UoW commits, chunks are gone but the DocumentVector is stale. On retry
+    /// (Hangfire re-enqueue or reconciliation job), UpsertDocumentAsync is idempotent and self-heals.
     /// </summary>
-    public virtual async Task UpsertAsync(
-        IReadOnlyList<DocumentVectorRecord> records,
+    public virtual async Task UpsertDocumentAsync(
+        DocumentVectorIndexUpdate update,
         CancellationToken cancellationToken = default)
     {
-        var groups = records.GroupBy(r => r.TenantId);
-        foreach (var group in groups)
+        using var _ = _currentTenant.Change(update.TenantId);
+        var dbContext = await _dbContextProvider.GetDbContextAsync();
+
+        // Step 1: Delete existing chunks (immediate — consistent with DeleteByDocumentIdAsync).
+        using (_dataFilter.Disable<IMultiTenant>())
         {
-            using var _ = _currentTenant.Change(group.Key);
-            var dbContext = await _dbContextProvider.GetDbContextAsync();
-            var dbSet = dbContext.Set<DocumentChunk>();
+            var chunkQuery = dbContext.Set<DocumentChunk>()
+                .Where(c => c.DocumentId == update.DocumentId);
 
-            var ids = group.Select(r => r.Id).ToList();
-            var existingById = await dbSet
-                .Where(c => ids.Contains(c.Id))
-                .ToDictionaryAsync(c => c.Id, cancellationToken);
+            chunkQuery = update.TenantId.HasValue
+                ? chunkQuery.Where(c => c.TenantId == update.TenantId.Value)
+                : chunkQuery.Where(c => c.TenantId == null);
 
-            foreach (var record in group)
+            await chunkQuery.ExecuteDeleteAsync(cancellationToken);
+        }
+
+        if (update.Chunks.Count == 0)
+        {
+            // No chunks → no embedding → remove stale DocumentVector if present.
+            using (_dataFilter.Disable<IMultiTenant>())
             {
-                if (existingById.TryGetValue(record.Id, out var existing))
-                {
-                    existing.UpdateRecord(
-                        record.TenantId,
-                        record.DocumentId,
-                        record.ChunkIndex,
-                        record.Text,
-                        record.Vector.ToArray(),
-                        record.DocumentTypeCode,
-                        record.Title,
-                        record.PageNumber);
-                }
-                else
-                {
-                    dbSet.Add(new DocumentChunk(
-                        record.Id,
-                        record.TenantId,
-                        record.DocumentId,
-                        record.ChunkIndex,
-                        record.Text,
-                        record.Vector.ToArray(),
-                        record.DocumentTypeCode,
-                        record.Title,
-                        record.PageNumber));
-                }
+                await dbContext.Set<DocumentVector>()
+                    .Where(dv => dv.Id == update.DocumentId)
+                    .ExecuteDeleteAsync(cancellationToken);
             }
+            return;
+        }
+
+        // Step 2: Insert new chunks (tracked by caller's UoW).
+        var chunkDbSet = dbContext.Set<DocumentChunk>();
+        foreach (var record in update.Chunks)
+        {
+            chunkDbSet.Add(new DocumentChunk(
+                record.Id,
+                record.TenantId,
+                record.DocumentId,
+                record.ChunkIndex,
+                record.Text,
+                record.Vector.ToArray(),
+                record.DocumentTypeCode,
+                record.Title,
+                record.PageNumber));
+        }
+
+        // Step 3: Mean-pool chunk vectors → document-level embedding.
+        var documentEmbedding = MeanPool(update.Chunks.Select(c => c.Vector.ToArray()).ToList());
+
+        // Step 4: Upsert DocumentVector (tracked by caller's UoW).
+        DocumentVector? existingDocVector;
+        using (_dataFilter.Disable<IMultiTenant>())
+        {
+            existingDocVector = await dbContext.Set<DocumentVector>()
+                .Where(dv => dv.Id == update.DocumentId)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        if (existingDocVector != null)
+        {
+            existingDocVector.Update(
+                update.TenantId,
+                update.DocumentTypeCode,
+                documentEmbedding,
+                update.Chunks.Count);
+        }
+        else
+        {
+            dbContext.Set<DocumentVector>().Add(new DocumentVector(
+                update.DocumentId,
+                update.TenantId,
+                update.DocumentTypeCode,
+                documentEmbedding,
+                update.Chunks.Count));
         }
     }
 
     /// <summary>
-    /// Bulk-delete all chunks for a document. Executes immediately (bypasses UoW),
-    /// consistent with <see cref="EfCoreDocumentChunkRepository.DeleteByDocumentIdAsync"/>.
-    ///
-    /// Tenant scoping is explicit: the provider disables ABP's ambient multi-tenant
-    /// filter for this operation and adds its own TenantId predicate, so background
-    /// jobs and CLI callers cannot accidentally delete in the wrong ambient tenant.
+    /// Bulk-delete all chunks and the document-level vector for a document.
+    /// Executes immediately (bypasses UoW). Tenant scoping is explicit.
     /// </summary>
     public virtual async Task DeleteByDocumentIdAsync(
         Guid documentId,
@@ -138,25 +182,26 @@ public class PgvectorDocumentVectorStore : IDocumentKnowledgeIndex, ITransientDe
         var dbContext = await _dbContextProvider.GetDbContextAsync();
         using (_dataFilter.Disable<IMultiTenant>())
         {
-            var query = dbContext.Set<DocumentChunk>()
+            var chunkQuery = dbContext.Set<DocumentChunk>()
                 .Where(c => c.DocumentId == documentId);
 
-            query = tenantId.HasValue
-                ? query.Where(c => c.TenantId == tenantId.Value)
-                : query.Where(c => c.TenantId == null);
+            chunkQuery = tenantId.HasValue
+                ? chunkQuery.Where(c => c.TenantId == tenantId.Value)
+                : chunkQuery.Where(c => c.TenantId == null);
 
-            await query.ExecuteDeleteAsync(cancellationToken);
+            await chunkQuery.ExecuteDeleteAsync(cancellationToken);
+
+            // DocumentVector.Id == DocumentId — no tenant predicate needed (global uniqueness).
+            await dbContext.Set<DocumentVector>()
+                .Where(dv => dv.Id == documentId)
+                .ExecuteDeleteAsync(cancellationToken);
         }
     }
 
     /// <summary>
     /// Dispatches by <see cref="VectorSearchRequest.Mode"/>. Score normalisation
-    /// is mode-specific; the contract for every mode is the same: results are
-    /// ordered by relevance descending with <see cref="VectorSearchResult.Score"/> ∈ [0, 1].
-    /// <see cref="VectorSearchRequest.MinScore"/> is applied uniformly after the
-    /// mode-specific search, so the same threshold can be reused across modes
-    /// (note that the <em>meaning</em> of a 0.65 threshold differs between
-    /// cosine similarity, keyword rank, and RRF — tune per mode if needed).
+    /// is mode-specific; the contract is the same across modes: results are ordered
+    /// by relevance descending with Score ∈ [0, 1].
     /// </summary>
     public virtual async Task<IReadOnlyList<VectorSearchResult>> SearchAsync(
         VectorSearchRequest request,
@@ -180,10 +225,65 @@ public class PgvectorDocumentVectorStore : IDocumentKnowledgeIndex, ITransientDe
     }
 
     /// <summary>
-    /// Dense vector path: pgvector cosine distance. Score is normalized as
-    /// <c>1 − distance</c> (higher = more relevant). Tenant filter is enforced
-    /// both via ABP ambient context (set by caller) and an explicit WHERE clause
-    /// — see class-level multi-tenancy comment.
+    /// Document-level similarity search over the <see cref="DocumentVector"/> table.
+    /// Fetches the source document's mean-pooled vector, then runs cosine distance ordering
+    /// against all other documents in the same tenant. Excludes the source document.
+    /// Returns empty if the source document has no DocumentVector (not yet embedded).
+    /// </summary>
+    public virtual async Task<IReadOnlyList<DocumentSimilarityResult>> SearchSimilarDocumentsAsync(
+        Guid documentId,
+        Guid? tenantId,
+        int topK,
+        CancellationToken cancellationToken = default)
+    {
+        using var _ = _currentTenant.Change(tenantId);
+        var dbContext = await _dbContextProvider.GetDbContextAsync();
+
+        using var filterOff = _dataFilter.Disable<IMultiTenant>();
+
+        // Fetch source document's embedding (select only the vector to avoid loading full entity).
+        var sourceEmbedding = await dbContext.Set<DocumentVector>()
+            .AsNoTracking()
+            .Where(dv => dv.Id == documentId)
+            .Select(dv => dv.EmbeddingVector)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (sourceEmbedding == null)
+            return [];
+
+        var pgVector = new Vector(sourceEmbedding);
+
+        IQueryable<DocumentVector> query = dbContext.Set<DocumentVector>()
+            .AsNoTracking()
+            .Where(dv => dv.Id != documentId);
+
+        query = tenantId.HasValue
+            ? query.Where(dv => dv.TenantId == tenantId.Value)
+            : query.Where(dv => dv.TenantId == null);
+
+        var rows = await query
+            .OrderBy(dv => EF.Property<Vector>(dv, nameof(DocumentVector.EmbeddingVector))!.CosineDistance(pgVector))
+            .Select(dv => new
+            {
+                DocumentId = dv.Id,
+                dv.DocumentTypeCode,
+                Distance = EF.Property<Vector>(dv, nameof(DocumentVector.EmbeddingVector))!.CosineDistance(pgVector)
+            })
+            .Take(topK)
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Select(r => new DocumentSimilarityResult
+            {
+                DocumentId = r.DocumentId,
+                DocumentTypeCode = r.DocumentTypeCode,
+                Score = Math.Clamp(1.0 - r.Distance, 0.0, 1.0)
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// Dense vector path: pgvector cosine distance. Score normalised as <c>1 − distance</c>.
     /// </summary>
     protected virtual async Task<IList<VectorSearchResult>> SearchVectorAsync(
         VectorSearchRequest request,
@@ -197,10 +297,6 @@ public class PgvectorDocumentVectorStore : IDocumentKnowledgeIndex, ITransientDe
 
         IQueryable<DocumentChunk> query = dbContext.Set<DocumentChunk>().AsNoTracking();
 
-        // Explicit TenantId WHERE clause — required because SearchAsync may be called from
-        // Hangfire background jobs where ABP's ambient ICurrentTenant is not set by the
-        // HTTP pipeline. ICurrentTenant.Change() above aligns the ABP global filter, and
-        // this clause is a second line of defense against cross-tenant data leakage.
         query = request.TenantId.HasValue
             ? query.Where(c => c.TenantId == request.TenantId.Value)
             : query.Where(c => c.TenantId == null);
@@ -211,16 +307,11 @@ public class PgvectorDocumentVectorStore : IDocumentKnowledgeIndex, ITransientDe
         }
         else if (!string.IsNullOrEmpty(request.DocumentTypeCode))
         {
-            // 反范式化（Slice B）后直接用 chunk 行上的 DocumentTypeCode 过滤，
-            // 不再 JOIN PaperbaseDocuments；这是 Slice C 切独立 PgvectorRagDbContext 的前置。
             query = query.Where(c => c.DocumentTypeCode == request.DocumentTypeCode);
         }
 
         var pgVector = new Vector(request.QueryVector.ToArray());
 
-        // EmbeddingVector CLR type is float[], but the DB column is vector(N).
-        // EF.Property<Vector>() accesses the column as Vector so pgvector's
-        // CosineDistance SQL translation works correctly.
         var rows = await query
             .OrderBy(c => EF.Property<Vector>(c, nameof(DocumentChunk.EmbeddingVector))!.CosineDistance(pgVector))
             .Select(c => new
@@ -239,8 +330,6 @@ public class PgvectorDocumentVectorStore : IDocumentKnowledgeIndex, ITransientDe
                 DocumentTypeCode = r.Chunk.DocumentTypeCode,
                 ChunkIndex = r.Chunk.ChunkIndex,
                 Text = r.Chunk.ChunkText,
-                // Keep legacy cosine similarity semantics while enforcing the
-                // provider contract: Score must stay in [0, 1].
                 Score = Math.Clamp(1.0 - r.Distance, 0.0, 1.0),
                 Title = r.Chunk.Title,
                 PageNumber = r.Chunk.PageNumber
@@ -249,19 +338,8 @@ public class PgvectorDocumentVectorStore : IDocumentKnowledgeIndex, ITransientDe
     }
 
     /// <summary>
-    /// Sparse keyword path: PostgreSQL <c>tsvector</c> full-text via the generated
-    /// <c>SearchVector</c> column added in the Slice 7 migration. Uses
-    /// <c>plainto_tsquery</c> with the <c>simple</c> regconfig to preserve IDs,
-    /// numbers, names, and Japanese tokens (which have no built-in PG stemmer).
-    ///
-    /// Regconfig symmetry: the <c>'simple'</c> literal here MUST match the regconfig
-    /// used by the GENERATED ALWAYS expression on the SearchVector column (see
-    /// migration 20260428004038_Slice7_AddDocumentChunkSearchVector). A mismatch
-    /// silently disables the GIN index and falls back to sequential scan.
-    ///
-    /// Score is min-max normalized to [0, 1] within the result set: ts_rank_cd is
-    /// unbounded and corpus-dependent, so per-query normalisation is the only
-    /// portable way to keep the range.
+    /// Sparse keyword path: PostgreSQL tsvector full-text via the generated SearchVector column.
+    /// Uses plainto_tsquery with the 'simple' regconfig — must match the GENERATED ALWAYS expression.
     /// </summary>
     protected virtual async Task<IList<VectorSearchResult>> SearchKeywordAsync(
         VectorSearchRequest request,
@@ -274,15 +352,6 @@ public class PgvectorDocumentVectorStore : IDocumentKnowledgeIndex, ITransientDe
         var dbContext = await _dbContextProvider.GetDbContextAsync();
         var chunkTable = GetDelimitedTableName(dbContext, typeof(DocumentChunk));
 
-        // Build the SQL with positional parameters. Filter precedence matches
-        // SearchVectorAsync: DocumentId wins over DocumentTypeCode, both optional.
-        // Raw SQL is required because the SearchVector column is intentionally
-        // hidden from the EF model (managed entirely by the GENERATED ALWAYS
-        // constraint in PostgreSQL); LINQ translation has no shadow property
-        // for it.
-        //
-        // Slice B: keyword 路径同步去 JOIN PaperbaseDocuments——直接读 chunk 行上的反范式
-        // DocumentTypeCode / Title / PageNumber，为 Slice C 切独立 PgvectorRagDbContext 做物理前置。
         var parameters = new List<object>
         {
             request.QueryText,
@@ -304,8 +373,6 @@ public class PgvectorDocumentVectorStore : IDocumentKnowledgeIndex, ITransientDe
         parameters.Add(topK);
         var topKIndex = parameters.Count - 1;
 
-        // IS NOT DISTINCT FROM treats NULL = NULL, so the host-tenant case
-        // (TenantId = null) and explicit-tenant case share the same clause.
         var sql = $@"
             SELECT
                 c.""Id""               AS ""Id"",
@@ -343,14 +410,9 @@ public class PgvectorDocumentVectorStore : IDocumentKnowledgeIndex, ITransientDe
     }
 
     /// <summary>
-    /// Hybrid path: dense + sparse, merged via <see cref="RrfFusion"/>. Each path
-    /// recalls <see cref="HybridRecallMultiplier"/> × TopK candidates so the
-    /// fusion has enough headroom; RRF then trims back to TopK.
-    ///
-    /// Graceful degradation: a request without QueryVector falls back to
-    /// keyword-only; without QueryText falls back to vector-only. Returning
-    /// results from a single path still satisfies "Hybrid mode requested" —
-    /// the caller asked for the best available, not for the strict union.
+    /// Hybrid path: dense + sparse, merged via <see cref="RrfFusion"/>.
+    /// Each path recalls <see cref="HybridRecallMultiplier"/> × TopK candidates.
+    /// Gracefully degrades to single-mode if one query component is missing.
     /// </summary>
     protected virtual async Task<IList<VectorSearchResult>> SearchHybridAsync(
         VectorSearchRequest request,
@@ -366,19 +428,13 @@ public class PgvectorDocumentVectorStore : IDocumentKnowledgeIndex, ITransientDe
             ? await SearchKeywordAsync(request, recallTopK, cancellationToken)
             : new List<VectorSearchResult>();
 
-        // RrfFusion handles min-max normalization of the merged scores so the
-        // [0, 1] contract holds for hybrid output as well as single-mode output.
         return RrfFusion.Merge(
             (IReadOnlyList<VectorSearchResult>)vectorResults,
             (IReadOnlyList<VectorSearchResult>)keywordResults,
             request.TopK);
     }
 
-    /// <summary>
-    /// Min-max normalize Score within the supplied list. Used by the keyword
-    /// path because ts_rank_cd has no fixed range. Empty / single-item lists
-    /// are normalized to 1.0 (degenerate case has no meaningful spread).
-    /// </summary>
+    /// <summary>Min-max normalize Score within the supplied list. Used by the keyword path.</summary>
     protected virtual IList<VectorSearchResult> NormalizeMinMax(IList<VectorSearchResult> results)
     {
         if (results.Count == 0)
@@ -403,6 +459,22 @@ public class PgvectorDocumentVectorStore : IDocumentKnowledgeIndex, ITransientDe
             .ToList();
     }
 
+    /// <summary>
+    /// Mean-pool a list of vectors into a single document-level vector.
+    /// All input vectors must share the same dimension.
+    /// </summary>
+    private static float[] MeanPool(IReadOnlyList<float[]> vectors)
+    {
+        var dim = vectors[0].Length;
+        var result = new float[dim];
+        foreach (var v in vectors)
+            for (var i = 0; i < dim; i++)
+                result[i] += v[i];
+        for (var i = 0; i < dim; i++)
+            result[i] /= vectors.Count;
+        return result;
+    }
+
     protected virtual string GetDelimitedTableName(PgvectorRagDbContext dbContext, Type entityClrType)
     {
         var entityType = dbContext.Model.FindEntityType(entityClrType)
@@ -414,11 +486,6 @@ public class PgvectorDocumentVectorStore : IDocumentKnowledgeIndex, ITransientDe
         return sqlGenerationHelper.DelimitIdentifier(tableName, entityType.GetSchema());
     }
 
-    /// <summary>
-    /// Internal projection type for the keyword-path raw SQL query. Property
-    /// names must match the SELECT aliases exactly (EF Core SqlQueryRaw maps
-    /// by name).
-    /// </summary>
     private sealed class KeywordSearchRow
     {
         public Guid Id { get; set; }

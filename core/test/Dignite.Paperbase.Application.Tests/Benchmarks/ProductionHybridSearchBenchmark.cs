@@ -113,7 +113,7 @@ public class ProductionHybridSearchBenchmark
 
     private static IDocumentKnowledgeIndex CreateVectorStore(PgvectorRagDbContext dbContext)
     {
-        return new PgvectorDocumentVectorStore(
+        return new PgvectorDocumentKnowledgeIndex(
             new StaticDbContextProvider(dbContext),
             new BenchmarkCurrentTenant(),
             Substitute.For<IDataFilter>());

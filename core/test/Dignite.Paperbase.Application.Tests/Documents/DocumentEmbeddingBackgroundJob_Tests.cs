@@ -38,18 +38,18 @@ public class DocumentEmbeddingJobTestModule : AbpModule
 }
 
 /// <summary>
-/// DocumentEmbeddingBackgroundJob 行为测试：守护 Slice 6 — 写入路径切换到
-/// <see cref="IDocumentKnowledgeIndex"/> 抽象。重点关注：
-///   - 重建 embedding 时先 DeleteByDocumentIdAsync 再 UpsertAsync（顺序与幂等性）
-///   - DocumentVectorRecord 的 TenantId / DocumentId / DocumentTypeCode 来自 Document 显式拷贝，
-///     不依赖 ABP ambient ICurrentTenant —— Hangfire job 场景下 ambient 不一定有值。
+/// DocumentEmbeddingBackgroundJob 行为测试：守护 Slice G — 写入路径切换到
+/// <see cref="IDocumentKnowledgeIndex.UpsertDocumentAsync"/> 整文档替换语义。重点关注：
+///   - UpsertDocumentAsync 携带完整 DocumentId / TenantId / DocumentTypeCode / Chunks
+///   - TenantId 来自 Document 显式拷贝，不依赖 ABP ambient ICurrentTenant
+///   - 空 chunks 时 UpsertDocumentAsync 仍被调用（传入空 Chunks，由实现清除旧索引）
 /// </summary>
 public class DocumentEmbeddingBackgroundJob_Tests
     : PaperbaseApplicationTestBase<DocumentEmbeddingJobTestModule>
 {
     private readonly DocumentEmbeddingBackgroundJob _job;
     private readonly IDocumentRepository _documentRepository;
-    private readonly IDocumentKnowledgeIndex _vectorStore;
+    private readonly IDocumentKnowledgeIndex _knowledgeIndex;
     private readonly DocumentEmbeddingWorkflow _workflow;
     private readonly IBackgroundJobManager _backgroundJobManager;
 
@@ -57,13 +57,13 @@ public class DocumentEmbeddingBackgroundJob_Tests
     {
         _job = GetRequiredService<DocumentEmbeddingBackgroundJob>();
         _documentRepository = GetRequiredService<IDocumentRepository>();
-        _vectorStore = GetRequiredService<IDocumentKnowledgeIndex>();
+        _knowledgeIndex = GetRequiredService<IDocumentKnowledgeIndex>();
         _workflow = GetRequiredService<DocumentEmbeddingWorkflow>();
         _backgroundJobManager = GetRequiredService<IBackgroundJobManager>();
     }
 
     [Fact]
-    public async Task Empty_ExtractedText_Skips_Job_Without_Touching_VectorStore()
+    public async Task Empty_ExtractedText_Skips_Job_Without_Touching_KnowledgeIndex()
     {
         // ExtractedText 为 null/whitespace 时整个 job 应静默退出，不创建 PipelineRun，
         // 也不能调用向量存储——避免对一个还没有内容的文档清空索引。
@@ -72,21 +72,17 @@ public class DocumentEmbeddingBackgroundJob_Tests
 
         await _job.ExecuteAsync(new DocumentEmbeddingJobArgs { DocumentId = doc.Id });
 
-        await _vectorStore.DidNotReceive().DeleteByDocumentIdAsync(
-            Arg.Any<Guid>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>());
-        await _vectorStore.DidNotReceive().UpsertAsync(
-            Arg.Any<IReadOnlyList<DocumentVectorRecord>>(), Arg.Any<CancellationToken>());
+        await _knowledgeIndex.DidNotReceive().UpsertDocumentAsync(
+            Arg.Any<DocumentVectorIndexUpdate>(), Arg.Any<CancellationToken>());
 
-        // 没有 PipelineRun 被启动
         doc.GetLatestRun(PaperbasePipelines.Embedding).ShouldBeNull();
     }
 
     [Fact]
-    public async Task Job_Deletes_Existing_Vectors_Before_Upserting_New_Records()
+    public async Task Job_Calls_UpsertDocumentAsync_With_Chunks()
     {
-        // 重建 embedding 必须先清空旧记录再写入新记录——否则 chunkIndex 冲突或残留旧 chunk
-        // 会污染后续 RAG 检索结果。Provider 不一定支持 KEY=ID 替换，DELETE-then-INSERT 是
-        // 跨 provider 都安全的幂等方案。
+        // UpsertDocumentAsync は 削除 + 挿入 + DocumentVector upsert を原子的に行う。
+        // job からは1回呼ぶだけでよい。
         var doc = CreateDocument(extractedText: "契約書本文。");
         SetupDocumentRepository(doc);
         SetupWorkflowChunks([
@@ -95,20 +91,19 @@ public class DocumentEmbeddingBackgroundJob_Tests
 
         await _job.ExecuteAsync(new DocumentEmbeddingJobArgs { DocumentId = doc.Id });
 
-        Received.InOrder(async () =>
-        {
-            await _vectorStore.DeleteByDocumentIdAsync(doc.Id, doc.TenantId, Arg.Any<CancellationToken>());
-            await _vectorStore.UpsertAsync(
-                Arg.Any<IReadOnlyList<DocumentVectorRecord>>(), Arg.Any<CancellationToken>());
-        });
+        await _knowledgeIndex.Received(1).UpsertDocumentAsync(
+            Arg.Is<DocumentVectorIndexUpdate>(u =>
+                u.DocumentId == doc.Id &&
+                u.TenantId == doc.TenantId &&
+                u.Chunks.Count == 1),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task Job_Maps_Workflow_Output_To_VectorRecord_With_Document_Context()
     {
-        // DocumentVectorRecord 的 TenantId / DocumentId / DocumentTypeCode 必须从 Document
-        // 显式拷贝，不依赖 ambient context。Title / PageNumber 当前 chunk 没有，置 null
-        // （强类型字段，未来 OCR / PDF 元信息接入后再填充）。
+        // DocumentVectorRecord の TenantId / DocumentId / DocumentTypeCode は Document から
+        // 明示的にコピーされ、ambient context に依存しない（Hangfire job 安全性）。
         var tenantId = Guid.NewGuid();
         var doc = CreateDocument(
             extractedText: "業務委託契約書。",
@@ -120,19 +115,22 @@ public class DocumentEmbeddingBackgroundJob_Tests
         var chunk1 = new DocumentEmbeddingChunk { ChunkIndex = 1, ChunkText = "chunk-1", Vector = MakeVector(0.2f) };
         SetupWorkflowChunks([chunk0, chunk1]);
 
-        IReadOnlyList<DocumentVectorRecord>? capturedRecords = null;
-        _vectorStore
-            .UpsertAsync(
-                Arg.Do<IReadOnlyList<DocumentVectorRecord>>(r => capturedRecords = r),
+        DocumentVectorIndexUpdate? capturedUpdate = null;
+        _knowledgeIndex
+            .UpsertDocumentAsync(
+                Arg.Do<DocumentVectorIndexUpdate>(u => capturedUpdate = u),
                 Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
         await _job.ExecuteAsync(new DocumentEmbeddingJobArgs { DocumentId = doc.Id });
 
-        capturedRecords.ShouldNotBeNull();
-        capturedRecords!.Count.ShouldBe(2);
+        capturedUpdate.ShouldNotBeNull();
+        capturedUpdate!.DocumentId.ShouldBe(doc.Id);
+        capturedUpdate.TenantId.ShouldBe(tenantId);
+        capturedUpdate.DocumentTypeCode.ShouldBe("contract.general");
+        capturedUpdate.Chunks.Count.ShouldBe(2);
 
-        var rec0 = capturedRecords[0];
+        var rec0 = capturedUpdate.Chunks[0];
         rec0.TenantId.ShouldBe(tenantId);
         rec0.DocumentId.ShouldBe(doc.Id);
         rec0.DocumentTypeCode.ShouldBe("contract.general");
@@ -143,30 +141,30 @@ public class DocumentEmbeddingBackgroundJob_Tests
         rec0.PageNumber.ShouldBeNull();
         rec0.Id.ShouldNotBe(Guid.Empty);
 
-        var rec1 = capturedRecords[1];
+        var rec1 = capturedUpdate.Chunks[1];
         rec1.ChunkIndex.ShouldBe(1);
         rec1.Text.ShouldBe("chunk-1");
         rec1.Vector.Span[0].ShouldBe(0.2f);
 
-        // record IDs 应彼此不同（每个 chunk 一个新 GUID，配合先 Delete 再 Upsert 的幂等模式）
         rec0.Id.ShouldNotBe(rec1.Id);
     }
 
     [Fact]
-    public async Task Job_Skips_Upsert_When_Workflow_Returns_No_Chunks()
+    public async Task Job_Calls_UpsertDocumentAsync_With_Empty_Chunks_When_Workflow_Returns_None()
     {
-        // 极端情况：分块器把短文本切成 0 个 chunk。此时仍要清空旧索引（防止"删除内容后旧 chunk
-        // 残留"），但不调用 UpsertAsync（empty list 对部分 provider 是合法的，但显式跳过更稳）。
+        // 分块器が0件を返しても UpsertDocumentAsync は呼ばれる（空 Chunks で呼ぶことで
+        // 実装側が旧インデックスを削除する）。
         var doc = CreateDocument(extractedText: "短文本");
         SetupDocumentRepository(doc);
         SetupWorkflowChunks([]);
 
         await _job.ExecuteAsync(new DocumentEmbeddingJobArgs { DocumentId = doc.Id });
 
-        await _vectorStore.Received(1).DeleteByDocumentIdAsync(
-            doc.Id, doc.TenantId, Arg.Any<CancellationToken>());
-        await _vectorStore.DidNotReceive().UpsertAsync(
-            Arg.Any<IReadOnlyList<DocumentVectorRecord>>(), Arg.Any<CancellationToken>());
+        await _knowledgeIndex.Received(1).UpsertDocumentAsync(
+            Arg.Is<DocumentVectorIndexUpdate>(u =>
+                u.DocumentId == doc.Id &&
+                u.Chunks.Count == 0),
+            Arg.Any<CancellationToken>());
 
         var run = doc.GetLatestRun(PaperbasePipelines.Embedding);
         run.ShouldNotBeNull();
@@ -176,8 +174,6 @@ public class DocumentEmbeddingBackgroundJob_Tests
     [Fact]
     public async Task Job_Enqueues_RelationInference_After_Successful_Embedding()
     {
-        // Pipeline 链：Embedding 完成后入队 RelationInference Job。
-        // 这条链路在 Slice 6 的 vector store 重构中不能被破坏。
         var doc = CreateDocument(extractedText: "契約書本文。");
         SetupDocumentRepository(doc);
         SetupWorkflowChunks([
@@ -197,11 +193,9 @@ public class DocumentEmbeddingBackgroundJob_Tests
     }
 
     [Fact]
-    public async Task Different_Tenants_Get_Different_TenantId_In_Records()
+    public async Task Different_Tenants_Get_Different_TenantId_In_Update()
     {
-        // 多租户隔离守护：连续处理两个不同租户的文档，各自的 record.TenantId 必须严格匹配
-        // Document.TenantId。如果实现错误地用了 ambient ICurrentTenant，这里就会被检出
-        // （测试运行时 ambient tenant = host/null，与两个 doc 的 tenantId 都不同）。
+        // 多租户隔離：连续两份文档的 UpsertDocumentAsync.TenantId 必须严格匹配各自的 Document.TenantId。
         var tenantA = Guid.NewGuid();
         var tenantB = Guid.NewGuid();
         var docA = CreateDocument(extractedText: "A", tenantId: tenantA);
@@ -209,10 +203,10 @@ public class DocumentEmbeddingBackgroundJob_Tests
         _documentRepository.GetAsync(docA.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(docA);
         _documentRepository.GetAsync(docB.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(docB);
 
-        var allCaptured = new List<IReadOnlyList<DocumentVectorRecord>>();
-        _vectorStore
-            .UpsertAsync(
-                Arg.Do<IReadOnlyList<DocumentVectorRecord>>(r => allCaptured.Add(r)),
+        var capturedUpdates = new List<DocumentVectorIndexUpdate>();
+        _knowledgeIndex
+            .UpsertDocumentAsync(
+                Arg.Do<DocumentVectorIndexUpdate>(u => capturedUpdates.Add(u)),
                 Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
@@ -223,9 +217,11 @@ public class DocumentEmbeddingBackgroundJob_Tests
         await _job.ExecuteAsync(new DocumentEmbeddingJobArgs { DocumentId = docA.Id });
         await _job.ExecuteAsync(new DocumentEmbeddingJobArgs { DocumentId = docB.Id });
 
-        allCaptured.Count.ShouldBe(2);
-        allCaptured[0].ShouldAllBe(r => r.TenantId == tenantA);
-        allCaptured[1].ShouldAllBe(r => r.TenantId == tenantB);
+        capturedUpdates.Count.ShouldBe(2);
+        capturedUpdates[0].TenantId.ShouldBe(tenantA);
+        capturedUpdates[0].Chunks.ShouldAllBe(r => r.TenantId == tenantA);
+        capturedUpdates[1].TenantId.ShouldBe(tenantB);
+        capturedUpdates[1].Chunks.ShouldAllBe(r => r.TenantId == tenantB);
     }
 
     // ── helpers ────────────────────────────────────────────────────────────

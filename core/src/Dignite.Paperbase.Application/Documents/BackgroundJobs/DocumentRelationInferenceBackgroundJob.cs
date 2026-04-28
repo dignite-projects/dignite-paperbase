@@ -6,7 +6,6 @@ using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Rag;
-using Dignite.Paperbase.Rag.Pgvector.Documents;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Volo.Abp.BackgroundJobs;
@@ -22,8 +21,7 @@ public class DocumentRelationInferenceBackgroundJob
     private readonly IDocumentRepository _documentRepository;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly DocumentRelationInferenceWorkflow _workflow;
-    private readonly IDocumentChunkRepository _chunkRepository;
-    private readonly IDocumentKnowledgeIndex _vectorStore;
+    private readonly IDocumentKnowledgeIndex _knowledgeIndex;
     private readonly IDocumentRelationRepository _relationRepository;
     private readonly IGuidGenerator _guidGenerator;
     private readonly PaperbaseAIOptions _aiOptions;
@@ -32,8 +30,7 @@ public class DocumentRelationInferenceBackgroundJob
         IDocumentRepository documentRepository,
         DocumentPipelineRunManager pipelineRunManager,
         DocumentRelationInferenceWorkflow workflow,
-        IDocumentChunkRepository chunkRepository,
-        IDocumentKnowledgeIndex vectorStore,
+        IDocumentKnowledgeIndex knowledgeIndex,
         IDocumentRelationRepository relationRepository,
         IGuidGenerator guidGenerator,
         IOptions<PaperbaseAIOptions> aiOptions)
@@ -41,8 +38,7 @@ public class DocumentRelationInferenceBackgroundJob
         _documentRepository = documentRepository;
         _pipelineRunManager = pipelineRunManager;
         _workflow = workflow;
-        _chunkRepository = chunkRepository;
-        _vectorStore = vectorStore;
+        _knowledgeIndex = knowledgeIndex;
         _relationRepository = relationRepository;
         _guidGenerator = guidGenerator;
         _aiOptions = aiOptions.Value;
@@ -56,37 +52,32 @@ public class DocumentRelationInferenceBackgroundJob
 
         try
         {
-            var sourceChunks = await _chunkRepository.GetListByDocumentIdAsync(document.Id);
-            if (sourceChunks.Count == 0)
+            if (!_knowledgeIndex.Capabilities.SupportsSearchSimilarDocuments)
             {
-                await _pipelineRunManager.SkipAsync(document, run, "No chunks found.");
+                await _pipelineRunManager.SkipAsync(document, run,
+                    "Knowledge index does not support document-level similarity search.");
                 await _documentRepository.UpdateAsync(document);
                 return;
             }
 
-            var pooled = MeanPool(sourceChunks.Select(c => c.EmbeddingVector).ToList());
-            var searchRequest = new VectorSearchRequest
-            {
-                TenantId = document.TenantId,
-                QueryVector = pooled,
-                TopK = _aiOptions.RelationInferenceCandidateTopK * 3,
-                Mode = VectorSearchMode.Vector
-            };
-            var candidateResults = await _vectorStore.SearchAsync(searchRequest);
+            // SearchSimilarDocumentsAsync uses document-level mean-pooled vectors, returns
+            // one result per document (no deduplication needed), excludes the source document.
+            var similarDocuments = await _knowledgeIndex.SearchSimilarDocumentsAsync(
+                document.Id,
+                document.TenantId,
+                _aiOptions.RelationInferenceCandidateTopK);
 
-            var candidateDocIds = candidateResults
+            if (similarDocuments.Count == 0)
+            {
+                await _pipelineRunManager.SkipAsync(document, run,
+                    "No document embedding found — embedding pipeline may not have run yet.");
+                await _documentRepository.UpdateAsync(document);
+                return;
+            }
+
+            var candidateDocIds = similarDocuments
                 .Select(r => r.DocumentId)
-                .Where(id => id != document.Id)
-                .Distinct()
-                .Take(_aiOptions.RelationInferenceCandidateTopK)
                 .ToList();
-
-            if (candidateDocIds.Count == 0)
-            {
-                await _pipelineRunManager.CompleteAsync(document, run);
-                await _documentRepository.UpdateAsync(document);
-                return;
-            }
 
             var candidates = new List<RelationCandidate>();
             foreach (var candidateId in candidateDocIds)
@@ -170,18 +161,6 @@ public class DocumentRelationInferenceBackgroundJob
             await _pipelineRunManager.FailAsync(document, run, ex.Message);
             await _documentRepository.UpdateAsync(document);
         }
-    }
-
-    private static float[] MeanPool(IReadOnlyList<float[]> vectors)
-    {
-        var dim = vectors[0].Length;
-        var result = new float[dim];
-        foreach (var v in vectors)
-            for (var i = 0; i < dim; i++)
-                result[i] += v[i];
-        for (var i = 0; i < dim; i++)
-            result[i] /= vectors.Count;
-        return result;
     }
 }
 

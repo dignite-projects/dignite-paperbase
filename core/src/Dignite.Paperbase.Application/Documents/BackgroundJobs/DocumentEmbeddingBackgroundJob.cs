@@ -18,7 +18,7 @@ public class DocumentEmbeddingBackgroundJob
     private readonly IDocumentRepository _documentRepository;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly DocumentEmbeddingWorkflow _workflow;
-    private readonly IDocumentKnowledgeIndex _vectorStore;
+    private readonly IDocumentKnowledgeIndex _knowledgeIndex;
     private readonly IBackgroundJobManager _backgroundJobManager;
     private readonly IGuidGenerator _guidGenerator;
 
@@ -26,14 +26,14 @@ public class DocumentEmbeddingBackgroundJob
         IDocumentRepository documentRepository,
         DocumentPipelineRunManager pipelineRunManager,
         DocumentEmbeddingWorkflow workflow,
-        IDocumentKnowledgeIndex vectorStore,
+        IDocumentKnowledgeIndex knowledgeIndex,
         IBackgroundJobManager backgroundJobManager,
         IGuidGenerator guidGenerator)
     {
         _documentRepository = documentRepository;
         _pipelineRunManager = pipelineRunManager;
         _workflow = workflow;
-        _vectorStore = vectorStore;
+        _knowledgeIndex = knowledgeIndex;
         _backgroundJobManager = backgroundJobManager;
         _guidGenerator = guidGenerator;
     }
@@ -50,35 +50,34 @@ public class DocumentEmbeddingBackgroundJob
 
         try
         {
-            // Provider-neutral cleanup of any previous index for this document.
-            // For pgvector this targets the same chunk table; for external providers
-            // (Azure AI Search, Qdrant, etc.) this is the only way to purge stale records.
-            await _vectorStore.DeleteByDocumentIdAsync(document.Id, document.TenantId);
-
             var chunks = await _workflow.RunAsync(document.ExtractedText);
 
-            if (chunks.Count > 0)
+            // UpsertDocumentAsync handles whole-document replace atomically:
+            // deletes stale chunks + inserts new ones + upserts DocumentVector in one UoW.
+            // TenantId is copied explicitly from Document so the operation is safe in
+            // Hangfire jobs where ABP's ambient ICurrentTenant is not set by the HTTP pipeline.
+            await _knowledgeIndex.UpsertDocumentAsync(new DocumentVectorIndexUpdate
             {
-                // TenantId is copied explicitly from Document.TenantId so the operation
-                // is safe in Hangfire jobs / CLI tools where ABP's ambient ICurrentTenant
-                // is not set by the HTTP pipeline.
-                var records = chunks
-                    .Select(c => new DocumentVectorRecord
-                    {
-                        Id = _guidGenerator.Create(),
-                        TenantId = document.TenantId,
-                        DocumentId = document.Id,
-                        DocumentTypeCode = document.DocumentTypeCode,
-                        ChunkIndex = c.ChunkIndex,
-                        Text = c.ChunkText,
-                        Vector = c.Vector,
-                        Title = null,
-                        PageNumber = null
-                    })
-                    .ToList();
-
-                await _vectorStore.UpsertAsync(records);
-            }
+                DocumentId = document.Id,
+                TenantId = document.TenantId,
+                DocumentTypeCode = document.DocumentTypeCode,
+                Chunks = chunks.Count > 0
+                    ? chunks
+                        .Select(c => new DocumentVectorRecord
+                        {
+                            Id = _guidGenerator.Create(),
+                            TenantId = document.TenantId,
+                            DocumentId = document.Id,
+                            DocumentTypeCode = document.DocumentTypeCode,
+                            ChunkIndex = c.ChunkIndex,
+                            Text = c.ChunkText,
+                            Vector = c.Vector,
+                            Title = null,
+                            PageNumber = null
+                        })
+                        .ToList()
+                    : []
+            });
 
             await _pipelineRunManager.CompleteAsync(document, run);
             await _documentRepository.UpdateAsync(document);

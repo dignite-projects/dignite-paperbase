@@ -52,7 +52,8 @@ public class InMemoryHybridDocumentVectorStore : IDocumentKnowledgeIndex
         SupportsHybridSearch = true,
         SupportsStructuredFilter = true,
         SupportsDeleteByDocumentId = true,
-        NormalizesScore = true
+        NormalizesScore = true,
+        SupportsSearchSimilarDocuments = false
     };
 
     /// <summary>Seed the store from a benchmark dataset. Each chunk is indexed
@@ -71,11 +72,15 @@ public class InMemoryHybridDocumentVectorStore : IDocumentKnowledgeIndex
         }
     }
 
-    public Task UpsertAsync(IReadOnlyList<DocumentVectorRecord> records, CancellationToken ct = default)
-        => Task.CompletedTask; // Benchmark seeds via Seed(); IDocumentKnowledgeIndex.UpsertAsync is unused here.
+    public Task UpsertDocumentAsync(DocumentVectorIndexUpdate update, CancellationToken ct = default)
+        => Task.CompletedTask; // Benchmark seeds via Seed(); write path is unused here.
 
     public Task DeleteByDocumentIdAsync(Guid documentId, Guid? tenantId, CancellationToken ct = default)
         => Task.CompletedTask;
+
+    public Task<IReadOnlyList<DocumentSimilarityResult>> SearchSimilarDocumentsAsync(
+        Guid documentId, Guid? tenantId, int topK, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<DocumentSimilarityResult>>([]); // Not implemented in benchmark store.
 
     public Task<IReadOnlyList<VectorSearchResult>> SearchAsync(
         VectorSearchRequest request, CancellationToken cancellationToken = default)
