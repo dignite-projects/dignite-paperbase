@@ -1,9 +1,5 @@
-using System;
-using System.Linq;
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Rag.Pgvector.Documents;
 using Microsoft.EntityFrameworkCore;
-using Pgvector;
 using Volo.Abp;
 using Volo.Abp.EntityFrameworkCore.Modeling;
 
@@ -11,12 +7,9 @@ namespace Dignite.Paperbase.EntityFrameworkCore;
 
 public static class PaperbaseDbContextModelCreatingExtensions
 {
-    public static void ConfigurePaperbase(this ModelBuilder builder, bool isNpgsql = true)
+    public static void ConfigurePaperbase(this ModelBuilder builder)
     {
         Check.NotNull(builder, nameof(builder));
-
-        if (isNpgsql)
-            builder.HasPostgresExtension("vector");
 
         builder.Entity<Document>(b =>
         {
@@ -83,60 +76,13 @@ public static class PaperbaseDbContextModelCreatingExtensions
             b.HasIndex(x => x.TargetDocumentId);
         });
 
-        builder.Entity<DocumentChunk>(b =>
-        {
-            // Slice C：chunk 表的 EF 迁移所有权已转移到独立的 PgvectorRagDbContext。
-            // 主 PaperbaseDbContext 仍保留 mapping（避免读旧数据时 navigation 等失效），
-            // 但 ExcludeFromMigrations 防止 host migration diff（PaperbaseHostDbContext 走的是
-            // 这条路径）和 RelationalDatabaseCreator.CreateTables 重复创建表 / 索引。
-            // Slice D cutover 后会从主 context 彻底移除该 mapping。
-            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "DocumentChunks", PaperbaseDbProperties.DbSchema, t => t.ExcludeFromMigrations());
-            b.ConfigureByConvention();
-
-            b.Property(x => x.ChunkText)
-                .IsRequired()
-                .HasMaxLength(DocumentChunkConsts.MaxChunkTextLength);
-
-            // 反范式化字段（来自 Document 聚合）。让 provider 检索路径不再 JOIN Documents 表，
-            // 为 Slice C 切独立 PgvectorRagDbContext 做物理前置——跨 DbContext / 跨 DBMS 不能 JOIN。
-            b.Property(x => x.DocumentTypeCode)
-                .HasMaxLength(DocumentConsts.MaxDocumentTypeCodeLength);
-            b.Property(x => x.Title)
-                .HasMaxLength(DocumentChunkConsts.MaxTitleLength);
-
-            if (isNpgsql)
-            {
-                // EmbeddingVector CLR 类型是 float[]；pgvector 列类型保持 vector(N)。
-                // HasConversion 负责在写入/读取时转换，CosineDistance 查询仍由 EFCore repository 通过 EF.Property<Vector>() 完成。
-                b.Property(x => x.EmbeddingVector)
-                    .IsRequired()
-                    .HasColumnType($"vector({PaperbaseDbProperties.EmbeddingVectorDimension})")
-                    .HasConversion(
-                        v => new Vector(v),
-                        v => v.ToArray());
-            }
-            else
-            {
-                // SQLite: serialize vector as comma-separated floats
-                b.Property(x => x.EmbeddingVector)
-                    .IsRequired()
-                    .HasConversion(
-                        v => string.Join(",", v),
-                        s => s.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                              .Select(float.Parse).ToArray());
-            }
-
-            b.HasOne<Document>()
-                .WithMany()
-                .HasForeignKey(x => x.DocumentId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            // (DocumentId, ChunkIndex) 唯一；DocumentId 单列查询命中此索引前缀
-            b.HasIndex(x => new { x.DocumentId, x.ChunkIndex }).IsUnique();
-
-            // (TenantId, DocumentTypeCode) 复合索引：跨文档按文档类型 QA 的主路径
-            // （PgvectorDocumentVectorStore 在 vector / keyword 检索前先按这两个字段过滤）。
-            b.HasIndex(x => new { x.TenantId, x.DocumentTypeCode });
-        });
+        // Slice D：DocumentChunk 已彻底移交 PgvectorRagDbContext。主 PaperbaseDbContext 不再
+        // 持有 chunk mapping、不再声明 pgvector 扩展、不再依赖 Pgvector.EntityFrameworkCore——
+        // 主 EF Core 项目零向量依赖。chunks 表的 schema、索引、迁移 history 表全部由
+        // Rag.Pgvector.EntityFrameworkCore 拥有（见 PgvectorRagDbContext / PgvectorRagDbProperties.MigrationsHistoryTableName）。
+        //
+        // Document 删除时不再通过 EF FK CASCADE 清理 chunks——这是 Slice D 与 Slice E 之间的
+        // 已知中间状态。Slice E 引入 DocumentDeletingEventHandler + IUnitOfWorkManager.OnCompleted
+        // 替代 FK CASCADE，跨 DbContext / 跨 DBMS 也安全。本 Slice 必须与 Slice E 配套部署。
     }
 }

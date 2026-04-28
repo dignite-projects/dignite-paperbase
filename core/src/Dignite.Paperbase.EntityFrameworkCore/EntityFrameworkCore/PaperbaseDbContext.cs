@@ -1,5 +1,4 @@
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Rag.Pgvector.Documents;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp.Data;
 using Volo.Abp.EntityFrameworkCore;
@@ -12,7 +11,6 @@ public class PaperbaseDbContext : AbpDbContext<PaperbaseDbContext>, IPaperbaseDb
     public DbSet<Document> Documents { get; set; }
     public DbSet<DocumentPipelineRun> DocumentPipelineRuns { get; set; }
     public DbSet<DocumentRelation> DocumentRelations { get; set; }
-    public DbSet<DocumentChunk> DocumentChunks { get; set; }
 
     public PaperbaseDbContext(DbContextOptions<PaperbaseDbContext> options)
         : base(options)
@@ -23,6 +21,6 @@ public class PaperbaseDbContext : AbpDbContext<PaperbaseDbContext>, IPaperbaseDb
     {
         base.OnModelCreating(builder);
 
-        builder.ConfigurePaperbase(isNpgsql: Database.ProviderName?.Contains("Npgsql") == true);
+        builder.ConfigurePaperbase();
     }
 }
