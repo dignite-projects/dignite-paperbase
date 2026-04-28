@@ -1,4 +1,5 @@
-﻿using Microsoft.Data.Sqlite;
+using Dignite.Paperbase.Rag.Pgvector.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -12,6 +13,7 @@ namespace Dignite.Paperbase.EntityFrameworkCore;
 [DependsOn(
     typeof(PaperbaseApplicationTestModule),
     typeof(PaperbaseEntityFrameworkCoreModule),
+    typeof(PgvectorRagEntityFrameworkCoreModule),
     typeof(AbpEntityFrameworkCoreSqliteModule)
 )]
 public class PaperbaseEntityFrameworkCoreTestModule : AbpModule
@@ -20,7 +22,7 @@ public class PaperbaseEntityFrameworkCoreTestModule : AbpModule
     {
         PreConfigure<AbpSqliteOptions>(x => x.BusyTimeout = null);
     }
-    
+
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
         context.Services.AddAlwaysDisableUnitOfWorkTransaction();
@@ -33,6 +35,14 @@ public class PaperbaseEntityFrameworkCoreTestModule : AbpModule
             {
                 configurationContext.UseSqlite(sqliteConnection);
             });
+
+            // PgvectorRagEntityFrameworkCoreModule 默认把 PgvectorRagDbContext 配成 Npgsql + UseVector，
+            // 在 SQLite in-memory 测试里必须显式覆写为 SQLite。两个 context 共用同一个连接
+            // 即可在 ABP UoW 内共用事务，不需要再为 PaperbaseRag 单独配 connection string。
+            options.Configure<PgvectorRagDbContext>(configurationContext =>
+            {
+                configurationContext.UseSqlite(sqliteConnection);
+            });
         });
     }
 
@@ -41,8 +51,14 @@ public class PaperbaseEntityFrameworkCoreTestModule : AbpModule
         var connection = new SqliteConnection("Data Source=:memory:");
         connection.Open();
 
+        // 主 PaperbaseDbContext 创建除 chunks 之外的全部表（chunk 已 ExcludeFromMigrations）。
         new PaperbaseDbContext(
             new DbContextOptionsBuilder<PaperbaseDbContext>().UseSqlite(connection).Options
+        ).GetService<IRelationalDatabaseCreator>().CreateTables();
+
+        // 独立 PgvectorRagDbContext 仅创建 chunks 表 + 索引，与上一行互不重叠。
+        new PgvectorRagDbContext(
+            new DbContextOptionsBuilder<PgvectorRagDbContext>().UseSqlite(connection).Options
         ).GetService<IRelationalDatabaseCreator>().CreateTables();
 
         return connection;

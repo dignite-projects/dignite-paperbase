@@ -1,15 +1,22 @@
-using Dignite.Paperbase.EntityFrameworkCore;
 using Volo.Abp.Modularity;
 
 namespace Dignite.Paperbase.Rag.Pgvector;
 
 /// <summary>
-/// Registers the pgvector-backed <see cref="IDocumentVectorStore"/> implementation.
-/// Depends on the Rag abstraction layer and the EF Core + pgvector data layer.
+/// pgvector RAG provider 的薄壳模块。
+///
+/// <para>
+/// Slice C 起，<c>PgvectorDocumentVectorStore</c> 与 chunk repository 都已迁移到
+/// <c>Dignite.Paperbase.Rag.Pgvector.EntityFrameworkCore</c>，本模块仅保留 <see cref="PgvectorRagOptions"/>
+/// 的命名空间承载和未来 provider 级 tuning options 的扩展点。
+/// </para>
+///
+/// <para>
+/// 真正注册 <c>IDocumentVectorStore</c> 实现的入口在
+/// <c>Dignite.Paperbase.Rag.Pgvector.EntityFrameworkCore.PgvectorRagEntityFrameworkCoreModule</c>。
+/// </para>
 /// </summary>
-[DependsOn(
-    typeof(PaperbaseRagModule),
-    typeof(PaperbaseEntityFrameworkCoreModule))]
+[DependsOn(typeof(PaperbaseRagModule))]
 public class PgvectorRagModule : AbpModule
 {
 }

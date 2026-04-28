@@ -82,7 +82,8 @@
     <ProjectReference Include="..\..\core\src\Dignite.Paperbase.Application\Dignite.Paperbase.Application.csproj" />
     <ProjectReference Include="..\..\core\src\Dignite.Paperbase.EntityFrameworkCore\Dignite.Paperbase.EntityFrameworkCore.csproj" />
     <ProjectReference Include="..\..\core\src\Dignite.Paperbase.Rag.Pgvector\Dignite.Paperbase.Rag.Pgvector.csproj" />
-<ProjectReference Include="..\..\core\src\Dignite.Paperbase.TextExtraction\Dignite.Paperbase.TextExtraction.csproj" />
+    <ProjectReference Include="..\..\core\src\Dignite.Paperbase.Rag.Pgvector.EntityFrameworkCore\Dignite.Paperbase.Rag.Pgvector.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="..\..\core\src\Dignite.Paperbase.TextExtraction\Dignite.Paperbase.TextExtraction.csproj" />
     <ProjectReference Include="..\..\core\src\Dignite.Paperbase.Ocr.AzureDocumentIntelligence\Dignite.Paperbase.Ocr.AzureDocumentIntelligence.csproj" />
     <ProjectReference Include="..\..\modules\contracts\src\Dignite.Paperbase.Contracts.HttpApi\Dignite.Paperbase.Contracts.HttpApi.csproj" />
     <ProjectReference Include="..\..\modules\contracts\src\Dignite.Paperbase.Contracts.Application\Dignite.Paperbase.Contracts.Application.csproj" />

@@ -3,8 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Dignite.Paperbase.EntityFrameworkCore;
-using Dignite.Paperbase.Rag.Pgvector.Documents;
+using Dignite.Paperbase.Rag.Pgvector.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -15,12 +14,17 @@ using Volo.Abp.DependencyInjection;
 using Volo.Abp.EntityFrameworkCore;
 using Volo.Abp.MultiTenancy;
 
-namespace Dignite.Paperbase.Rag.Pgvector;
+namespace Dignite.Paperbase.Rag.Pgvector.Documents;
 
 /// <summary>
 /// pgvector-backed implementation of <see cref="IDocumentVectorStore"/>.
-/// Bridges the Rag abstraction to the existing <see cref="PaperbaseDbContext"/> /
-/// <see cref="DocumentChunk"/> infrastructure.
+/// Slice C 起改用独立的 <see cref="PgvectorRagDbContext"/>——在 Slice B 完成 chunk
+/// 反范式化（去 JOIN <c>Documents</c> 表）之后这次切换是干净的，没有任何 fallback 路径。
+///
+/// <para>
+/// 类名暂保留 <c>PgvectorDocumentVectorStore</c>；Slice F/G 接口改名为 <c>IDocumentKnowledgeIndex</c>
+/// 并引入 <c>UpsertDocumentAsync</c> 时一并改为 <c>PgvectorDocumentKnowledgeIndex</c>。
+/// </para>
 ///
 /// Supports three search modes:
 ///   - <see cref="VectorSearchMode.Vector"/>  — pgvector cosine similarity.
@@ -43,12 +47,12 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
     /// </summary>
     protected const int HybridRecallMultiplier = 2;
 
-    private readonly IDbContextProvider<PaperbaseDbContext> _dbContextProvider;
+    private readonly IDbContextProvider<PgvectorRagDbContext> _dbContextProvider;
     private readonly ICurrentTenant _currentTenant;
     private readonly IDataFilter _dataFilter;
 
     public PgvectorDocumentVectorStore(
-        IDbContextProvider<PaperbaseDbContext> dbContextProvider,
+        IDbContextProvider<PgvectorRagDbContext> dbContextProvider,
         ICurrentTenant currentTenant,
         IDataFilter dataFilter)
     {
@@ -57,7 +61,7 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
         _dataFilter = dataFilter;
     }
 
-    public VectorStoreCapabilities Capabilities { get; } = new VectorStoreCapabilities
+    public virtual VectorStoreCapabilities Capabilities { get; } = new VectorStoreCapabilities
     {
         SupportsVectorSearch = true,
         SupportsKeywordSearch = true,
@@ -120,7 +124,7 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
 
     /// <summary>
     /// Bulk-delete all chunks for a document. Executes immediately (bypasses UoW),
-    /// consistent with <see cref="Documents.EfCoreDocumentChunkRepository.DeleteByDocumentIdAsync"/>.
+    /// consistent with <see cref="EfCoreDocumentChunkRepository.DeleteByDocumentIdAsync"/>.
     ///
     /// Tenant scoping is explicit: the provider disables ABP's ambient multi-tenant
     /// filter for this operation and adds its own TenantId predicate, so background
@@ -399,10 +403,10 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
             .ToList();
     }
 
-    protected virtual string GetDelimitedTableName(PaperbaseDbContext dbContext, Type entityClrType)
+    protected virtual string GetDelimitedTableName(PgvectorRagDbContext dbContext, Type entityClrType)
     {
         var entityType = dbContext.Model.FindEntityType(entityClrType)
-            ?? throw new InvalidOperationException($"Entity type {entityClrType.Name} is not part of the Paperbase EF Core model.");
+            ?? throw new InvalidOperationException($"Entity type {entityClrType.Name} is not part of the PgvectorRag EF Core model.");
         var tableName = entityType.GetTableName()
             ?? throw new InvalidOperationException($"Entity type {entityClrType.Name} is not mapped to a table.");
 

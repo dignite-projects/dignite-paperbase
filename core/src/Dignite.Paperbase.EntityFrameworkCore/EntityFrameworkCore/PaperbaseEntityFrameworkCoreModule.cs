@@ -1,5 +1,4 @@
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Rag.Pgvector.Documents;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.EntityFrameworkCore;
 using Volo.Abp.Modularity;
@@ -21,7 +20,9 @@ public class PaperbaseEntityFrameworkCoreModule : AbpModule
             options.AddRepository<Document, EfCoreDocumentRepository>();
             options.AddRepository<DocumentPipelineRun, EfCoreDocumentPipelineRunRepository>();
             options.AddRepository<DocumentRelation, EfCoreDocumentRelationRepository>();
-            options.AddRepository<DocumentChunk, EfCoreDocumentChunkRepository>();
+
+            // Slice C：DocumentChunk repository 已切到 PgvectorRagEntityFrameworkCoreModule，
+            // 不再在主 PaperbaseDbContext 上注册——chunk 的写入路径只走 PgvectorRagDbContext。
         });
 
     }

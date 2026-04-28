@@ -3,18 +3,22 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Dignite.Paperbase.EntityFrameworkCore;
-using Dignite.Paperbase.Rag.Pgvector.Documents;
+using Dignite.Paperbase.Rag.Pgvector.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp.Domain.Repositories.EntityFrameworkCore;
 using Volo.Abp.EntityFrameworkCore;
 
-namespace Dignite.Paperbase.Documents;
+namespace Dignite.Paperbase.Rag.Pgvector.Documents;
 
+/// <summary>
+/// chunk repository 切到独立 <see cref="PgvectorRagDbContext"/>。
+/// Slice C 之前 base class 是 <c>EfCoreRepository&lt;PaperbaseDbContext, ...&gt;</c>，
+/// 切换后写入路径走独立 connection string + 独立 EF Core 迁移历史表。
+/// </summary>
 public class EfCoreDocumentChunkRepository
-    : EfCoreRepository<PaperbaseDbContext, DocumentChunk, Guid>, IDocumentChunkRepository
+    : EfCoreRepository<PgvectorRagDbContext, DocumentChunk, Guid>, IDocumentChunkRepository
 {
-    public EfCoreDocumentChunkRepository(IDbContextProvider<PaperbaseDbContext> dbContextProvider)
+    public EfCoreDocumentChunkRepository(IDbContextProvider<PgvectorRagDbContext> dbContextProvider)
         : base(dbContextProvider)
     {
     }
