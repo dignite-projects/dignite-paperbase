@@ -1,7 +1,9 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.AI.Workflows;
+using Dignite.Paperbase.Rag;
 using Microsoft.Extensions.Logging;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.DependencyInjection;
@@ -16,7 +18,7 @@ public class DocumentEmbeddingBackgroundJob
     private readonly IDocumentRepository _documentRepository;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly DocumentEmbeddingWorkflow _workflow;
-    private readonly IDocumentChunkRepository _chunkRepository;
+    private readonly IDocumentVectorStore _vectorStore;
     private readonly IBackgroundJobManager _backgroundJobManager;
     private readonly IGuidGenerator _guidGenerator;
 
@@ -24,14 +26,14 @@ public class DocumentEmbeddingBackgroundJob
         IDocumentRepository documentRepository,
         DocumentPipelineRunManager pipelineRunManager,
         DocumentEmbeddingWorkflow workflow,
-        IDocumentChunkRepository chunkRepository,
+        IDocumentVectorStore vectorStore,
         IBackgroundJobManager backgroundJobManager,
         IGuidGenerator guidGenerator)
     {
         _documentRepository = documentRepository;
         _pipelineRunManager = pipelineRunManager;
         _workflow = workflow;
-        _chunkRepository = chunkRepository;
+        _vectorStore = vectorStore;
         _backgroundJobManager = backgroundJobManager;
         _guidGenerator = guidGenerator;
     }
@@ -48,19 +50,34 @@ public class DocumentEmbeddingBackgroundJob
 
         try
         {
-            await _chunkRepository.DeleteByDocumentIdAsync(document.Id);
+            // Provider-neutral cleanup of any previous index for this document.
+            // For pgvector this targets the same chunk table; for external providers
+            // (Azure AI Search, Qdrant, etc.) this is the only way to purge stale records.
+            await _vectorStore.DeleteByDocumentIdAsync(document.Id);
 
             var chunks = await _workflow.RunAsync(document.ExtractedText);
 
-            foreach (var chunk in chunks)
+            if (chunks.Count > 0)
             {
-                await _chunkRepository.InsertAsync(new DocumentChunk(
-                    _guidGenerator.Create(),
-                    document.TenantId,
-                    document.Id,
-                    chunk.ChunkIndex,
-                    chunk.ChunkText,
-                    chunk.Vector));
+                // TenantId is copied explicitly from Document.TenantId so the operation
+                // is safe in Hangfire jobs / CLI tools where ABP's ambient ICurrentTenant
+                // is not set by the HTTP pipeline.
+                var records = chunks
+                    .Select(c => new DocumentVectorRecord
+                    {
+                        Id = _guidGenerator.Create(),
+                        TenantId = document.TenantId,
+                        DocumentId = document.Id,
+                        DocumentTypeCode = document.DocumentTypeCode,
+                        ChunkIndex = c.ChunkIndex,
+                        Text = c.ChunkText,
+                        Vector = c.Vector,
+                        Title = null,
+                        PageNumber = null
+                    })
+                    .ToList();
+
+                await _vectorStore.UpsertAsync(records);
             }
 
             await _pipelineRunManager.CompleteAsync(document, run);

@@ -9,6 +9,7 @@ using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Application.Documents.BackgroundJobs;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Permissions;
+using Dignite.Paperbase.Rag;
 using Microsoft.AspNetCore.Authorization;
 using Volo.Abp;
 using Volo.Abp.Application.Dtos;
@@ -27,19 +28,22 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     private readonly IBackgroundJobManager _backgroundJobManager;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly IDistributedEventBus _distributedEventBus;
+    private readonly IDocumentVectorStore _vectorStore;
 
     public DocumentAppService(
         IDocumentRepository documentRepository,
         IBlobContainer<PaperbaseDocumentContainer> blobContainer,
         IBackgroundJobManager backgroundJobManager,
         DocumentPipelineRunManager pipelineRunManager,
-        IDistributedEventBus distributedEventBus)
+        IDistributedEventBus distributedEventBus,
+        IDocumentVectorStore vectorStore)
     {
         _documentRepository = documentRepository;
         _blobContainer = blobContainer;
         _backgroundJobManager = backgroundJobManager;
         _pipelineRunManager = pipelineRunManager;
         _distributedEventBus = distributedEventBus;
+        _vectorStore = vectorStore;
     }
 
     public virtual async Task<DocumentDto> GetAsync(Guid id)
@@ -137,6 +141,12 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     public virtual async Task DeleteAsync(Guid id)
     {
         var document = await _documentRepository.GetAsync(id);
+
+        // Provider-neutral vector cleanup. For pgvector this is redundant with EF
+        // cascade on the FK, but for external providers (Azure AI Search, Qdrant)
+        // it is the only path that purges chunks outside the relational store.
+        await _vectorStore.DeleteByDocumentIdAsync(id);
+
         await _blobContainer.DeleteAsync(document.OriginalFileBlobName);
         await _documentRepository.DeleteAsync(id);
     }
