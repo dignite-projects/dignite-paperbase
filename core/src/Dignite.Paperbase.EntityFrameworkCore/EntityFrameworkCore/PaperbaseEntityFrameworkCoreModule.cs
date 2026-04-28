@@ -20,10 +20,6 @@ public class PaperbaseEntityFrameworkCoreModule : AbpModule
             options.AddRepository<Document, EfCoreDocumentRepository>();
             options.AddRepository<DocumentPipelineRun, EfCoreDocumentPipelineRunRepository>();
             options.AddRepository<DocumentRelation, EfCoreDocumentRelationRepository>();
-
-            // Slice C：DocumentChunk repository 已切到 PgvectorRagEntityFrameworkCoreModule，
-            // 不再在主 PaperbaseDbContext 上注册——chunk 的写入路径只走 PgvectorRagDbContext。
         });
-
     }
 }

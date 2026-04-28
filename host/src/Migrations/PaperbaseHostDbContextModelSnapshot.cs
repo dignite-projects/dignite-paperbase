@@ -5,7 +5,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-using Pgvector;
 using Volo.Abp.EntityFrameworkCore;
 
 #nullable disable
@@ -23,7 +22,6 @@ namespace Dignite.Paperbase.Host.Migrations
                 .HasAnnotation("ProductVersion", "10.0.4")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
-            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "vector");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("Dignite.Paperbase.Contracts.Contracts.Contract", b =>
@@ -315,72 +313,6 @@ namespace Dignite.Paperbase.Host.Migrations
                     b.HasIndex("TargetDocumentId");
 
                     b.ToTable("PaperbaseDocumentRelations", (string)null);
-                });
-
-            modelBuilder.Entity("Dignite.Paperbase.Rag.Pgvector.Documents.DocumentChunk", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("ChunkIndex")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("ChunkText")
-                        .IsRequired()
-                        .HasMaxLength(8000)
-                        .HasColumnType("character varying(8000)");
-
-                    b.Property<string>("ConcurrencyStamp")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasColumnName("ConcurrencyStamp");
-
-                    b.Property<DateTime>("CreationTime")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("CreationTime");
-
-                    b.Property<Guid?>("CreatorId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("CreatorId");
-
-                    b.Property<Guid>("DocumentId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("DocumentTypeCode")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<Vector>("EmbeddingVector")
-                        .IsRequired()
-                        .HasColumnType("vector(1536)");
-
-                    b.Property<string>("ExtraProperties")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("ExtraProperties");
-
-                    b.Property<int?>("PageNumber")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid?>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("TenantId");
-
-                    b.Property<string>("Title")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DocumentId", "ChunkIndex")
-                        .IsUnique();
-
-                    b.HasIndex("TenantId", "DocumentTypeCode");
-
-                    b.ToTable("PaperbaseDocumentChunks", (string)null);
                 });
 
             modelBuilder.Entity("Volo.Abp.AuditLogging.AuditLog", b =>
@@ -2290,7 +2222,7 @@ namespace Dignite.Paperbase.Host.Migrations
 
                             b1.HasKey("DocumentId");
 
-                            b1.ToTable("PaperbaseDocuments");
+                            b1.ToTable("PaperbaseDocuments", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("DocumentId");
@@ -2304,15 +2236,6 @@ namespace Dignite.Paperbase.Host.Migrations
                 {
                     b.HasOne("Dignite.Paperbase.Documents.Document", null)
                         .WithMany("PipelineRuns")
-                        .HasForeignKey("DocumentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Dignite.Paperbase.Rag.Pgvector.Documents.DocumentChunk", b =>
-                {
-                    b.HasOne("Dignite.Paperbase.Documents.Document", null)
-                        .WithMany()
                         .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -2430,7 +2353,7 @@ namespace Dignite.Paperbase.Host.Migrations
 
                             b1.HasKey("IdentityUserPasskeyCredentialId");
 
-                            b1.ToTable("AbpUserPasskeys");
+                            b1.ToTable("AbpUserPasskeys", (string)null);
 
                             b1
                                 .ToJson("Data")

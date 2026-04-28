@@ -24,9 +24,9 @@
     <ProjectReference Include="..\Dignite.Paperbase.Rag\Dignite.Paperbase.Rag.csproj" />
     <ProjectReference Include="..\Dignite.Paperbase.Rag.Pgvector.Domain\Dignite.Paperbase.Rag.Pgvector.Domain.csproj" />
 
-    <!-- Slice C：暂时仍依赖主 Paperbase EF Core 模块——chunks 表 schema 同时映射在两个 DbContext，
-         迁移期间 connection string 配置和模块装配也跟随主 host 流程。Slice D cutover 后此引用可移除。 -->
-    <ProjectReference Include="..\Dignite.Paperbase.EntityFrameworkCore\Dignite.Paperbase.EntityFrameworkCore.csproj" />
+    <!-- Slice D：与主 PaperbaseEntityFrameworkCore 项目完全解耦。共享只有 Documents/DocumentConsts
+         （MaxDocumentTypeCodeLength 等常量）需要从主 Domain 取，故引用主 Domain 而非 EF 项目。 -->
+    <ProjectReference Include="..\Dignite.Paperbase.Domain\Dignite.Paperbase.Domain.csproj" />
   </ItemGroup>
 
 </Project>

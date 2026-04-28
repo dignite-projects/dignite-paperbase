@@ -51,7 +51,9 @@ public class PaperbaseEntityFrameworkCoreTestModule : AbpModule
         var connection = new SqliteConnection("Data Source=:memory:");
         connection.Open();
 
-        // 主 PaperbaseDbContext 创建除 chunks 之外的全部表（chunk 已 ExcludeFromMigrations）。
+        // 主 PaperbaseDbContext 创建除 chunks 之外的全部表。Slice D 后 chunks 已彻底
+        // 移交 PgvectorRagDbContext，主 context 模型不再包含 DocumentChunk，
+        // CreateTables() 自然只生成业务表。
         new PaperbaseDbContext(
             new DbContextOptionsBuilder<PaperbaseDbContext>().UseSqlite(connection).Options
         ).GetService<IRelationalDatabaseCreator>().CreateTables();

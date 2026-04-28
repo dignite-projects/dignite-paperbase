@@ -9,13 +9,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Slice D：主 EF Core 项目零向量 / 零 DBMS-provider 依赖。
+         - Pgvector.EntityFrameworkCore 移除（chunks 表与 vector 列由 Rag.Pgvector.EntityFrameworkCore 拥有）。
+         - Npgsql.EntityFrameworkCore.PostgreSQL 移除（主 PaperbaseDbContext 与 ConfigurePaperbase
+           只用 ABP / 标准 EF Core 类型；Npgsql provider 由 host 在 UseNpgsql(...) 处带入）。
+         - 这一对清理使 host 未来切到 SQL Server / SQLite 时主 EF Core 项目无需再改。 -->
     <PackageReference Include="Volo.Abp.EntityFrameworkCore" Version="10.2.0" />
-    <PackageReference Include="Pgvector.EntityFrameworkCore" Version="0.3.0" />
-    <!-- 显式指定 Npgsql 10.x 以匹配 EF Core 10，覆盖 Pgvector 带入的 9.0.1 -->
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
     <ProjectReference Include="..\Dignite.Paperbase.Domain\Dignite.Paperbase.Domain.csproj" />
-    <!-- TEMP (Slice A → Slice D): chunks 表的 EF mapping 仍在主 PaperbaseDbContext 内；Slice D 把 mapping 切到独立 PgvectorRagDbContext 后移除此引用。 -->
-    <ProjectReference Include="..\Dignite.Paperbase.Rag.Pgvector.Domain\Dignite.Paperbase.Rag.Pgvector.Domain.csproj" />
   </ItemGroup>
 
 </Project>
