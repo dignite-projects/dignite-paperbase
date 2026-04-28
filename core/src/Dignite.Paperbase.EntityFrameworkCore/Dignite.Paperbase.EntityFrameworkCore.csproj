@@ -14,6 +14,8 @@
     <!-- 显式指定 Npgsql 10.x 以匹配 EF Core 10，覆盖 Pgvector 带入的 9.0.1 -->
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
     <ProjectReference Include="..\Dignite.Paperbase.Domain\Dignite.Paperbase.Domain.csproj" />
+    <!-- TEMP (Slice A → Slice D): chunks 表的 EF mapping 仍在主 PaperbaseDbContext 内；Slice D 把 mapping 切到独立 PgvectorRagDbContext 后移除此引用。 -->
+    <ProjectReference Include="..\Dignite.Paperbase.Rag.Pgvector.Domain\Dignite.Paperbase.Rag.Pgvector.Domain.csproj" />
   </ItemGroup>
 
 </Project>

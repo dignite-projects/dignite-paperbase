@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.EntityFrameworkCore;
 using Dignite.Paperbase.Rag;
 using Dignite.Paperbase.Rag.Pgvector;
+using Dignite.Paperbase.Rag.Pgvector.Documents;
 using Microsoft.EntityFrameworkCore;
 using NSubstitute;
 using Npgsql.EntityFrameworkCore.PostgreSQL;

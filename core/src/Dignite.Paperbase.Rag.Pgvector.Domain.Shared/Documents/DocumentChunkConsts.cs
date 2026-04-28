@@ -1,4 +1,4 @@
-namespace Dignite.Paperbase.Documents;
+namespace Dignite.Paperbase.Rag.Pgvector.Documents;
 
 public static class DocumentChunkConsts
 {

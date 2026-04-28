@@ -1,4 +1,5 @@
 using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Rag.Pgvector.Documents;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp.Data;
 using Volo.Abp.EntityFrameworkCore;

@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Volo.Abp.Domain.Repositories;
 
-namespace Dignite.Paperbase.Documents;
+namespace Dignite.Paperbase.Rag.Pgvector.Documents;
 
 public interface IDocumentChunkRepository : IRepository<DocumentChunk, Guid>
 {

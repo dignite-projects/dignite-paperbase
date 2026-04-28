@@ -213,7 +213,7 @@ namespace Dignite.Paperbase.Host.Migrations
                     b.ToTable("PaperbaseDocuments", (string)null);
                 });
 
-            modelBuilder.Entity("Dignite.Paperbase.Documents.DocumentChunk", b =>
+            modelBuilder.Entity("Dignite.Paperbase.Rag.Pgvector.Documents.DocumentChunk", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
