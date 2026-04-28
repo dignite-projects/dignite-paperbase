@@ -73,7 +73,7 @@ public class DocumentEmbeddingBackgroundJob_Tests
         await _job.ExecuteAsync(new DocumentEmbeddingJobArgs { DocumentId = doc.Id });
 
         await _vectorStore.DidNotReceive().DeleteByDocumentIdAsync(
-            Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+            Arg.Any<Guid>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>());
         await _vectorStore.DidNotReceive().UpsertAsync(
             Arg.Any<IReadOnlyList<DocumentVectorRecord>>(), Arg.Any<CancellationToken>());
 
@@ -97,7 +97,7 @@ public class DocumentEmbeddingBackgroundJob_Tests
 
         Received.InOrder(async () =>
         {
-            await _vectorStore.DeleteByDocumentIdAsync(doc.Id, Arg.Any<CancellationToken>());
+            await _vectorStore.DeleteByDocumentIdAsync(doc.Id, doc.TenantId, Arg.Any<CancellationToken>());
             await _vectorStore.UpsertAsync(
                 Arg.Any<IReadOnlyList<DocumentVectorRecord>>(), Arg.Any<CancellationToken>());
         });
@@ -163,7 +163,8 @@ public class DocumentEmbeddingBackgroundJob_Tests
 
         await _job.ExecuteAsync(new DocumentEmbeddingJobArgs { DocumentId = doc.Id });
 
-        await _vectorStore.Received(1).DeleteByDocumentIdAsync(doc.Id, Arg.Any<CancellationToken>());
+        await _vectorStore.Received(1).DeleteByDocumentIdAsync(
+            doc.Id, doc.TenantId, Arg.Any<CancellationToken>());
         await _vectorStore.DidNotReceive().UpsertAsync(
             Arg.Any<IReadOnlyList<DocumentVectorRecord>>(), Arg.Any<CancellationToken>());
 

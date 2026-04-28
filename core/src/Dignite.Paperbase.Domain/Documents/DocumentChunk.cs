@@ -57,8 +57,8 @@ public class DocumentChunk : CreationAuditedAggregateRoot<Guid>, IMultiTenant
         string chunkText,
         float[] embeddingVector)
     {
-        TenantId = tenantId;
-        DocumentId = ValidateDocumentId(documentId);
+        ValidateTenantUnchanged(tenantId);
+        ValidateDocumentUnchanged(documentId);
         ChunkIndex = ValidateChunkIndex(chunkIndex);
         ChunkText = Check.NotNullOrWhiteSpace(
             chunkText,
@@ -74,6 +74,27 @@ public class DocumentChunk : CreationAuditedAggregateRoot<Guid>, IMultiTenant
             throw new BusinessException(PaperbaseErrorCodes.DocumentChunkDocumentIdRequired);
         }
         return documentId;
+    }
+
+    protected virtual void ValidateTenantUnchanged(Guid? tenantId)
+    {
+        if (TenantId != tenantId)
+        {
+            throw new BusinessException(PaperbaseErrorCodes.DocumentChunkTenantImmutable)
+                .WithData("Existing", FormatTenantId(TenantId))
+                .WithData("Incoming", FormatTenantId(tenantId));
+        }
+    }
+
+    protected virtual void ValidateDocumentUnchanged(Guid documentId)
+    {
+        ValidateDocumentId(documentId);
+        if (DocumentId != documentId)
+        {
+            throw new BusinessException(PaperbaseErrorCodes.DocumentChunkDocumentImmutable)
+                .WithData("Existing", DocumentId)
+                .WithData("Incoming", documentId);
+        }
     }
 
     protected virtual int ValidateChunkIndex(int chunkIndex)
@@ -96,5 +117,10 @@ public class DocumentChunk : CreationAuditedAggregateRoot<Guid>, IMultiTenant
                 .WithData("Actual", embeddingVector.Length);
         }
         return embeddingVector;
+    }
+
+    private static string FormatTenantId(Guid? tenantId)
+    {
+        return tenantId?.ToString("D") ?? "<host>";
     }
 }

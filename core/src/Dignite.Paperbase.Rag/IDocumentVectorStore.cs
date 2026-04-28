@@ -20,7 +20,7 @@ public interface IDocumentVectorStore
     /// <summary>
     /// Insert or update a batch of chunk records in the index.
     /// Implementations must be idempotent: upserting an existing record by Id
-    /// replaces all its fields.
+    /// updates mutable chunk fields while preserving tenant and document ownership.
     /// </summary>
     Task UpsertAsync(
         IReadOnlyList<DocumentVectorRecord> records,
@@ -32,6 +32,7 @@ public interface IDocumentVectorStore
     /// </summary>
     Task DeleteByDocumentIdAsync(
         Guid documentId,
+        Guid? tenantId,
         CancellationToken cancellationToken = default);
 
     /// <summary>

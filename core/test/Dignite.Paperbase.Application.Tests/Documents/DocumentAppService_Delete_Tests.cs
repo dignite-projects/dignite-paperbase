@@ -58,7 +58,8 @@ public class DocumentAppService_Delete_Tests
 
         await _appService.DeleteAsync(doc.Id);
 
-        await _vectorStore.Received(1).DeleteByDocumentIdAsync(doc.Id, Arg.Any<CancellationToken>());
+        await _vectorStore.Received(1).DeleteByDocumentIdAsync(
+            doc.Id, doc.TenantId, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -80,7 +81,7 @@ public class DocumentAppService_Delete_Tests
     {
         return new Document(
             Guid.NewGuid(),
-            null,
+            Guid.NewGuid(),
             $"blobs/{Guid.NewGuid():N}.pdf",
             SourceType.Digital,
             new FileOrigin(

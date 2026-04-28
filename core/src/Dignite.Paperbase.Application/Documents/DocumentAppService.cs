@@ -145,7 +145,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         // Provider-neutral vector cleanup. For pgvector this is redundant with EF
         // cascade on the FK, but for external providers (Azure AI Search, Qdrant)
         // it is the only path that purges chunks outside the relational store.
-        await _vectorStore.DeleteByDocumentIdAsync(id);
+        await _vectorStore.DeleteByDocumentIdAsync(id, document.TenantId);
 
         await _blobContainer.DeleteAsync(document.OriginalFileBlobName);
         await _documentRepository.DeleteAsync(id);

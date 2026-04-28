@@ -74,7 +74,7 @@ public class InMemoryHybridDocumentVectorStore : IDocumentVectorStore
     public Task UpsertAsync(IReadOnlyList<DocumentVectorRecord> records, CancellationToken ct = default)
         => Task.CompletedTask; // Benchmark seeds via Seed(); IDocumentVectorStore.UpsertAsync is unused here.
 
-    public Task DeleteByDocumentIdAsync(Guid documentId, CancellationToken ct = default)
+    public Task DeleteByDocumentIdAsync(Guid documentId, Guid? tenantId, CancellationToken ct = default)
         => Task.CompletedTask;
 
     public Task<IReadOnlyList<VectorSearchResult>> SearchAsync(

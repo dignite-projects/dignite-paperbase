@@ -8,7 +8,6 @@ using Microsoft.Extensions.Logging;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.Guids;
-using Volo.Abp.MultiTenancy;
 
 namespace Dignite.Paperbase.Application.Documents.BackgroundJobs;
 
@@ -22,7 +21,6 @@ public class DocumentEmbeddingBackgroundJob
     private readonly IDocumentVectorStore _vectorStore;
     private readonly IBackgroundJobManager _backgroundJobManager;
     private readonly IGuidGenerator _guidGenerator;
-    private readonly ICurrentTenant _currentTenant;
 
     public DocumentEmbeddingBackgroundJob(
         IDocumentRepository documentRepository,
@@ -30,8 +28,7 @@ public class DocumentEmbeddingBackgroundJob
         DocumentEmbeddingWorkflow workflow,
         IDocumentVectorStore vectorStore,
         IBackgroundJobManager backgroundJobManager,
-        IGuidGenerator guidGenerator,
-        ICurrentTenant currentTenant)
+        IGuidGenerator guidGenerator)
     {
         _documentRepository = documentRepository;
         _pipelineRunManager = pipelineRunManager;
@@ -39,7 +36,6 @@ public class DocumentEmbeddingBackgroundJob
         _vectorStore = vectorStore;
         _backgroundJobManager = backgroundJobManager;
         _guidGenerator = guidGenerator;
-        _currentTenant = currentTenant;
     }
 
     public override async Task ExecuteAsync(DocumentEmbeddingJobArgs args)
@@ -49,15 +45,6 @@ public class DocumentEmbeddingBackgroundJob
         if (string.IsNullOrWhiteSpace(document.ExtractedText))
             return;
 
-        // Align the ambient tenant to the document's tenant for the entire vector-store
-        // interaction. IDocumentVectorStore.DeleteByDocumentIdAsync currently relies on
-        // ABP's IMultiTenant global filter to scope the delete; if this job runs from a
-        // context whose ambient tenant does not match Document.TenantId (e.g., a system
-        // process or a job re-enqueued without tenant context), the global filter would
-        // silently miss the target tenant's chunks and leave stale vectors behind.
-        // See rag-vector-store-decoupling.md § 风险与约束.
-        using var _ = _currentTenant.Change(document.TenantId);
-
         var run = await _pipelineRunManager.StartAsync(document, PaperbasePipelines.Embedding);
         await _documentRepository.UpdateAsync(document);
 
@@ -66,7 +53,7 @@ public class DocumentEmbeddingBackgroundJob
             // Provider-neutral cleanup of any previous index for this document.
             // For pgvector this targets the same chunk table; for external providers
             // (Azure AI Search, Qdrant, etc.) this is the only way to purge stale records.
-            await _vectorStore.DeleteByDocumentIdAsync(document.Id);
+            await _vectorStore.DeleteByDocumentIdAsync(document.Id, document.TenantId);
 
             var chunks = await _workflow.RunAsync(document.ExtractedText);
 

@@ -3,10 +3,18 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Paperbase.EntityFrameworkCore;
 using Dignite.Paperbase.Rag;
-using Npgsql;
+using Dignite.Paperbase.Rag.Pgvector;
+using Microsoft.EntityFrameworkCore;
+using NSubstitute;
+using Npgsql.EntityFrameworkCore.PostgreSQL;
 using Shouldly;
+using Volo.Abp.Data;
+using Volo.Abp.EntityFrameworkCore;
+using Volo.Abp.MultiTenancy;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -23,8 +31,8 @@ namespace Dignite.Paperbase.Documents.Benchmarks;
 ///   dotnet test core/ --filter "Category=Production"
 /// </code>
 ///
-/// The test skips silently when <c>PAPERBASE_BENCH_PGCONN</c> is not set, so it
-/// never interferes with the regular CI test suite.
+/// The test is skipped when <c>PAPERBASE_BENCH_PGCONN</c> or the production dataset
+/// is not available, so it never interferes with the regular CI test suite.
 ///
 /// See <c>docs/benchmarks/README.md</c> for dataset preparation instructions.
 /// </summary>
@@ -33,59 +41,32 @@ public class ProductionHybridSearchBenchmark
 {
     private const string EnvConn = "PAPERBASE_BENCH_PGCONN";
     private const int TopK = 5;
-    private const int HybridRecallMultiplier = 2;
-
-    // Table names match PaperbaseDbProperties.DbTablePrefix + entity suffix.
-    private const string ChunkTable = "\"PaperbaseDocumentChunks\"";
-    private const string DocumentTable = "\"PaperbaseDocuments\"";
 
     private readonly ITestOutputHelper _output;
 
     public ProductionHybridSearchBenchmark(ITestOutputHelper output)
         => _output = output;
 
-    [Fact]
+    [ProductionBenchmarkFact]
     public async Task Vector_vs_Hybrid_On_Desensitized_Corpus()
     {
-        var connStr = Environment.GetEnvironmentVariable(EnvConn);
-        if (connStr is null)
-        {
-            _output.WriteLine($"SKIP: {EnvConn} not set. See docs/benchmarks/README.md.");
-            return;
-        }
+        var connStr = Environment.GetEnvironmentVariable(EnvConn)!;
 
-        ProductionBenchmarkDataset dataset;
-        try
-        {
-            var path = ProductionBenchmarkDataset.LocateDatasetPath();
-            dataset = ProductionBenchmarkDataset.Load(path);
-            _output.WriteLine($"Dataset: {dataset.Chunks.Count} chunks, {dataset.Queries.Count} queries.");
-        }
-        catch (FileNotFoundException ex)
-        {
-            _output.WriteLine($"SKIP: {ex.Message}");
-            return;
-        }
+        var path = ProductionBenchmarkDataset.LocateDatasetPath();
+        var dataset = ProductionBenchmarkDataset.Load(path);
+        dataset.Validate();
+        _output.WriteLine($"Dataset: {dataset.Chunks.Count} chunks, {dataset.Queries.Count} queries.");
 
-        if (dataset.Chunks.Count == 0 || dataset.Queries.Count == 0)
-        {
-            _output.WriteLine("SKIP: Dataset is empty.");
-            return;
-        }
-
-        var seedDocIds = new List<Guid>();
-        var seedChunkIds = dataset.Chunks.Select(c => c.Id).ToList();
-
-        await using var conn = new NpgsqlConnection(connStr);
-        await conn.OpenAsync();
+        var benchmarkTenantId = Guid.NewGuid();
+        await using var dbContext = CreateDbContext(connStr);
+        var vectorStore = CreateVectorStore(dbContext);
 
         try
         {
-            seedDocIds = await SeedDocumentsAsync(conn, dataset);
-            await SeedChunksAsync(conn, dataset, seedDocIds);
+            await SeedAsync(dbContext, dataset, benchmarkTenantId);
 
-            var vectorResults = await RunVectorQueriesAsync(conn, dataset, seedChunkIds, TopK);
-            var hybridResults = await RunHybridQueriesAsync(conn, dataset, seedChunkIds, TopK);
+            var vectorResults = await RunQueriesAsync(vectorStore, dataset, benchmarkTenantId, VectorSearchMode.Vector);
+            var hybridResults = await RunQueriesAsync(vectorStore, dataset, benchmarkTenantId, VectorSearchMode.Hybrid);
 
             var vectorScores = ScoreByCategory(dataset, vectorResults, "Vector");
             var hybridScores = ScoreByCategory(dataset, hybridResults, "Hybrid");
@@ -98,17 +79,45 @@ public class ProductionHybridSearchBenchmark
         }
         finally
         {
-            await CleanupAsync(conn, seedDocIds, seedChunkIds);
+            await CleanupAsync(dbContext, benchmarkTenantId);
         }
     }
 
-    // ── Seeding ────────────────────────────────────────────────────────────
-
-    private static async Task<List<Guid>> SeedDocumentsAsync(
-        NpgsqlConnection conn, ProductionBenchmarkDataset dataset)
+    private static PaperbaseDbContext CreateDbContext(string connStr)
     {
-        // One Document row per distinct DocumentTypeCode — chunks share a document.
-        var docIds = new List<Guid>();
+        var options = new DbContextOptionsBuilder<PaperbaseDbContext>()
+            .UseNpgsql(connStr, o => o.UseVector())
+            .Options;
+
+        return new PaperbaseDbContext(options);
+    }
+
+    private static IDocumentVectorStore CreateVectorStore(PaperbaseDbContext dbContext)
+    {
+        return new PgvectorDocumentVectorStore(
+            new StaticDbContextProvider(dbContext),
+            new BenchmarkCurrentTenant(),
+            Substitute.For<IDataFilter>());
+    }
+
+    // Seeding
+
+    private static async Task SeedAsync(
+        PaperbaseDbContext dbContext,
+        ProductionBenchmarkDataset dataset,
+        Guid tenantId)
+    {
+        var documentIds = SeedDocuments(dbContext, dataset, tenantId);
+        SeedChunks(dbContext, dataset, documentIds, tenantId);
+        await dbContext.SaveChangesAsync();
+    }
+
+    private static Dictionary<string, Guid> SeedDocuments(
+        PaperbaseDbContext dbContext,
+        ProductionBenchmarkDataset dataset,
+        Guid tenantId)
+    {
+        var documentIds = new Dictionary<string, Guid>(StringComparer.Ordinal);
         var typeCodes = dataset.Chunks
             .Select(c => c.DocumentTypeCode)
             .Distinct(StringComparer.Ordinal)
@@ -117,150 +126,81 @@ public class ProductionHybridSearchBenchmark
         foreach (var typeCode in typeCodes)
         {
             var docId = Guid.NewGuid();
-            docIds.Add(docId);
+            documentIds[typeCode] = docId;
 
-            // Use a content hash that is unique per run via the docId.
-            var contentHash = docId.ToString("N")[..32];
+            var document = new Document(
+                docId,
+                tenantId,
+                $"bench:{typeCode}:{docId:N}",
+                SourceType.Digital,
+                new FileOrigin(
+                    uploadedByUserName: "benchmark",
+                    contentType: "text/plain",
+                    contentHash: $"{Guid.NewGuid():N}{Guid.NewGuid():N}",
+                    fileSize: 0,
+                    originalFileName: $"benchmark-{typeCode}.txt"));
 
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"""
-                INSERT INTO {DocumentTable} (
-                    "Id", "TenantId", "OriginalFileBlobName", "SourceType",
-                    "FileOrigin_UploadedByUserName", "FileOrigin_OriginalFileName",
-                    "FileOrigin_ContentType", "FileOrigin_FileSize",
-                    "DocumentTypeCode", "LifecycleStatus", "ConfidenceScore",
-                    "ExtraProperties", "ConcurrencyStamp", "CreationTime"
-                ) VALUES (
-                    $1, NULL, $2, 2,
-                    'benchmark', $3,
-                    'text/plain', 0,
-                    $4, 10, 0.0,
-                    $5, $6, NOW()
-                )
-                """;
-            cmd.Parameters.AddWithValue(docId);
-            cmd.Parameters.AddWithValue($"bench:{typeCode}:{docId:N}");
-            cmd.Parameters.AddWithValue($"benchmark-{typeCode}.txt");
-            cmd.Parameters.AddWithValue(typeCode);
-            cmd.Parameters.AddWithValue("{}");
-            cmd.Parameters.AddWithValue(Guid.NewGuid().ToString("N"));
+            typeof(Document)
+                .GetProperty(nameof(Document.DocumentTypeCode))!
+                .GetSetMethod(nonPublic: true)!
+                .Invoke(document, [typeCode]);
 
-            await cmd.ExecuteNonQueryAsync();
+            dbContext.Set<Document>().Add(document);
         }
 
-        return docIds;
+        return documentIds;
     }
 
-    private static async Task SeedChunksAsync(
-        NpgsqlConnection conn,
+    private static void SeedChunks(
+        PaperbaseDbContext dbContext,
         ProductionBenchmarkDataset dataset,
-        IReadOnlyList<Guid> docIds)
+        IReadOnlyDictionary<string, Guid> documentIds,
+        Guid tenantId)
     {
-        // Map each DocumentTypeCode to its seeded document id.
-        var typeCodes = dataset.Chunks
-            .Select(c => c.DocumentTypeCode)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
-        var typeCodeToDocId = typeCodes
-            .Zip(docIds, (tc, id) => (tc, id))
-            .ToDictionary(x => x.tc, x => x.id);
-
         var indexByDoc = new Dictionary<Guid, int>();
 
         foreach (var chunk in dataset.Chunks)
         {
-            var docId = typeCodeToDocId[chunk.DocumentTypeCode];
-            if (!indexByDoc.TryGetValue(docId, out var idx)) idx = 0;
+            var docId = documentIds[chunk.DocumentTypeCode];
+            if (!indexByDoc.TryGetValue(docId, out var idx))
+            {
+                idx = 0;
+            }
             indexByDoc[docId] = idx + 1;
 
-            var vectorLiteral = chunk.ToVectorLiteral();
-
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"""
-                INSERT INTO {ChunkTable} (
-                    "Id", "TenantId", "DocumentId", "ChunkIndex",
-                    "ChunkText", "EmbeddingVector",
-                    "ExtraProperties", "ConcurrencyStamp", "CreationTime"
-                ) VALUES (
-                    $1, NULL, $2, $3,
-                    $4, $5::vector,
-                    $6, $7, NOW()
-                )
-                """;
-            cmd.Parameters.AddWithValue(chunk.Id);
-            cmd.Parameters.AddWithValue(docId);
-            cmd.Parameters.AddWithValue(idx);
-            cmd.Parameters.AddWithValue(chunk.Text);
-            cmd.Parameters.AddWithValue(vectorLiteral);
-            cmd.Parameters.AddWithValue("{}");
-            cmd.Parameters.AddWithValue(Guid.NewGuid().ToString("N"));
-
-            await cmd.ExecuteNonQueryAsync();
+            dbContext.Set<DocumentChunk>().Add(new DocumentChunk(
+                chunk.Id,
+                tenantId,
+                docId,
+                idx,
+                chunk.Text,
+                chunk.DecodeEmbedding()));
         }
     }
 
-    // ── Queries ────────────────────────────────────────────────────────────
+    // Queries
 
-    private static async Task<Dictionary<string, List<Guid>>> RunVectorQueriesAsync(
-        NpgsqlConnection conn,
+    private static async Task<Dictionary<string, List<Guid>>> RunQueriesAsync(
+        IDocumentVectorStore vectorStore,
         ProductionBenchmarkDataset dataset,
-        IReadOnlyList<Guid> seedChunkIds,
-        int topK)
+        Guid tenantId,
+        VectorSearchMode mode)
     {
-        var results = new Dictionary<string, List<Guid>>();
-        var chunkIdArray = seedChunkIds.ToArray();
+        var results = new Dictionary<string, List<Guid>>(StringComparer.Ordinal);
 
         foreach (var query in dataset.Queries)
         {
-            var vectorLiteral = query.ToVectorLiteral();
-            if (vectorLiteral == "[]")
+            var searchResults = await vectorStore.SearchAsync(new VectorSearchRequest
             {
-                results[query.Id] = new List<Guid>();
-                continue;
-            }
+                TenantId = tenantId,
+                QueryText = query.Text,
+                QueryVector = query.DecodeEmbedding(),
+                TopK = TopK,
+                Mode = mode
+            });
 
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"""
-                SELECT c."Id"
-                FROM {ChunkTable} c
-                WHERE c."Id" = ANY($1)
-                  AND c."TenantId" IS NULL
-                ORDER BY c."EmbeddingVector" <=> $2::vector
-                LIMIT $3
-                """;
-            cmd.Parameters.AddWithValue(chunkIdArray);
-            cmd.Parameters.AddWithValue(vectorLiteral);
-            cmd.Parameters.AddWithValue(topK);
-
-            var ranked = new List<Guid>();
-            await using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-                ranked.Add(reader.GetGuid(0));
-
-            results[query.Id] = ranked;
-        }
-
-        return results;
-    }
-
-    private static async Task<Dictionary<string, List<Guid>>> RunHybridQueriesAsync(
-        NpgsqlConnection conn,
-        ProductionBenchmarkDataset dataset,
-        IReadOnlyList<Guid> seedChunkIds,
-        int topK)
-    {
-        var results = new Dictionary<string, List<Guid>>();
-        var chunkIdArray = seedChunkIds.ToArray();
-        var recallTopK = topK * HybridRecallMultiplier;
-
-        foreach (var query in dataset.Queries)
-        {
-            var vectorRanked = await QueryVectorRawAsync(conn, query, chunkIdArray, recallTopK);
-            var keywordRanked = await QueryKeywordRawAsync(conn, query, chunkIdArray, recallTopK);
-
-            // RRF merge (same code as production PgvectorDocumentVectorStore).
-            var merged = RrfFusion.Merge(vectorRanked, keywordRanked, topK);
-            results[query.Id] = merged
+            AssertScoreContract(searchResults, mode, query.Id);
+            results[query.Id] = searchResults
                 .Select(r => r.RecordId)
                 .ToList();
         }
@@ -268,84 +208,23 @@ public class ProductionHybridSearchBenchmark
         return results;
     }
 
-    private static async Task<IReadOnlyList<VectorSearchResult>> QueryVectorRawAsync(
-        NpgsqlConnection conn, ProductionQuery query, Guid[] chunkIdArray, int topK)
+    private static void AssertScoreContract(
+        IReadOnlyList<VectorSearchResult> results,
+        VectorSearchMode mode,
+        string queryId)
     {
-        var vectorLiteral = query.ToVectorLiteral();
-        if (vectorLiteral == "[]")
-            return Array.Empty<VectorSearchResult>();
-
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"""
-            SELECT c."Id",
-                   1.0 - (c."EmbeddingVector" <=> $1::vector) AS score
-            FROM {ChunkTable} c
-            WHERE c."Id" = ANY($2)
-              AND c."TenantId" IS NULL
-            ORDER BY c."EmbeddingVector" <=> $1::vector
-            LIMIT $3
-            """;
-        cmd.Parameters.AddWithValue(vectorLiteral);
-        cmd.Parameters.AddWithValue(chunkIdArray);
-        cmd.Parameters.AddWithValue(topK);
-
-        var results = new List<VectorSearchResult>();
-        await using var reader = await cmd.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
+        foreach (var result in results)
         {
-            results.Add(new VectorSearchResult
-            {
-                RecordId = reader.GetGuid(0),
-                DocumentId = reader.GetGuid(0),
-                Score = reader.GetDouble(1)
-            });
+            result.Score.HasValue.ShouldBeTrue(
+                $"{mode} result for query {queryId} did not include a score.");
+            result.Score!.Value.ShouldBeInRange(
+                0.0,
+                1.0,
+                $"{mode} score for query {queryId} must be normalized to [0, 1].");
         }
-        return results;
     }
 
-    private static async Task<IReadOnlyList<VectorSearchResult>> QueryKeywordRawAsync(
-        NpgsqlConnection conn, ProductionQuery query, Guid[] chunkIdArray, int topK)
-    {
-        if (string.IsNullOrWhiteSpace(query.Text))
-            return Array.Empty<VectorSearchResult>();
-
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"""
-            SELECT c."Id",
-                   ts_rank_cd(c."SearchVector", plainto_tsquery('simple', $1)) AS rank
-            FROM {ChunkTable} c
-            WHERE c."SearchVector" @@ plainto_tsquery('simple', $1)
-              AND c."Id" = ANY($2)
-              AND c."TenantId" IS NULL
-            ORDER BY rank DESC
-            LIMIT $3
-            """;
-        cmd.Parameters.AddWithValue(query.Text);
-        cmd.Parameters.AddWithValue(chunkIdArray);
-        cmd.Parameters.AddWithValue(topK);
-
-        var rows = new List<(Guid id, double rank)>();
-        await using var reader = await cmd.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-            rows.Add((reader.GetGuid(0), reader.GetDouble(1)));
-
-        if (rows.Count == 0)
-            return Array.Empty<VectorSearchResult>();
-
-        // Min-max normalize (same as PgvectorDocumentVectorStore.NormalizeMinMax).
-        var max = rows.Max(r => r.rank);
-        var min = rows.Min(r => r.rank);
-        var range = max - min;
-
-        return rows.Select(r => new VectorSearchResult
-        {
-            RecordId = r.id,
-            DocumentId = r.id,
-            Score = range > 0 ? (r.rank - min) / range : 1.0
-        }).ToList();
-    }
-
-    // ── Evaluation ─────────────────────────────────────────────────────────
+    // Evaluation
 
     private static IReadOnlyList<RetrievalScores> ScoreByCategory(
         ProductionBenchmarkDataset dataset,
@@ -373,12 +252,11 @@ public class ProductionHybridSearchBenchmark
                 var ranked = queryResults.TryGetValue(q.Id, out var r)
                     ? r.Select(g => g.ToString()).ToList()
                     : new List<string>();
-                var rankedStr = ranked;
                 var expectedStr = new HashSet<string>(expected.Select(g => g.ToString()));
 
-                r1s.Add(RetrievalMetrics.RecallAtK(rankedStr, expectedStr, 1));
-                r5s.Add(RetrievalMetrics.RecallAtK(rankedStr, expectedStr, 5));
-                rrs.Add(RetrievalMetrics.ReciprocalRank(rankedStr, expectedStr));
+                r1s.Add(RetrievalMetrics.RecallAtK(ranked, expectedStr, 1));
+                r5s.Add(RetrievalMetrics.RecallAtK(ranked, expectedStr, 5));
+                rrs.Add(RetrievalMetrics.ReciprocalRank(ranked, expectedStr));
             }
 
             return new RetrievalScores
@@ -393,7 +271,7 @@ public class ProductionHybridSearchBenchmark
         }).ToList();
     }
 
-    // ── Assertions ─────────────────────────────────────────────────────────
+    // Assertions
 
     private static void AssertThresholds(
         IReadOnlyList<RetrievalScores> vectorScores,
@@ -425,7 +303,7 @@ public class ProductionHybridSearchBenchmark
             $"Vector={semVector.RecallAt5:F3} Hybrid={semHybrid.RecallAt5:F3}");
     }
 
-    // ── Reporting ──────────────────────────────────────────────────────────
+    // Reporting
 
     private static string BuildMarkdownTable(IReadOnlyList<RetrievalScores> rows)
     {
@@ -445,21 +323,27 @@ public class ProductionHybridSearchBenchmark
     {
         try
         {
-            // Locate docs/design/rag-hybrid-benchmark-2026Q2.md relative to repo root.
             var dir = AppContext.BaseDirectory;
             string? docPath = null;
             for (var i = 0; i < 10; i++)
             {
                 var candidate = Path.Combine(dir, "docs", "design", "rag-hybrid-benchmark-2026Q2.md");
-                if (File.Exists(candidate)) { docPath = candidate; break; }
+                if (File.Exists(candidate))
+                {
+                    docPath = candidate;
+                    break;
+                }
                 var parent = Path.GetDirectoryName(dir);
-                if (parent is null || parent == dir) break;
+                if (parent is null || parent == dir)
+                {
+                    break;
+                }
                 dir = parent;
             }
 
             if (docPath is null)
             {
-                _output.WriteLine("Design doc not found — skipping disk write.");
+                _output.WriteLine("Design doc not found; skipping disk write.");
                 return;
             }
 
@@ -476,7 +360,6 @@ public class ProductionHybridSearchBenchmark
 
             if (content.Contains(marker))
             {
-                // Replace existing section up to the next `##` heading or end of file.
                 var start = content.IndexOf(marker, StringComparison.Ordinal);
                 var end = content.IndexOf("\n## ", start + marker.Length, StringComparison.Ordinal);
                 content = end < 0
@@ -497,29 +380,80 @@ public class ProductionHybridSearchBenchmark
         }
     }
 
-    // ── Cleanup ────────────────────────────────────────────────────────────
+    // Cleanup
 
-    private static async Task CleanupAsync(
-        NpgsqlConnection conn,
-        IReadOnlyList<Guid> docIds,
-        IReadOnlyList<Guid> chunkIds)
+    private static async Task CleanupAsync(PaperbaseDbContext dbContext, Guid tenantId)
     {
-        if (chunkIds.Count > 0)
+        await dbContext.Set<DocumentChunk>()
+            .Where(c => c.TenantId == tenantId)
+            .ExecuteDeleteAsync();
+
+        await dbContext.Set<Document>()
+            .Where(d => d.TenantId == tenantId)
+            .ExecuteDeleteAsync();
+    }
+
+    private sealed class StaticDbContextProvider : IDbContextProvider<PaperbaseDbContext>
+    {
+        private readonly PaperbaseDbContext _dbContext;
+
+        public StaticDbContextProvider(PaperbaseDbContext dbContext)
         {
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"DELETE FROM {ChunkTable} WHERE \"Id\" = ANY($1)";
-            cmd.Parameters.AddWithValue(chunkIds.ToArray());
-            await cmd.ExecuteNonQueryAsync();
+            _dbContext = dbContext;
         }
 
-        // DocumentChunks FK has ON DELETE CASCADE from Documents, but we delete
-        // chunks explicitly first so the Document DELETE doesn't trigger bulk cascade.
-        if (docIds.Count > 0)
+        public PaperbaseDbContext GetDbContext()
         {
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"DELETE FROM {DocumentTable} WHERE \"Id\" = ANY($1)";
-            cmd.Parameters.AddWithValue(docIds.ToArray());
-            await cmd.ExecuteNonQueryAsync();
+            return _dbContext;
+        }
+
+        public Task<PaperbaseDbContext> GetDbContextAsync()
+        {
+            return Task.FromResult(_dbContext);
+        }
+    }
+
+    private sealed class BenchmarkCurrentTenant : ICurrentTenant
+    {
+        public bool IsAvailable => Id.HasValue;
+
+        public Guid? Id { get; private set; }
+
+        public string? Name { get; private set; }
+
+        public IDisposable Change(Guid? id, string? name = null)
+        {
+            Id = id;
+            Name = name;
+            return new NoopDisposable();
+        }
+    }
+
+    private sealed class NoopDisposable : IDisposable
+    {
+        public void Dispose()
+        {
+        }
+    }
+}
+
+public sealed class ProductionBenchmarkFactAttribute : FactAttribute
+{
+    public ProductionBenchmarkFactAttribute()
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PAPERBASE_BENCH_PGCONN")))
+        {
+            Skip = "PAPERBASE_BENCH_PGCONN not set. Production benchmark skipped.";
+            return;
+        }
+
+        try
+        {
+            ProductionBenchmarkDataset.LocateDatasetPath();
+        }
+        catch (FileNotFoundException ex)
+        {
+            Skip = ex.Message;
         }
     }
 }

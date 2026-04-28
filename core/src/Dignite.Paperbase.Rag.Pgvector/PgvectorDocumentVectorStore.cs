@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 using Pgvector;
 using Pgvector.EntityFrameworkCore;
+using Volo.Abp.Data;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.EntityFrameworkCore;
 using Volo.Abp.MultiTenancy;
@@ -44,13 +45,16 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
 
     private readonly IDbContextProvider<PaperbaseDbContext> _dbContextProvider;
     private readonly ICurrentTenant _currentTenant;
+    private readonly IDataFilter _dataFilter;
 
     public PgvectorDocumentVectorStore(
         IDbContextProvider<PaperbaseDbContext> dbContextProvider,
-        ICurrentTenant currentTenant)
+        ICurrentTenant currentTenant,
+        IDataFilter dataFilter)
     {
         _dbContextProvider = dbContextProvider;
         _currentTenant = currentTenant;
+        _dataFilter = dataFilter;
     }
 
     public VectorStoreCapabilities Capabilities { get; } = new VectorStoreCapabilities
@@ -112,22 +116,27 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
     /// Bulk-delete all chunks for a document. Executes immediately (bypasses UoW),
     /// consistent with <see cref="Documents.EfCoreDocumentChunkRepository.DeleteByDocumentIdAsync"/>.
     ///
-    /// Tenant scoping note: this method relies on ABP's <see cref="Volo.Abp.MultiTenancy.IMultiTenant"/>
-    /// global filter being aligned with the document's owning tenant <em>before</em> the call.
-    /// The interface <see cref="IDocumentVectorStore.DeleteByDocumentIdAsync"/> does not yet
-    /// carry an explicit TenantId, so callers running outside the HTTP pipeline (Hangfire
-    /// jobs, CLI tools, system processes) must wrap the call in
-    /// <c>using (currentTenant.Change(document.TenantId))</c>. Tracked as a follow-up to
-    /// promote TenantId to an explicit parameter on the abstraction.
+    /// Tenant scoping is explicit: the provider disables ABP's ambient multi-tenant
+    /// filter for this operation and adds its own TenantId predicate, so background
+    /// jobs and CLI callers cannot accidentally delete in the wrong ambient tenant.
     /// </summary>
     public virtual async Task DeleteByDocumentIdAsync(
         Guid documentId,
+        Guid? tenantId,
         CancellationToken cancellationToken = default)
     {
         var dbContext = await _dbContextProvider.GetDbContextAsync();
-        await dbContext.Set<DocumentChunk>()
-            .Where(c => c.DocumentId == documentId)
-            .ExecuteDeleteAsync(cancellationToken);
+        using (_dataFilter.Disable<IMultiTenant>())
+        {
+            var query = dbContext.Set<DocumentChunk>()
+                .Where(c => c.DocumentId == documentId);
+
+            query = tenantId.HasValue
+                ? query.Where(c => c.TenantId == tenantId.Value)
+                : query.Where(c => c.TenantId == null);
+
+            await query.ExecuteDeleteAsync(cancellationToken);
+        }
     }
 
     /// <summary>

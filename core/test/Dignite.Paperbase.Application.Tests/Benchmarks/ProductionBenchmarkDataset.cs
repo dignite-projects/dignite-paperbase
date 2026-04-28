@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Runtime.InteropServices;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -33,6 +33,103 @@ public sealed class ProductionBenchmarkDataset
         var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         return JsonSerializer.Deserialize<ProductionBenchmarkDataset>(json, opts)
                ?? throw new InvalidOperationException($"Failed to deserialize dataset at {path}");
+    }
+
+    public void Validate()
+    {
+        if (Chunks is null)
+        {
+            throw new InvalidOperationException("Dataset chunks must be present.");
+        }
+
+        if (Queries is null)
+        {
+            throw new InvalidOperationException("Dataset queries must be present.");
+        }
+
+        if (EmbeddingDimension != PaperbaseDbProperties.EmbeddingVectorDimension)
+        {
+            throw new InvalidOperationException(
+                $"Dataset embeddingDimension {EmbeddingDimension} does not match " +
+                $"{nameof(PaperbaseDbProperties.EmbeddingVectorDimension)} " +
+                $"{PaperbaseDbProperties.EmbeddingVectorDimension}.");
+        }
+
+        if (Chunks.Count == 0)
+        {
+            throw new InvalidOperationException("Dataset must contain at least one chunk.");
+        }
+
+        if (Queries.Count == 0)
+        {
+            throw new InvalidOperationException("Dataset must contain at least one query.");
+        }
+
+        ValidateCategories();
+        ValidateEmbeddings();
+        ValidateExpectedChunkIds();
+    }
+
+    private void ValidateCategories()
+    {
+        foreach (var category in new[] { "precise-text", "semantic" })
+        {
+            var count = Queries.Count(q => string.Equals(q.Category, category, StringComparison.Ordinal));
+            if (count == 0)
+            {
+                throw new InvalidOperationException(
+                    $"Dataset must contain at least one '{category}' query.");
+            }
+        }
+    }
+
+    private void ValidateEmbeddings()
+    {
+        foreach (var chunk in Chunks)
+        {
+            ValidateEmbedding(chunk.DecodeEmbedding(), $"chunk {chunk.Id}");
+        }
+
+        foreach (var query in Queries)
+        {
+            ValidateEmbedding(query.DecodeEmbedding(), $"query {query.Id}");
+        }
+    }
+
+    private static void ValidateEmbedding(float[] embedding, string label)
+    {
+        if (embedding.Length == 0)
+        {
+            throw new InvalidOperationException($"{label} has an empty embedding.");
+        }
+
+        if (embedding.Length != PaperbaseDbProperties.EmbeddingVectorDimension)
+        {
+            throw new InvalidOperationException(
+                $"{label} embedding length {embedding.Length} does not match " +
+                $"{PaperbaseDbProperties.EmbeddingVectorDimension}.");
+        }
+
+        if (embedding.All(v => v == 0f))
+        {
+            throw new InvalidOperationException($"{label} has an all-zero embedding.");
+        }
+    }
+
+    private void ValidateExpectedChunkIds()
+    {
+        var chunkIds = Chunks.Select(c => c.Id).ToHashSet();
+        foreach (var query in Queries)
+        {
+            foreach (var expectedChunkId in query.ExpectedChunkIds)
+            {
+                if (!chunkIds.Contains(expectedChunkId))
+                {
+                    throw new InvalidOperationException(
+                        $"Query {query.Id} references missing expectedChunkId {expectedChunkId}.");
+                }
+            }
+        }
     }
 
     /// <summary>
