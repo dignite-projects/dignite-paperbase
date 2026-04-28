@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.EntityFrameworkCore;
 using Dignite.Paperbase.Rag.Pgvector.Documents;
 using Microsoft.EntityFrameworkCore;
@@ -97,7 +96,10 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
                         record.DocumentId,
                         record.ChunkIndex,
                         record.Text,
-                        record.Vector.ToArray());
+                        record.Vector.ToArray(),
+                        record.DocumentTypeCode,
+                        record.Title,
+                        record.PageNumber);
                 }
                 else
                 {
@@ -107,7 +109,10 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
                         record.DocumentId,
                         record.ChunkIndex,
                         record.Text,
-                        record.Vector.ToArray()));
+                        record.Vector.ToArray(),
+                        record.DocumentTypeCode,
+                        record.Title,
+                        record.PageNumber));
                 }
             }
         }
@@ -202,10 +207,9 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
         }
         else if (!string.IsNullOrEmpty(request.DocumentTypeCode))
         {
-            var matchingDocIds = dbContext.Set<Document>()
-                .Where(d => d.DocumentTypeCode == request.DocumentTypeCode)
-                .Select(d => d.Id);
-            query = query.Where(c => matchingDocIds.Contains(c.DocumentId));
+            // 反范式化（Slice B）后直接用 chunk 行上的 DocumentTypeCode 过滤，
+            // 不再 JOIN PaperbaseDocuments；这是 Slice C 切独立 PgvectorRagDbContext 的前置。
+            query = query.Where(c => c.DocumentTypeCode == request.DocumentTypeCode);
         }
 
         var pgVector = new Vector(request.QueryVector.ToArray());
@@ -214,17 +218,11 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
         // EF.Property<Vector>() accesses the column as Vector so pgvector's
         // CosineDistance SQL translation works correctly.
         var rows = await query
-            .Join(
-                dbContext.Set<Document>().AsNoTracking(),
-                c => c.DocumentId,
-                d => d.Id,
-                (c, d) => new { Chunk = c, Document = d })
-            .OrderBy(c => EF.Property<Vector>(c.Chunk, nameof(DocumentChunk.EmbeddingVector))!.CosineDistance(pgVector))
+            .OrderBy(c => EF.Property<Vector>(c, nameof(DocumentChunk.EmbeddingVector))!.CosineDistance(pgVector))
             .Select(c => new
             {
-                c.Chunk,
-                c.Document.DocumentTypeCode,
-                Distance = EF.Property<Vector>(c.Chunk, nameof(DocumentChunk.EmbeddingVector))!.CosineDistance(pgVector)
+                Chunk = c,
+                Distance = EF.Property<Vector>(c, nameof(DocumentChunk.EmbeddingVector))!.CosineDistance(pgVector)
             })
             .Take(topK)
             .ToListAsync(cancellationToken);
@@ -234,14 +232,14 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
             {
                 RecordId = r.Chunk.Id,
                 DocumentId = r.Chunk.DocumentId,
-                DocumentTypeCode = r.DocumentTypeCode,
+                DocumentTypeCode = r.Chunk.DocumentTypeCode,
                 ChunkIndex = r.Chunk.ChunkIndex,
                 Text = r.Chunk.ChunkText,
                 // Keep legacy cosine similarity semantics while enforcing the
                 // provider contract: Score must stay in [0, 1].
                 Score = Math.Clamp(1.0 - r.Distance, 0.0, 1.0),
-                Title = null,
-                PageNumber = null
+                Title = r.Chunk.Title,
+                PageNumber = r.Chunk.PageNumber
             })
             .ToList();
     }
@@ -271,7 +269,6 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
 
         var dbContext = await _dbContextProvider.GetDbContextAsync();
         var chunkTable = GetDelimitedTableName(dbContext, typeof(DocumentChunk));
-        var documentTable = GetDelimitedTableName(dbContext, typeof(Document));
 
         // Build the SQL with positional parameters. Filter precedence matches
         // SearchVectorAsync: DocumentId wins over DocumentTypeCode, both optional.
@@ -279,6 +276,9 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
         // hidden from the EF model (managed entirely by the GENERATED ALWAYS
         // constraint in PostgreSQL); LINQ translation has no shadow property
         // for it.
+        //
+        // Slice B: keyword 路径同步去 JOIN PaperbaseDocuments——直接读 chunk 行上的反范式
+        // DocumentTypeCode / Title / PageNumber，为 Slice C 切独立 PgvectorRagDbContext 做物理前置。
         var parameters = new List<object>
         {
             request.QueryText,
@@ -293,7 +293,7 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
         }
         else if (!string.IsNullOrEmpty(request.DocumentTypeCode))
         {
-            optionalFilter = $@"AND d.""DocumentTypeCode"" = {{{parameters.Count}}}";
+            optionalFilter = $@"AND c.""DocumentTypeCode"" = {{{parameters.Count}}}";
             parameters.Add(request.DocumentTypeCode);
         }
 
@@ -304,14 +304,15 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
         // (TenantId = null) and explicit-tenant case share the same clause.
         var sql = $@"
             SELECT
-                c.""Id""           AS ""Id"",
-                c.""DocumentId""   AS ""DocumentId"",
-                d.""DocumentTypeCode"" AS ""DocumentTypeCode"",
-                c.""ChunkIndex""   AS ""ChunkIndex"",
-                c.""ChunkText""    AS ""ChunkText"",
+                c.""Id""               AS ""Id"",
+                c.""DocumentId""       AS ""DocumentId"",
+                c.""DocumentTypeCode"" AS ""DocumentTypeCode"",
+                c.""ChunkIndex""       AS ""ChunkIndex"",
+                c.""ChunkText""        AS ""ChunkText"",
+                c.""Title""            AS ""Title"",
+                c.""PageNumber""       AS ""PageNumber"",
                 ts_rank_cd(c.""SearchVector"", plainto_tsquery('simple', {{0}})) AS ""Rank""
             FROM {chunkTable} c
-            INNER JOIN {documentTable} d ON d.""Id"" = c.""DocumentId""
             WHERE c.""SearchVector"" @@ plainto_tsquery('simple', {{0}})
               AND c.""TenantId"" IS NOT DISTINCT FROM CAST({{1}} AS uuid)
               {optionalFilter}
@@ -331,8 +332,8 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
                 ChunkIndex = r.ChunkIndex,
                 Text = r.ChunkText,
                 Score = r.Rank,
-                Title = null,
-                PageNumber = null
+                Title = r.Title,
+                PageNumber = r.PageNumber
             })
             .ToList());
     }
@@ -421,6 +422,8 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
         public string? DocumentTypeCode { get; set; }
         public int ChunkIndex { get; set; }
         public string ChunkText { get; set; } = default!;
+        public string? Title { get; set; }
+        public int? PageNumber { get; set; }
         public double Rank { get; set; }
     }
 }
