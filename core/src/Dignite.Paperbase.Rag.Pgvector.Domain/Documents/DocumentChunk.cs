@@ -1,10 +1,9 @@
 using System;
-using Dignite.Paperbase.Documents;
 using Volo.Abp;
 using Volo.Abp.Domain.Entities.Auditing;
 using Volo.Abp.MultiTenancy;
 
-namespace Dignite.Paperbase.Documents;
+namespace Dignite.Paperbase.Rag.Pgvector.Documents;
 
 /// <summary>
 /// 文档文本分块及其向量表示。独立聚合根，由 Embedding 流水线写入、由 RAG 问答检索。
@@ -71,7 +70,7 @@ public class DocumentChunk : CreationAuditedAggregateRoot<Guid>, IMultiTenant
     {
         if (documentId == Guid.Empty)
         {
-            throw new BusinessException(PaperbaseErrorCodes.DocumentChunkDocumentIdRequired);
+            throw new BusinessException(PgvectorRagErrorCodes.DocumentChunkDocumentIdRequired);
         }
         return documentId;
     }
@@ -80,7 +79,7 @@ public class DocumentChunk : CreationAuditedAggregateRoot<Guid>, IMultiTenant
     {
         if (TenantId != tenantId)
         {
-            throw new BusinessException(PaperbaseErrorCodes.DocumentChunkTenantImmutable)
+            throw new BusinessException(PgvectorRagErrorCodes.DocumentChunkTenantImmutable)
                 .WithData("Existing", FormatTenantId(TenantId))
                 .WithData("Incoming", FormatTenantId(tenantId));
         }
@@ -91,7 +90,7 @@ public class DocumentChunk : CreationAuditedAggregateRoot<Guid>, IMultiTenant
         ValidateDocumentId(documentId);
         if (DocumentId != documentId)
         {
-            throw new BusinessException(PaperbaseErrorCodes.DocumentChunkDocumentImmutable)
+            throw new BusinessException(PgvectorRagErrorCodes.DocumentChunkDocumentImmutable)
                 .WithData("Existing", DocumentId)
                 .WithData("Incoming", documentId);
         }
@@ -101,7 +100,7 @@ public class DocumentChunk : CreationAuditedAggregateRoot<Guid>, IMultiTenant
     {
         if (chunkIndex < 0)
         {
-            throw new BusinessException(PaperbaseErrorCodes.DocumentChunkIndexOutOfRange)
+            throw new BusinessException(PgvectorRagErrorCodes.DocumentChunkIndexOutOfRange)
                 .WithData("ChunkIndex", chunkIndex);
         }
         return chunkIndex;
@@ -112,7 +111,7 @@ public class DocumentChunk : CreationAuditedAggregateRoot<Guid>, IMultiTenant
         Check.NotNull(embeddingVector, nameof(embeddingVector));
         if (embeddingVector.Length != PaperbaseDbProperties.EmbeddingVectorDimension)
         {
-            throw new BusinessException(PaperbaseErrorCodes.EmbeddingDimensionMismatch)
+            throw new BusinessException(PgvectorRagErrorCodes.EmbeddingDimensionMismatch)
                 .WithData("Expected", PaperbaseDbProperties.EmbeddingVectorDimension)
                 .WithData("Actual", embeddingVector.Length);
         }

@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Rag.Pgvector.Documents;
 using Microsoft.EntityFrameworkCore;
 using Pgvector;
 using Volo.Abp;

@@ -1,4 +1,6 @@
 using System;
+using Dignite.Paperbase.Rag.Pgvector;
+using Dignite.Paperbase.Rag.Pgvector.Documents;
 using Shouldly;
 using Volo.Abp;
 using Xunit;
@@ -15,7 +17,7 @@ public class DocumentChunkTests
         var exception = Should.Throw<BusinessException>(() =>
             chunk.UpdateRecord(Guid.NewGuid(), chunk.DocumentId, 1, "updated", MakeVector(0.2f)));
 
-        exception.Code.ShouldBe(PaperbaseErrorCodes.DocumentChunkTenantImmutable);
+        exception.Code.ShouldBe(PgvectorRagErrorCodes.DocumentChunkTenantImmutable);
     }
 
     [Fact]
@@ -26,7 +28,7 @@ public class DocumentChunkTests
         var exception = Should.Throw<BusinessException>(() =>
             chunk.UpdateRecord(chunk.TenantId, Guid.NewGuid(), 1, "updated", MakeVector(0.2f)));
 
-        exception.Code.ShouldBe(PaperbaseErrorCodes.DocumentChunkDocumentImmutable);
+        exception.Code.ShouldBe(PgvectorRagErrorCodes.DocumentChunkDocumentImmutable);
     }
 
     [Fact]

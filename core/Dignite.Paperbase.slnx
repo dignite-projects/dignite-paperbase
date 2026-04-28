@@ -14,6 +14,8 @@
         <Project Path="src/Dignite.Paperbase.Ocr/Dignite.Paperbase.Ocr.csproj" />
         <Project Path="src/Dignite.Paperbase.Rag/Dignite.Paperbase.Rag.csproj" />
         <Project Path="src/Dignite.Paperbase.Rag.Pgvector/Dignite.Paperbase.Rag.Pgvector.csproj" />
+        <Project Path="src/Dignite.Paperbase.Rag.Pgvector.Domain/Dignite.Paperbase.Rag.Pgvector.Domain.csproj" />
+        <Project Path="src/Dignite.Paperbase.Rag.Pgvector.Domain.Shared/Dignite.Paperbase.Rag.Pgvector.Domain.Shared.csproj" />
         <Project Path="src/Dignite.Paperbase.TextExtraction/Dignite.Paperbase.TextExtraction.csproj" />
     </Folder>
     

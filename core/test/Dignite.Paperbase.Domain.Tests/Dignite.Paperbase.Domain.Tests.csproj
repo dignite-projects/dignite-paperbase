@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Dignite.Paperbase.Domain\Dignite.Paperbase.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Dignite.Paperbase.Rag.Pgvector.Domain\Dignite.Paperbase.Rag.Pgvector.Domain.csproj" />
     <ProjectReference Include="..\Dignite.Paperbase.TestBase\Dignite.Paperbase.TestBase.csproj" />
   </ItemGroup>
 

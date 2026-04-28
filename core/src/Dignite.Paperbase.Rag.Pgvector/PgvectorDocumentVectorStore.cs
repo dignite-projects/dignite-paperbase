@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.EntityFrameworkCore;
+using Dignite.Paperbase.Rag.Pgvector.Documents;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;

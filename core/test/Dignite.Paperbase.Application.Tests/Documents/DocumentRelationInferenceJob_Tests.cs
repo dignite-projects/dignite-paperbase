@@ -7,6 +7,7 @@ using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Rag;
+using Dignite.Paperbase.Rag.Pgvector.Documents;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;

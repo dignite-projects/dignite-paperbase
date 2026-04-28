@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Dignite.Paperbase.Rag\Dignite.Paperbase.Rag.csproj" />
+    <ProjectReference Include="..\Dignite.Paperbase.Rag.Pgvector.Domain\Dignite.Paperbase.Rag.Pgvector.Domain.csproj" />
     <ProjectReference Include="..\Dignite.Paperbase.EntityFrameworkCore\Dignite.Paperbase.EntityFrameworkCore.csproj" />
   </ItemGroup>
 

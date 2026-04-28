@@ -23,6 +23,8 @@
     <ProjectReference Include="..\Dignite.Paperbase.Application.Contracts\Dignite.Paperbase.Application.Contracts.csproj" />
     <ProjectReference Include="..\Dignite.Paperbase.Domain\Dignite.Paperbase.Domain.csproj" />
     <ProjectReference Include="..\Dignite.Paperbase.Rag\Dignite.Paperbase.Rag.csproj" />
+    <!-- TEMP (Slice A → Slice G): DocumentRelationInferenceBackgroundJob 仍直接 inject IDocumentChunkRepository；Slice G 切到 IDocumentVectorStore.SearchSimilarDocumentsAsync 后移除此引用。 -->
+    <ProjectReference Include="..\Dignite.Paperbase.Rag.Pgvector.Domain\Dignite.Paperbase.Rag.Pgvector.Domain.csproj" />
   </ItemGroup>
 
 </Project>

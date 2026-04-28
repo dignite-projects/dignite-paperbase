@@ -6,6 +6,7 @@ using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Rag;
+using Dignite.Paperbase.Rag.Pgvector.Documents;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Volo.Abp.BackgroundJobs;
