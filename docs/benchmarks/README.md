@@ -108,6 +108,38 @@ git add docs/design/rag-hybrid-benchmark-2026Q2.md
 git commit -m "docs(rag): production hybrid benchmark results"
 ```
 
+## Query design rules for the gold dataset
+
+### Precise-text queries must be pure identifiers
+
+Write precise-text queries as the bare ID the user would search for, **not** as a natural-language sentence with an embedded ID:
+
+```
+✅  CNT-2025-0001
+✅  契約番号 CNT-2025-0001 委託料        ← space-separated tokens
+❌  CNT-2025-0001の委託料はいくらですか   ← "の委託料はいくらですか" is a huge
+                                          single token that won't match any chunk
+```
+
+`plainto_tsquery('simple', ...)` requires **all** parsed tokens to appear in the chunk's `SearchVector`. Japanese text with no spaces becomes one giant token. If the query contains Japanese after the ASCII ID, the `@@` match fails silently and the keyword path returns nothing — making Hybrid identical to Vector.
+
+### ASCII identifiers need a space before them in chunk text
+
+The `simple` regconfig tokenizes `契約番号CNT-2025-0001` (no space) as a **single** token `契約番号cnt-2025-0001`, not as three tokens `'cnt' & '-2025' & '-0001'`. This breaks keyword matching.
+
+Ensure the chunking pipeline (or your hand-written corpus) puts a space between Japanese text and the ASCII identifier:
+
+```
+✅  契約番号 CNT-2025-0001 。
+❌  契約番号CNT-2025-0001。
+```
+
+### Schema sync: benchmark SQL must match the current entity schema
+
+`ProductionHybridSearchBenchmark.cs` uses raw ADO.NET INSERTs that name columns explicitly. When the `Document` or `DocumentChunk` entity changes (columns renamed, added, or removed), the benchmark SQL **does not break at compile time** — it only fails at runtime with a Postgres `42703` error.
+
+If you rename a column in the domain entity, update the corresponding column list in `SeedDocumentsAsync` / `SeedChunksAsync` in the benchmark file as well.
+
 ## Troubleshooting
 
 | Symptom | Likely cause |
@@ -115,9 +147,10 @@ git commit -m "docs(rag): production hybrid benchmark results"
 | Test skips immediately | `PAPERBASE_BENCH_PGCONN` not set |
 | `relation "PaperbaseDocumentChunks" does not exist` | Migrations not applied — run DbMigrator first |
 | `column "SearchVector" of relation ... does not exist` | Migration `20260428004038_Slice7_AddDocumentChunkSearchVector` not applied |
+| `column "XYZ" of relation "PaperbaseDocuments" does not exist` | Domain entity was changed — update `SeedDocumentsAsync` column list to match |
+| Hybrid == Vector (identical scores) | Keyword path returning no rows — check query design (pure-ID queries) and chunk text spacing (space before ASCII IDs) |
 | Vector search returns no results | Embeddings in dataset may be all-zero placeholders — regenerate with real model |
-| Keyword search returns no results | `plainto_tsquery('simple', ...)` finds no matches — check regconfig and text encoding |
-| Unique constraint on `FileOrigin_ContentHash` | Two benchmark runs overlapped — the previous run's cleanup failed; delete stale rows manually with `DELETE FROM "PaperbaseDocuments" WHERE "OriginalFileBlobName" LIKE 'bench:%'` |
+| Unique constraint on `OriginalFileBlobName` | Previous run's cleanup failed; delete stale rows with `DELETE FROM "PaperbaseDocuments" WHERE "OriginalFileBlobName" LIKE 'bench:%'` |
 
 ## Re-running
 
