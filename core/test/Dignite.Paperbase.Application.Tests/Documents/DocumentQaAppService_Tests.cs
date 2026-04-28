@@ -153,6 +153,51 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
     }
 
     [Fact]
+    public async Task Default_Search_Mode_Is_Vector_And_QueryText_Is_Forwarded()
+    {
+        // Slice 7 守护：Application 不再硬编码 Mode = Vector，而是从 PaperbaseRagOptions
+        // 读取。默认值是 Vector，所以现有行为不变；切到 Hybrid 必须只是配置改动。
+        // 同时验证 QueryText 一直被透传，让 Hybrid / Keyword provider 都能拿到原始问题。
+        VectorSearchRequest? captured = null;
+        _vectorStore
+            .SearchAsync(Arg.Do<VectorSearchRequest>(r => captured = r), Arg.Any<CancellationToken>())
+            .Returns(new List<VectorSearchResult>());
+
+        await _qaAppService.GlobalAskAsync(new GlobalAskInput { Question = "契約番号 ABC-001 はいくらですか？" });
+
+        captured.ShouldNotBeNull();
+        captured!.Mode.ShouldBe(VectorSearchMode.Vector);
+        captured.QueryText.ShouldBe("契約番号 ABC-001 はいくらですか？");
+    }
+
+    [Fact]
+    public async Task Configured_Hybrid_Mode_Is_Forwarded_To_VectorStore()
+    {
+        // 翻 PaperbaseRagOptions.DefaultSearchMode 为 Hybrid 之后，Application 必须
+        // 把 Mode = Hybrid 透传到 provider；这是切到混合检索的唯一入口。
+        var ragOptions = GetRequiredService<IOptions<PaperbaseRagOptions>>().Value;
+        var originalMode = ragOptions.DefaultSearchMode;
+        ragOptions.DefaultSearchMode = VectorSearchMode.Hybrid;
+
+        try
+        {
+            VectorSearchRequest? captured = null;
+            _vectorStore
+                .SearchAsync(Arg.Do<VectorSearchRequest>(r => captured = r), Arg.Any<CancellationToken>())
+                .Returns(new List<VectorSearchResult>());
+
+            await _qaAppService.GlobalAskAsync(new GlobalAskInput { Question = "ANYTHING" });
+
+            captured.ShouldNotBeNull();
+            captured!.Mode.ShouldBe(VectorSearchMode.Hybrid);
+        }
+        finally
+        {
+            ragOptions.DefaultSearchMode = originalMode;
+        }
+    }
+
+    [Fact]
     public async Task GlobalAsk_Filters_Chunks_Below_QaMinScore()
     {
         // 默认 QaMinScore = 0.65；构造一组结果只有"远低于阈值"的低相似度 chunk。

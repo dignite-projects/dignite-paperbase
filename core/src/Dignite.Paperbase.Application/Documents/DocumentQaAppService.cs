@@ -23,6 +23,7 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
     private readonly DocumentRerankWorkflow _rerankWorkflow;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
     private readonly PaperbaseAIOptions _aiOptions;
+    private readonly PaperbaseRagOptions _ragOptions;
 
     public DocumentQaAppService(
         IDocumentRepository documentRepository,
@@ -30,7 +31,8 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
         DocumentQaWorkflow qaWorkflow,
         DocumentRerankWorkflow rerankWorkflow,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
-        IOptions<PaperbaseAIOptions> aiOptions)
+        IOptions<PaperbaseAIOptions> aiOptions,
+        IOptions<PaperbaseRagOptions> ragOptions)
     {
         _documentRepository = documentRepository;
         _vectorStore = vectorStore;
@@ -38,6 +40,7 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
         _rerankWorkflow = rerankWorkflow;
         _embeddingGenerator = embeddingGenerator;
         _aiOptions = aiOptions.Value;
+        _ragOptions = ragOptions.Value;
     }
 
     public virtual async Task<QaResultDto> AskAsync(Guid documentId, AskDocumentInput input)
@@ -135,14 +138,19 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
             : finalTopK * Math.Max(1, baselineMultiplier);
 
         var questionEmbeddings = await _embeddingGenerator.GenerateAsync([question]);
+        // QueryText is always passed so providers running in Hybrid / Keyword mode
+        // have a textual query available; Vector-only providers ignore it.
+        // Mode comes from PaperbaseRagOptions.DefaultSearchMode (Vector by default)
+        // so flipping to Hybrid is a config change, not a code change.
         var request = new VectorSearchRequest
         {
             QueryVector = questionEmbeddings[0].Vector,
+            QueryText = question,
             TopK = recallTopK,
             DocumentId = documentId,
             DocumentTypeCode = documentTypeCode,
             MinScore = _aiOptions.QaMinScore > 0 ? _aiOptions.QaMinScore : null,
-            Mode = VectorSearchMode.Vector
+            Mode = _ragOptions.DefaultSearchMode
         };
 
         var rawResults = await _vectorStore.SearchForCurrentTenantAsync(CurrentTenant, request);
