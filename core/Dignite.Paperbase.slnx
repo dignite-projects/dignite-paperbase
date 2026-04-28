@@ -13,7 +13,6 @@
         <Project Path="src/Dignite.Paperbase.Ocr.AzureDocumentIntelligence/Dignite.Paperbase.Ocr.AzureDocumentIntelligence.csproj" />
         <Project Path="src/Dignite.Paperbase.Ocr/Dignite.Paperbase.Ocr.csproj" />
         <Project Path="src/Dignite.Paperbase.Rag/Dignite.Paperbase.Rag.csproj" />
-        <Project Path="src/Dignite.Paperbase.Rag.AgentFramework/Dignite.Paperbase.Rag.AgentFramework.csproj" />
         <Project Path="src/Dignite.Paperbase.Rag.Pgvector/Dignite.Paperbase.Rag.Pgvector.csproj" />
         <Project Path="src/Dignite.Paperbase.TextExtraction/Dignite.Paperbase.TextExtraction.csproj" />
     </Folder>

@@ -1,7 +1,7 @@
 using System;
 using Dignite.Paperbase.Rag;
 
-namespace Dignite.Paperbase.Rag.AgentFramework;
+namespace Dignite.Paperbase.Documents.AI;
 
 /// <summary>
 /// Optional per-call overrides for <see cref="DocumentTextSearchAdapter"/>. Anything

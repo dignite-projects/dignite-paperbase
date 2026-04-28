@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.Rag;
-using Dignite.Paperbase.Rag.AgentFramework;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,9 +17,7 @@ using Xunit;
 
 namespace Dignite.Paperbase.Documents;
 
-[DependsOn(
-    typeof(PaperbaseApplicationTestModule),
-    typeof(PaperbaseRagAgentFrameworkModule))]
+[DependsOn(typeof(PaperbaseApplicationTestModule))]
 public class DocumentTextSearchAdapterTestModule : AbpModule
 {
     public override void ConfigureServices(ServiceConfigurationContext context)

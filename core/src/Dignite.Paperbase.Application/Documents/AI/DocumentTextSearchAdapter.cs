@@ -10,7 +10,7 @@ using Microsoft.Extensions.Options;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.MultiTenancy;
 
-namespace Dignite.Paperbase.Rag.AgentFramework;
+namespace Dignite.Paperbase.Documents.AI;
 
 /// <summary>
 /// Bridges <see cref="IDocumentVectorStore"/> to Microsoft Agent Framework's
