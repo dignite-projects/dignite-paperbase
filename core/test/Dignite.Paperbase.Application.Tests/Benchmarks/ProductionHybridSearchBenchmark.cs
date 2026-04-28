@@ -9,6 +9,7 @@ using Dignite.Paperbase.EntityFrameworkCore;
 using Dignite.Paperbase.Rag;
 using Dignite.Paperbase.Rag.Pgvector;
 using Dignite.Paperbase.Rag.Pgvector.Documents;
+using Dignite.Paperbase.Rag.Pgvector.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using NSubstitute;
 using Npgsql.EntityFrameworkCore.PostgreSQL;
@@ -59,12 +60,16 @@ public class ProductionHybridSearchBenchmark
         _output.WriteLine($"Dataset: {dataset.Chunks.Count} chunks, {dataset.Queries.Count} queries.");
 
         var benchmarkTenantId = Guid.NewGuid();
-        await using var dbContext = CreateDbContext(connStr);
-        var vectorStore = CreateVectorStore(dbContext);
+        // Slice C 起 chunks 与 documents 物理上属于不同 DbContext，但 benchmark 只验向量检索行为，
+        // 仍可让两者共用同一物理库（同 connection string）。两个 context 各自持有连接，
+        // SaveChanges 互不影响——不依赖 ABP UoW。
+        await using var paperbaseDbContext = CreatePaperbaseDbContext(connStr);
+        await using var pgvectorRagDbContext = CreatePgvectorRagDbContext(connStr);
+        var vectorStore = CreateVectorStore(pgvectorRagDbContext);
 
         try
         {
-            await SeedAsync(dbContext, dataset, benchmarkTenantId);
+            await SeedAsync(paperbaseDbContext, pgvectorRagDbContext, dataset, benchmarkTenantId);
 
             var vectorResults = await RunQueriesAsync(vectorStore, dataset, benchmarkTenantId, VectorSearchMode.Vector);
             var hybridResults = await RunQueriesAsync(vectorStore, dataset, benchmarkTenantId, VectorSearchMode.Hybrid);
@@ -80,11 +85,11 @@ public class ProductionHybridSearchBenchmark
         }
         finally
         {
-            await CleanupAsync(dbContext, benchmarkTenantId);
+            await CleanupAsync(paperbaseDbContext, pgvectorRagDbContext, benchmarkTenantId);
         }
     }
 
-    private static PaperbaseDbContext CreateDbContext(string connStr)
+    private static PaperbaseDbContext CreatePaperbaseDbContext(string connStr)
     {
         var options = new DbContextOptionsBuilder<PaperbaseDbContext>()
             .UseNpgsql(connStr, o => o.UseVector())
@@ -93,7 +98,20 @@ public class ProductionHybridSearchBenchmark
         return new PaperbaseDbContext(options);
     }
 
-    private static IDocumentVectorStore CreateVectorStore(PaperbaseDbContext dbContext)
+    private static PgvectorRagDbContext CreatePgvectorRagDbContext(string connStr)
+    {
+        var options = new DbContextOptionsBuilder<PgvectorRagDbContext>()
+            .UseNpgsql(connStr, o =>
+            {
+                o.UseVector();
+                o.MigrationsHistoryTable(PgvectorRagDbProperties.MigrationsHistoryTableName);
+            })
+            .Options;
+
+        return new PgvectorRagDbContext(options);
+    }
+
+    private static IDocumentVectorStore CreateVectorStore(PgvectorRagDbContext dbContext)
     {
         return new PgvectorDocumentVectorStore(
             new StaticDbContextProvider(dbContext),
@@ -104,13 +122,16 @@ public class ProductionHybridSearchBenchmark
     // Seeding
 
     private static async Task SeedAsync(
-        PaperbaseDbContext dbContext,
+        PaperbaseDbContext paperbaseDbContext,
+        PgvectorRagDbContext pgvectorRagDbContext,
         ProductionBenchmarkDataset dataset,
         Guid tenantId)
     {
-        var documentIds = SeedDocuments(dbContext, dataset, tenantId);
-        SeedChunks(dbContext, dataset, documentIds, tenantId);
-        await dbContext.SaveChangesAsync();
+        var documentIds = SeedDocuments(paperbaseDbContext, dataset, tenantId);
+        await paperbaseDbContext.SaveChangesAsync();
+
+        SeedChunks(pgvectorRagDbContext, dataset, documentIds, tenantId);
+        await pgvectorRagDbContext.SaveChangesAsync();
     }
 
     private static Dictionary<string, Guid> SeedDocuments(
@@ -153,7 +174,7 @@ public class ProductionHybridSearchBenchmark
     }
 
     private static void SeedChunks(
-        PaperbaseDbContext dbContext,
+        PgvectorRagDbContext dbContext,
         ProductionBenchmarkDataset dataset,
         IReadOnlyDictionary<string, Guid> documentIds,
         Guid tenantId)
@@ -383,32 +404,35 @@ public class ProductionHybridSearchBenchmark
 
     // Cleanup
 
-    private static async Task CleanupAsync(PaperbaseDbContext dbContext, Guid tenantId)
+    private static async Task CleanupAsync(
+        PaperbaseDbContext paperbaseDbContext,
+        PgvectorRagDbContext pgvectorRagDbContext,
+        Guid tenantId)
     {
-        await dbContext.Set<DocumentChunk>()
+        await pgvectorRagDbContext.Set<DocumentChunk>()
             .Where(c => c.TenantId == tenantId)
             .ExecuteDeleteAsync();
 
-        await dbContext.Set<Document>()
+        await paperbaseDbContext.Set<Document>()
             .Where(d => d.TenantId == tenantId)
             .ExecuteDeleteAsync();
     }
 
-    private sealed class StaticDbContextProvider : IDbContextProvider<PaperbaseDbContext>
+    private sealed class StaticDbContextProvider : IDbContextProvider<PgvectorRagDbContext>
     {
-        private readonly PaperbaseDbContext _dbContext;
+        private readonly PgvectorRagDbContext _dbContext;
 
-        public StaticDbContextProvider(PaperbaseDbContext dbContext)
+        public StaticDbContextProvider(PgvectorRagDbContext dbContext)
         {
             _dbContext = dbContext;
         }
 
-        public PaperbaseDbContext GetDbContext()
+        public PgvectorRagDbContext GetDbContext()
         {
             return _dbContext;
         }
 
-        public Task<PaperbaseDbContext> GetDbContextAsync()
+        public Task<PgvectorRagDbContext> GetDbContextAsync()
         {
             return Task.FromResult(_dbContext);
         }

@@ -85,7 +85,12 @@ public static class PaperbaseDbContextModelCreatingExtensions
 
         builder.Entity<DocumentChunk>(b =>
         {
-            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "DocumentChunks", PaperbaseDbProperties.DbSchema);
+            // Slice C：chunk 表的 EF 迁移所有权已转移到独立的 PgvectorRagDbContext。
+            // 主 PaperbaseDbContext 仍保留 mapping（避免读旧数据时 navigation 等失效），
+            // 但 ExcludeFromMigrations 防止 host migration diff（PaperbaseHostDbContext 走的是
+            // 这条路径）和 RelationalDatabaseCreator.CreateTables 重复创建表 / 索引。
+            // Slice D cutover 后会从主 context 彻底移除该 mapping。
+            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "DocumentChunks", PaperbaseDbProperties.DbSchema, t => t.ExcludeFromMigrations());
             b.ConfigureByConvention();
 
             b.Property(x => x.ChunkText)

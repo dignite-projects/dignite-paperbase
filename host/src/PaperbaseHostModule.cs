@@ -7,6 +7,7 @@ using Dignite.Paperbase.Host.Localization;
 using Dignite.Paperbase.Localization;
 using Dignite.Paperbase.Ocr.AzureDocumentIntelligence;
 using Dignite.Paperbase.Rag.Pgvector;
+using Dignite.Paperbase.Rag.Pgvector.EntityFrameworkCore;
 using Dignite.Paperbase.TextExtraction;
 using Microsoft.Extensions.AI;
 using Microsoft.EntityFrameworkCore;
@@ -121,6 +122,7 @@ namespace Dignite.Paperbase.Host;
     typeof(PaperbaseTextExtractionModule),
     typeof(PaperbaseAzureDocumentIntelligenceModule),
     typeof(PgvectorRagModule),
+    typeof(PgvectorRagEntityFrameworkCoreModule),
 
     // Paperbase business modules
     typeof(ContractsHttpApiModule),
