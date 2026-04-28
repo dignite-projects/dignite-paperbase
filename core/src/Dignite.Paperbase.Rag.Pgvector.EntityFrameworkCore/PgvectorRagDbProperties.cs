@@ -25,6 +25,14 @@ public static class PgvectorRagDbProperties
     public const string ConnectionStringName = "PaperbaseRag";
 
     /// <summary>
+    /// pgvector <c>vector(N)</c> 列的向量维度。
+    /// 与 <see cref="Dignite.Paperbase.Rag.Pgvector.Documents.DocumentChunkConsts.EmbeddingVectorDimension"/>
+    /// 保持同值，供 EF Core model-creating 配置直接引用。
+    /// </summary>
+    public const int EmbeddingVectorDimension =
+        Dignite.Paperbase.Rag.Pgvector.Documents.DocumentChunkConsts.EmbeddingVectorDimension;
+
+    /// <summary>
     /// 独立的 EF Core 迁移历史表名。
     /// <para>
     /// EF Core 默认所有 DbContext 共用 <c>__EFMigrationsHistory</c>——两个 context 不显式配置

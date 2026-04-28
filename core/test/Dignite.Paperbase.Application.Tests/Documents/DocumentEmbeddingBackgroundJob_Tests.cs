@@ -25,7 +25,7 @@ public class DocumentEmbeddingJobTestModule : AbpModule
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
         context.Services.AddSingleton(Substitute.For<IDocumentRepository>());
-        context.Services.AddSingleton(Substitute.For<IDocumentVectorStore>());
+        context.Services.AddSingleton(Substitute.For<IDocumentKnowledgeIndex>());
         context.Services.AddSingleton(Substitute.For<IBackgroundJobManager>());
 
         // TextChunker is a real DI-resolved service; replace the workflow itself with a mock
@@ -39,7 +39,7 @@ public class DocumentEmbeddingJobTestModule : AbpModule
 
 /// <summary>
 /// DocumentEmbeddingBackgroundJob 行为测试：守护 Slice 6 — 写入路径切换到
-/// <see cref="IDocumentVectorStore"/> 抽象。重点关注：
+/// <see cref="IDocumentKnowledgeIndex"/> 抽象。重点关注：
 ///   - 重建 embedding 时先 DeleteByDocumentIdAsync 再 UpsertAsync（顺序与幂等性）
 ///   - DocumentVectorRecord 的 TenantId / DocumentId / DocumentTypeCode 来自 Document 显式拷贝，
 ///     不依赖 ABP ambient ICurrentTenant —— Hangfire job 场景下 ambient 不一定有值。
@@ -49,7 +49,7 @@ public class DocumentEmbeddingBackgroundJob_Tests
 {
     private readonly DocumentEmbeddingBackgroundJob _job;
     private readonly IDocumentRepository _documentRepository;
-    private readonly IDocumentVectorStore _vectorStore;
+    private readonly IDocumentKnowledgeIndex _vectorStore;
     private readonly DocumentEmbeddingWorkflow _workflow;
     private readonly IBackgroundJobManager _backgroundJobManager;
 
@@ -57,7 +57,7 @@ public class DocumentEmbeddingBackgroundJob_Tests
     {
         _job = GetRequiredService<DocumentEmbeddingBackgroundJob>();
         _documentRepository = GetRequiredService<IDocumentRepository>();
-        _vectorStore = GetRequiredService<IDocumentVectorStore>();
+        _vectorStore = GetRequiredService<IDocumentKnowledgeIndex>();
         _workflow = GetRequiredService<DocumentEmbeddingWorkflow>();
         _backgroundJobManager = GetRequiredService<IBackgroundJobManager>();
     }

@@ -28,7 +28,7 @@ public class DocumentQaAppServiceTestModule : AbpModule
             Substitute.For<IDocumentRepository>());
 
         context.Services.AddSingleton(
-            Substitute.For<IDocumentVectorStore>());
+            Substitute.For<IDocumentKnowledgeIndex>());
 
         context.Services.AddSingleton(
             Substitute.For<IChatClient>());
@@ -59,7 +59,7 @@ public class DocumentQaAppServiceTestModule : AbpModule
 public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQaAppServiceTestModule>
 {
     private readonly IDocumentQaAppService _qaAppService;
-    private readonly IDocumentVectorStore _vectorStore;
+    private readonly IDocumentKnowledgeIndex _vectorStore;
     private readonly DocumentQaWorkflow _qaWorkflow;
     private readonly DocumentRerankWorkflow _rerankWorkflow;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
@@ -67,7 +67,7 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
     public DocumentQaAppService_Tests()
     {
         _qaAppService = GetRequiredService<IDocumentQaAppService>();
-        _vectorStore = GetRequiredService<IDocumentVectorStore>();
+        _vectorStore = GetRequiredService<IDocumentKnowledgeIndex>();
         _qaWorkflow = GetRequiredService<DocumentQaWorkflow>();
         _rerankWorkflow = GetRequiredService<DocumentRerankWorkflow>();
         _embeddingGenerator = GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
@@ -205,7 +205,7 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
         var originalMode = ragOptions.DefaultSearchMode;
         ragOptions.DefaultSearchMode = VectorSearchMode.Hybrid;
 
-        _vectorStore.Capabilities.Returns(new VectorStoreCapabilities
+        _vectorStore.Capabilities.Returns(new DocumentKnowledgeIndexCapabilities
         {
             SupportsVectorSearch = true,
             SupportsKeywordSearch = true,
@@ -237,7 +237,7 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
     [Fact]
     public async Task GlobalAsk_Does_Not_Apply_MinScore_When_Provider_Does_Not_Normalize_Score()
     {
-        _vectorStore.Capabilities.Returns(new VectorStoreCapabilities
+        _vectorStore.Capabilities.Returns(new DocumentKnowledgeIndexCapabilities
         {
             SupportsVectorSearch = true,
             SupportsKeywordSearch = true,
@@ -281,7 +281,7 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
     [Fact]
     public async Task GlobalAsk_Rejects_Provider_Without_Structured_Filter()
     {
-        _vectorStore.Capabilities.Returns(new VectorStoreCapabilities
+        _vectorStore.Capabilities.Returns(new DocumentKnowledgeIndexCapabilities
         {
             SupportsVectorSearch = true,
             SupportsKeywordSearch = true,
@@ -452,7 +452,7 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
 
     private void SetupDefaultCapabilities()
     {
-        _vectorStore.Capabilities.Returns(new VectorStoreCapabilities
+        _vectorStore.Capabilities.Returns(new DocumentKnowledgeIndexCapabilities
         {
             SupportsVectorSearch = true,
             SupportsKeywordSearch = true,

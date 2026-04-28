@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Rag.Pgvector;
 using Dignite.Paperbase.Rag.Pgvector.Documents;
 using Microsoft.EntityFrameworkCore;
 using Pgvector;
@@ -48,7 +49,7 @@ public static class PgvectorRagDbContextModelCreatingExtensions
                 // HasConversion 负责在写入/读取时转换，CosineDistance 查询仍由 EFCore repository 通过 EF.Property<Vector>() 完成。
                 b.Property(x => x.EmbeddingVector)
                     .IsRequired()
-                    .HasColumnType($"vector({PaperbaseDbProperties.EmbeddingVectorDimension})")
+                    .HasColumnType($"vector({PgvectorRagDbProperties.EmbeddingVectorDimension})")
                     .HasConversion(
                         v => new Vector(v),
                         v => v.ToArray());

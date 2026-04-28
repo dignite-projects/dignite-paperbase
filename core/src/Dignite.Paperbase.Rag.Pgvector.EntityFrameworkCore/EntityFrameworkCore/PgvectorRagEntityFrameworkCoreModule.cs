@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.EntityFrameworkCore;
 using Volo.Abp.Modularity;
+using Dignite.Paperbase.Rag;
 
 namespace Dignite.Paperbase.Rag.Pgvector.EntityFrameworkCore;
 
@@ -28,6 +29,22 @@ namespace Dignite.Paperbase.Rag.Pgvector.EntityFrameworkCore;
     typeof(AbpEntityFrameworkCoreModule))]
 public class PgvectorRagEntityFrameworkCoreModule : AbpModule
 {
+    public override void PostConfigureServices(ServiceConfigurationContext context)
+    {
+        // 把"配置维度 == pgvector schema 维度"作为启动期不变量校验。
+        // DocumentChunkConsts.EmbeddingVectorDimension 是 schema 的唯一权威来源（vector(N) 列）；
+        // 切换 embedding 模型时必须同步修改该常量并新增 PgvectorRagDbContext Migration。
+        context.Services
+            .AddOptions<PaperbaseRagOptions>()
+            .Validate(
+                o => o.EmbeddingDimension == DocumentChunkConsts.EmbeddingVectorDimension,
+                $"PaperbaseRag:EmbeddingDimension must equal DocumentChunkConsts.EmbeddingVectorDimension " +
+                $"({DocumentChunkConsts.EmbeddingVectorDimension}). " +
+                $"Switching the embedding model requires updating DocumentChunkConsts and generating " +
+                $"a new EF Core migration for PgvectorRagDbContext.")
+            .ValidateOnStart();
+    }
+
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
         context.Services.AddAbpDbContext<PgvectorRagDbContext>(options =>

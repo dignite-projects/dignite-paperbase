@@ -25,7 +25,7 @@ public class DocumentRelationInferenceJobTestModule : AbpModule
     {
         context.Services.AddSingleton(Substitute.For<IDocumentRepository>());
         context.Services.AddSingleton(Substitute.For<IDocumentChunkRepository>());
-        context.Services.AddSingleton(Substitute.For<IDocumentVectorStore>());
+        context.Services.AddSingleton(Substitute.For<IDocumentKnowledgeIndex>());
         context.Services.AddSingleton(Substitute.For<IDocumentRelationRepository>());
 
         var workflow = Substitute.ForPartsOf<DocumentRelationInferenceWorkflow>(
@@ -46,7 +46,7 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
     private readonly DocumentRelationInferenceBackgroundJob _job;
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentChunkRepository _chunkRepository;
-    private readonly IDocumentVectorStore _vectorStore;
+    private readonly IDocumentKnowledgeIndex _vectorStore;
     private readonly IDocumentRelationRepository _relationRepository;
     private readonly DocumentRelationInferenceWorkflow _workflow;
 
@@ -55,7 +55,7 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
         _job = GetRequiredService<DocumentRelationInferenceBackgroundJob>();
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _chunkRepository = GetRequiredService<IDocumentChunkRepository>();
-        _vectorStore = GetRequiredService<IDocumentVectorStore>();
+        _vectorStore = GetRequiredService<IDocumentKnowledgeIndex>();
         _relationRepository = GetRequiredService<IDocumentRelationRepository>();
         _workflow = GetRequiredService<DocumentRelationInferenceWorkflow>();
 

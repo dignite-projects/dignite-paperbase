@@ -6,11 +6,11 @@ using Volo.Abp.MultiTenancy;
 namespace Dignite.Paperbase.Rag;
 
 /// <summary>
-/// Convenience extensions for <see cref="IDocumentVectorStore"/>.
-/// Lives in the Rag layer so all callers (Application, Workflows, future Agent adapters)
-/// share one implementation instead of each writing their own tenant-filling boilerplate.
+/// Application-layer convenience extensions for <see cref="IDocumentKnowledgeIndex"/>.
+/// Requires <see cref="ICurrentTenant"/>, so lives in the Application layer rather than
+/// the Rag abstraction layer (which has no MultiTenancy dependency).
 /// </summary>
-public static class DocumentVectorStoreExtensions
+public static class DocumentKnowledgeIndexApplicationExtensions
 {
     /// <summary>
     /// Execute a search pre-filled with the tenant from <paramref name="currentTenant"/>.
@@ -19,12 +19,12 @@ public static class DocumentVectorStoreExtensions
     /// explicitly instead.
     /// </summary>
     public static Task<IReadOnlyList<VectorSearchResult>> SearchForCurrentTenantAsync(
-        this IDocumentVectorStore store,
+        this IDocumentKnowledgeIndex index,
         ICurrentTenant currentTenant,
         VectorSearchRequest request,
         CancellationToken cancellationToken = default)
     {
         var requestWithTenant = request with { TenantId = currentTenant.Id };
-        return store.SearchAsync(requestWithTenant, cancellationToken);
+        return index.SearchAsync(requestWithTenant, cancellationToken);
     }
 }

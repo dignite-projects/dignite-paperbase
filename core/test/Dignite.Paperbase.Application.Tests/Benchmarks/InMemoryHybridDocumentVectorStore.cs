@@ -9,7 +9,7 @@ using Dignite.Paperbase.Rag;
 namespace Dignite.Paperbase.Documents.Benchmarks;
 
 /// <summary>
-/// Synthetic <see cref="IDocumentVectorStore"/> for the hybrid-search benchmark.
+/// Synthetic <see cref="IDocumentKnowledgeIndex"/> for the hybrid-search benchmark.
 /// Skips the real embedding / Postgres path entirely so the harness runs without
 /// external services.
 ///
@@ -38,14 +38,14 @@ namespace Dignite.Paperbase.Documents.Benchmarks;
 /// PostgreSQL ts_rank_cd (no IDF weighting), recall@K saturation under millions
 /// of chunks. Production validation with real data is the follow-up issue.
 /// </summary>
-public class InMemoryHybridDocumentVectorStore : IDocumentVectorStore
+public class InMemoryHybridDocumentVectorStore : IDocumentKnowledgeIndex
 {
     private const int HybridRecallMultiplier = 2;
     private static readonly Regex TokenRegex = new(@"[\w\-]+", RegexOptions.Compiled);
 
     private readonly Dictionary<string, IndexedChunk> _chunksById = new();
 
-    public VectorStoreCapabilities Capabilities { get; } = new()
+    public DocumentKnowledgeIndexCapabilities Capabilities { get; } = new()
     {
         SupportsVectorSearch = true,
         SupportsKeywordSearch = true,
@@ -72,7 +72,7 @@ public class InMemoryHybridDocumentVectorStore : IDocumentVectorStore
     }
 
     public Task UpsertAsync(IReadOnlyList<DocumentVectorRecord> records, CancellationToken ct = default)
-        => Task.CompletedTask; // Benchmark seeds via Seed(); IDocumentVectorStore.UpsertAsync is unused here.
+        => Task.CompletedTask; // Benchmark seeds via Seed(); IDocumentKnowledgeIndex.UpsertAsync is unused here.
 
     public Task DeleteByDocumentIdAsync(Guid documentId, Guid? tenantId, CancellationToken ct = default)
         => Task.CompletedTask;

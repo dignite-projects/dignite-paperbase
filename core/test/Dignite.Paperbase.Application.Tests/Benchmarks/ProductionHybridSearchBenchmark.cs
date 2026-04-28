@@ -111,7 +111,7 @@ public class ProductionHybridSearchBenchmark
         return new PgvectorRagDbContext(options);
     }
 
-    private static IDocumentVectorStore CreateVectorStore(PgvectorRagDbContext dbContext)
+    private static IDocumentKnowledgeIndex CreateVectorStore(PgvectorRagDbContext dbContext)
     {
         return new PgvectorDocumentVectorStore(
             new StaticDbContextProvider(dbContext),
@@ -203,7 +203,7 @@ public class ProductionHybridSearchBenchmark
     // Queries
 
     private static async Task<Dictionary<string, List<Guid>>> RunQueriesAsync(
-        IDocumentVectorStore vectorStore,
+        IDocumentKnowledgeIndex vectorStore,
         ProductionBenchmarkDataset dataset,
         Guid tenantId,
         VectorSearchMode mode)

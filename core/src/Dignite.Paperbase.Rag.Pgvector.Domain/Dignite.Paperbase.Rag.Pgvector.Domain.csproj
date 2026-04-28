@@ -12,7 +12,7 @@
     <PackageReference Include="Volo.Abp.Ddd.Domain" Version="10.2.0" />
     <ProjectReference Include="..\Dignite.Paperbase.Rag\Dignite.Paperbase.Rag.csproj" />
     <ProjectReference Include="..\Dignite.Paperbase.Rag.Pgvector.Domain.Shared\Dignite.Paperbase.Rag.Pgvector.Domain.Shared.csproj" />
-    <!-- TEMP (Slice A → Slice F): DocumentChunk.ValidateVector 仍引用 Paperbase.Domain.PaperbaseDbProperties.EmbeddingVectorDimension；Slice F 把维度常量搬到 Rag.Pgvector.Domain.Shared 后移除此引用。 -->
+    <!-- DocumentDeletingEventHandler 引用 DocumentDeletingEvent（定义在 Paperbase.Domain）。 -->
     <ProjectReference Include="..\Dignite.Paperbase.Domain\Dignite.Paperbase.Domain.csproj" />
   </ItemGroup>
 

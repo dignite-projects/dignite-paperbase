@@ -7,7 +7,7 @@ namespace Dignite.Paperbase.Rag.Pgvector.Documents;
 
 /// <summary>
 /// 文档文本分块及其向量表示。独立聚合根，由 Embedding 流水线写入、由 RAG 问答检索。
-/// 向量维度由 <see cref="PaperbaseDbProperties.EmbeddingVectorDimension"/> 全局统一；
+/// 向量维度由 <see cref="DocumentChunkConsts.EmbeddingVectorDimension"/> 全局统一；
 /// Document 删除时由 EF 级联清理，亦可通过 <see cref="IDocumentChunkRepository.DeleteByDocumentIdAsync"/> 主动清理。
 /// ChunkIndex 在文档内唯一，不应跨文档比较。
 ///
@@ -161,10 +161,10 @@ public class DocumentChunk : CreationAuditedAggregateRoot<Guid>, IMultiTenant
     protected virtual float[] ValidateVector(float[] embeddingVector)
     {
         Check.NotNull(embeddingVector, nameof(embeddingVector));
-        if (embeddingVector.Length != PaperbaseDbProperties.EmbeddingVectorDimension)
+        if (embeddingVector.Length != DocumentChunkConsts.EmbeddingVectorDimension)
         {
             throw new BusinessException(PgvectorRagErrorCodes.EmbeddingDimensionMismatch)
-                .WithData("Expected", PaperbaseDbProperties.EmbeddingVectorDimension)
+                .WithData("Expected", DocumentChunkConsts.EmbeddingVectorDimension)
                 .WithData("Actual", embeddingVector.Length);
         }
         return embeddingVector;

@@ -1,6 +1,6 @@
 namespace Dignite.Paperbase.Rag;
 
-public class VectorStoreCapabilities
+public class DocumentKnowledgeIndexCapabilities
 {
     public bool SupportsVectorSearch { get; init; }
     public bool SupportsKeywordSearch { get; init; }

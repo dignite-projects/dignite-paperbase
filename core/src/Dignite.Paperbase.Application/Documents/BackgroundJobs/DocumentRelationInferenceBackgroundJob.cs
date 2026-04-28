@@ -23,7 +23,7 @@ public class DocumentRelationInferenceBackgroundJob
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly DocumentRelationInferenceWorkflow _workflow;
     private readonly IDocumentChunkRepository _chunkRepository;
-    private readonly IDocumentVectorStore _vectorStore;
+    private readonly IDocumentKnowledgeIndex _vectorStore;
     private readonly IDocumentRelationRepository _relationRepository;
     private readonly IGuidGenerator _guidGenerator;
     private readonly PaperbaseAIOptions _aiOptions;
@@ -33,7 +33,7 @@ public class DocumentRelationInferenceBackgroundJob
         DocumentPipelineRunManager pipelineRunManager,
         DocumentRelationInferenceWorkflow workflow,
         IDocumentChunkRepository chunkRepository,
-        IDocumentVectorStore vectorStore,
+        IDocumentKnowledgeIndex vectorStore,
         IDocumentRelationRepository relationRepository,
         IGuidGenerator guidGenerator,
         IOptions<PaperbaseAIOptions> aiOptions)

@@ -17,13 +17,13 @@ using Volo.Abp.MultiTenancy;
 namespace Dignite.Paperbase.Rag.Pgvector.Documents;
 
 /// <summary>
-/// pgvector-backed implementation of <see cref="IDocumentVectorStore"/>.
+/// pgvector-backed implementation of <see cref="IDocumentKnowledgeIndex"/>.
 /// Slice C 起改用独立的 <see cref="PgvectorRagDbContext"/>——在 Slice B 完成 chunk
 /// 反范式化（去 JOIN <c>Documents</c> 表）之后这次切换是干净的，没有任何 fallback 路径。
 ///
 /// <para>
-/// 类名暂保留 <c>PgvectorDocumentVectorStore</c>；Slice F/G 接口改名为 <c>IDocumentKnowledgeIndex</c>
-/// 并引入 <c>UpsertDocumentAsync</c> 时一并改为 <c>PgvectorDocumentKnowledgeIndex</c>。
+/// 类名暂保留 <c>PgvectorDocumentVectorStore</c>；Slice G 引入 <c>UpsertDocumentAsync</c>
+/// 时一并改为 <c>PgvectorDocumentKnowledgeIndex</c>。
 /// </para>
 ///
 /// Supports three search modes:
@@ -36,8 +36,8 @@ namespace Dignite.Paperbase.Rag.Pgvector.Documents;
 /// WHERE clause as a second line of defense. Raw-SQL paths (keyword) cannot rely
 /// on ABP global filters, so the explicit clause is mandatory.
 /// </summary>
-[ExposeServices(typeof(IDocumentVectorStore))]
-public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDependency
+[ExposeServices(typeof(IDocumentKnowledgeIndex))]
+public class PgvectorDocumentVectorStore : IDocumentKnowledgeIndex, ITransientDependency
 {
     /// <summary>
     /// Per-path recall multiplier in Hybrid mode. Each of vector / keyword recalls
@@ -61,7 +61,7 @@ public class PgvectorDocumentVectorStore : IDocumentVectorStore, ITransientDepen
         _dataFilter = dataFilter;
     }
 
-    public virtual VectorStoreCapabilities Capabilities { get; } = new VectorStoreCapabilities
+    public virtual DocumentKnowledgeIndexCapabilities Capabilities { get; } = new DocumentKnowledgeIndexCapabilities
     {
         SupportsVectorSearch = true,
         SupportsKeywordSearch = true,

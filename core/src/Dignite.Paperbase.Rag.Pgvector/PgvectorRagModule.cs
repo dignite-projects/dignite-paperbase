@@ -12,7 +12,7 @@ namespace Dignite.Paperbase.Rag.Pgvector;
 /// </para>
 ///
 /// <para>
-/// 真正注册 <c>IDocumentVectorStore</c> 实现的入口在
+/// 真正注册 <c>IDocumentKnowledgeIndex</c> 实现的入口在
 /// <c>Dignite.Paperbase.Rag.Pgvector.EntityFrameworkCore.PgvectorRagEntityFrameworkCoreModule</c>。
 /// </para>
 /// </summary>

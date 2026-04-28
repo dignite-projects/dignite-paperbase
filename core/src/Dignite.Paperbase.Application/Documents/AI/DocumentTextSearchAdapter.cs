@@ -13,12 +13,12 @@ using Volo.Abp.MultiTenancy;
 namespace Dignite.Paperbase.Documents.AI;
 
 /// <summary>
-/// Bridges <see cref="IDocumentVectorStore"/> to Microsoft Agent Framework's
+/// Bridges <see cref="IDocumentKnowledgeIndex"/> to Microsoft Agent Framework's
 /// <see cref="TextSearchProvider"/>, so a <c>ChatClientAgent</c> can perform RAG
 /// over Paperbase documents without re-implementing retrieval.
 ///
 /// Pipeline: <c>ChatClientAgent → TextSearchProvider → DocumentTextSearchAdapter →
-/// IDocumentVectorStore.SearchAsync(...)</c>. The adapter owns three jobs that
+/// IDocumentKnowledgeIndex.SearchAsync(...)</c>. The adapter owns three jobs that
 /// the framework can't do on its own:
 /// <list type="bullet">
 ///   <item>Embed the query when the configured mode requires a vector (Vector / Hybrid),
@@ -33,18 +33,18 @@ namespace Dignite.Paperbase.Documents.AI;
 /// </list>
 ///
 /// This adapter does NOT replace <c>DocumentQaWorkflow</c> — it lives alongside it
-/// as an optional path. Both share the same <see cref="IDocumentVectorStore"/>
+/// as an optional path. Both share the same <see cref="IDocumentKnowledgeIndex"/>
 /// implementation and benefit from any future hybrid-search / provider improvements.
 /// </summary>
 public class DocumentTextSearchAdapter : ITransientDependency
 {
-    private readonly IDocumentVectorStore _vectorStore;
+    private readonly IDocumentKnowledgeIndex _vectorStore;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
     private readonly ICurrentTenant _currentTenant;
     private readonly PaperbaseRagOptions _ragOptions;
 
     public DocumentTextSearchAdapter(
-        IDocumentVectorStore vectorStore,
+        IDocumentKnowledgeIndex vectorStore,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
         ICurrentTenant currentTenant,
         IOptions<PaperbaseRagOptions> ragOptions)

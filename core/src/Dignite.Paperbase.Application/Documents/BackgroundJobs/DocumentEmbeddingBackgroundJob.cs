@@ -18,7 +18,7 @@ public class DocumentEmbeddingBackgroundJob
     private readonly IDocumentRepository _documentRepository;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly DocumentEmbeddingWorkflow _workflow;
-    private readonly IDocumentVectorStore _vectorStore;
+    private readonly IDocumentKnowledgeIndex _vectorStore;
     private readonly IBackgroundJobManager _backgroundJobManager;
     private readonly IGuidGenerator _guidGenerator;
 
@@ -26,7 +26,7 @@ public class DocumentEmbeddingBackgroundJob
         IDocumentRepository documentRepository,
         DocumentPipelineRunManager pipelineRunManager,
         DocumentEmbeddingWorkflow workflow,
-        IDocumentVectorStore vectorStore,
+        IDocumentKnowledgeIndex vectorStore,
         IBackgroundJobManager backgroundJobManager,
         IGuidGenerator guidGenerator)
     {

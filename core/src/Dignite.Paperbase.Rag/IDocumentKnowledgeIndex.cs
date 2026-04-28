@@ -6,16 +6,16 @@ using System.Threading.Tasks;
 namespace Dignite.Paperbase.Rag;
 
 /// <summary>
-/// Paperbase business-level facade for vector index operations.
+/// Paperbase business-level facade for knowledge index operations.
 /// This is not a generic vector database abstraction — it carries Paperbase-specific
 /// semantics: multi-tenancy, document identity, score normalization, and source citation.
 /// Provider implementations should map this interface to their underlying store
 /// (e.g., EF Core + pgvector, Azure AI Search, Qdrant).
 /// </summary>
-public interface IDocumentVectorStore
+public interface IDocumentKnowledgeIndex
 {
     /// <summary>Describes the capabilities of this provider.</summary>
-    VectorStoreCapabilities Capabilities { get; }
+    DocumentKnowledgeIndexCapabilities Capabilities { get; }
 
     /// <summary>
     /// Insert or update a batch of chunk records in the index.

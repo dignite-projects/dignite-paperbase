@@ -18,7 +18,7 @@ namespace Dignite.Paperbase.Application.Documents;
 public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
 {
     private readonly IDocumentRepository _documentRepository;
-    private readonly IDocumentVectorStore _vectorStore;
+    private readonly IDocumentKnowledgeIndex _vectorStore;
     private readonly DocumentQaWorkflow _qaWorkflow;
     private readonly DocumentRerankWorkflow _rerankWorkflow;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
@@ -27,7 +27,7 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
 
     public DocumentQaAppService(
         IDocumentRepository documentRepository,
-        IDocumentVectorStore vectorStore,
+        IDocumentKnowledgeIndex vectorStore,
         DocumentQaWorkflow qaWorkflow,
         DocumentRerankWorkflow rerankWorkflow,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
@@ -186,7 +186,7 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
             .ToList();
     }
 
-    protected virtual void EnsureSearchCapabilities(VectorStoreCapabilities capabilities)
+    protected virtual void EnsureSearchCapabilities(DocumentKnowledgeIndexCapabilities capabilities)
     {
         if (!capabilities.SupportsStructuredFilter)
         {
@@ -198,7 +198,7 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
 
     protected virtual VectorSearchMode ResolveSearchMode(
         VectorSearchMode requestedMode,
-        VectorStoreCapabilities capabilities)
+        DocumentKnowledgeIndexCapabilities capabilities)
     {
         return requestedMode switch
         {

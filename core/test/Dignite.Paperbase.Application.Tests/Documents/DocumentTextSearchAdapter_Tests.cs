@@ -24,14 +24,14 @@ public class DocumentTextSearchAdapterTestModule : AbpModule
     {
         // Adapter dependencies — replaced by NSubstitutes so the test can shape
         // the search results and assert on the embedding call.
-        context.Services.AddSingleton(Substitute.For<IDocumentVectorStore>());
+        context.Services.AddSingleton(Substitute.For<IDocumentKnowledgeIndex>());
         context.Services.AddSingleton(Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>());
     }
 }
 
 /// <summary>
 /// Slice 8 守护：<see cref="DocumentTextSearchAdapter"/> 让 Microsoft Agent Framework 的
-/// <see cref="TextSearchProvider"/> 能复用 Paperbase 的 <see cref="IDocumentVectorStore"/>。
+/// <see cref="TextSearchProvider"/> 能复用 Paperbase 的 <see cref="IDocumentKnowledgeIndex"/>。
 /// 这些测试覆盖：citation 字段映射、按 Mode 跳过/触发 embedding、scope 覆盖默认配置、
 /// 多租户 TenantId 显式传递。
 /// </summary>
@@ -39,13 +39,13 @@ public class DocumentTextSearchAdapter_Tests
     : PaperbaseApplicationTestBase<DocumentTextSearchAdapterTestModule>
 {
     private readonly DocumentTextSearchAdapter _adapter;
-    private readonly IDocumentVectorStore _vectorStore;
+    private readonly IDocumentKnowledgeIndex _vectorStore;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
 
     public DocumentTextSearchAdapter_Tests()
     {
         _adapter = GetRequiredService<DocumentTextSearchAdapter>();
-        _vectorStore = GetRequiredService<IDocumentVectorStore>();
+        _vectorStore = GetRequiredService<IDocumentKnowledgeIndex>();
         _embeddingGenerator = GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
 
         SetupDefaultEmbedding();

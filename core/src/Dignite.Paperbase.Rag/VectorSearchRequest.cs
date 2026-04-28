@@ -10,9 +10,10 @@ namespace Dignite.Paperbase.Rag;
 public sealed record VectorSearchRequest
 {
     /// <summary>
-    /// Tenant to search within. Must be set by callers; use
-    /// <see cref="DocumentVectorStoreExtensions.SearchForCurrentTenantAsync"/> to fill it
-    /// from ABP's ICurrentTenant in application code.
+    /// Tenant to search within. Must be set by callers.
+    /// In HTTP-context code, use <c>DocumentKnowledgeIndexApplicationExtensions.SearchForCurrentTenantAsync</c>
+    /// (Application layer) to fill it from ABP's ICurrentTenant.
+    /// In background jobs or CLI tools, set this field explicitly.
     /// </summary>
     public Guid? TenantId { get; init; }
 
