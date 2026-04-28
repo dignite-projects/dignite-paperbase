@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Rag;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -27,7 +28,7 @@ public class DocumentQaAppServiceTestModule : AbpModule
             Substitute.For<IDocumentRepository>());
 
         context.Services.AddSingleton(
-            Substitute.For<IDocumentChunkRepository>());
+            Substitute.For<IDocumentVectorStore>());
 
         context.Services.AddSingleton(
             Substitute.For<IChatClient>());
@@ -58,7 +59,7 @@ public class DocumentQaAppServiceTestModule : AbpModule
 public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQaAppServiceTestModule>
 {
     private readonly IDocumentQaAppService _qaAppService;
-    private readonly IDocumentChunkRepository _chunkRepository;
+    private readonly IDocumentVectorStore _vectorStore;
     private readonly DocumentQaWorkflow _qaWorkflow;
     private readonly DocumentRerankWorkflow _rerankWorkflow;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
@@ -66,7 +67,7 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
     public DocumentQaAppService_Tests()
     {
         _qaAppService = GetRequiredService<IDocumentQaAppService>();
-        _chunkRepository = GetRequiredService<IDocumentChunkRepository>();
+        _vectorStore = GetRequiredService<IDocumentVectorStore>();
         _qaWorkflow = GetRequiredService<DocumentQaWorkflow>();
         _rerankWorkflow = GetRequiredService<DocumentRerankWorkflow>();
         _embeddingGenerator = GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
@@ -77,12 +78,9 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
     [Fact]
     public async Task GlobalAsk_Returns_NoRelevant_When_No_Chunks_Found()
     {
-        _chunkRepository
-            .SearchByVectorWithScoresAsync(
-                Arg.Any<float[]>(), Arg.Any<int>(),
-                documentId: null, documentTypeCode: null,
-                Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentChunkSearchResult>());
+        _vectorStore
+            .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new List<VectorSearchResult>());
 
         var result = await _qaAppService.GlobalAskAsync(new GlobalAskInput
         {
@@ -97,17 +95,14 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
     [Fact]
     public async Task GlobalAsk_Delegates_To_Workflow_When_Chunks_Found()
     {
-        var fakeResults = new List<DocumentChunkSearchResult>
+        var fakeResults = new List<VectorSearchResult>
         {
-            new(CreateFakeChunk(Guid.NewGuid(), 0, "合同期間は2026年4月から2027年3月まで。"), cosineDistance: 0.05),
-            new(CreateFakeChunk(Guid.NewGuid(), 1, "契約金額は1,200,000円（税別）。"), cosineDistance: 0.10)
+            new() { RecordId = Guid.NewGuid(), DocumentId = Guid.NewGuid(), ChunkIndex = 0, Text = "合同期間は2026年4月から2027年3月まで。", Score = 0.95 },
+            new() { RecordId = Guid.NewGuid(), DocumentId = Guid.NewGuid(), ChunkIndex = 1, Text = "契約金額は1,200,000円（税別）。", Score = 0.90 }
         };
 
-        _chunkRepository
-            .SearchByVectorWithScoresAsync(
-                Arg.Any<float[]>(), Arg.Any<int>(),
-                documentId: null, documentTypeCode: null,
-                Arg.Any<CancellationToken>())
+        _vectorStore
+            .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
             .Returns(fakeResults);
 
         var outcome = new DocumentQaOutcome
@@ -139,14 +134,11 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
     }
 
     [Fact]
-    public async Task GlobalAsk_Passes_DocumentTypeCode_To_ChunkSearch()
+    public async Task GlobalAsk_Passes_DocumentTypeCode_To_VectorSearch()
     {
-        _chunkRepository
-            .SearchByVectorWithScoresAsync(
-                Arg.Any<float[]>(), Arg.Any<int>(),
-                documentId: null, documentTypeCode: Arg.Any<string>(),
-                Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentChunkSearchResult>());
+        _vectorStore
+            .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new List<VectorSearchResult>());
 
         await _qaAppService.GlobalAskAsync(new GlobalAskInput
         {
@@ -154,10 +146,9 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
             DocumentTypeCode = "contract.general"
         });
 
-        await _chunkRepository.Received(1)
-            .SearchByVectorWithScoresAsync(
-                Arg.Any<float[]>(), Arg.Any<int>(),
-                documentId: null, documentTypeCode: "contract.general",
+        await _vectorStore.Received(1)
+            .SearchAsync(
+                Arg.Is<VectorSearchRequest>(r => r.DocumentTypeCode == "contract.general"),
                 Arg.Any<CancellationToken>());
     }
 
@@ -166,17 +157,14 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
     {
         // 默认 QaMinScore = 0.65；构造一组结果只有"远低于阈值"的低相似度 chunk。
         // 期望 AppService 视同空结果，不调用 RunRagAsync，并返回 NoRelevant 兜底答案。
-        var lowScoreResults = new List<DocumentChunkSearchResult>
+        var lowScoreResults = new List<VectorSearchResult>
         {
-            new(CreateFakeChunk(Guid.NewGuid(), 0, "完全无关的内容片段。"), cosineDistance: 0.95),
-            new(CreateFakeChunk(Guid.NewGuid(), 1, "另一段无关内容。"), cosineDistance: 0.90)
+            new() { RecordId = Guid.NewGuid(), DocumentId = Guid.NewGuid(), ChunkIndex = 0, Text = "完全无关的内容片段。", Score = 0.05 },
+            new() { RecordId = Guid.NewGuid(), DocumentId = Guid.NewGuid(), ChunkIndex = 1, Text = "另一段无关内容。", Score = 0.10 }
         };
 
-        _chunkRepository
-            .SearchByVectorWithScoresAsync(
-                Arg.Any<float[]>(), Arg.Any<int>(),
-                documentId: null, documentTypeCode: null,
-                Arg.Any<CancellationToken>())
+        _vectorStore
+            .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
             .Returns(lowScoreResults);
 
         var result = await _qaAppService.GlobalAskAsync(new GlobalAskInput
@@ -192,15 +180,12 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
     [Fact]
     public async Task GlobalAsk_Without_Rerank_Does_Not_Invoke_Rerank_Workflow()
     {
-        var fakeResults = new List<DocumentChunkSearchResult>
+        var fakeResults = new List<VectorSearchResult>
         {
-            new(CreateFakeChunk(Guid.NewGuid(), 0, "高度相关。"), cosineDistance: 0.10)
+            new() { RecordId = Guid.NewGuid(), DocumentId = Guid.NewGuid(), ChunkIndex = 0, Text = "高度相关。", Score = 0.90 }
         };
-        _chunkRepository
-            .SearchByVectorWithScoresAsync(
-                Arg.Any<float[]>(), Arg.Any<int>(),
-                documentId: null, documentTypeCode: null,
-                Arg.Any<CancellationToken>())
+        _vectorStore
+            .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
             .Returns(fakeResults);
 
         _qaWorkflow
@@ -227,16 +212,18 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
         {
             // 召回 6 个高分 chunks，rerank 取前 5。
             var fakeResults = Enumerable.Range(0, 6)
-                .Select(i => new DocumentChunkSearchResult(
-                    CreateFakeChunk(Guid.NewGuid(), i, $"chunk-{i}"),
-                    cosineDistance: 0.05 + i * 0.01))
+                .Select(i => new VectorSearchResult
+                {
+                    RecordId = Guid.NewGuid(),
+                    DocumentId = Guid.NewGuid(),
+                    ChunkIndex = i,
+                    Text = $"chunk-{i}",
+                    Score = 0.95 - i * 0.01
+                })
                 .ToList();
 
-            _chunkRepository
-                .SearchByVectorWithScoresAsync(
-                    Arg.Any<float[]>(), Arg.Any<int>(),
-                    documentId: null, documentTypeCode: null,
-                    Arg.Any<CancellationToken>())
+            _vectorStore
+                .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
                 .Returns(fakeResults);
 
             // mock rerank：把第 5 个候选（id=5）作为最高分；返回的 RerankedChunk 应保留其 ChunkText
@@ -280,17 +267,14 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
     public async Task GlobalAsk_Keeps_Chunks_Above_QaMinScore()
     {
         // 一半高分 / 一半低分；预期只有高分 chunks 进入 RunRagAsync
-        var mixed = new List<DocumentChunkSearchResult>
+        var mixed = new List<VectorSearchResult>
         {
-            new(CreateFakeChunk(Guid.NewGuid(), 0, "高度相关。"), cosineDistance: 0.10),
-            new(CreateFakeChunk(Guid.NewGuid(), 1, "毫不相关。"), cosineDistance: 0.95)
+            new() { RecordId = Guid.NewGuid(), DocumentId = Guid.NewGuid(), ChunkIndex = 0, Text = "高度相关。", Score = 0.90 },
+            new() { RecordId = Guid.NewGuid(), DocumentId = Guid.NewGuid(), ChunkIndex = 1, Text = "毫不相关。", Score = 0.05 }
         };
 
-        _chunkRepository
-            .SearchByVectorWithScoresAsync(
-                Arg.Any<float[]>(), Arg.Any<int>(),
-                documentId: null, documentTypeCode: null,
-                Arg.Any<CancellationToken>())
+        _vectorStore
+            .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
             .Returns(mixed);
 
         IReadOnlyList<QaChunk>? capturedChunks = null;
@@ -317,13 +301,5 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
                 Arg.Any<EmbeddingGenerationOptions?>(),
                 Arg.Any<CancellationToken>())
             .Returns(embeddings);
-    }
-
-    private static DocumentChunk CreateFakeChunk(Guid documentId, int chunkIndex, string text)
-    {
-        var chunk = new DocumentChunk(
-            Guid.NewGuid(), null, documentId, chunkIndex, text,
-            new float[PaperbaseDbProperties.EmbeddingVectorDimension]);
-        return chunk;
     }
 }

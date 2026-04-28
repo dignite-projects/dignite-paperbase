@@ -6,6 +6,7 @@ using Dignite.Paperbase.Application.Documents.BackgroundJobs;
 using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Rag;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -23,6 +24,7 @@ public class DocumentRelationInferenceJobTestModule : AbpModule
     {
         context.Services.AddSingleton(Substitute.For<IDocumentRepository>());
         context.Services.AddSingleton(Substitute.For<IDocumentChunkRepository>());
+        context.Services.AddSingleton(Substitute.For<IDocumentVectorStore>());
         context.Services.AddSingleton(Substitute.For<IDocumentRelationRepository>());
 
         var workflow = Substitute.ForPartsOf<DocumentRelationInferenceWorkflow>(
@@ -43,6 +45,7 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
     private readonly DocumentRelationInferenceBackgroundJob _job;
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentChunkRepository _chunkRepository;
+    private readonly IDocumentVectorStore _vectorStore;
     private readonly IDocumentRelationRepository _relationRepository;
     private readonly DocumentRelationInferenceWorkflow _workflow;
 
@@ -51,18 +54,16 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
         _job = GetRequiredService<DocumentRelationInferenceBackgroundJob>();
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _chunkRepository = GetRequiredService<IDocumentChunkRepository>();
+        _vectorStore = GetRequiredService<IDocumentVectorStore>();
         _relationRepository = GetRequiredService<IDocumentRelationRepository>();
         _workflow = GetRequiredService<DocumentRelationInferenceWorkflow>();
 
         _chunkRepository
             .GetListByDocumentIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns(new List<DocumentChunk>());
-        _chunkRepository
-            .SearchByVectorAsync(
-                Arg.Any<float[]>(), Arg.Any<int>(),
-                Arg.Any<Guid?>(), Arg.Any<string?>(),
-                Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentChunk>());
+        _vectorStore
+            .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new List<VectorSearchResult>());
     }
 
     [Fact]
@@ -99,12 +100,9 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
                 new(Guid.NewGuid(), null, doc.Id, 0, "契約内容...", new float[PaperbaseDbProperties.EmbeddingVectorDimension])
             });
 
-        _chunkRepository
-            .SearchByVectorAsync(
-                Arg.Any<float[]>(), Arg.Any<int>(),
-                Arg.Any<Guid?>(), Arg.Any<string?>(),
-                Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentChunk>());
+        _vectorStore
+            .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new List<VectorSearchResult>());
 
         await _job.ExecuteAsync(new DocumentRelationInferenceJobArgs { DocumentId = doc.Id });
 
@@ -133,18 +131,17 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
         _documentRepository.FindAsync(candidateDocId, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(candidateDoc);
 
         var sourceChunk = new DocumentChunk(Guid.NewGuid(), null, sourceDoc.Id, 0, "業務委託契約書。", new float[PaperbaseDbProperties.EmbeddingVectorDimension]);
-        var candidateChunk = new DocumentChunk(Guid.NewGuid(), null, candidateDocId, 0, "発注書。", new float[PaperbaseDbProperties.EmbeddingVectorDimension]);
 
         _chunkRepository
             .GetListByDocumentIdAsync(sourceDoc.Id, Arg.Any<CancellationToken>())
             .Returns(new List<DocumentChunk> { sourceChunk });
 
-        _chunkRepository
-            .SearchByVectorAsync(
-                Arg.Any<float[]>(), Arg.Any<int>(),
-                Arg.Any<Guid?>(), Arg.Any<string?>(),
-                Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentChunk> { candidateChunk });
+        _vectorStore
+            .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new List<VectorSearchResult>
+            {
+                new() { RecordId = Guid.NewGuid(), DocumentId = candidateDocId, ChunkIndex = 0, Text = "発注書。" }
+            });
 
         _workflow
             .RunAsync(Arg.Any<Guid>(), Arg.Any<string>(),
@@ -185,21 +182,18 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
 
         var sourceChunk = new DocumentChunk(Guid.NewGuid(), null, sourceDoc.Id, 0, "業務委託契約書。",
             new float[PaperbaseDbProperties.EmbeddingVectorDimension]);
-        var highChunk = new DocumentChunk(Guid.NewGuid(), null, highConfidenceId, 0, "発注書。",
-            new float[PaperbaseDbProperties.EmbeddingVectorDimension]);
-        var lowChunk = new DocumentChunk(Guid.NewGuid(), null, lowConfidenceId, 0, "メモ。",
-            new float[PaperbaseDbProperties.EmbeddingVectorDimension]);
 
         _chunkRepository
             .GetListByDocumentIdAsync(sourceDoc.Id, Arg.Any<CancellationToken>())
             .Returns(new List<DocumentChunk> { sourceChunk });
 
-        _chunkRepository
-            .SearchByVectorAsync(
-                Arg.Any<float[]>(), Arg.Any<int>(),
-                Arg.Any<Guid?>(), Arg.Any<string?>(),
-                Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentChunk> { highChunk, lowChunk });
+        _vectorStore
+            .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new List<VectorSearchResult>
+            {
+                new() { RecordId = Guid.NewGuid(), DocumentId = highConfidenceId, ChunkIndex = 0, Text = "発注書。" },
+                new() { RecordId = Guid.NewGuid(), DocumentId = lowConfidenceId, ChunkIndex = 0, Text = "メモ。" }
+            });
 
         // Workflow returns two results: one above threshold (0.9), one below (0.3)
         _workflow
@@ -247,20 +241,16 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
                 new(Guid.NewGuid(), null, doc.Id, 1, "chunk2", vec2)
             });
 
-        _chunkRepository
-            .SearchByVectorAsync(
-                Arg.Any<float[]>(), Arg.Any<int>(),
-                Arg.Any<Guid?>(), Arg.Any<string?>(),
-                Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentChunk>());
+        VectorSearchRequest? capturedRequest = null;
+        _vectorStore
+            .SearchAsync(Arg.Do<VectorSearchRequest>(r => capturedRequest = r), Arg.Any<CancellationToken>())
+            .Returns(new List<VectorSearchResult>());
 
         await _job.ExecuteAsync(new DocumentRelationInferenceJobArgs { DocumentId = doc.Id });
 
-        await _chunkRepository.Received(1).SearchByVectorAsync(
-            Arg.Is<float[]>(v => Math.Abs(v[0] - 3.0f) < 1e-5f),
-            Arg.Any<int>(),
-            Arg.Any<Guid?>(), Arg.Any<string?>(),
-            Arg.Any<CancellationToken>());
+        await _vectorStore.Received(1).SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>());
+        capturedRequest.ShouldNotBeNull();
+        Math.Abs(capturedRequest!.QueryVector.Span[0] - 3.0f).ShouldBeLessThan(1e-5f);
     }
 
     private static Document CreateDocument(string? extractedText = null)

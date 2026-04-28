@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.Documents.AI.Workflows;
+using Dignite.Paperbase.Rag;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Volo.Abp.BackgroundJobs;
@@ -21,6 +22,7 @@ public class DocumentRelationInferenceBackgroundJob
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly DocumentRelationInferenceWorkflow _workflow;
     private readonly IDocumentChunkRepository _chunkRepository;
+    private readonly IDocumentVectorStore _vectorStore;
     private readonly IDocumentRelationRepository _relationRepository;
     private readonly IGuidGenerator _guidGenerator;
     private readonly PaperbaseAIOptions _aiOptions;
@@ -30,6 +32,7 @@ public class DocumentRelationInferenceBackgroundJob
         DocumentPipelineRunManager pipelineRunManager,
         DocumentRelationInferenceWorkflow workflow,
         IDocumentChunkRepository chunkRepository,
+        IDocumentVectorStore vectorStore,
         IDocumentRelationRepository relationRepository,
         IGuidGenerator guidGenerator,
         IOptions<PaperbaseAIOptions> aiOptions)
@@ -38,6 +41,7 @@ public class DocumentRelationInferenceBackgroundJob
         _pipelineRunManager = pipelineRunManager;
         _workflow = workflow;
         _chunkRepository = chunkRepository;
+        _vectorStore = vectorStore;
         _relationRepository = relationRepository;
         _guidGenerator = guidGenerator;
         _aiOptions = aiOptions.Value;
@@ -60,11 +64,17 @@ public class DocumentRelationInferenceBackgroundJob
             }
 
             var pooled = MeanPool(sourceChunks.Select(c => c.EmbeddingVector).ToList());
-            var candidateChunks = await _chunkRepository.SearchByVectorAsync(
-                pooled, topK: _aiOptions.RelationInferenceCandidateTopK * 3);
+            var searchRequest = new VectorSearchRequest
+            {
+                TenantId = document.TenantId,
+                QueryVector = pooled,
+                TopK = _aiOptions.RelationInferenceCandidateTopK * 3,
+                Mode = VectorSearchMode.Vector
+            };
+            var candidateResults = await _vectorStore.SearchAsync(searchRequest);
 
-            var candidateDocIds = candidateChunks
-                .Select(c => c.DocumentId)
+            var candidateDocIds = candidateResults
+                .Select(r => r.DocumentId)
                 .Where(id => id != document.Id)
                 .Distinct()
                 .Take(_aiOptions.RelationInferenceCandidateTopK)

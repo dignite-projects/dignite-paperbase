@@ -3,15 +3,6 @@ namespace Dignite.Paperbase.Documents.AI;
 public class PaperbaseAIOptions
 {
     /// <summary>
-    /// 向量列维度。pgvector 列由 EFCore Mapping 用 <see cref="PaperbaseDbProperties.EmbeddingVectorDimension"/>
-    /// 写入 schema；本配置项是"逻辑维度"，必须与 schema 维度严格一致。
-    /// 启动时由 <c>PaperbaseApplicationModule</c> 通过 Options 校验拒绝不一致的配置，避免上线后才发现 SQL 执行错误。
-    /// 切换 embedding 模型的标准流程参见 <c>docs/configuration.md</c>。
-    /// </summary>
-    public int EmbeddingVectorDimension { get; set; } = PaperbaseDbProperties.EmbeddingVectorDimension;
-
-
-    /// <summary>
     /// 分类提示词中最多包含的候选类型数量，超出时按 Priority 降序截断。
     /// </summary>
     public int MaxDocumentTypesInClassificationPrompt { get; set; } = 50;

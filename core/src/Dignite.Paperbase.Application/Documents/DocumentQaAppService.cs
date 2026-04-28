@@ -6,6 +6,7 @@ using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Permissions;
+using Dignite.Paperbase.Rag;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -17,7 +18,7 @@ namespace Dignite.Paperbase.Application.Documents;
 public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
 {
     private readonly IDocumentRepository _documentRepository;
-    private readonly IDocumentChunkRepository _chunkRepository;
+    private readonly IDocumentVectorStore _vectorStore;
     private readonly DocumentQaWorkflow _qaWorkflow;
     private readonly DocumentRerankWorkflow _rerankWorkflow;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
@@ -25,14 +26,14 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
 
     public DocumentQaAppService(
         IDocumentRepository documentRepository,
-        IDocumentChunkRepository chunkRepository,
+        IDocumentVectorStore vectorStore,
         DocumentQaWorkflow qaWorkflow,
         DocumentRerankWorkflow rerankWorkflow,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
         IOptions<PaperbaseAIOptions> aiOptions)
     {
         _documentRepository = documentRepository;
-        _chunkRepository = chunkRepository;
+        _vectorStore = vectorStore;
         _qaWorkflow = qaWorkflow;
         _rerankWorkflow = rerankWorkflow;
         _embeddingGenerator = embeddingGenerator;
@@ -134,12 +135,17 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
             : finalTopK * Math.Max(1, baselineMultiplier);
 
         var questionEmbeddings = await _embeddingGenerator.GenerateAsync([question]);
-        var rawResults = await _chunkRepository.SearchByVectorWithScoresAsync(
-            questionEmbeddings[0].Vector.ToArray(),
-            recallTopK,
-            documentId: documentId,
-            documentTypeCode: documentTypeCode);
+        var request = new VectorSearchRequest
+        {
+            QueryVector = questionEmbeddings[0].Vector,
+            TopK = recallTopK,
+            DocumentId = documentId,
+            DocumentTypeCode = documentTypeCode,
+            MinScore = _aiOptions.QaMinScore > 0 ? _aiOptions.QaMinScore : null,
+            Mode = VectorSearchMode.Vector
+        };
 
+        var rawResults = await _vectorStore.SearchForCurrentTenantAsync(CurrentTenant, request);
         var filtered = ApplyMinScoreFilter(rawResults);
         if (filtered.Count == 0)
             return new List<QaChunk>();
@@ -147,7 +153,7 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
         if (rerank && filtered.Count > finalTopK)
         {
             var candidates = filtered
-                .Select(r => new RerankCandidate(r.Chunk.ChunkText, r.Similarity, r.Chunk))
+                .Select(r => new RerankCandidate(r.Text, r.Score ?? 0.0, r))
                 .ToList();
 
             var reranked = await _rerankWorkflow.RerankAsync(question, candidates, finalTopK);
@@ -155,15 +161,15 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
             return reranked
                 .Select(r =>
                 {
-                    var chunk = (DocumentChunk)r.Candidate.Tag!;
-                    return new QaChunk { ChunkIndex = chunk.ChunkIndex, ChunkText = chunk.ChunkText };
+                    var result = (VectorSearchResult)r.Candidate.Tag!;
+                    return new QaChunk { ChunkIndex = result.ChunkIndex, ChunkText = result.Text };
                 })
                 .ToList();
         }
 
         return filtered
             .Take(finalTopK)
-            .Select(r => new QaChunk { ChunkIndex = r.Chunk.ChunkIndex, ChunkText = r.Chunk.ChunkText })
+            .Select(r => new QaChunk { ChunkIndex = r.ChunkIndex, ChunkText = r.Text })
             .ToList();
     }
 
@@ -171,8 +177,8 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
     /// 按 <see cref="PaperbaseAIOptions.QaMinScore"/> 过滤掉相似度过低的检索结果。
     /// 当全部命中均低于阈值时记录信息日志，便于事后调优。
     /// </summary>
-    protected virtual IReadOnlyList<DocumentChunkSearchResult> ApplyMinScoreFilter(
-        IReadOnlyList<DocumentChunkSearchResult> rawResults)
+    protected virtual IReadOnlyList<VectorSearchResult> ApplyMinScoreFilter(
+        IReadOnlyList<VectorSearchResult> rawResults)
     {
         if (_aiOptions.QaMinScore <= 0 || rawResults.Count == 0)
         {
@@ -180,16 +186,16 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
         }
 
         var filtered = rawResults
-            .Where(r => r.Similarity >= _aiOptions.QaMinScore)
+            .Where(r => r.Score >= _aiOptions.QaMinScore)
             .ToList();
 
         if (filtered.Count == 0)
         {
             Logger.LogInformation(
-                "All {Count} retrieved chunks below QaMinScore={MinScore}; top similarity={TopSim:F3}",
+                "All {Count} retrieved chunks below QaMinScore={MinScore}; top score={TopScore:F3}",
                 rawResults.Count,
                 _aiOptions.QaMinScore,
-                rawResults[0].Similarity);
+                rawResults[0].Score);
         }
 
         return filtered;
