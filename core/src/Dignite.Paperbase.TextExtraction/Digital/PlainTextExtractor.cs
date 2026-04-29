@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
+using Volo.Abp.DependencyInjection;
 
 namespace Dignite.Paperbase.TextExtraction.Digital;
 
-internal class PlainTextExtractor : IDigitalTextExtractor
+[ExposeServices(typeof(IDigitalTextExtractor))]
+public class PlainTextExtractor : IDigitalTextExtractor, ITransientDependency
 {
     private static readonly HashSet<string> SupportedExtensions =
         new(StringComparer.OrdinalIgnoreCase) { ".md", ".txt", ".csv", ".rtf" };

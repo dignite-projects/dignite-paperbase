@@ -12,8 +12,8 @@ namespace Dignite.Paperbase.Documents;
 /// 这一启动期不变量。配置不一致时，必须在第一次解析 Options 时抛
 /// <see cref="OptionsValidationException"/>，让宿主无法静默运行在错配的 collection 上。
 ///
-/// 该校验由 <c>QdrantRagModule</c> 注册（<c>AddOptions().Validate(...).ValidateOnStart()</c>），
-/// 这里复刻同等校验链以隔离 ABP 模块依赖；如果模块校验逻辑变更，应同步更新本测试。
+/// 注：仅覆盖维度对齐校验，不涵盖 QdrantRagOptions 的其他约束（Endpoint 非空、
+/// CollectionName 非空、VectorDimension &gt; 0 等）。
 /// </summary>
 public class PaperbaseRagOptionsValidationTests
 {

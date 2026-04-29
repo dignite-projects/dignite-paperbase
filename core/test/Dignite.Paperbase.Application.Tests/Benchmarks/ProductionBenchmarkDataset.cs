@@ -16,6 +16,8 @@ namespace Dignite.Paperbase.Documents.Benchmarks;
 /// </summary>
 public sealed class ProductionBenchmarkDataset
 {
+    // Reflects PaperbaseRagOptions default value, not runtime config.
+    // If you change EmbeddingDimension in appsettings, regenerate the benchmark dataset.
     public static int ExpectedEmbeddingDimension { get; } = new PaperbaseRagOptions().EmbeddingDimension;
 
     [JsonPropertyName("version")]

@@ -114,5 +114,12 @@ public class DocumentDeletingEventHandler_Tests
 
         capturedCallback.ShouldNotBeNull();
         await capturedCallback!();
+
+        _logger.ReceivedWithAnyArgs(1).Log(
+            LogLevel.Error,
+            default,
+            default!,
+            default,
+            default!);
     }
 }

@@ -2,10 +2,12 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using DocumentFormat.OpenXml.Packaging;
+using Volo.Abp.DependencyInjection;
 
 namespace Dignite.Paperbase.TextExtraction.Digital;
 
-internal class WordTextExtractor : IDigitalTextExtractor
+[ExposeServices(typeof(IDigitalTextExtractor))]
+public class WordTextExtractor : IDigitalTextExtractor, ITransientDependency
 {
     public bool CanHandle(string contentType, string fileExtension)
         => string.Equals(fileExtension, ".docx", StringComparison.OrdinalIgnoreCase)

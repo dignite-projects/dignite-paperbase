@@ -63,7 +63,6 @@ public class DocumentPipelineRun : Entity<Guid>, IMultiTenant, IHasExtraProperti
         PipelineCode = pipelineCode;
         AttemptNumber = attemptNumber;
         Status = PipelineRunStatus.Pending;
-        StartedAt = DateTime.UtcNow;
         ExtraProperties = new ExtraPropertyDictionary();
         this.SetDefaultsForExtraProperties();
     }

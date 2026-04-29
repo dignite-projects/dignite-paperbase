@@ -5,10 +5,12 @@ using System.Text;
 using System.Threading.Tasks;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.Content;
+using Volo.Abp.DependencyInjection;
 
 namespace Dignite.Paperbase.TextExtraction.Digital;
 
-internal class PdfTextExtractor : IDigitalTextExtractor
+[ExposeServices(typeof(IDigitalTextExtractor))]
+public class PdfTextExtractor : IDigitalTextExtractor, ITransientDependency
 {
     public bool CanHandle(string contentType, string fileExtension)
         => string.Equals(contentType, "application/pdf", StringComparison.OrdinalIgnoreCase)

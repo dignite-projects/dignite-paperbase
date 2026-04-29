@@ -242,6 +242,7 @@ public class DocumentEmbeddingBackgroundJob_Tests
 
     private static float[] MakeVector(float firstValue)
     {
+        // Reflects PaperbaseRagOptions default value, not runtime config.
         var v = new float[new PaperbaseRagOptions().EmbeddingDimension];
         v[0] = firstValue;
         return v;

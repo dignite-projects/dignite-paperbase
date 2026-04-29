@@ -18,7 +18,6 @@ public class PaperbaseEntityFrameworkCoreModule : AbpModule
             options.AddDefaultRepositories();
 
             options.AddRepository<Document, EfCoreDocumentRepository>();
-            options.AddRepository<DocumentPipelineRun, EfCoreDocumentPipelineRunRepository>();
             options.AddRepository<DocumentRelation, EfCoreDocumentRelationRepository>();
         });
     }

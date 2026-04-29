@@ -1,10 +1,11 @@
 using System.Collections.Generic;
 using System.Linq;
 using Volo.Abp;
+using Volo.Abp.DependencyInjection;
 
 namespace Dignite.Paperbase.TextExtraction.Digital;
 
-internal class DigitalTextExtractorFactory : IDigitalTextExtractorFactory
+public class DigitalTextExtractorFactory : IDigitalTextExtractorFactory, ITransientDependency
 {
     private readonly IEnumerable<IDigitalTextExtractor> _extractors;
 
