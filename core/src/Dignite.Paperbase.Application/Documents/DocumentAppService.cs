@@ -16,6 +16,7 @@ using Volo.Abp.Application.Dtos;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.BlobStoring;
 using Volo.Abp.Content;
+using Volo.Abp.Data;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.EventBus.Distributed;
 using Volo.Abp.EventBus.Local;
@@ -25,6 +26,7 @@ namespace Dignite.Paperbase.Application.Documents;
 public class DocumentAppService : PaperbaseAppService, IDocumentAppService
 {
     private readonly IDocumentRepository _documentRepository;
+    private readonly IDocumentRelationRepository _relationRepository;
     private readonly IBlobContainer<PaperbaseDocumentContainer> _blobContainer;
     private readonly IBackgroundJobManager _backgroundJobManager;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
@@ -33,6 +35,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
 
     public DocumentAppService(
         IDocumentRepository documentRepository,
+        IDocumentRelationRepository relationRepository,
         IBlobContainer<PaperbaseDocumentContainer> blobContainer,
         IBackgroundJobManager backgroundJobManager,
         DocumentPipelineRunManager pipelineRunManager,
@@ -40,6 +43,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         ILocalEventBus localEventBus)
     {
         _documentRepository = documentRepository;
+        _relationRepository = relationRepository;
         _blobContainer = blobContainer;
         _backgroundJobManager = backgroundJobManager;
         _pipelineRunManager = pipelineRunManager;
@@ -91,8 +95,13 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         var existing = await _documentRepository.FindByContentHashAsync(contentHash);
         if (existing != null)
         {
-            throw new BusinessException("Paperbase:DocumentDuplicate")
-                .WithData("FileName", fileName);
+            var errorCode = existing.IsDeleted
+                ? PaperbaseErrorCodes.DocumentInRecycleBin
+                : PaperbaseErrorCodes.DocumentDuplicate;
+
+            throw new BusinessException(errorCode)
+                .WithData("FileName", fileName)
+                .WithData("ExistingDocumentId", existing.Id);
         }
 
         var blobName = GuidGenerator.Create().ToString("N") + extension;
@@ -149,8 +158,46 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
             new DocumentDeletingEvent(id, document.TenantId),
             onUnitOfWorkComplete: false);
 
-        await _blobContainer.DeleteAsync(document.OriginalFileBlobName);
         await _documentRepository.DeleteAsync(id);
+
+        var relations = await _relationRepository.GetListByDocumentIdAsync(id);
+        if (relations.Count > 0)
+        {
+            await _relationRepository.DeleteManyAsync(relations);
+        }
+
+        await _distributedEventBus.PublishAsync(new DocumentDeletedEto
+        {
+            DocumentId = document.Id,
+            TenantId = document.TenantId,
+            DocumentTypeCode = document.DocumentTypeCode
+        });
+    }
+
+    [Authorize(PaperbasePermissions.Documents.Restore)]
+    public virtual async Task RestoreAsync(Guid id)
+    {
+        using (DataFilter.Disable<ISoftDelete>())
+        {
+            var document = await _documentRepository.GetAsync(id);
+            if (!document.IsDeleted)
+            {
+                return;
+            }
+
+            document.IsDeleted = false;
+            document.DeletionTime = null;
+            document.DeleterId = null;
+
+            await _documentRepository.UpdateAsync(document);
+
+            await _distributedEventBus.PublishAsync(new DocumentRestoredEto
+            {
+                DocumentId = document.Id,
+                TenantId = document.TenantId,
+                DocumentTypeCode = document.DocumentTypeCode
+            });
+        }
     }
 
     [Authorize(PaperbasePermissions.Documents.Export)]

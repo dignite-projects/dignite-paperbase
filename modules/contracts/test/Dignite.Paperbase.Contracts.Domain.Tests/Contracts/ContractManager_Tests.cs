@@ -72,6 +72,23 @@ public class ContractManager_Tests : ContractsDomainTestBase<ContractsDomainTest
         contract.Status.ShouldBe(ContractStatus.Active);
     }
 
+    [Fact]
+    public async Task Should_Archive_And_Restore_As_Draft_For_Document_Recycle_Bin()
+    {
+        var contract = await _contractManager.CreateAsync(
+            Guid.NewGuid(),
+            ContractsDocumentTypes.General,
+            CreateFields());
+        contract.Confirm();
+
+        contract.ArchiveBecauseDocumentDeleted();
+        contract.Status.ShouldBe(ContractStatus.Archived);
+
+        contract.RestoreBecauseDocumentRestored();
+        contract.Status.ShouldBe(ContractStatus.Draft);
+        contract.NeedsReview.ShouldBeTrue();
+    }
+
     private static ExtractedContractFields CreateFields()
     {
         return new ExtractedContractFields

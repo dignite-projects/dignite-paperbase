@@ -3,6 +3,7 @@ using System;
 using Dignite.Paperbase.Host.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Volo.Abp.EntityFrameworkCore;
@@ -12,14 +13,16 @@ using Volo.Abp.EntityFrameworkCore;
 namespace Dignite.Paperbase.Host.Migrations
 {
     [DbContext(typeof(PaperbaseHostDbContext))]
-    partial class PaperbaseHostDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260429145335_DocumentSoftDeleteAndRestore")]
+    partial class DocumentSoftDeleteAndRestore
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
                 .HasAnnotation("_Abp_DatabaseProvider", EfCoreDatabaseProvider.PostgreSql)
-                .HasAnnotation("ProductVersion", "10.0.4")
+                .HasAnnotation("ProductVersion", "10.0.2")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -2244,7 +2247,7 @@ namespace Dignite.Paperbase.Host.Migrations
 
                             b1.HasKey("DocumentId");
 
-                            b1.ToTable("PaperbaseDocuments", (string)null);
+                            b1.ToTable("PaperbaseDocuments");
 
                             b1.WithOwner()
                                 .HasForeignKey("DocumentId");
@@ -2375,7 +2378,7 @@ namespace Dignite.Paperbase.Host.Migrations
 
                             b1.HasKey("IdentityUserPasskeyCredentialId");
 
-                            b1.ToTable("AbpUserPasskeys", (string)null);
+                            b1.ToTable("AbpUserPasskeys");
 
                             b1
                                 .ToJson("Data")

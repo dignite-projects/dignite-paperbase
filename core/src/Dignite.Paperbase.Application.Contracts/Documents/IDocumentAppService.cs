@@ -18,6 +18,8 @@ public interface IDocumentAppService : IApplicationService
 
     Task DeleteAsync(Guid id);
 
+    Task RestoreAsync(Guid id);
+
     Task<IRemoteStreamContent> GetExportAsync(GetDocumentListInput input);
 
     Task<DocumentDto> ConfirmClassificationAsync(Guid id, ConfirmClassificationInput input);

@@ -91,4 +91,20 @@ public class Contract : AuditedAggregateRoot<Guid>, IMultiTenant
         NeedsReview = false;
         Status = ContractStatus.Active;
     }
+
+    public virtual void ArchiveBecauseDocumentDeleted()
+    {
+        Status = ContractStatus.Archived;
+    }
+
+    public virtual void RestoreBecauseDocumentRestored()
+    {
+        if (Status != ContractStatus.Archived)
+        {
+            return;
+        }
+
+        Status = ContractStatus.Draft;
+        NeedsReview = true;
+    }
 }

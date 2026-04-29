@@ -7,6 +7,8 @@ using Dignite.Paperbase;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Volo.Abp;
+using Volo.Abp.Data;
 using Volo.Abp.Domain.Repositories.EntityFrameworkCore;
 using Volo.Abp.EntityFrameworkCore;
 
@@ -35,11 +37,14 @@ public class EfCoreDocumentRepository
         string contentHash,
         CancellationToken cancellationToken = default)
     {
-        var dbSet = await GetDbSetAsync();
-        return await dbSet
-            .FirstOrDefaultAsync(
-                d => d.FileOrigin.ContentHash == contentHash,
-                GetCancellationToken(cancellationToken));
+        using (DataFilter.Disable<ISoftDelete>())
+        {
+            var dbSet = await GetDbSetAsync();
+            return await dbSet
+                .FirstOrDefaultAsync(
+                    d => d.FileOrigin.ContentHash == contentHash,
+                    GetCancellationToken(cancellationToken));
+        }
     }
 
     public virtual async Task<List<Document>> GetListByIdsAsync(

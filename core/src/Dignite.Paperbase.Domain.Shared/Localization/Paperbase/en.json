@@ -91,12 +91,14 @@
     "Document:RelationSource:AI": "AI Suggested",
     "Document:Confidence": "Confidence",
 
+    "Permission:Documents.Restore": "Restore Documents",
     "Permission:Documents.ConfirmClassification": "Confirm Classification",
     "Permission:Documents.Ask": "Ask Documents (Q&A)",
     "Permission:DocumentRelations.ConfirmRelation": "Confirm Document Relation",
 
     "Paperbase:InvalidDocumentTypeCode": "Invalid document type code: '{documentTypeCode}'.",
     "Paperbase:ExtractedTextIsImmutable": "Extracted text has already been set and cannot be changed.",
-    "Paperbase:DocumentDuplicate": "This file has already been uploaded ({FileName})."
+    "Paperbase:DocumentDuplicate": "This file has already been uploaded ({FileName}).",
+    "Paperbase:DocumentInRecycleBin": "This file already exists in the recycle bin ({FileName})."
   }
 }

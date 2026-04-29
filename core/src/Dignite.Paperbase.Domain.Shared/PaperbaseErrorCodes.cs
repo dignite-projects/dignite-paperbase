@@ -7,4 +7,6 @@ public static class PaperbaseErrorCodes
     public const string DocumentRelationCannotTargetSelf = "Paperbase:DocumentRelationCannotTargetSelf";
     public const string DocumentRelationConfidenceOutOfRange = "Paperbase:DocumentRelationConfidenceOutOfRange";
     public const string InvalidDocumentTypeCode = "Paperbase:InvalidDocumentTypeCode";
+    public const string DocumentDuplicate = "Paperbase:DocumentDuplicate";
+    public const string DocumentInRecycleBin = "Paperbase:DocumentInRecycleBin";
 }

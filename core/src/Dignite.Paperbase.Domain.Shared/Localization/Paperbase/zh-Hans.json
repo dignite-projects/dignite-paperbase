@@ -6,6 +6,7 @@
 
     "Paperbase:InvalidDocumentTypeCode": "文档类型代码无效：'{documentTypeCode}'。",
     "Paperbase:ExtractedTextIsImmutable": "已写入提取文本，不允许修改。",
-    "Paperbase:DocumentDuplicate": "该文件已经上传过 ({FileName})。"
+    "Paperbase:DocumentDuplicate": "该文件已经上传过 ({FileName})。",
+    "Paperbase:DocumentInRecycleBin": "该文件已在回收站中 ({FileName})。"
   }
 }

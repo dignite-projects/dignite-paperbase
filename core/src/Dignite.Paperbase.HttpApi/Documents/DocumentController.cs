@@ -49,6 +49,12 @@ public class DocumentController : PaperbaseController, IDocumentAppService
         return _documentAppService.DeleteAsync(id);
     }
 
+    [HttpPost("{id}/restore")]
+    public virtual Task RestoreAsync(Guid id)
+    {
+        return _documentAppService.RestoreAsync(id);
+    }
+
     [HttpGet("export")]
     public virtual Task<IRemoteStreamContent> GetExportAsync(GetDocumentListInput input)
     {

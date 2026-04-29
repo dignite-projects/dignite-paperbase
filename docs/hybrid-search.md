@@ -24,9 +24,9 @@ Both candidate lists are fused with **Qdrant RRF** (Reciprocal Rank Fusion). The
 3. Map each token to a `uint` via FNV-1a hash — deterministic across .NET versions and consistent between indexing and query time.
 4. Qdrant applies IDF normalization server-side via `Modifier.Idf` on the `bm25` sparse vector field.
 
-The same encoder runs at **index time** (inside `DocumentEmbeddingBackgroundJob`) and at **query time** (inside `DocumentTextSearchAdapter`), so term→index mapping is always consistent.
+The same encoder runs at **index time** (inside `DocumentEmbeddingBackgroundJob`) and at **query time** whenever application code passes `VectorSearchRequest.QueryText`, so term→index mapping is always consistent.
 
-`VectorSearchRequest.QueryText` is automatically populated by `DocumentTextSearchAdapter`, which passes the raw MAF agent query string. No change to application code is needed.
+`VectorSearchRequest.QueryText` is a caller-controlled field. The current explicit QA path sets it when building the search request. The MAF document conversation path should set it through `DocumentTextSearchAdapter`, which passes the raw agent search query from `TextSearchProvider` to Paperbase RAG.
 
 ## Prerequisites
 

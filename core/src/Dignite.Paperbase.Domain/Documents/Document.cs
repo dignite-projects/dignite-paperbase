@@ -8,7 +8,7 @@ using Volo.Abp.MultiTenancy;
 
 namespace Dignite.Paperbase.Documents;
 
-public class Document : CreationAuditedAggregateRoot<Guid>, IMultiTenant
+public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
 {
     // 多租户
     public virtual Guid? TenantId { get; private set; }

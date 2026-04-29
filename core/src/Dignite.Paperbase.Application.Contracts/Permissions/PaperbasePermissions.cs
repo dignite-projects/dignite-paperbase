@@ -11,6 +11,7 @@ public class PaperbasePermissions
         public const string Default = GroupName + ".Documents";
         public const string Upload = Default + ".Upload";
         public const string Delete = Default + ".Delete";
+        public const string Restore = Default + ".Restore";
         public const string Export = Default + ".Export";
         public const string ConfirmClassification = Default + ".ConfirmClassification";
         public const string Ask = Default + ".Ask";

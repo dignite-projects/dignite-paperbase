@@ -11,6 +11,8 @@ namespace Dignite.Paperbase.Contracts.EventHandlers;
 
 public class ContractDocumentHandler :
     IDistributedEventHandler<DocumentClassifiedEto>,
+    IDistributedEventHandler<DocumentDeletedEto>,
+    IDistributedEventHandler<DocumentRestoredEto>,
     ITransientDependency
 {
     private readonly IContractRepository _contractRepository;
@@ -58,6 +60,36 @@ public class ContractDocumentHandler :
                     fields);
                 await _contractRepository.InsertAsync(contract, autoSave: true);
             }
+        }
+    }
+
+    public virtual async Task HandleEventAsync(DocumentDeletedEto eventData)
+    {
+        using (_currentTenant.Change(eventData.TenantId))
+        {
+            var contract = await _contractRepository.FindByDocumentIdAsync(eventData.DocumentId);
+            if (contract == null)
+            {
+                return;
+            }
+
+            contract.ArchiveBecauseDocumentDeleted();
+            await _contractRepository.UpdateAsync(contract, autoSave: true);
+        }
+    }
+
+    public virtual async Task HandleEventAsync(DocumentRestoredEto eventData)
+    {
+        using (_currentTenant.Change(eventData.TenantId))
+        {
+            var contract = await _contractRepository.FindByDocumentIdAsync(eventData.DocumentId);
+            if (contract == null)
+            {
+                return;
+            }
+
+            contract.RestoreBecauseDocumentRestored();
+            await _contractRepository.UpdateAsync(contract, autoSave: true);
         }
     }
 
