@@ -9,11 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Slice D：主 EF Core 项目零向量 / 零 DBMS-provider 依赖。
-         - Pgvector.EntityFrameworkCore 移除（chunks 表与 vector 列由 Rag.Pgvector.EntityFrameworkCore 拥有）。
-         - Npgsql.EntityFrameworkCore.PostgreSQL 移除（主 PaperbaseDbContext 与 ConfigurePaperbase
-           只用 ABP / 标准 EF Core 类型；Npgsql provider 由 host 在 UseNpgsql(...) 处带入）。
-         - 这一对清理使 host 未来切到 SQL Server / SQLite 时主 EF Core 项目无需再改。 -->
+    <!-- Keep the core EF project free of vector database dependencies. RAG storage
+         is owned by provider modules such as Dignite.Paperbase.Rag.Qdrant. -->
     <PackageReference Include="Volo.Abp.EntityFrameworkCore" Version="10.2.0" />
     <ProjectReference Include="..\Dignite.Paperbase.Domain\Dignite.Paperbase.Domain.csproj" />
   </ItemGroup>

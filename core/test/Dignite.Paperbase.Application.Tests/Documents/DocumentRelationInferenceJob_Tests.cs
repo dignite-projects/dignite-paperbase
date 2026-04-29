@@ -5,9 +5,7 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Application.Documents.BackgroundJobs;
 using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.Documents.AI.Workflows;
-using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Rag;
-using Dignite.Paperbase.Rag.Pgvector.Documents;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -24,7 +22,6 @@ public class DocumentRelationInferenceJobTestModule : AbpModule
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
         context.Services.AddSingleton(Substitute.For<IDocumentRepository>());
-        context.Services.AddSingleton(Substitute.For<IDocumentChunkRepository>());
         context.Services.AddSingleton(Substitute.For<IDocumentKnowledgeIndex>());
         context.Services.AddSingleton(Substitute.For<IDocumentRelationRepository>());
 
@@ -45,8 +42,7 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
 {
     private readonly DocumentRelationInferenceBackgroundJob _job;
     private readonly IDocumentRepository _documentRepository;
-    private readonly IDocumentChunkRepository _chunkRepository;
-    private readonly IDocumentKnowledgeIndex _vectorStore;
+    private readonly IDocumentKnowledgeIndex _knowledgeIndex;
     private readonly IDocumentRelationRepository _relationRepository;
     private readonly DocumentRelationInferenceWorkflow _workflow;
 
@@ -54,27 +50,33 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
     {
         _job = GetRequiredService<DocumentRelationInferenceBackgroundJob>();
         _documentRepository = GetRequiredService<IDocumentRepository>();
-        _chunkRepository = GetRequiredService<IDocumentChunkRepository>();
-        _vectorStore = GetRequiredService<IDocumentKnowledgeIndex>();
+        _knowledgeIndex = GetRequiredService<IDocumentKnowledgeIndex>();
         _relationRepository = GetRequiredService<IDocumentRelationRepository>();
         _workflow = GetRequiredService<DocumentRelationInferenceWorkflow>();
 
-        _chunkRepository
-            .GetListByDocumentIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentChunk>());
-        _vectorStore
-            .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
-            .Returns(new List<VectorSearchResult>());
+        SetupDocumentSimilarityCapability();
+        _knowledgeIndex
+            .SearchSimilarDocumentsAsync(
+                Arg.Any<Guid>(),
+                Arg.Any<Guid?>(),
+                Arg.Any<int>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new List<DocumentSimilarityResult>());
     }
 
     [Fact]
-    public async Task No_Source_Chunks_Skips_Inference()
+    public async Task Provider_Without_Similar_Document_Search_Skips_Inference()
     {
         var doc = CreateDocument();
         _documentRepository.GetAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
-        _chunkRepository
-            .GetListByDocumentIdAsync(doc.Id, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentChunk>());
+        _knowledgeIndex.Capabilities.Returns(new DocumentKnowledgeIndexCapabilities
+        {
+            SupportsVectorSearch = true,
+            SupportsStructuredFilter = true,
+            SupportsDeleteByDocumentId = true,
+            NormalizesScore = true,
+            SupportsSearchSimilarDocuments = false
+        });
 
         await _job.ExecuteAsync(new DocumentRelationInferenceJobArgs { DocumentId = doc.Id });
 
@@ -85,25 +87,14 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
         var latestRun = doc.GetLatestRun(PaperbasePipelines.RelationInference);
         latestRun.ShouldNotBeNull();
         latestRun.Status.ShouldBe(PipelineRunStatus.Skipped);
-        latestRun.StatusMessage.ShouldBe("No chunks found.");
+        latestRun.StatusMessage.ShouldBe("Knowledge index does not support document-level similarity search.");
     }
 
     [Fact]
-    public async Task No_Candidate_Docs_Completes_With_NoCandidates()
+    public async Task No_Candidate_Docs_Skips_When_No_Document_Embedding_Found()
     {
         var doc = CreateDocument(extractedText: "契約内容...");
         _documentRepository.GetAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
-
-        _chunkRepository
-            .GetListByDocumentIdAsync(doc.Id, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentChunk>
-            {
-                new(Guid.NewGuid(), null, doc.Id, 0, "契約内容...", new float[PaperbaseDbProperties.EmbeddingVectorDimension])
-            });
-
-        _vectorStore
-            .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
-            .Returns(new List<VectorSearchResult>());
 
         await _job.ExecuteAsync(new DocumentRelationInferenceJobArgs { DocumentId = doc.Id });
 
@@ -113,12 +104,9 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
 
         var latestRun = doc.GetLatestRun(PaperbasePipelines.RelationInference);
         latestRun.ShouldNotBeNull();
-        latestRun.Status.ShouldBe(PipelineRunStatus.Succeeded);
-        // NoCandidates signal is expressed by absence of DocumentRelation records, not on the Run
-        await _relationRepository.DidNotReceive().InsertAsync(
-            Arg.Any<DocumentRelation>(),
-            Arg.Any<bool>(),
-            Arg.Any<CancellationToken>());
+        latestRun.Status.ShouldBe(PipelineRunStatus.Skipped);
+        latestRun.StatusMessage.ShouldNotBeNull();
+        latestRun.StatusMessage!.ShouldContain("No document embedding found");
     }
 
     [Fact]
@@ -131,17 +119,11 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
         _documentRepository.GetAsync(sourceDoc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(sourceDoc);
         _documentRepository.FindAsync(candidateDocId, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(candidateDoc);
 
-        var sourceChunk = new DocumentChunk(Guid.NewGuid(), null, sourceDoc.Id, 0, "業務委託契約書。", new float[PaperbaseDbProperties.EmbeddingVectorDimension]);
-
-        _chunkRepository
-            .GetListByDocumentIdAsync(sourceDoc.Id, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentChunk> { sourceChunk });
-
-        _vectorStore
-            .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
-            .Returns(new List<VectorSearchResult>
+        _knowledgeIndex
+            .SearchSimilarDocumentsAsync(sourceDoc.Id, sourceDoc.TenantId, Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new List<DocumentSimilarityResult>
             {
-                new() { RecordId = Guid.NewGuid(), DocumentId = candidateDocId, ChunkIndex = 0, Text = "発注書。" }
+                new() { DocumentId = candidateDocId, Score = 0.91 }
             });
 
         _workflow
@@ -181,22 +163,14 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
         _documentRepository.FindAsync(lowConfidenceId, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(CreateDocument(extractedText: "メモ。特に関係なし。"));
 
-        var sourceChunk = new DocumentChunk(Guid.NewGuid(), null, sourceDoc.Id, 0, "業務委託契約書。",
-            new float[PaperbaseDbProperties.EmbeddingVectorDimension]);
-
-        _chunkRepository
-            .GetListByDocumentIdAsync(sourceDoc.Id, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentChunk> { sourceChunk });
-
-        _vectorStore
-            .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
-            .Returns(new List<VectorSearchResult>
+        _knowledgeIndex
+            .SearchSimilarDocumentsAsync(sourceDoc.Id, sourceDoc.TenantId, Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new List<DocumentSimilarityResult>
             {
-                new() { RecordId = Guid.NewGuid(), DocumentId = highConfidenceId, ChunkIndex = 0, Text = "発注書。" },
-                new() { RecordId = Guid.NewGuid(), DocumentId = lowConfidenceId, ChunkIndex = 0, Text = "メモ。" }
+                new() { DocumentId = highConfidenceId, Score = 0.92 },
+                new() { DocumentId = lowConfidenceId, Score = 0.88 }
             });
 
-        // Workflow returns two results: one above threshold (0.9), one below (0.3)
         _workflow
             .RunAsync(Arg.Any<Guid>(), Arg.Any<string>(),
                 Arg.Any<IReadOnlyList<RelationCandidate>>(), Arg.Any<CancellationToken>())
@@ -208,7 +182,6 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
 
         await _job.ExecuteAsync(new DocumentRelationInferenceJobArgs { DocumentId = sourceDoc.Id });
 
-        // Only the high-confidence relation reaches the aggregate
         await _relationRepository.Received(1).InsertAsync(
             Arg.Is<DocumentRelation>(r =>
                 r.TargetDocumentId == highConfidenceId &&
@@ -216,7 +189,6 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
             Arg.Any<bool>(),
             Arg.Any<CancellationToken>());
 
-        // The 0.3-confidence relation must never reach the aggregate, even if LLM ignores the prompt rule
         await _relationRepository.DidNotReceive().InsertAsync(
             Arg.Is<DocumentRelation>(r => r.TargetDocumentId == lowConfidenceId),
             Arg.Any<bool>(),
@@ -224,40 +196,38 @@ public class DocumentRelationInferenceJob_Tests : PaperbaseApplicationTestBase<D
     }
 
     [Fact]
-    public async Task MeanPooled_Vector_Is_Used_For_Candidate_Retrieval()
+    public async Task SearchSimilarDocuments_Is_Called_With_Document_Tenant()
     {
-        var doc = CreateDocument(extractedText: "契約内容...");
+        var tenantId = Guid.NewGuid();
+        var doc = CreateDocument(tenantId: tenantId, extractedText: "契約内容...");
         _documentRepository.GetAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
-
-        var vec1 = new float[PaperbaseDbProperties.EmbeddingVectorDimension];
-        var vec2 = new float[PaperbaseDbProperties.EmbeddingVectorDimension];
-        vec1[0] = 2.0f;
-        vec2[0] = 4.0f;
-
-        _chunkRepository
-            .GetListByDocumentIdAsync(doc.Id, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentChunk>
-            {
-                new(Guid.NewGuid(), null, doc.Id, 0, "chunk1", vec1),
-                new(Guid.NewGuid(), null, doc.Id, 1, "chunk2", vec2)
-            });
-
-        VectorSearchRequest? capturedRequest = null;
-        _vectorStore
-            .SearchAsync(Arg.Do<VectorSearchRequest>(r => capturedRequest = r), Arg.Any<CancellationToken>())
-            .Returns(new List<VectorSearchResult>());
 
         await _job.ExecuteAsync(new DocumentRelationInferenceJobArgs { DocumentId = doc.Id });
 
-        await _vectorStore.Received(1).SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>());
-        capturedRequest.ShouldNotBeNull();
-        Math.Abs(capturedRequest!.QueryVector.Span[0] - 3.0f).ShouldBeLessThan(1e-5f);
+        await _knowledgeIndex.Received(1)
+            .SearchSimilarDocumentsAsync(
+                doc.Id,
+                tenantId,
+                Arg.Any<int>(),
+                Arg.Any<CancellationToken>());
     }
 
-    private static Document CreateDocument(string? extractedText = null)
+    private void SetupDocumentSimilarityCapability()
+    {
+        _knowledgeIndex.Capabilities.Returns(new DocumentKnowledgeIndexCapabilities
+        {
+            SupportsVectorSearch = true,
+            SupportsStructuredFilter = true,
+            SupportsDeleteByDocumentId = true,
+            NormalizesScore = true,
+            SupportsSearchSimilarDocuments = true
+        });
+    }
+
+    private static Document CreateDocument(Guid? tenantId = null, string? extractedText = null)
     {
         var doc = new Document(
-            Guid.NewGuid(), null,
+            Guid.NewGuid(), tenantId,
             $"blobs/{Guid.NewGuid():N}.pdf",
             SourceType.Digital,
             new FileOrigin(

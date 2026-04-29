@@ -28,9 +28,8 @@ namespace Dignite.Paperbase.Documents.Benchmarks;
 ///         vocabulary score evenly across many chunks.</item>
 ///   <item><b>Hybrid path</b>: each path recalls TopK × 2 candidates, then
 ///         <see cref="RrfFusion"/> merges the rankings. The harness uses the
-///         same <see cref="RrfFusion"/> code as the production
-///         <c>PgvectorDocumentVectorStore</c>, so the math under test is
-///         identical.</item>
+///         same <see cref="RrfFusion"/> code any future hybrid-capable provider
+///         should use, so the math under test is provider-neutral.</item>
 /// </list>
 ///
 /// What this <em>doesn't</em> simulate:

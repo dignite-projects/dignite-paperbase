@@ -76,13 +76,9 @@ public static class PaperbaseDbContextModelCreatingExtensions
             b.HasIndex(x => x.TargetDocumentId);
         });
 
-        // Slice D：DocumentChunk 已彻底移交 PgvectorRagDbContext。主 PaperbaseDbContext 不再
-        // 持有 chunk mapping、不再声明 pgvector 扩展、不再依赖 Pgvector.EntityFrameworkCore——
-        // 主 EF Core 项目零向量依赖。chunks 表的 schema、索引、迁移 history 表全部由
-        // Rag.Pgvector.EntityFrameworkCore 拥有（见 PgvectorRagDbContext / PgvectorRagDbProperties.MigrationsHistoryTableName）。
-        //
-        // Document 删除时不再通过 EF FK CASCADE 清理 chunks——这是 Slice D 与 Slice E 之间的
-        // 已知中间状态。Slice E 引入 DocumentDeletingEventHandler + IUnitOfWorkManager.OnCompleted
-        // 替代 FK CASCADE，跨 DbContext / 跨 DBMS 也安全。本 Slice 必须与 Slice E 配套部署。
+        // RAG chunk storage is external to the core EF model and is owned by the
+        // configured provider. The open-source host uses Qdrant through
+        // IDocumentKnowledgeIndex, so this DbContext stays free of vector-store
+        // mappings and provider packages.
     }
 }

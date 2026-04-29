@@ -16,7 +16,7 @@ namespace Dignite.Paperbase.Rag;
 /// score. The merged scores are then min-max normalized to <c>[0, 1]</c> so
 /// <see cref="VectorSearchResult.Score"/> remains mode-agnostic for callers.
 ///
-/// Lives in the Rag layer (not in the Pgvector provider) because RRF is a pure
+/// Lives in the Rag layer (not in a provider) because RRF is a pure
 /// math operation independent of any storage backend — any provider that runs
 /// dense + sparse paths separately can reuse this helper.
 /// </summary>

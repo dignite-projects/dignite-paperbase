@@ -48,6 +48,7 @@ public class DocumentTextSearchAdapter_Tests
         _vectorStore = GetRequiredService<IDocumentKnowledgeIndex>();
         _embeddingGenerator = GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
 
+        SetupDefaultCapabilities();
         SetupDefaultEmbedding();
     }
 
@@ -110,6 +111,36 @@ public class DocumentTextSearchAdapter_Tests
             Arg.Any<IEnumerable<string>>(),
             Arg.Any<EmbeddingGenerationOptions?>(),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Keyword_Mode_Falls_Back_To_Vector_When_Provider_Does_Not_Support_Keyword()
+    {
+        _vectorStore.Capabilities.Returns(new DocumentKnowledgeIndexCapabilities
+        {
+            SupportsVectorSearch = true,
+            SupportsKeywordSearch = false,
+            SupportsHybridSearch = false,
+            SupportsStructuredFilter = true,
+            SupportsDeleteByDocumentId = true,
+            NormalizesScore = true
+        });
+
+        var scope = new DocumentSearchScope { Mode = VectorSearchMode.Keyword };
+        VectorSearchRequest? captured = null;
+        _vectorStore.SearchAsync(Arg.Do<VectorSearchRequest>(r => captured = r), Arg.Any<CancellationToken>())
+            .Returns(new List<VectorSearchResult>());
+
+        await _adapter.SearchAsync(tenantId: null, scope, query: "ANYTHING");
+
+        captured.ShouldNotBeNull();
+        captured!.Mode.ShouldBe(VectorSearchMode.Vector);
+        await _embeddingGenerator.Received(1).GenerateAsync(
+            Arg.Any<IEnumerable<string>>(),
+            Arg.Any<EmbeddingGenerationOptions?>(),
+            Arg.Any<CancellationToken>());
+
+        SetupDefaultCapabilities();
     }
 
     [Fact]
@@ -237,6 +268,41 @@ public class DocumentTextSearchAdapter_Tests
     }
 
     [Fact]
+    public async Task Default_Hybrid_Mode_Falls_Back_To_Vector_When_Provider_Does_Not_Support_Hybrid()
+    {
+        var ragOptions = GetRequiredService<IOptions<PaperbaseRagOptions>>().Value;
+        var original = ragOptions.DefaultSearchMode;
+        ragOptions.DefaultSearchMode = VectorSearchMode.Hybrid;
+
+        _vectorStore.Capabilities.Returns(new DocumentKnowledgeIndexCapabilities
+        {
+            SupportsVectorSearch = true,
+            SupportsKeywordSearch = false,
+            SupportsHybridSearch = false,
+            SupportsStructuredFilter = true,
+            SupportsDeleteByDocumentId = true,
+            NormalizesScore = true
+        });
+
+        try
+        {
+            VectorSearchRequest? captured = null;
+            _vectorStore.SearchAsync(Arg.Do<VectorSearchRequest>(r => captured = r), Arg.Any<CancellationToken>())
+                .Returns(new List<VectorSearchResult>());
+
+            await _adapter.SearchAsync(tenantId: null, scope: null, query: "Q");
+
+            captured.ShouldNotBeNull();
+            captured!.Mode.ShouldBe(VectorSearchMode.Vector);
+        }
+        finally
+        {
+            ragOptions.DefaultSearchMode = original;
+            SetupDefaultCapabilities();
+        }
+    }
+
+    [Fact]
     public async Task Different_Tenants_Get_Different_TenantId_In_Search_Request()
     {
         // 多租户隔离守护：连续搜两个不同租户，request.TenantId 必须严格匹配传入值。
@@ -267,5 +333,18 @@ public class DocumentTextSearchAdapter_Tests
                 Arg.Any<EmbeddingGenerationOptions?>(),
                 Arg.Any<CancellationToken>())
             .Returns(embeddings);
+    }
+
+    private void SetupDefaultCapabilities()
+    {
+        _vectorStore.Capabilities.Returns(new DocumentKnowledgeIndexCapabilities
+        {
+            SupportsVectorSearch = true,
+            SupportsKeywordSearch = true,
+            SupportsHybridSearch = true,
+            SupportsStructuredFilter = true,
+            SupportsDeleteByDocumentId = true,
+            NormalizesScore = true
+        });
     }
 }

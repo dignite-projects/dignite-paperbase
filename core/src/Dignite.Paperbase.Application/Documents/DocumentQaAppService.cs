@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.Documents.AI.Workflows;
+using Dignite.Paperbase.Application.Documents.Rag;
 using Dignite.Paperbase.Permissions;
 using Dignite.Paperbase.Rag;
 using Microsoft.AspNetCore.Authorization;
@@ -22,6 +23,7 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
     private readonly DocumentQaWorkflow _qaWorkflow;
     private readonly DocumentRerankWorkflow _rerankWorkflow;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
+    private readonly DocumentKnowledgeIndexSearchModeResolver _searchModeResolver;
     private readonly PaperbaseAIOptions _aiOptions;
     private readonly PaperbaseRagOptions _ragOptions;
 
@@ -31,6 +33,7 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
         DocumentQaWorkflow qaWorkflow,
         DocumentRerankWorkflow rerankWorkflow,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
+        DocumentKnowledgeIndexSearchModeResolver searchModeResolver,
         IOptions<PaperbaseAIOptions> aiOptions,
         IOptions<PaperbaseRagOptions> ragOptions)
     {
@@ -39,6 +42,7 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
         _qaWorkflow = qaWorkflow;
         _rerankWorkflow = rerankWorkflow;
         _embeddingGenerator = embeddingGenerator;
+        _searchModeResolver = searchModeResolver;
         _aiOptions = aiOptions.Value;
         _ragOptions = ragOptions.Value;
     }
@@ -139,8 +143,8 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
 
         var questionEmbeddings = await _embeddingGenerator.GenerateAsync([question]);
         var capabilities = _vectorStore.Capabilities;
-        EnsureSearchCapabilities(capabilities);
-        var searchMode = ResolveSearchMode(_ragOptions.DefaultSearchMode, capabilities);
+        _searchModeResolver.EnsureSearchCapabilities(capabilities);
+        var searchMode = _searchModeResolver.ResolveSearchMode(_ragOptions.DefaultSearchMode, capabilities);
         var canApplyMinScore = capabilities.NormalizesScore && _aiOptions.QaMinScore > 0;
 
         // QueryText is always passed so providers running in Hybrid / Keyword mode
@@ -184,33 +188,6 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
             .Take(finalTopK)
             .Select(r => new QaChunk { ChunkIndex = r.ChunkIndex, ChunkText = r.Text })
             .ToList();
-    }
-
-    protected virtual void EnsureSearchCapabilities(DocumentKnowledgeIndexCapabilities capabilities)
-    {
-        if (!capabilities.SupportsStructuredFilter)
-        {
-            throw new InvalidOperationException(
-                "The configured document vector store does not support structured filters. " +
-                "Paperbase requires tenant/document/type filters to avoid leaking search results across scopes.");
-        }
-    }
-
-    protected virtual VectorSearchMode ResolveSearchMode(
-        VectorSearchMode requestedMode,
-        DocumentKnowledgeIndexCapabilities capabilities)
-    {
-        return requestedMode switch
-        {
-            VectorSearchMode.Vector when capabilities.SupportsVectorSearch => VectorSearchMode.Vector,
-            VectorSearchMode.Keyword when capabilities.SupportsKeywordSearch => VectorSearchMode.Keyword,
-            VectorSearchMode.Hybrid when capabilities.SupportsHybridSearch => VectorSearchMode.Hybrid,
-            VectorSearchMode.Hybrid when capabilities.SupportsVectorSearch => VectorSearchMode.Vector,
-            VectorSearchMode.Keyword when capabilities.SupportsVectorSearch => VectorSearchMode.Vector,
-            _ => throw new InvalidOperationException(
-                $"The configured document vector store does not support requested search mode '{requestedMode}' " +
-                "and cannot fall back to vector search.")
-        };
     }
 
     /// <summary>

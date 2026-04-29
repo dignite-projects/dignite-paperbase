@@ -10,7 +10,7 @@ namespace Dignite.Paperbase.Rag;
 /// This is not a generic vector database abstraction — it carries Paperbase-specific
 /// semantics: multi-tenancy, document identity, score normalization, and source citation.
 /// Provider implementations should map this interface to their underlying store
-/// (e.g., EF Core + pgvector, Azure AI Search, Qdrant).
+/// (for example Qdrant or Azure AI Search).
 /// </summary>
 public interface IDocumentKnowledgeIndex
 {
@@ -19,8 +19,7 @@ public interface IDocumentKnowledgeIndex
 
     /// <summary>
     /// Insert or update all chunk records for one document atomically (whole-document replace).
-    /// Idempotent: calling with the same DocumentId replaces existing chunks and recalculates
-    /// the document-level vector in the same Unit of Work.
+    /// Idempotent: calling with the same DocumentId replaces existing chunks.
     /// Passing an empty <see cref="DocumentVectorIndexUpdate.Chunks"/> list removes all index
     /// data (chunks + document vector) for the document.
     /// </summary>

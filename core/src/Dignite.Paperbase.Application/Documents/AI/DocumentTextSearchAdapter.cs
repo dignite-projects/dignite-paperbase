@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Paperbase.Application.Documents.Rag;
 using Dignite.Paperbase.Rag;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
@@ -40,17 +41,20 @@ public class DocumentTextSearchAdapter : ITransientDependency
 {
     private readonly IDocumentKnowledgeIndex _vectorStore;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
+    private readonly DocumentKnowledgeIndexSearchModeResolver _searchModeResolver;
     private readonly ICurrentTenant _currentTenant;
     private readonly PaperbaseRagOptions _ragOptions;
 
     public DocumentTextSearchAdapter(
         IDocumentKnowledgeIndex vectorStore,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
+        DocumentKnowledgeIndexSearchModeResolver searchModeResolver,
         ICurrentTenant currentTenant,
         IOptions<PaperbaseRagOptions> ragOptions)
     {
         _vectorStore = vectorStore;
         _embeddingGenerator = embeddingGenerator;
+        _searchModeResolver = searchModeResolver;
         _currentTenant = currentTenant;
         _ragOptions = ragOptions.Value;
     }
@@ -98,13 +102,17 @@ public class DocumentTextSearchAdapter : ITransientDependency
         string query,
         CancellationToken cancellationToken = default)
     {
-        var mode = scope?.Mode ?? _ragOptions.DefaultSearchMode;
+        var capabilities = _vectorStore.Capabilities;
+        _searchModeResolver.EnsureSearchCapabilities(capabilities);
+        var mode = _searchModeResolver.ResolveSearchMode(
+            scope?.Mode ?? _ragOptions.DefaultSearchMode,
+            capabilities);
 
         // Embedding generation is conditional: a Keyword-mode agent may run
         // without ever calling the embedding provider, which is the whole point
         // of letting Mode flow through.
         ReadOnlyMemory<float> queryVector = default;
-        if (mode == VectorSearchMode.Vector || mode == VectorSearchMode.Hybrid)
+        if (_searchModeResolver.RequiresVector(mode))
         {
             var embeddings = await _embeddingGenerator.GenerateAsync(
                 [query], cancellationToken: cancellationToken);
@@ -119,7 +127,7 @@ public class DocumentTextSearchAdapter : ITransientDependency
             TopK = scope?.TopK ?? _ragOptions.DefaultTopK,
             DocumentId = scope?.DocumentId,
             DocumentTypeCode = scope?.DocumentTypeCode,
-            MinScore = scope?.MinScore ?? _ragOptions.MinScore,
+            MinScore = capabilities.NormalizesScore ? scope?.MinScore ?? _ragOptions.MinScore : null,
             Mode = mode
         };
 

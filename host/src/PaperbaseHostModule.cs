@@ -6,12 +6,10 @@ using Dignite.Paperbase.Host.HealthChecks;
 using Dignite.Paperbase.Host.Localization;
 using Dignite.Paperbase.Localization;
 using Dignite.Paperbase.Ocr.AzureDocumentIntelligence;
-using Dignite.Paperbase.Rag.Pgvector;
-using Dignite.Paperbase.Rag.Pgvector.EntityFrameworkCore;
+using Dignite.Paperbase.Rag.Qdrant;
 using Dignite.Paperbase.TextExtraction;
 using Microsoft.Extensions.AI;
 using Microsoft.EntityFrameworkCore;
-using Npgsql.EntityFrameworkCore.PostgreSQL;
 using OpenAI;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.DataProtection;
@@ -121,8 +119,7 @@ namespace Dignite.Paperbase.Host;
     // Paperbase infrastructure modules
     typeof(PaperbaseTextExtractionModule),
     typeof(PaperbaseAzureDocumentIntelligenceModule),
-    typeof(PgvectorRagModule),
-    typeof(PgvectorRagEntityFrameworkCoreModule),
+    typeof(QdrantRagModule),
 
     // Paperbase business modules
     typeof(ContractsHttpApiModule),
@@ -383,8 +380,7 @@ public class PaperbaseHostModule : AbpModule
         {
             options.Configure(configurationContext =>
             {
-                configurationContext.UseNpgsql(npgsqlOptions =>
-                    npgsqlOptions.UseVector());
+                configurationContext.UseNpgsql();
             });
         });
 

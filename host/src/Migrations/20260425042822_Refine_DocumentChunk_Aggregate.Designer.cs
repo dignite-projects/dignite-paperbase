@@ -6,7 +6,6 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-using Pgvector;
 using Volo.Abp.EntityFrameworkCore;
 
 #nullable disable
@@ -26,7 +25,6 @@ namespace Dignite.Paperbase.Host.Migrations
                 .HasAnnotation("ProductVersion", "10.0.4")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
-            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "vector");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("Dignite.Paperbase.Contracts.Contracts.Contract", b =>
@@ -221,7 +219,7 @@ namespace Dignite.Paperbase.Host.Migrations
                     b.ToTable("PaperbaseDocuments", (string)null);
                 });
 
-            modelBuilder.Entity("Dignite.Paperbase.Rag.Pgvector.Documents.DocumentChunk", b =>
+            modelBuilder.Entity("Dignite.Paperbase.Legacy.Documents.DocumentChunk", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -253,7 +251,7 @@ namespace Dignite.Paperbase.Host.Migrations
                     b.Property<Guid>("DocumentId")
                         .HasColumnType("uuid");
 
-                    b.Property<Vector>("EmbeddingVector")
+                    b.Property<float[]>("EmbeddingVector")
                         .IsRequired()
                         .HasColumnType("vector(1536)");
 
@@ -2288,7 +2286,7 @@ namespace Dignite.Paperbase.Host.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Dignite.Paperbase.Rag.Pgvector.Documents.DocumentChunk", b =>
+            modelBuilder.Entity("Dignite.Paperbase.Legacy.Documents.DocumentChunk", b =>
                 {
                     b.HasOne("Dignite.Paperbase.Documents.Document", null)
                         .WithMany()
