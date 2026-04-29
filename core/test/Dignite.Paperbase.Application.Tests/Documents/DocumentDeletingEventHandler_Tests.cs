@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Application.Documents.Rag;
 using Dignite.Paperbase.Documents.Events;
 using Dignite.Paperbase.Rag;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;
 using Volo.Abp.Uow;
@@ -17,12 +17,14 @@ public class DocumentDeletingEventHandler_Tests
     private readonly IUnitOfWorkManager _uowManager;
     private readonly IUnitOfWork _ambientUow;
     private readonly IDocumentKnowledgeIndex _knowledgeIndex;
+    private readonly ILogger<DocumentDeletingEventHandler> _logger;
     private readonly DocumentDeletingEventHandler _handler;
 
     public DocumentDeletingEventHandler_Tests()
     {
         _ambientUow = Substitute.For<IUnitOfWork>();
         _knowledgeIndex = Substitute.For<IDocumentKnowledgeIndex>();
+        _logger = Substitute.For<ILogger<DocumentDeletingEventHandler>>();
 
         _uowManager = Substitute.For<IUnitOfWorkManager>();
         _uowManager.Current.Returns(_ambientUow);
@@ -30,7 +32,7 @@ public class DocumentDeletingEventHandler_Tests
         _handler = new DocumentDeletingEventHandler(
             _uowManager,
             _knowledgeIndex,
-            NullLogger<DocumentDeletingEventHandler>.Instance);
+            _logger);
     }
 
     [Fact]
@@ -85,6 +87,12 @@ public class DocumentDeletingEventHandler_Tests
         _ambientUow.DidNotReceive().OnCompleted(Arg.Any<Func<Task>>());
         await _knowledgeIndex.DidNotReceive()
             .DeleteByDocumentIdAsync(Arg.Any<Guid>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>());
+        _logger.ReceivedWithAnyArgs(1).Log(
+            LogLevel.Warning,
+            default,
+            default!,
+            default,
+            default!);
     }
 
     [Fact]

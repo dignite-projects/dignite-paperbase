@@ -32,6 +32,9 @@ public class DocumentDeletingEventHandler :
         var currentUnitOfWork = _unitOfWorkManager.Current;
         if (currentUnitOfWork == null)
         {
+            _logger.LogWarning(
+                "Document {DocumentId} delete event was handled without an active unit of work; knowledge index cleanup was skipped.",
+                eventData.DocumentId);
             return Task.CompletedTask;
         }
 
