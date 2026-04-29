@@ -1,0 +1,41 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "contracts",
+  "projectType": "library",
+  "sourceRoot": "packages/contracts/src",
+  "prefix": "lib",
+  "targets": {
+    "build": {
+      "executor": "@angular/build:ng-packagr",
+      "options": {
+        "project": "packages/contracts/ng-package.json"
+      },
+      "configurations": {
+        "production": {
+          "tsConfig": "packages/contracts/tsconfig.lib.prod.json"
+        },
+        "development": {
+          "tsConfig": "packages/contracts/tsconfig.lib.json"
+        }
+      },
+      "defaultConfiguration": "production"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "options": {
+        "tsConfig": "packages/contracts/tsconfig.spec.json",
+        "buildTarget": "contracts:build",
+        "runner": "vitest"
+      }
+    },
+    "lint": {
+      "executor": "@angular-eslint/builder:lint",
+      "options": {
+        "lintFilePatterns": [
+          "packages/contracts/**/*.ts",
+          "packages/contracts/**/*.html"
+        ]
+      }
+    }
+  }
+}

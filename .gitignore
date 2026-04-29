@@ -201,6 +201,9 @@ PublishScripts/
 **/[Pp]ackages/*
 # except build/, which is used as an MSBuild target.
 !**/[Pp]ackages/build/
+# Angular NX monorepo library packages are not NuGet packages
+!angular/packages/
+!angular/packages/**
 # Uncomment if necessary however generally it will be regenerated when needed
 #!**/[Pp]ackages/repositories.config
 # NuGet v3's project.json files produces more ignorable files
@@ -447,6 +450,12 @@ appsettings.Staging.json
 core/test/Dignite.Paperbase.Application.Tests/Benchmarks/rag-gold-dataset.json
 
 # Node.js artifacts from benchmark embedding generation script
-package.json
-package-lock.json
+core/test/**/Benchmarks/package.json
+core/test/**/Benchmarks/package-lock.json
+# Angular NX monorepo Node.js files are tracked
+!angular/package.json
+!angular/package-lock.json
+!angular/lerna.json
+!angular/nx.json
+!angular/tsconfig.base.json
 

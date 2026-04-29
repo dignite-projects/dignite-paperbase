@@ -1,0 +1,41 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "paperbase",
+  "projectType": "library",
+  "sourceRoot": "packages/paperbase/src",
+  "prefix": "lib",
+  "targets": {
+    "build": {
+      "executor": "@angular/build:ng-packagr",
+      "options": {
+        "project": "packages/paperbase/ng-package.json"
+      },
+      "configurations": {
+        "production": {
+          "tsConfig": "packages/paperbase/tsconfig.lib.prod.json"
+        },
+        "development": {
+          "tsConfig": "packages/paperbase/tsconfig.lib.json"
+        }
+      },
+      "defaultConfiguration": "production"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "options": {
+        "tsConfig": "packages/paperbase/tsconfig.spec.json",
+        "buildTarget": "paperbase:build",
+        "runner": "vitest"
+      }
+    },
+    "lint": {
+      "executor": "@angular-eslint/builder:lint",
+      "options": {
+        "lintFilePatterns": [
+          "packages/paperbase/**/*.ts",
+          "packages/paperbase/**/*.html"
+        ]
+      }
+    }
+  }
+}

@@ -3,6 +3,5 @@
   "name": "contracts-dev-app",
   "projectType": "application",
   "sourceRoot": "apps/contracts-dev-app/src",
-  "prefix": "app",
-  "implicitDependencies": ["contracts"]
+  "prefix": "app"
 }

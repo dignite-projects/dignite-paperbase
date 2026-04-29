@@ -3,6 +3,5 @@
   "name": "paperbase-dev-app",
   "projectType": "application",
   "sourceRoot": "apps/paperbase-dev-app/src",
-  "prefix": "app",
-  "implicitDependencies": ["paperbase"]
+  "prefix": "app"
 }
