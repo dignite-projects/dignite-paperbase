@@ -31,7 +31,7 @@ public class ProductionBenchmarkDatasetTests
     public void Validate_Should_Fail_When_Dimension_Does_Not_Match_Schema()
     {
         var dataset = CreateDataset(
-            embeddingDimension: PaperbaseDbProperties.EmbeddingVectorDimension + 1);
+            embeddingDimension: ProductionBenchmarkDataset.ExpectedEmbeddingDimension + 1);
 
         var exception = Should.Throw<InvalidOperationException>(() => dataset.Validate());
 
@@ -77,7 +77,7 @@ public class ProductionBenchmarkDatasetTests
         return new ProductionBenchmarkDataset
         {
             Version = "test",
-            EmbeddingDimension = embeddingDimension ?? PaperbaseDbProperties.EmbeddingVectorDimension,
+            EmbeddingDimension = embeddingDimension ?? ProductionBenchmarkDataset.ExpectedEmbeddingDimension,
             Chunks = chunks ??
             [
                 new ProductionChunk
@@ -113,7 +113,7 @@ public class ProductionBenchmarkDatasetTests
 
     private static string EncodeVector(float firstValue)
     {
-        var floats = new float[PaperbaseDbProperties.EmbeddingVectorDimension];
+        var floats = new float[ProductionBenchmarkDataset.ExpectedEmbeddingDimension];
         floats[0] = firstValue;
         var bytes = new byte[floats.Length * sizeof(float)];
         Buffer.BlockCopy(floats, 0, bytes, 0, bytes.Length);

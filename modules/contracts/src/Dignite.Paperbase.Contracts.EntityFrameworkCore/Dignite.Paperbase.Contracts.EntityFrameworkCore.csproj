@@ -10,7 +10,6 @@
 
   <ItemGroup>
     <PackageReference Include="Volo.Abp.EntityFrameworkCore" />
-    <PackageReference Include="Volo.Abp.EntityFrameworkCore.PostgreSql" />
     <ProjectReference Include="..\Dignite.Paperbase.Contracts.Domain\Dignite.Paperbase.Contracts.Domain.csproj" />
   </ItemGroup>
 

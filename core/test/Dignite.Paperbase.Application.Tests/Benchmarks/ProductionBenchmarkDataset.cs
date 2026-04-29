@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Dignite.Paperbase.Rag;
 
 namespace Dignite.Paperbase.Documents.Benchmarks;
 
@@ -15,6 +16,8 @@ namespace Dignite.Paperbase.Documents.Benchmarks;
 /// </summary>
 public sealed class ProductionBenchmarkDataset
 {
+    public static int ExpectedEmbeddingDimension { get; } = new PaperbaseRagOptions().EmbeddingDimension;
+
     [JsonPropertyName("version")]
     public string Version { get; init; } = default!;
 
@@ -47,12 +50,12 @@ public sealed class ProductionBenchmarkDataset
             throw new InvalidOperationException("Dataset queries must be present.");
         }
 
-        if (EmbeddingDimension != PaperbaseDbProperties.EmbeddingVectorDimension)
+        if (EmbeddingDimension != ExpectedEmbeddingDimension)
         {
             throw new InvalidOperationException(
                 $"Dataset embeddingDimension {EmbeddingDimension} does not match " +
-                $"{nameof(PaperbaseDbProperties.EmbeddingVectorDimension)} " +
-                $"{PaperbaseDbProperties.EmbeddingVectorDimension}.");
+                $"{nameof(PaperbaseRagOptions.EmbeddingDimension)} " +
+                $"{ExpectedEmbeddingDimension}.");
         }
 
         if (Chunks.Count == 0)
@@ -103,11 +106,11 @@ public sealed class ProductionBenchmarkDataset
             throw new InvalidOperationException($"{label} has an empty embedding.");
         }
 
-        if (embedding.Length != PaperbaseDbProperties.EmbeddingVectorDimension)
+        if (embedding.Length != ExpectedEmbeddingDimension)
         {
             throw new InvalidOperationException(
                 $"{label} embedding length {embedding.Length} does not match " +
-                $"{PaperbaseDbProperties.EmbeddingVectorDimension}.");
+                $"{ExpectedEmbeddingDimension}.");
         }
 
         if (embedding.All(v => v == 0f))

@@ -242,7 +242,7 @@ public class DocumentEmbeddingBackgroundJob_Tests
 
     private static float[] MakeVector(float firstValue)
     {
-        var v = new float[PaperbaseDbProperties.EmbeddingVectorDimension];
+        var v = new float[new PaperbaseRagOptions().EmbeddingDimension];
         v[0] = firstValue;
         return v;
     }
