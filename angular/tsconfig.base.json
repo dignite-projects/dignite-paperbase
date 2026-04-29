@@ -17,8 +17,8 @@
     "paths": {
       "@dignite/paperbase": ["packages/paperbase/src/public-api.ts"],
       "@dignite/paperbase/config": ["packages/paperbase/config/src/public-api.ts"],
-      "@dignite/contracts": ["packages/contracts/src/public-api.ts"],
-      "@dignite/contracts/config": ["packages/contracts/config/src/public-api.ts"]
+      "@dignite/paperbase.contracts": ["packages/contracts/src/public-api.ts"],
+      "@dignite/paperbase.contracts/config": ["packages/contracts/config/src/public-api.ts"]
     }
   },
   "angularCompilerOptions": {
