@@ -72,7 +72,6 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
         _rerankWorkflow = GetRequiredService<DocumentRerankWorkflow>();
         _embeddingGenerator = GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
 
-        SetupDefaultCapabilities();
         SetupDefaultEmbedding();
     }
 
@@ -154,149 +153,53 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
     }
 
     [Fact]
-    public async Task Default_Search_Mode_Is_Vector_And_QueryText_Is_Forwarded()
+    public async Task GlobalAsk_Forwards_Question_As_QueryText_For_Hybrid_Routing()
     {
-        // Slice 7 守护：Application 不再硬编码 Mode = Vector，而是从 PaperbaseRagOptions
-        // 读取。默认值是 Vector，所以现有行为不变；切到 Hybrid 必须只是配置改动。
-        // 同时验证 QueryText 一直被透传，让 Hybrid / Keyword provider 都能拿到原始问题。
-        VectorSearchRequest? captured = null;
+        // QueryText is the routing signal that lets the Qdrant provider take the
+        // hybrid (BM25 + dense, RRF) branch. Without it, EnableHybridSearch=true
+        // is silently ineffective on the QA path.
         _vectorStore
-            .SearchAsync(Arg.Do<VectorSearchRequest>(r => captured = r), Arg.Any<CancellationToken>())
+            .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
             .Returns(new List<VectorSearchResult>());
 
-        await _qaAppService.GlobalAskAsync(new GlobalAskInput { Question = "契約番号 ABC-001 はいくらですか？" });
+        var question = "この合同の有効期限はいつですか？";
+        await _qaAppService.GlobalAskAsync(new GlobalAskInput { Question = question });
 
-        captured.ShouldNotBeNull();
-        captured!.Mode.ShouldBe(VectorSearchMode.Vector);
-        captured.QueryText.ShouldBe("契約番号 ABC-001 はいくらですか？");
+        await _vectorStore.Received(1)
+            .SearchAsync(
+                Arg.Is<VectorSearchRequest>(r => r.QueryText == question),
+                Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task Configured_Hybrid_Mode_Is_Forwarded_To_VectorStore()
+    public async Task GlobalAsk_Hybrid_Results_With_Null_Score_Bypass_QaMinScore()
     {
-        // 翻 PaperbaseRagOptions.DefaultSearchMode 为 Hybrid 之后，Application 必须
-        // 把 Mode = Hybrid 透传到 provider；这是切到混合检索的唯一入口。
-        var ragOptions = GetRequiredService<IOptions<PaperbaseRagOptions>>().Value;
-        var originalMode = ragOptions.DefaultSearchMode;
-        ragOptions.DefaultSearchMode = VectorSearchMode.Hybrid;
-
-        try
+        // When the provider returns hybrid (RRF) results, Score is null. The QA
+        // app service must treat null as "no normalized score available" and let
+        // those chunks through, otherwise enabling hybrid search would silently
+        // drop every result on the QA path.
+        var hybridResults = new List<VectorSearchResult>
         {
-            VectorSearchRequest? captured = null;
-            _vectorStore
-                .SearchAsync(Arg.Do<VectorSearchRequest>(r => captured = r), Arg.Any<CancellationToken>())
-                .Returns(new List<VectorSearchResult>());
-
-            await _qaAppService.GlobalAskAsync(new GlobalAskInput { Question = "ANYTHING" });
-
-            captured.ShouldNotBeNull();
-            captured!.Mode.ShouldBe(VectorSearchMode.Hybrid);
-        }
-        finally
-        {
-            ragOptions.DefaultSearchMode = originalMode;
-        }
-    }
-
-    [Fact]
-    public async Task Configured_Hybrid_Mode_Falls_Back_To_Vector_When_Provider_Does_Not_Support_Hybrid()
-    {
-        var ragOptions = GetRequiredService<IOptions<PaperbaseRagOptions>>().Value;
-        var originalMode = ragOptions.DefaultSearchMode;
-        ragOptions.DefaultSearchMode = VectorSearchMode.Hybrid;
-
-        _vectorStore.Capabilities.Returns(new DocumentKnowledgeIndexCapabilities
-        {
-            SupportsVectorSearch = true,
-            SupportsKeywordSearch = true,
-            SupportsHybridSearch = false,
-            SupportsStructuredFilter = true,
-            SupportsDeleteByDocumentId = true,
-            NormalizesScore = true
-        });
-
-        try
-        {
-            VectorSearchRequest? captured = null;
-            _vectorStore
-                .SearchAsync(Arg.Do<VectorSearchRequest>(r => captured = r), Arg.Any<CancellationToken>())
-                .Returns(new List<VectorSearchResult>());
-
-            await _qaAppService.GlobalAskAsync(new GlobalAskInput { Question = "ANYTHING" });
-
-            captured.ShouldNotBeNull();
-            captured!.Mode.ShouldBe(VectorSearchMode.Vector);
-        }
-        finally
-        {
-            ragOptions.DefaultSearchMode = originalMode;
-            SetupDefaultCapabilities();
-        }
-    }
-
-    [Fact]
-    public async Task GlobalAsk_Does_Not_Apply_MinScore_When_Provider_Does_Not_Normalize_Score()
-    {
-        _vectorStore.Capabilities.Returns(new DocumentKnowledgeIndexCapabilities
-        {
-            SupportsVectorSearch = true,
-            SupportsKeywordSearch = true,
-            SupportsHybridSearch = true,
-            SupportsStructuredFilter = true,
-            SupportsDeleteByDocumentId = true,
-            NormalizesScore = false
-        });
-
-        var rawProviderScores = new List<VectorSearchResult>
-        {
-            new() { RecordId = Guid.NewGuid(), DocumentId = Guid.NewGuid(), ChunkIndex = 0, Text = "raw score result", Score = 0.05 }
+            new() { RecordId = Guid.NewGuid(), DocumentId = Guid.NewGuid(), ChunkIndex = 0, Text = "合同期間は2026年4月から2027年3月まで。", Score = null },
+            new() { RecordId = Guid.NewGuid(), DocumentId = Guid.NewGuid(), ChunkIndex = 1, Text = "契約金額は1,200,000円。", Score = null }
         };
 
         _vectorStore
             .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
-            .Returns(rawProviderScores);
+            .Returns(hybridResults);
 
-        IReadOnlyList<QaChunk>? capturedChunks = null;
+        var outcome = new DocumentQaOutcome { Answer = "ans", ActualMode = QaMode.Rag };
         _qaWorkflow
-            .RunRagAsync(Arg.Any<string>(), Arg.Do<IReadOnlyList<QaChunk>>(c => capturedChunks = c), Arg.Any<CancellationToken>())
-            .Returns(new DocumentQaOutcome { Answer = "ans", ActualMode = QaMode.Rag });
+            .RunRagAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<QaChunk>>(), Arg.Any<CancellationToken>())
+            .Returns(outcome);
 
-        try
-        {
-            await _qaAppService.GlobalAskAsync(new GlobalAskInput { Question = "问题" });
+        await _qaAppService.GlobalAskAsync(new GlobalAskInput { Question = "問題" });
 
-            capturedChunks.ShouldNotBeNull();
-            capturedChunks!.Count.ShouldBe(1);
-
-            await _vectorStore.Received(1).SearchAsync(
-                Arg.Is<VectorSearchRequest>(r => r.MinScore == null),
+        await _qaWorkflow.Received(1)
+            .RunRagAsync(
+                Arg.Any<string>(),
+                Arg.Is<IReadOnlyList<QaChunk>>(c => c.Count == 2),
                 Arg.Any<CancellationToken>());
-        }
-        finally
-        {
-            SetupDefaultCapabilities();
-        }
-    }
-
-    [Fact]
-    public async Task GlobalAsk_Rejects_Provider_Without_Structured_Filter()
-    {
-        _vectorStore.Capabilities.Returns(new DocumentKnowledgeIndexCapabilities
-        {
-            SupportsVectorSearch = true,
-            SupportsKeywordSearch = true,
-            SupportsHybridSearch = true,
-            SupportsStructuredFilter = false,
-            SupportsDeleteByDocumentId = true,
-            NormalizesScore = true
-        });
-
-        await Should.ThrowAsync<InvalidOperationException>(async () =>
-        {
-            await _qaAppService.GlobalAskAsync(new GlobalAskInput { Question = "问题" });
-        });
-
-        SetupDefaultCapabilities();
     }
 
     [Fact]
@@ -450,16 +353,4 @@ public class DocumentQaAppService_Tests : PaperbaseApplicationTestBase<DocumentQ
             .Returns(embeddings);
     }
 
-    private void SetupDefaultCapabilities()
-    {
-        _vectorStore.Capabilities.Returns(new DocumentKnowledgeIndexCapabilities
-        {
-            SupportsVectorSearch = true,
-            SupportsKeywordSearch = true,
-            SupportsHybridSearch = true,
-            SupportsStructuredFilter = true,
-            SupportsDeleteByDocumentId = true,
-            NormalizesScore = true
-        });
-    }
 }

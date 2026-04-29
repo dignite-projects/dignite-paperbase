@@ -47,7 +47,7 @@ Paperbase uses `Microsoft.Extensions.AI` for chat and embeddings. Any OpenAI-com
 | `ChunkOverlap` | `100` | Overlap between adjacent chunks |
 | `ChunkBoundaryTolerance` | `120` | Backtrack tolerance to snap chunk boundaries to natural breaks |
 | `QaTopKChunks` | `5` | Final number of chunks used as QA context |
-| `QaMinScore` | `0.65` | Minimum score applied only when the provider reports normalized scores |
+| `QaMinScore` | `0.65` | Minimum score applied only when the provider reports normalized scores. Set to `null` to disable |
 | `EnableLlmRerank` | `false` | Expands recall and lets an LLM rerank candidates before QA |
 | `RecallExpandFactor` | `4` | Recall multiplier when rerank is enabled |
 | `DefaultLanguage` | `"ja"` | Language hint appended to AI prompts |
@@ -60,12 +60,11 @@ Paperbase uses `Microsoft.Extensions.AI` for chat and embeddings. Any OpenAI-com
 "PaperbaseRag": {
   "EmbeddingDimension": 1536,
   "DefaultTopK": 5,
-  "MinScore": 0.65,
-  "DefaultSearchMode": "Vector"
+  "MinScore": 0.65
 }
 ```
 
-`DefaultSearchMode` may be set to `Keyword` or `Hybrid`, but the Qdrant provider currently supports only vector search. Application services perform capability-based fallback to `Vector` when possible.
+`MinScore` is a normalized cosine threshold and only applies when the provider returns normalized scores. The Qdrant provider returns `null` on the hybrid (RRF) path so this threshold is bypassed automatically — no override needed when toggling `EnableHybridSearch`.
 
 ## Qdrant RAG Provider
 
@@ -88,6 +87,7 @@ Paperbase uses `Microsoft.Extensions.AI` for chat and embeddings. Any OpenAI-com
 | `Distance` | `Cosine` | Distance metric. The first Qdrant provider phase supports `Cosine` only |
 | `VectorDimension` | `1536` | Must equal `PaperbaseRag:EmbeddingDimension` |
 | `EnsureCollectionOnStartup` | `true` | Creates or validates the collection and payload indexes on startup |
+| `EnableHybridSearch` | `false` | When `true`, combines dense-vector recall with full-text keyword recall using RRF fusion. Requires Qdrant ≥ 1.10. See [hybrid-search.md](hybrid-search.md) for score-threshold caveats. |
 
 Startup ensure creates these payload indexes:
 
@@ -97,6 +97,7 @@ Startup ensure creates these payload indexes:
 | `document_id` | `Guid.ToString("D")` | keyword string |
 | `document_type_code` | document type code string | keyword string |
 | `chunk_index` | integer | integer |
+| `text` | chunk text | full-text (tokenized) |
 
 Search and delete filters always include `tenant_id`, so host-level documents use the string value `__host__`.
 

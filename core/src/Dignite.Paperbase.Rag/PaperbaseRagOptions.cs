@@ -14,13 +14,9 @@ public class PaperbaseRagOptions
     public int DefaultTopK { get; set; } = 5;
 
     /// <summary>
-    /// Minimum acceptable score in [0, 1]. Results below this threshold are discarded.
-    /// Only applied when the provider reports NormalizesScore = true.
+    /// Minimum acceptable normalized score in [0, 1]. Set to null to disable threshold filtering.
+    /// Providers that cannot supply a normalized score (e.g. Qdrant hybrid/RRF) emit
+    /// <see cref="VectorSearchResult.Score"/> = null and bypass this threshold.
     /// </summary>
-    public double MinScore { get; set; } = 0.65;
-
-    /// <summary>
-    /// Default search mode used when a request does not specify one explicitly.
-    /// </summary>
-    public VectorSearchMode DefaultSearchMode { get; set; } = VectorSearchMode.Vector;
+    public double? MinScore { get; set; } = 0.65;
 }

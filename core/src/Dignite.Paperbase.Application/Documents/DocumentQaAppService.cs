@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.Documents.AI.Workflows;
-using Dignite.Paperbase.Application.Documents.Rag;
 using Dignite.Paperbase.Permissions;
 using Dignite.Paperbase.Rag;
 using Microsoft.AspNetCore.Authorization;
@@ -23,7 +22,6 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
     private readonly DocumentQaWorkflow _qaWorkflow;
     private readonly DocumentRerankWorkflow _rerankWorkflow;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
-    private readonly DocumentKnowledgeIndexSearchModeResolver _searchModeResolver;
     private readonly PaperbaseAIOptions _aiOptions;
     private readonly PaperbaseRagOptions _ragOptions;
 
@@ -33,7 +31,6 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
         DocumentQaWorkflow qaWorkflow,
         DocumentRerankWorkflow rerankWorkflow,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
-        DocumentKnowledgeIndexSearchModeResolver searchModeResolver,
         IOptions<PaperbaseAIOptions> aiOptions,
         IOptions<PaperbaseRagOptions> ragOptions)
     {
@@ -42,7 +39,6 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
         _qaWorkflow = qaWorkflow;
         _rerankWorkflow = rerankWorkflow;
         _embeddingGenerator = embeddingGenerator;
-        _searchModeResolver = searchModeResolver;
         _aiOptions = aiOptions.Value;
         _ragOptions = ragOptions.Value;
     }
@@ -142,15 +138,8 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
             : finalTopK * Math.Max(1, baselineMultiplier);
 
         var questionEmbeddings = await _embeddingGenerator.GenerateAsync([question]);
-        var capabilities = _vectorStore.Capabilities;
-        _searchModeResolver.EnsureSearchCapabilities(capabilities);
-        var searchMode = _searchModeResolver.ResolveSearchMode(_ragOptions.DefaultSearchMode, capabilities);
-        var canApplyMinScore = capabilities.NormalizesScore && _aiOptions.QaMinScore > 0;
+        var canApplyMinScore = _aiOptions.QaMinScore > 0;
 
-        // QueryText is always passed so providers running in Hybrid / Keyword mode
-        // have a textual query available; Vector-only providers ignore it.
-        // Mode comes from PaperbaseRagOptions.DefaultSearchMode (Vector by default)
-        // so flipping to Hybrid is a config change, not a code change.
         var request = new VectorSearchRequest
         {
             QueryVector = questionEmbeddings[0].Vector,
@@ -158,8 +147,7 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
             TopK = recallTopK,
             DocumentId = documentId,
             DocumentTypeCode = documentTypeCode,
-            MinScore = canApplyMinScore ? _aiOptions.QaMinScore : null,
-            Mode = searchMode
+            MinScore = canApplyMinScore ? _aiOptions.QaMinScore : null
         };
 
         var rawResults = await _vectorStore.SearchForCurrentTenantAsync(CurrentTenant, request);
@@ -202,8 +190,11 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
             return rawResults;
         }
 
+        // Score == null signals the provider cannot give a normalized [0,1] score
+        // (e.g. hybrid/RRF retrieval). Such results pass through — applying a
+        // cosine-scale threshold to RRF scores would always reject them.
         var filtered = rawResults
-            .Where(r => r.Score >= _aiOptions.QaMinScore)
+            .Where(r => !r.Score.HasValue || r.Score.Value >= _aiOptions.QaMinScore)
             .ToList();
 
         if (filtered.Count == 0)

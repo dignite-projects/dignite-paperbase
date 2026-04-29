@@ -23,6 +23,4 @@ public sealed class DocumentSearchScope
     /// <summary>Override <see cref="PaperbaseRagOptions.MinScore"/>.</summary>
     public double? MinScore { get; init; }
 
-    /// <summary>Override <see cref="PaperbaseRagOptions.DefaultSearchMode"/>.</summary>
-    public VectorSearchMode? Mode { get; init; }
 }

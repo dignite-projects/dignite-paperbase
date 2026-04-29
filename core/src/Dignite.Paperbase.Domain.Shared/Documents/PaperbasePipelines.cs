@@ -18,9 +18,6 @@ public static class PaperbasePipelines
     /// <summary>文本分块 + 向量化。非关键流水线，失败降级为全文检索。</summary>
     public const string Embedding = "embedding";
 
-    /// <summary>AI 关系推断。非关键流水线。</summary>
-    public const string RelationInference = "relation-inference";
-
     /// <summary>生命周期派生时视为"关键"的流水线集合。</summary>
     public static readonly IReadOnlyCollection<string> KeyPipelines = new[]
     {

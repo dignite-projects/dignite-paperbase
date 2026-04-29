@@ -34,6 +34,7 @@ public class QdrantClientGateway : IQdrantClientGateway, ISingletonDependency
                     Size = (ulong)options.VectorDimension,
                     Distance = ParseDistance(options.Distance)
                 },
+                sparseVectorsConfig: options.EnableHybridSearch ? BuildSparseBm25Config() : null,
                 cancellationToken: cancellationToken);
         }
         else
@@ -45,6 +46,11 @@ public class QdrantClientGateway : IQdrantClientGateway, ISingletonDependency
             {
                 throw new InvalidOperationException(
                     $"Qdrant collection '{options.CollectionName}' vector config does not match QdrantRag options.");
+            }
+
+            if (options.EnableHybridSearch)
+            {
+                await EnsureSparseBm25VectorAsync(client, options.CollectionName, info, cancellationToken);
             }
         }
 
@@ -72,6 +78,9 @@ public class QdrantClientGateway : IQdrantClientGateway, ISingletonDependency
             options.CollectionName,
             QdrantPayloadFields.ChunkIndex,
             cancellationToken);
+
+        await CreateFullTextPayloadIndexAsync(
+            client, options.CollectionName, QdrantPayloadFields.Text, cancellationToken);
     }
 
     public virtual Task UpsertAsync(
@@ -97,6 +106,46 @@ public class QdrantClientGateway : IQdrantClientGateway, ISingletonDependency
             scoreThreshold: scoreThreshold,
             limit: limit,
             payloadSelector: true,
+            cancellationToken: cancellationToken);
+    }
+
+    public virtual async Task<IReadOnlyList<ScoredPoint>> QueryHybridAsync(
+        string collectionName,
+        float[] denseVector,
+        (float[] Values, uint[] Indices) sparseVector,
+        Filter filter,
+        ulong limit,
+        float? scoreThreshold,
+        CancellationToken cancellationToken = default)
+    {
+        var prefetch = new List<PrefetchQuery>
+        {
+            new() { Query = denseVector, Filter = filter, Limit = limit * 3 },
+            new()
+            {
+                Query = (sparseVector.Values, sparseVector.Indices),
+                Using = QdrantPayloadFields.Bm25VectorName,
+                Filter = filter,
+                Limit = limit * 3
+            }
+        };
+
+        return await _client.Value.QueryAsync(
+            collectionName: collectionName,
+            query: (Query)Fusion.Rrf,
+            prefetch: prefetch,
+            usingVector: null,
+            filter: filter,
+            scoreThreshold: scoreThreshold,
+            searchParams: null,
+            limit: limit,
+            offset: 0,
+            payloadSelector: true,
+            vectorsSelector: null,
+            readConsistency: null,
+            shardKeySelector: null,
+            lookupFrom: null,
+            timeout: null,
             cancellationToken: cancellationToken);
     }
 
@@ -157,6 +206,51 @@ public class QdrantClientGateway : IQdrantClientGateway, ISingletonDependency
         {
             // See CreateKeywordPayloadIndexAsync.
         }
+    }
+
+    protected virtual async Task CreateFullTextPayloadIndexAsync(
+        IQdrantClient client,
+        string collectionName,
+        string fieldName,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await client.CreatePayloadIndexAsync(
+                collectionName: collectionName,
+                fieldName: fieldName,
+                schemaType: PayloadSchemaType.Text,
+                wait: true,
+                cancellationToken: cancellationToken);
+        }
+        catch (RpcException ex) when (
+            ex.StatusCode is StatusCode.AlreadyExists or StatusCode.InvalidArgument)
+        { }
+    }
+
+    protected virtual async Task EnsureSparseBm25VectorAsync(
+        IQdrantClient client,
+        string collectionName,
+        CollectionInfo info,
+        CancellationToken cancellationToken)
+    {
+        if (info.Config.Params.SparseVectorsConfig.Map.ContainsKey(QdrantPayloadFields.Bm25VectorName))
+            return;
+
+        await client.UpdateCollectionAsync(
+            collectionName,
+            sparseVectorsConfig: BuildSparseBm25Config(),
+            cancellationToken: cancellationToken);
+    }
+
+    protected virtual SparseVectorConfig BuildSparseBm25Config()
+    {
+        var config = new SparseVectorConfig();
+        config.Map.Add(QdrantPayloadFields.Bm25VectorName, new SparseVectorParams
+        {
+            Modifier = Modifier.Idf
+        });
+        return config;
     }
 
     protected virtual Distance ParseDistance(string distance)

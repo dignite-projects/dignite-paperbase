@@ -6,29 +6,24 @@ using System.Threading.Tasks;
 namespace Dignite.Paperbase.Rag;
 
 /// <summary>
-/// Paperbase business-level facade for knowledge index operations.
+/// Paperbase business-level facade for Qdrant-backed knowledge index operations.
 /// This is not a generic vector database abstraction — it carries Paperbase-specific
 /// semantics: multi-tenancy, document identity, score normalization, and source citation.
-/// Provider implementations should map this interface to their underlying store
-/// (for example Qdrant or Azure AI Search).
 /// </summary>
 public interface IDocumentKnowledgeIndex
 {
-    /// <summary>Describes the capabilities of this provider.</summary>
-    DocumentKnowledgeIndexCapabilities Capabilities { get; }
-
     /// <summary>
-    /// Insert or update all chunk records for one document atomically (whole-document replace).
+    /// Insert or update all chunk records for one document (whole-document replace).
     /// Idempotent: calling with the same DocumentId replaces existing chunks.
     /// Passing an empty <see cref="DocumentVectorIndexUpdate.Chunks"/> list removes all index
-    /// data (chunks + document vector) for the document.
+    /// data for the document.
     /// </summary>
     Task UpsertDocumentAsync(
         DocumentVectorIndexUpdate update,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Remove all chunk records and the document-level vector for the specified document.
+    /// Remove all chunk records for the specified document.
     /// Used during document deletion when the deletion path is not already covered by
     /// <see cref="UpsertDocumentAsync"/> (e.g., cascaded from an event handler).
     /// </summary>
@@ -43,16 +38,5 @@ public interface IDocumentKnowledgeIndex
     /// </summary>
     Task<IReadOnlyList<VectorSearchResult>> SearchAsync(
         VectorSearchRequest request,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Find documents similar to the given document using document-level mean-pooled embeddings.
-    /// Returns results ordered by similarity descending, excluding the source document itself.
-    /// Only available when <see cref="DocumentKnowledgeIndexCapabilities.SupportsSearchSimilarDocuments"/> is true.
-    /// </summary>
-    Task<IReadOnlyList<DocumentSimilarityResult>> SearchSimilarDocumentsAsync(
-        Guid documentId,
-        Guid? tenantId,
-        int topK,
         CancellationToken cancellationToken = default);
 }

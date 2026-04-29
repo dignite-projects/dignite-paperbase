@@ -17,20 +17,6 @@ public class DefaultPromptProvider : IPromptProvider, ITransientDependency
         $"Respond in: {language}."
     );
 
-    public virtual PromptTemplate GetRelationInferencePrompt(string language, double minConfidence) => new(
-        "You are a document relation analyst. Given a source document and several candidate documents, " +
-        "identify candidates that have a substantive relationship with the source, and write one sentence " +
-        "that clearly states the relationship. " +
-        "Example phrasings: 'This contract supplements the payment terms in section 3 of the main contract.'; " +
-        "'This supersedes the 2024-03 version, making the original void.'; " +
-        "'This is an attachment list of the main contract.'; " +
-        "'This addresses the same project as the main contract.'. " +
-        "Return a JSON array; each item contains: targetDocumentId (string), description (one sentence, " +
-        "max 200 characters), confidence (0.0-1.0). " +
-        $"Include only items with confidence >= {minConfidence:F1}; return [] if none. " +
-        $"Write all descriptions in: {language}."
-    );
-
     public virtual PromptTemplate GetQaPrompt(string language) => new(
         "You are a helpful assistant that answers questions based on the provided document content. " +
         "Answer in the same language as the question. " +

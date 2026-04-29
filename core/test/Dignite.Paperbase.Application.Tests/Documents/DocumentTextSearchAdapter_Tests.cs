@@ -32,7 +32,7 @@ public class DocumentTextSearchAdapterTestModule : AbpModule
 /// <summary>
 /// Slice 8 守护：<see cref="DocumentTextSearchAdapter"/> 让 Microsoft Agent Framework 的
 /// <see cref="TextSearchProvider"/> 能复用 Paperbase 的 <see cref="IDocumentKnowledgeIndex"/>。
-/// 这些测试覆盖：citation 字段映射、按 Mode 跳过/触发 embedding、scope 覆盖默认配置、
+/// 这些测试覆盖：citation 字段映射、query embedding、scope 覆盖默认配置、
 /// 多租户 TenantId 显式传递。
 /// </summary>
 public class DocumentTextSearchAdapter_Tests
@@ -48,7 +48,6 @@ public class DocumentTextSearchAdapter_Tests
         _vectorStore = GetRequiredService<IDocumentKnowledgeIndex>();
         _embeddingGenerator = GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
 
-        SetupDefaultCapabilities();
         SetupDefaultEmbedding();
     }
 
@@ -62,7 +61,7 @@ public class DocumentTextSearchAdapter_Tests
     }
 
     [Fact]
-    public async Task SearchAsync_Forwards_TenantId_And_QueryText_To_VectorStore()
+    public async Task SearchAsync_Forwards_TenantId_To_VectorStore()
     {
         var tenantId = Guid.NewGuid();
         VectorSearchRequest? captured = null;
@@ -75,72 +74,20 @@ public class DocumentTextSearchAdapter_Tests
 
         captured.ShouldNotBeNull();
         captured!.TenantId.ShouldBe(tenantId);
-        captured.QueryText.ShouldBe("契約番号 ABC-001");
     }
 
     [Fact]
-    public async Task Vector_Mode_Generates_Embedding_For_Query()
+    public async Task SearchAsync_Generates_Embedding_For_Query()
     {
-        // Vector / Hybrid 模式必须把 query 喂给 embedding 生成器；TextSearchProvider
-        // 只给 string，adapter 负责补齐向量。
-        var scope = new DocumentSearchScope { Mode = VectorSearchMode.Vector };
         _vectorStore.SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
             .Returns(new List<VectorSearchResult>());
 
-        await _adapter.SearchAsync(tenantId: null, scope, query: "ANYTHING");
+        await _adapter.SearchAsync(tenantId: null, scope: null, query: "ANYTHING");
 
         await _embeddingGenerator.Received(1).GenerateAsync(
             Arg.Any<IEnumerable<string>>(),
             Arg.Any<EmbeddingGenerationOptions?>(),
             Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task Keyword_Mode_Skips_Embedding_Generation()
-    {
-        // Keyword 模式不需要向量；跳过 embedding 调用是显式优化。
-        // 这条测试如果挂了，说明 adapter 在 Keyword 模式下也调了 embedding 服务，
-        // 那是不必要的成本 / 延迟。
-        var scope = new DocumentSearchScope { Mode = VectorSearchMode.Keyword };
-        _vectorStore.SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
-            .Returns(new List<VectorSearchResult>());
-
-        await _adapter.SearchAsync(tenantId: null, scope, query: "ANYTHING");
-
-        await _embeddingGenerator.DidNotReceive().GenerateAsync(
-            Arg.Any<IEnumerable<string>>(),
-            Arg.Any<EmbeddingGenerationOptions?>(),
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task Keyword_Mode_Falls_Back_To_Vector_When_Provider_Does_Not_Support_Keyword()
-    {
-        _vectorStore.Capabilities.Returns(new DocumentKnowledgeIndexCapabilities
-        {
-            SupportsVectorSearch = true,
-            SupportsKeywordSearch = false,
-            SupportsHybridSearch = false,
-            SupportsStructuredFilter = true,
-            SupportsDeleteByDocumentId = true,
-            NormalizesScore = true
-        });
-
-        var scope = new DocumentSearchScope { Mode = VectorSearchMode.Keyword };
-        VectorSearchRequest? captured = null;
-        _vectorStore.SearchAsync(Arg.Do<VectorSearchRequest>(r => captured = r), Arg.Any<CancellationToken>())
-            .Returns(new List<VectorSearchResult>());
-
-        await _adapter.SearchAsync(tenantId: null, scope, query: "ANYTHING");
-
-        captured.ShouldNotBeNull();
-        captured!.Mode.ShouldBe(VectorSearchMode.Vector);
-        await _embeddingGenerator.Received(1).GenerateAsync(
-            Arg.Any<IEnumerable<string>>(),
-            Arg.Any<EmbeddingGenerationOptions?>(),
-            Arg.Any<CancellationToken>());
-
-        SetupDefaultCapabilities();
     }
 
     [Fact]
@@ -152,8 +99,7 @@ public class DocumentTextSearchAdapter_Tests
             DocumentId = documentId,
             DocumentTypeCode = "contract.general",
             TopK = 17,
-            MinScore = 0.42,
-            Mode = VectorSearchMode.Hybrid
+            MinScore = 0.42
         };
 
         VectorSearchRequest? captured = null;
@@ -167,36 +113,10 @@ public class DocumentTextSearchAdapter_Tests
         captured.DocumentTypeCode.ShouldBe("contract.general");
         captured.TopK.ShouldBe(17);
         captured.MinScore.ShouldBe(0.42);
-        captured.Mode.ShouldBe(VectorSearchMode.Hybrid);
     }
 
     [Fact]
-    public async Task Result_Title_Maps_To_TextSearchResult_SourceName()
-    {
-        // citation 主路径：Title 优先作为 SourceName，让 LLM 在回答里直接引用。
-        _vectorStore.SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
-            .Returns(new List<VectorSearchResult>
-            {
-                new()
-                {
-                    RecordId = Guid.NewGuid(),
-                    DocumentId = Guid.NewGuid(),
-                    ChunkIndex = 0,
-                    Text = "契約期間: 2026-04-01 から 2027-03-31",
-                    Title = "§3.1 期間条項",
-                    PageNumber = 4
-                }
-            });
-
-        var results = (await _adapter.SearchAsync(tenantId: null, scope: null, query: "Q")).ToList();
-
-        results.Count.ShouldBe(1);
-        results[0].SourceName.ShouldBe("§3.1 期間条項");
-        results[0].Text.ShouldBe("契約期間: 2026-04-01 から 2027-03-31");
-    }
-
-    [Fact]
-    public async Task Result_Without_Title_But_With_PageNumber_Falls_Back_To_Page_Format()
+    public async Task Result_With_PageNumber_Uses_Page_Format()
     {
         var documentId = Guid.NewGuid();
         _vectorStore.SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
@@ -208,7 +128,6 @@ public class DocumentTextSearchAdapter_Tests
                     DocumentId = documentId,
                     ChunkIndex = 5,
                     Text = "...",
-                    Title = null,
                     PageNumber = 12
                 }
             });
@@ -219,7 +138,7 @@ public class DocumentTextSearchAdapter_Tests
     }
 
     [Fact]
-    public async Task Result_Without_Title_Or_PageNumber_Falls_Back_To_Chunk_Index_Format()
+    public async Task Result_Without_PageNumber_Uses_Chunk_Index_Format()
     {
         var documentId = Guid.NewGuid();
         _vectorStore.SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
@@ -231,7 +150,6 @@ public class DocumentTextSearchAdapter_Tests
                     DocumentId = documentId,
                     ChunkIndex = 7,
                     Text = "...",
-                    Title = null,
                     PageNumber = null
                 }
             });
@@ -239,67 +157,6 @@ public class DocumentTextSearchAdapter_Tests
         var results = (await _adapter.SearchAsync(tenantId: null, scope: null, query: "Q")).ToList();
 
         results[0].SourceName.ShouldBe($"Document {documentId} (chunk #7)");
-    }
-
-    [Fact]
-    public async Task Default_Mode_Comes_From_PaperbaseRagOptions()
-    {
-        // PaperbaseRagOptions.DefaultSearchMode 是切到 Hybrid 的唯一开关。
-        // adapter 必须读这个值，不能硬编码。
-        var ragOptions = GetRequiredService<IOptions<PaperbaseRagOptions>>().Value;
-        var original = ragOptions.DefaultSearchMode;
-        ragOptions.DefaultSearchMode = VectorSearchMode.Hybrid;
-
-        try
-        {
-            VectorSearchRequest? captured = null;
-            _vectorStore.SearchAsync(Arg.Do<VectorSearchRequest>(r => captured = r), Arg.Any<CancellationToken>())
-                .Returns(new List<VectorSearchResult>());
-
-            await _adapter.SearchAsync(tenantId: null, scope: null, query: "Q");
-
-            captured.ShouldNotBeNull();
-            captured!.Mode.ShouldBe(VectorSearchMode.Hybrid);
-        }
-        finally
-        {
-            ragOptions.DefaultSearchMode = original;
-        }
-    }
-
-    [Fact]
-    public async Task Default_Hybrid_Mode_Falls_Back_To_Vector_When_Provider_Does_Not_Support_Hybrid()
-    {
-        var ragOptions = GetRequiredService<IOptions<PaperbaseRagOptions>>().Value;
-        var original = ragOptions.DefaultSearchMode;
-        ragOptions.DefaultSearchMode = VectorSearchMode.Hybrid;
-
-        _vectorStore.Capabilities.Returns(new DocumentKnowledgeIndexCapabilities
-        {
-            SupportsVectorSearch = true,
-            SupportsKeywordSearch = false,
-            SupportsHybridSearch = false,
-            SupportsStructuredFilter = true,
-            SupportsDeleteByDocumentId = true,
-            NormalizesScore = true
-        });
-
-        try
-        {
-            VectorSearchRequest? captured = null;
-            _vectorStore.SearchAsync(Arg.Do<VectorSearchRequest>(r => captured = r), Arg.Any<CancellationToken>())
-                .Returns(new List<VectorSearchResult>());
-
-            await _adapter.SearchAsync(tenantId: null, scope: null, query: "Q");
-
-            captured.ShouldNotBeNull();
-            captured!.Mode.ShouldBe(VectorSearchMode.Vector);
-        }
-        finally
-        {
-            ragOptions.DefaultSearchMode = original;
-            SetupDefaultCapabilities();
-        }
     }
 
     [Fact]
@@ -335,16 +192,4 @@ public class DocumentTextSearchAdapter_Tests
             .Returns(embeddings);
     }
 
-    private void SetupDefaultCapabilities()
-    {
-        _vectorStore.Capabilities.Returns(new DocumentKnowledgeIndexCapabilities
-        {
-            SupportsVectorSearch = true,
-            SupportsKeywordSearch = true,
-            SupportsHybridSearch = true,
-            SupportsStructuredFilter = true,
-            SupportsDeleteByDocumentId = true,
-            NormalizesScore = true
-        });
-    }
 }

@@ -3,10 +3,9 @@ using System;
 namespace Dignite.Paperbase.Rag;
 
 /// <summary>
-/// A single result item returned from a vector / keyword / hybrid search.
+/// A single result item returned from vector search.
 /// All fields are strongly typed — no metadata dictionary.
-/// Score is normalized to [0, 1] (higher = more relevant) when the provider
-/// reports NormalizesScore = true.
+/// Score is normalized to [0, 1] (higher = more relevant).
 /// </summary>
 public class VectorSearchResult
 {
@@ -26,13 +25,9 @@ public class VectorSearchResult
     public string Text { get; init; } = default!;
 
     /// <summary>
-    /// Relevance score. Normalized to [0, 1] when the provider reports
-    /// NormalizesScore = true; raw provider score otherwise.
+    /// Relevance score normalized to [0, 1].
     /// </summary>
     public double? Score { get; init; }
-
-    /// <summary>Optional section/page title for source citation.</summary>
-    public string? Title { get; init; }
 
     /// <summary>Optional 1-based page number for source citation.</summary>
     public int? PageNumber { get; init; }

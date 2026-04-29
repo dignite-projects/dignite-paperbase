@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Application.Documents.Rag;
 using Dignite.Paperbase.Rag;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
@@ -22,12 +21,11 @@ namespace Dignite.Paperbase.Documents.AI;
 /// IDocumentKnowledgeIndex.SearchAsync(...)</c>. The adapter owns three jobs that
 /// the framework can't do on its own:
 /// <list type="bullet">
-///   <item>Embed the query when the configured mode requires a vector (Vector / Hybrid),
-///         and skip the embedding call entirely for Keyword mode (cost saving).</item>
+///   <item>Embed the query because Qdrant search requires a vector.</item>
 ///   <item>Carry an explicit <see cref="VectorSearchRequest.TenantId"/> so the search
 ///         is safe under Hangfire / CLI scenarios where ABP ambient context is absent.</item>
-///   <item>Map Paperbase citation fields (<see cref="VectorSearchResult.Title"/>,
-///         <see cref="VectorSearchResult.PageNumber"/>) onto Agent Framework's
+///   <item>Map Paperbase citation fields (<see cref="VectorSearchResult.PageNumber"/>)
+///         onto Agent Framework's
 ///         <see cref="TextSearchProvider.TextSearchResult.SourceName"/> /
 ///         <see cref="TextSearchProvider.TextSearchResult.SourceLink"/> contract so
 ///         the agent can cite sources in its answer.</item>
@@ -35,26 +33,23 @@ namespace Dignite.Paperbase.Documents.AI;
 ///
 /// This adapter does NOT replace <c>DocumentQaWorkflow</c> — it lives alongside it
 /// as an optional path. Both share the same <see cref="IDocumentKnowledgeIndex"/>
-/// implementation and benefit from any future hybrid-search / provider improvements.
+/// implementation.
 /// </summary>
 public class DocumentTextSearchAdapter : ITransientDependency
 {
     private readonly IDocumentKnowledgeIndex _vectorStore;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
-    private readonly DocumentKnowledgeIndexSearchModeResolver _searchModeResolver;
     private readonly ICurrentTenant _currentTenant;
     private readonly PaperbaseRagOptions _ragOptions;
 
     public DocumentTextSearchAdapter(
         IDocumentKnowledgeIndex vectorStore,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
-        DocumentKnowledgeIndexSearchModeResolver searchModeResolver,
         ICurrentTenant currentTenant,
         IOptions<PaperbaseRagOptions> ragOptions)
     {
         _vectorStore = vectorStore;
         _embeddingGenerator = embeddingGenerator;
-        _searchModeResolver = searchModeResolver;
         _currentTenant = currentTenant;
         _ragOptions = ragOptions.Value;
     }
@@ -89,9 +84,6 @@ public class DocumentTextSearchAdapter : ITransientDependency
 
     /// <summary>
     /// The actual search delegate handed to <see cref="TextSearchProvider"/>.
-    /// Embeds the query only when the mode needs a vector, so Keyword mode skips
-    /// the embedding call (and its cost / latency) entirely.
-    ///
     /// Public so it can be invoked directly for tests, custom Agent Framework
     /// integrations, or hosts that want the result list without going through
     /// <see cref="TextSearchProvider"/>'s context-injection lifecycle.
@@ -102,33 +94,18 @@ public class DocumentTextSearchAdapter : ITransientDependency
         string query,
         CancellationToken cancellationToken = default)
     {
-        var capabilities = _vectorStore.Capabilities;
-        _searchModeResolver.EnsureSearchCapabilities(capabilities);
-        var mode = _searchModeResolver.ResolveSearchMode(
-            scope?.Mode ?? _ragOptions.DefaultSearchMode,
-            capabilities);
-
-        // Embedding generation is conditional: a Keyword-mode agent may run
-        // without ever calling the embedding provider, which is the whole point
-        // of letting Mode flow through.
-        ReadOnlyMemory<float> queryVector = default;
-        if (_searchModeResolver.RequiresVector(mode))
-        {
-            var embeddings = await _embeddingGenerator.GenerateAsync(
-                [query], cancellationToken: cancellationToken);
-            queryVector = embeddings[0].Vector;
-        }
+        var embeddings = await _embeddingGenerator.GenerateAsync(
+            [query], cancellationToken: cancellationToken);
 
         var request = new VectorSearchRequest
         {
             TenantId = tenantId,
-            QueryText = query,
-            QueryVector = queryVector,
+            QueryVector = embeddings[0].Vector,
             TopK = scope?.TopK ?? _ragOptions.DefaultTopK,
             DocumentId = scope?.DocumentId,
             DocumentTypeCode = scope?.DocumentTypeCode,
-            MinScore = capabilities.NormalizesScore ? scope?.MinScore ?? _ragOptions.MinScore : null,
-            Mode = mode
+            MinScore = scope?.MinScore ?? _ragOptions.MinScore,
+            QueryText = query
         };
 
         var results = await _vectorStore.SearchAsync(request, cancellationToken);
@@ -136,17 +113,15 @@ public class DocumentTextSearchAdapter : ITransientDependency
     }
 
     /// <summary>
-    /// Map a Paperbase <see cref="VectorSearchResult"/> to the Agent Framework
-    /// citation contract. <see cref="VectorSearchResult.Title"/> is the preferred
-    /// human-readable source name; when missing we synthesize a stable identifier
-    /// from <c>DocumentId</c> + <c>ChunkIndex</c> / <c>PageNumber</c> so the agent
-    /// can still cite the chunk meaningfully.
+    /// Map a Paperbase <see cref="VectorSearchResult"/> to the Agent Framework citation
+    /// contract. Source name is synthesized from <c>DocumentId</c> + <c>PageNumber</c>
+    /// or <c>ChunkIndex</c> so the agent can cite the chunk meaningfully.
     /// </summary>
     protected virtual TextSearchProvider.TextSearchResult MapToTextSearchResult(VectorSearchResult result)
     {
         return new TextSearchProvider.TextSearchResult
         {
-            SourceName = result.Title ?? FormatDefaultSourceName(result),
+            SourceName = FormatDefaultSourceName(result),
             // No public URL scheme for Paperbase chunks yet; leaving null is the
             // honest answer. Hosts that expose a chunk-detail URL can subclass
             // this adapter and override the mapper.
@@ -156,10 +131,9 @@ public class DocumentTextSearchAdapter : ITransientDependency
     }
 
     /// <summary>
-    /// Default source-name format when the chunk has no <see cref="VectorSearchResult.Title"/>.
-    /// Prefers page number when present (most useful for human readers), falls back
-    /// to chunk index. Override in a subclass to inject document type or filename
-    /// once those become available on the result.
+    /// Synthesizes a source name from the chunk's location metadata.
+    /// Prefers page number when present, falls back to chunk index.
+    /// Override in a subclass to inject document type or filename.
     /// </summary>
     protected virtual string FormatDefaultSourceName(VectorSearchResult result)
     {

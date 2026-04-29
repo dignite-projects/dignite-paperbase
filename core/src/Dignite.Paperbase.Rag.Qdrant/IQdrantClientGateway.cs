@@ -22,6 +22,15 @@ public interface IQdrantClientGateway
         float? scoreThreshold,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<ScoredPoint>> QueryHybridAsync(
+        string collectionName,
+        float[] denseVector,
+        (float[] Values, uint[] Indices) sparseVector,
+        Filter filter,
+        ulong limit,
+        float? scoreThreshold,
+        CancellationToken cancellationToken = default);
+
     Task DeleteAsync(
         string collectionName,
         Filter filter,

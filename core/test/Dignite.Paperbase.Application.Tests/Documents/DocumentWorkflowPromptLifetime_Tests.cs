@@ -72,53 +72,6 @@ public class DocumentWorkflowPromptLifetime_Tests
         capturedSystemMessages[1].ShouldContain("Prompt-B");
     }
 
-    // ── RelationInference ─────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task RelationInferenceWorkflow_GetRelationInferencePrompt_CalledOnEachRunAsync()
-    {
-        var inner = BuildChatClientReturning("[]");
-
-        var promptProvider = Substitute.For<IPromptProvider>();
-        promptProvider.GetRelationInferencePrompt(Arg.Any<string>(), Arg.Any<double>())
-            .Returns(new PromptTemplate("Prompt-A"), new PromptTemplate("Prompt-B"));
-
-        var workflow = new DocumentRelationInferenceWorkflow(
-            inner, Options.Create(new PaperbaseAIOptions()), promptProvider);
-
-        var candidates = new List<RelationCandidate>
-            { new RelationCandidate { DocumentId = Guid.NewGuid(), Summary = "s" } };
-
-        await workflow.RunAsync(Guid.NewGuid(), "source text", candidates);
-        await workflow.RunAsync(Guid.NewGuid(), "source text", candidates);
-
-        promptProvider.Received(2).GetRelationInferencePrompt(Arg.Any<string>(), Arg.Any<double>());
-    }
-
-    [Fact]
-    public async Task RelationInferenceWorkflow_SystemInstructions_ReflectFreshPromptOnEachCall()
-    {
-        var capturedSystemMessages = new List<string>();
-        var inner = BuildChatClientCapturing(capturedSystemMessages, "[]");
-
-        var promptProvider = Substitute.For<IPromptProvider>();
-        promptProvider.GetRelationInferencePrompt(Arg.Any<string>(), Arg.Any<double>())
-            .Returns(new PromptTemplate("Prompt-A"), new PromptTemplate("Prompt-B"));
-
-        var workflow = new DocumentRelationInferenceWorkflow(
-            inner, Options.Create(new PaperbaseAIOptions()), promptProvider);
-
-        var candidates = new List<RelationCandidate>
-            { new RelationCandidate { DocumentId = Guid.NewGuid(), Summary = "s" } };
-
-        await workflow.RunAsync(Guid.NewGuid(), "source text", candidates);
-        await workflow.RunAsync(Guid.NewGuid(), "source text", candidates);
-
-        capturedSystemMessages.Count.ShouldBe(2);
-        capturedSystemMessages[0].ShouldContain("Prompt-A");
-        capturedSystemMessages[1].ShouldContain("Prompt-B");
-    }
-
     // ── QA ────────────────────────────────────────────────────────────────────
 
     [Fact]

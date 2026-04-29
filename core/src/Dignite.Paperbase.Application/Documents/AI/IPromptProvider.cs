@@ -9,8 +9,6 @@ public interface IPromptProvider
 {
     PromptTemplate GetClassificationPrompt(string language);
 
-    PromptTemplate GetRelationInferencePrompt(string language, double minConfidence);
-
     PromptTemplate GetQaPrompt(string language);
 
     PromptTemplate GetRerankPrompt(string language);

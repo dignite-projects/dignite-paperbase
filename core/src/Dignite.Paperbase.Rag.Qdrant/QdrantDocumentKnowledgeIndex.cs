@@ -29,17 +29,6 @@ public class QdrantDocumentKnowledgeIndex : IDocumentKnowledgeIndex, ITransientD
         _options = options.Value;
     }
 
-    public virtual DocumentKnowledgeIndexCapabilities Capabilities { get; } = new()
-    {
-        SupportsVectorSearch = true,
-        SupportsKeywordSearch = false,
-        SupportsHybridSearch = false,
-        SupportsStructuredFilter = true,
-        SupportsDeleteByDocumentId = true,
-        NormalizesScore = true,
-        SupportsSearchSimilarDocuments = false
-    };
-
     /// <summary>
     /// Qdrant writes are non-transactional. This method is idempotent by using stable
     /// point ids (tenant + document + chunk index), upserting current chunks first,
@@ -55,7 +44,7 @@ public class QdrantDocumentKnowledgeIndex : IDocumentKnowledgeIndex, ITransientD
             return;
         }
 
-        var points = update.Chunks.Select(CreatePoint).ToList();
+        var points = update.Chunks.Select(chunk => CreatePoint(update, chunk)).ToList();
         await _gateway.UpsertAsync(_options.CollectionName, points, cancellationToken);
 
         var retainedChunkIndexes = update.Chunks.Select(c => c.ChunkIndex).Distinct().ToList();
@@ -80,59 +69,65 @@ public class QdrantDocumentKnowledgeIndex : IDocumentKnowledgeIndex, ITransientD
         VectorSearchRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (request.Mode != VectorSearchMode.Vector)
-        {
-            throw new NotSupportedException("Qdrant RAG provider currently supports only Vector search mode.");
-        }
-
         if (request.QueryVector.IsEmpty)
         {
             return [];
         }
 
-        var points = await _gateway.QueryAsync(
-            _options.CollectionName,
-            request.QueryVector.ToArray(),
-            _filterBuilder.BuildSearchFilter(request),
-            (ulong)Math.Max(0, request.TopK),
-            request.MinScore.HasValue ? (float)request.MinScore.Value : null,
-            cancellationToken);
+        IReadOnlyList<ScoredPoint> points;
+        var filter = _filterBuilder.BuildSearchFilter(request);
+        var limit = (ulong)Math.Max(0, request.TopK);
+        var hybrid = _options.EnableHybridSearch && !string.IsNullOrWhiteSpace(request.QueryText);
 
-        return points.Select(MapToResult).ToList();
+        if (hybrid)
+        {
+            var sparseVector = SparseBm25Encoder.Encode(request.QueryText!);
+            points = await _gateway.QueryHybridAsync(
+                _options.CollectionName,
+                request.QueryVector.ToArray(),
+                sparseVector,
+                filter,
+                limit,
+                scoreThreshold: null,
+                cancellationToken);
+        }
+        else
+        {
+            var scoreThreshold = request.MinScore.HasValue ? (float)request.MinScore.Value : (float?)null;
+            points = await _gateway.QueryAsync(
+                _options.CollectionName,
+                request.QueryVector.ToArray(),
+                filter,
+                limit,
+                scoreThreshold,
+                cancellationToken);
+        }
+
+        return points.Select(p => MapToResult(p, hybrid)).ToList();
     }
 
-    public virtual Task<IReadOnlyList<DocumentSimilarityResult>> SearchSimilarDocumentsAsync(
-        Guid documentId,
-        Guid? tenantId,
-        int topK,
-        CancellationToken cancellationToken = default)
+    protected virtual PointStruct CreatePoint(DocumentVectorIndexUpdate update, DocumentVectorRecord record)
     {
-        throw new NotSupportedException("Qdrant RAG provider does not support similar-document search in this phase.");
-    }
+        Vectors vectors = _options.EnableHybridSearch
+            ? BuildHybridVectors(record)
+            : record.Vector.ToArray();
 
-    protected virtual PointStruct CreatePoint(DocumentVectorRecord record)
-    {
         var point = new PointStruct
         {
-            Id = _pointIdGenerator.Create(record.TenantId, record.DocumentId, record.ChunkIndex),
-            Vectors = record.Vector.ToArray(),
+            Id = _pointIdGenerator.Create(update.TenantId, update.DocumentId, record.ChunkIndex),
+            Vectors = vectors,
             Payload =
             {
-                [QdrantPayloadFields.TenantId] = QdrantPayloadEncoder.EncodeTenantId(record.TenantId),
-                [QdrantPayloadFields.DocumentId] = QdrantPayloadEncoder.EncodeDocumentId(record.DocumentId),
+                [QdrantPayloadFields.TenantId] = QdrantPayloadEncoder.EncodeTenantId(update.TenantId),
+                [QdrantPayloadFields.DocumentId] = QdrantPayloadEncoder.EncodeDocumentId(update.DocumentId),
                 [QdrantPayloadFields.ChunkIndex] = (long)record.ChunkIndex,
                 [QdrantPayloadFields.Text] = record.Text
             }
         };
 
-        if (!string.IsNullOrWhiteSpace(record.DocumentTypeCode))
+        if (!string.IsNullOrWhiteSpace(update.DocumentTypeCode))
         {
-            point.Payload[QdrantPayloadFields.DocumentTypeCode] = record.DocumentTypeCode;
-        }
-
-        if (!string.IsNullOrWhiteSpace(record.Title))
-        {
-            point.Payload[QdrantPayloadFields.Title] = record.Title;
+            point.Payload[QdrantPayloadFields.DocumentTypeCode] = update.DocumentTypeCode;
         }
 
         if (record.PageNumber.HasValue)
@@ -143,7 +138,25 @@ public class QdrantDocumentKnowledgeIndex : IDocumentKnowledgeIndex, ITransientD
         return point;
     }
 
-    protected virtual VectorSearchResult MapToResult(ScoredPoint point)
+    protected virtual Vectors BuildHybridVectors(DocumentVectorRecord record)
+    {
+        var (bm25Values, bm25Indices) = SparseBm25Encoder.Encode(record.Text ?? string.Empty);
+
+        var dense = new DenseVector();
+        dense.Data.AddRange(record.Vector.ToArray());
+
+        var sparse = new SparseVector();
+        sparse.Values.AddRange(bm25Values);
+        sparse.Indices.AddRange(bm25Indices);
+
+        var namedVectors = new NamedVectors();
+        namedVectors.Vectors.Add("", new Vector { Dense = dense });
+        namedVectors.Vectors.Add(QdrantPayloadFields.Bm25VectorName, new Vector { Sparse = sparse });
+
+        return new Vectors { Vectors_ = namedVectors };
+    }
+
+    protected virtual VectorSearchResult MapToResult(ScoredPoint point, bool hybrid)
     {
         return new VectorSearchResult
         {
@@ -152,8 +165,10 @@ public class QdrantDocumentKnowledgeIndex : IDocumentKnowledgeIndex, ITransientD
             DocumentTypeCode = TryGetStringPayload(point, QdrantPayloadFields.DocumentTypeCode),
             ChunkIndex = checked((int)GetIntegerPayload(point, QdrantPayloadFields.ChunkIndex)),
             Text = GetStringPayload(point, QdrantPayloadFields.Text),
-            Score = Math.Clamp(point.Score, 0.0, 1.0),
-            Title = TryGetStringPayload(point, QdrantPayloadFields.Title),
+            // Hybrid (RRF) scores are not normalized to [0,1] and cannot be compared
+            // against MinScore thresholds — surface them as null so callers don't apply
+            // a normalized-cosine threshold on the wrong scale.
+            Score = hybrid ? null : Math.Clamp(point.Score, 0.0, 1.0),
             PageNumber = TryGetIntegerPayload(point, QdrantPayloadFields.PageNumber) is { } page
                 ? checked((int)page)
                 : null

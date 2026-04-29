@@ -7,7 +7,6 @@ using Dignite.Paperbase.Rag;
 using Microsoft.Extensions.Logging;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.DependencyInjection;
-using Volo.Abp.Guids;
 
 namespace Dignite.Paperbase.Application.Documents.BackgroundJobs;
 
@@ -19,23 +18,17 @@ public class DocumentEmbeddingBackgroundJob
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly DocumentEmbeddingWorkflow _workflow;
     private readonly IDocumentKnowledgeIndex _knowledgeIndex;
-    private readonly IBackgroundJobManager _backgroundJobManager;
-    private readonly IGuidGenerator _guidGenerator;
 
     public DocumentEmbeddingBackgroundJob(
         IDocumentRepository documentRepository,
         DocumentPipelineRunManager pipelineRunManager,
         DocumentEmbeddingWorkflow workflow,
-        IDocumentKnowledgeIndex knowledgeIndex,
-        IBackgroundJobManager backgroundJobManager,
-        IGuidGenerator guidGenerator)
+        IDocumentKnowledgeIndex knowledgeIndex)
     {
         _documentRepository = documentRepository;
         _pipelineRunManager = pipelineRunManager;
         _workflow = workflow;
         _knowledgeIndex = knowledgeIndex;
-        _backgroundJobManager = backgroundJobManager;
-        _guidGenerator = guidGenerator;
     }
 
     public override async Task ExecuteAsync(DocumentEmbeddingJobArgs args)
@@ -52,8 +45,7 @@ public class DocumentEmbeddingBackgroundJob
         {
             var chunks = await _workflow.RunAsync(document.ExtractedText);
 
-            // UpsertDocumentAsync handles whole-document replace atomically:
-            // deletes stale chunks + inserts new ones + upserts DocumentVector in one UoW.
+            // UpsertDocumentAsync handles whole-document replace in the knowledge index.
             // TenantId is copied explicitly from Document so the operation is safe in
             // Hangfire jobs where ABP's ambient ICurrentTenant is not set by the HTTP pipeline.
             await _knowledgeIndex.UpsertDocumentAsync(new DocumentVectorIndexUpdate
@@ -65,14 +57,9 @@ public class DocumentEmbeddingBackgroundJob
                     ? chunks
                         .Select(c => new DocumentVectorRecord
                         {
-                            Id = _guidGenerator.Create(),
-                            TenantId = document.TenantId,
-                            DocumentId = document.Id,
-                            DocumentTypeCode = document.DocumentTypeCode,
                             ChunkIndex = c.ChunkIndex,
                             Text = c.ChunkText,
                             Vector = c.Vector,
-                            Title = null,
                             PageNumber = null
                         })
                         .ToList()
@@ -81,9 +68,6 @@ public class DocumentEmbeddingBackgroundJob
 
             await _pipelineRunManager.CompleteAsync(document, run);
             await _documentRepository.UpdateAsync(document);
-
-            await _backgroundJobManager.EnqueueAsync(
-                new DocumentRelationInferenceJobArgs { DocumentId = document.Id });
         }
         catch (Exception ex)
         {

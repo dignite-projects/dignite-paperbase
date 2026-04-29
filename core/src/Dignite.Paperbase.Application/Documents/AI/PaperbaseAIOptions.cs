@@ -60,27 +60,6 @@ public class PaperbaseAIOptions
     public string DefaultLanguage { get; set; } = "ja";
 
     /// <summary>
-    /// 关系推断最低置信度阈值；低于此值的推断项将被硬性过滤，即使 LLM 在 prompt 中已被要求排除。
-    /// </summary>
-    public double RelationInferenceMinConfidence { get; set; } = 0.5;
-
-    /// <summary>
-    /// 关系推断候选文档召回上限（Top-K 文档数），与 QaTopKChunks 解耦，允许独立调优。
-    /// </summary>
-    public int RelationInferenceCandidateTopK { get; set; } = 20;
-
-    /// <summary>
-    /// 每个候选文档摘要的最大字符数，超出时截断。
-    /// </summary>
-    public int MaxRelationCandidateSummaryLength { get; set; } = 500;
-
-    /// <summary>
-    /// 关系推断 Prompt 总字符预算（源文档摘要 + 所有候选摘要之和），
-    /// 超出时从低优先级候选末尾依次丢弃并记录警告。
-    /// </summary>
-    public int MaxRelationInferencePromptCharacters { get; set; } = 30000;
-
-    /// <summary>
     /// 启用时向 LLM 传递 <c>ChatOptions.ResponseFormat = Json</c>，
     /// 由 SDK 注入类型 schema 约束，同时从 prompt 中移除手写的 JSON schema 文本。
     /// 关闭时回退到旧的 prompt 内联 schema（适用于不支持 JSON mode 的 Provider）。

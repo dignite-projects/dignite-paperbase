@@ -13,4 +13,6 @@ public class QdrantRagOptions
     public int VectorDimension { get; set; } = 1536;
 
     public bool EnsureCollectionOnStartup { get; set; } = true;
+
+    public bool EnableHybridSearch { get; set; } = false;
 }

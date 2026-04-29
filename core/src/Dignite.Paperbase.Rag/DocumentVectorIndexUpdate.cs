@@ -6,7 +6,7 @@ namespace Dignite.Paperbase.Rag;
 /// <summary>
 /// Input for <see cref="IDocumentKnowledgeIndex.UpsertDocumentAsync"/>.
 /// Represents the complete index state for one document: calling with the same
-/// DocumentId a second time atomically replaces the previous state.
+/// DocumentId a second time replaces the previous state.
 /// Passing an empty <see cref="Chunks"/> list removes all index data for the document.
 /// </summary>
 public class DocumentVectorIndexUpdate

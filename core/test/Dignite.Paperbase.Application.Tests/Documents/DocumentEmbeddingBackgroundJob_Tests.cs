@@ -13,7 +13,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
-using Volo.Abp.BackgroundJobs;
 using Volo.Abp.Modularity;
 using Xunit;
 
@@ -26,7 +25,6 @@ public class DocumentEmbeddingJobTestModule : AbpModule
     {
         context.Services.AddSingleton(Substitute.For<IDocumentRepository>());
         context.Services.AddSingleton(Substitute.For<IDocumentKnowledgeIndex>());
-        context.Services.AddSingleton(Substitute.For<IBackgroundJobManager>());
 
         // TextChunker is a real DI-resolved service; replace the workflow itself with a mock
         // so we can return any chunk shape we want without depending on chunker / embedder behavior.
@@ -40,7 +38,7 @@ public class DocumentEmbeddingJobTestModule : AbpModule
 /// <summary>
 /// DocumentEmbeddingBackgroundJob 行为测试：守护 Slice G — 写入路径切换到
 /// <see cref="IDocumentKnowledgeIndex.UpsertDocumentAsync"/> 整文档替换语义。重点关注：
-///   - UpsertDocumentAsync 携带完整 DocumentId / TenantId / DocumentTypeCode / Chunks
+    ///   - UpsertDocumentAsync 携带完整 DocumentId / TenantId / DocumentTypeCode / Chunks
 ///   - TenantId 来自 Document 显式拷贝，不依赖 ABP ambient ICurrentTenant
 ///   - 空 chunks 时 UpsertDocumentAsync 仍被调用（传入空 Chunks，由实现清除旧索引）
 /// </summary>
@@ -51,7 +49,6 @@ public class DocumentEmbeddingBackgroundJob_Tests
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentKnowledgeIndex _knowledgeIndex;
     private readonly DocumentEmbeddingWorkflow _workflow;
-    private readonly IBackgroundJobManager _backgroundJobManager;
 
     public DocumentEmbeddingBackgroundJob_Tests()
     {
@@ -59,7 +56,6 @@ public class DocumentEmbeddingBackgroundJob_Tests
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _knowledgeIndex = GetRequiredService<IDocumentKnowledgeIndex>();
         _workflow = GetRequiredService<DocumentEmbeddingWorkflow>();
-        _backgroundJobManager = GetRequiredService<IBackgroundJobManager>();
     }
 
     [Fact]
@@ -102,7 +98,7 @@ public class DocumentEmbeddingBackgroundJob_Tests
     [Fact]
     public async Task Job_Maps_Workflow_Output_To_VectorRecord_With_Document_Context()
     {
-        // DocumentVectorRecord の TenantId / DocumentId / DocumentTypeCode は Document から
+        // DocumentVectorIndexUpdate の TenantId / DocumentId / DocumentTypeCode は Document から
         // 明示的にコピーされ、ambient context に依存しない（Hangfire job 安全性）。
         var tenantId = Guid.NewGuid();
         var doc = CreateDocument(
@@ -131,22 +127,15 @@ public class DocumentEmbeddingBackgroundJob_Tests
         capturedUpdate.Chunks.Count.ShouldBe(2);
 
         var rec0 = capturedUpdate.Chunks[0];
-        rec0.TenantId.ShouldBe(tenantId);
-        rec0.DocumentId.ShouldBe(doc.Id);
-        rec0.DocumentTypeCode.ShouldBe("contract.general");
         rec0.ChunkIndex.ShouldBe(0);
         rec0.Text.ShouldBe("chunk-0");
         rec0.Vector.Span[0].ShouldBe(0.1f);
-        rec0.Title.ShouldBeNull();
         rec0.PageNumber.ShouldBeNull();
-        rec0.Id.ShouldNotBe(Guid.Empty);
 
         var rec1 = capturedUpdate.Chunks[1];
         rec1.ChunkIndex.ShouldBe(1);
         rec1.Text.ShouldBe("chunk-1");
         rec1.Vector.Span[0].ShouldBe(0.2f);
-
-        rec0.Id.ShouldNotBe(rec1.Id);
     }
 
     [Fact]
@@ -165,27 +154,6 @@ public class DocumentEmbeddingBackgroundJob_Tests
                 u.DocumentId == doc.Id &&
                 u.Chunks.Count == 0),
             Arg.Any<CancellationToken>());
-
-        var run = doc.GetLatestRun(PaperbasePipelines.Embedding);
-        run.ShouldNotBeNull();
-        run.Status.ShouldBe(PipelineRunStatus.Succeeded);
-    }
-
-    [Fact]
-    public async Task Job_Enqueues_RelationInference_After_Successful_Embedding()
-    {
-        var doc = CreateDocument(extractedText: "契約書本文。");
-        SetupDocumentRepository(doc);
-        SetupWorkflowChunks([
-            new DocumentEmbeddingChunk { ChunkIndex = 0, ChunkText = "chunk-0", Vector = MakeVector(0.1f) }
-        ]);
-
-        await _job.ExecuteAsync(new DocumentEmbeddingJobArgs { DocumentId = doc.Id });
-
-        await _backgroundJobManager.Received(1).EnqueueAsync(
-            Arg.Is<DocumentRelationInferenceJobArgs>(a => a.DocumentId == doc.Id),
-            Arg.Any<BackgroundJobPriority>(),
-            Arg.Any<TimeSpan?>());
 
         var run = doc.GetLatestRun(PaperbasePipelines.Embedding);
         run.ShouldNotBeNull();
@@ -219,9 +187,7 @@ public class DocumentEmbeddingBackgroundJob_Tests
 
         capturedUpdates.Count.ShouldBe(2);
         capturedUpdates[0].TenantId.ShouldBe(tenantA);
-        capturedUpdates[0].Chunks.ShouldAllBe(r => r.TenantId == tenantA);
         capturedUpdates[1].TenantId.ShouldBe(tenantB);
-        capturedUpdates[1].Chunks.ShouldAllBe(r => r.TenantId == tenantB);
     }
 
     // ── helpers ────────────────────────────────────────────────────────────
