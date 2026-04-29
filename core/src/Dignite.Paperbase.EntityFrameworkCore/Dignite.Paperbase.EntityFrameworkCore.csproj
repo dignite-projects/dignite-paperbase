@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <Import Project="..\..\common.props" />
+  <Import Project="..\..\..\common.props" />
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -11,7 +11,7 @@
   <ItemGroup>
     <!-- Keep the core EF project free of vector database dependencies. RAG storage
          is owned by provider modules such as Dignite.Paperbase.Rag.Qdrant. -->
-    <PackageReference Include="Volo.Abp.EntityFrameworkCore" Version="10.2.0" />
+    <PackageReference Include="Volo.Abp.EntityFrameworkCore" />
     <ProjectReference Include="..\Dignite.Paperbase.Domain\Dignite.Paperbase.Domain.csproj" />
   </ItemGroup>
 

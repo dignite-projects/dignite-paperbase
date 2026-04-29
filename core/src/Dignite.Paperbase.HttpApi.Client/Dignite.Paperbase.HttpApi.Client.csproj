@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <Import Project="..\..\common.props" />
+  <Import Project="..\..\..\common.props" />
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Volo.Abp.Http.Client" Version="10.2.0"/>
+    <PackageReference Include="Volo.Abp.Http.Client"/>
     <ProjectReference Include="..\Dignite.Paperbase.Application.Contracts\Dignite.Paperbase.Application.Contracts.csproj" />
   </ItemGroup>
 

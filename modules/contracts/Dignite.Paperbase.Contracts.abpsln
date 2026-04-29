@@ -1,9 +1,0 @@
-{
-  "id": "a793441c-e353-43b3-8eed-5bba79f274f0",
-  "template": "empty",
-  "modules": {
-    "Dignite.Paperbase.Contracts": {
-      "path": "Dignite.Paperbase.Contracts.abpmdl"
-    }
-  }
-}

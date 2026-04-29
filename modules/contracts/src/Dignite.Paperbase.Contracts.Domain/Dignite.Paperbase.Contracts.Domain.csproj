@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <Import Project="..\..\common.props" />
+  <Import Project="..\..\..\..\common.props" />
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -10,9 +10,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Volo.Abp.Ddd.Domain" Version="10.2.0"/>
-    <PackageReference Include="Microsoft.Extensions.AI" Version="10.5.0" />
-    <PackageReference Include="Microsoft.Agents.AI" Version="1.2.0" />
+    <PackageReference Include="Volo.Abp.Ddd.Domain"/>
+    <PackageReference Include="Microsoft.Extensions.AI" />
+    <PackageReference Include="Microsoft.Agents.AI" />
     <ProjectReference Include="..\Dignite.Paperbase.Contracts.Domain.Shared\Dignite.Paperbase.Contracts.Domain.Shared.csproj" />
     <ProjectReference Include="..\..\..\..\core\src\Dignite.Paperbase.Abstractions\Dignite.Paperbase.Abstractions.csproj" />
   </ItemGroup>

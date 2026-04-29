@@ -1,0 +1,104 @@
+<Project>
+    <PropertyGroup>
+        <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+        <CentralPackageFloatingVersionsEnabled>true</CentralPackageFloatingVersionsEnabled>
+    </PropertyGroup>
+
+    <ItemGroup Label="Build tools">
+        <PackageVersion Include="ConfigureAwait.Fody" Version="3.3.1" />
+        <PackageVersion Include="Fody" Version="6.5.3" />
+    </ItemGroup>
+
+    <ItemGroup Label="ABP Framework">
+        <PackageVersion Include="Volo.Abp.Core" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Authorization" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Autofac" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Features" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Guids" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Validation" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.VirtualFileSystem" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.EventBus.Abstractions" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Http.Client" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Mapperly" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Ddd.Domain.Shared" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Ddd.Domain" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Ddd.Application.Contracts" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Ddd.Application" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.EntityFrameworkCore" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.EntityFrameworkCore.PostgreSql" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.EntityFrameworkCore.Sqlite" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.BackgroundJobs" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.BackgroundJobs.EntityFrameworkCore" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.BlobStoring" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.BlobStoring.Database.EntityFrameworkCore" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.AuditLogging.EntityFrameworkCore" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.AspNetCore.Mvc" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.AspNetCore.Serilog" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Swashbuckle" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Account.Application" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Account.HttpApi" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Account.Web.OpenIddict" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Identity.Application" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Identity.EntityFrameworkCore" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Identity.HttpApi" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.OpenIddict.EntityFrameworkCore" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.PermissionManagement.Application" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.PermissionManagement.Domain.Identity" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.PermissionManagement.Domain.OpenIddict" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.PermissionManagement.EntityFrameworkCore" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.PermissionManagement.HttpApi" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.PermissionManagement.Web" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.FeatureManagement.Application" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.FeatureManagement.EntityFrameworkCore" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.FeatureManagement.HttpApi" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.SettingManagement.Application" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.SettingManagement.EntityFrameworkCore" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.SettingManagement.HttpApi" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.TestBase" Version="10.2.0" />
+    </ItemGroup>
+
+    <ItemGroup Label="LeptonX">
+        <PackageVersion Include="Volo.Abp.AspNetCore.Mvc.UI.Theme.LeptonXLite" Version="5.2.0" />
+    </ItemGroup>
+
+    <ItemGroup Label="ABP Studio">
+        <PackageVersion Include="Volo.Abp.Studio.Client.AspNetCore" Version="2.2.6" />
+    </ItemGroup>
+
+    <ItemGroup Label="AI">
+        <PackageVersion Include="Microsoft.Extensions.AI" Version="10.5.0" />
+        <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.5.0" />
+        <PackageVersion Include="Microsoft.Agents.AI" Version="1.2.0" />
+    </ItemGroup>
+
+    <ItemGroup Label="Infrastructure">
+        <PackageVersion Include="Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation" Version="10.0.2" />
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.2" />
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.Proxies" Version="10.0.2" />
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.2" />
+        <PackageVersion Include="Microsoft.Extensions.FileProviders.Embedded" Version="10.0.2" />
+        <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.2" />
+        <PackageVersion Include="Azure.AI.DocumentIntelligence" Version="1.0.0" />
+        <PackageVersion Include="DocumentFormat.OpenXml" Version="3.*" />
+        <PackageVersion Include="IdentityModel" Version="7.0.0" />
+        <PackageVersion Include="KubernetesClient" Version="18.0.5" />
+        <PackageVersion Include="PdfPig" Version="0.1.9" />
+        <PackageVersion Include="Qdrant.Client" Version="1.17.0" />
+        <PackageVersion Include="Serilog.AspNetCore" Version="9.0.0" />
+        <PackageVersion Include="Serilog.Sinks.Async" Version="2.1.0" />
+        <PackageVersion Include="AspNetCore.HealthChecks.UI" Version="9.0.0" />
+        <PackageVersion Include="AspNetCore.HealthChecks.UI.Client" Version="9.0.0" />
+        <PackageVersion Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="9.0.0" />
+    </ItemGroup>
+
+    <ItemGroup Label="Test">
+        <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+        <PackageVersion Include="NSubstitute" Version="5.3.0" />
+        <PackageVersion Include="NSubstitute.Analyzers.CSharp" Version="1.0.17" />
+        <PackageVersion Include="Shouldly" Version="4.3.0" />
+        <PackageVersion Include="xunit" Version="2.9.3" />
+        <PackageVersion Include="xunit.extensibility.execution" Version="2.9.3" />
+        <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
+    </ItemGroup>
+
+</Project>

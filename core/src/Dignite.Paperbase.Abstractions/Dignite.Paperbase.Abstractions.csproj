@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <Import Project="..\..\common.props" />
+  <Import Project="..\..\..\common.props" />
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -10,8 +10,8 @@
 
   <ItemGroup>
     <!-- Volo.Abp.Core 提供 DI 标记接口；EventBus.Abstractions 提供 [EventName] 属性（用于集成事件 ETO） -->
-    <PackageReference Include="Volo.Abp.Core" Version="10.2.0" />
-    <PackageReference Include="Volo.Abp.EventBus.Abstractions" Version="10.2.0" />
+    <PackageReference Include="Volo.Abp.Core" />
+    <PackageReference Include="Volo.Abp.EventBus.Abstractions" />
   </ItemGroup>
 
 </Project>

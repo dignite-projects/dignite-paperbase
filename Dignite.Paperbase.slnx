@@ -1,0 +1,49 @@
+<Solution>
+
+    <Folder Name="/core/src/">
+        <Project Path="core/src/Dignite.Paperbase.Abstractions/Dignite.Paperbase.Abstractions.csproj" />
+        <Project Path="core/src/Dignite.Paperbase.Domain.Shared/Dignite.Paperbase.Domain.Shared.csproj" />
+        <Project Path="core/src/Dignite.Paperbase.Domain/Dignite.Paperbase.Domain.csproj" />
+        <Project Path="core/src/Dignite.Paperbase.Application.Contracts/Dignite.Paperbase.Application.Contracts.csproj" />
+        <Project Path="core/src/Dignite.Paperbase.Application/Dignite.Paperbase.Application.csproj" />
+        <Project Path="core/src/Dignite.Paperbase.EntityFrameworkCore/Dignite.Paperbase.EntityFrameworkCore.csproj" />
+        <Project Path="core/src/Dignite.Paperbase.HttpApi/Dignite.Paperbase.HttpApi.csproj" />
+        <Project Path="core/src/Dignite.Paperbase.HttpApi.Client/Dignite.Paperbase.HttpApi.Client.csproj" />
+        <Project Path="core/src/Dignite.Paperbase.Installer/Dignite.Paperbase.Installer.csproj" />
+        <Project Path="core/src/Dignite.Paperbase.Ocr/Dignite.Paperbase.Ocr.csproj" />
+        <Project Path="core/src/Dignite.Paperbase.Ocr.AzureDocumentIntelligence/Dignite.Paperbase.Ocr.AzureDocumentIntelligence.csproj" />
+        <Project Path="core/src/Dignite.Paperbase.Rag/Dignite.Paperbase.Rag.csproj" />
+        <Project Path="core/src/Dignite.Paperbase.Rag.Qdrant/Dignite.Paperbase.Rag.Qdrant.csproj" />
+        <Project Path="core/src/Dignite.Paperbase.TextExtraction/Dignite.Paperbase.TextExtraction.csproj" />
+    </Folder>
+
+    <Folder Name="/core/test/">
+        <Project Path="core/test/Dignite.Paperbase.TestBase/Dignite.Paperbase.TestBase.csproj" />
+        <Project Path="core/test/Dignite.Paperbase.Domain.Tests/Dignite.Paperbase.Domain.Tests.csproj" />
+        <Project Path="core/test/Dignite.Paperbase.EntityFrameworkCore.Tests/Dignite.Paperbase.EntityFrameworkCore.Tests.csproj" />
+        <Project Path="core/test/Dignite.Paperbase.Application.Tests/Dignite.Paperbase.Application.Tests.csproj" />
+    </Folder>
+
+    <Folder Name="/host/">
+        <Project Path="host/src/Dignite.Paperbase.Host.csproj" />
+    </Folder>
+
+    <Folder Name="/modules/contracts/src/">
+        <Project Path="modules/contracts/src/Dignite.Paperbase.Contracts.Domain.Shared/Dignite.Paperbase.Contracts.Domain.Shared.csproj" />
+        <Project Path="modules/contracts/src/Dignite.Paperbase.Contracts.Domain/Dignite.Paperbase.Contracts.Domain.csproj" />
+        <Project Path="modules/contracts/src/Dignite.Paperbase.Contracts.Application.Contracts/Dignite.Paperbase.Contracts.Application.Contracts.csproj" />
+        <Project Path="modules/contracts/src/Dignite.Paperbase.Contracts.Application/Dignite.Paperbase.Contracts.Application.csproj" />
+        <Project Path="modules/contracts/src/Dignite.Paperbase.Contracts.EntityFrameworkCore/Dignite.Paperbase.Contracts.EntityFrameworkCore.csproj" />
+        <Project Path="modules/contracts/src/Dignite.Paperbase.Contracts.HttpApi/Dignite.Paperbase.Contracts.HttpApi.csproj" />
+        <Project Path="modules/contracts/src/Dignite.Paperbase.Contracts.HttpApi.Client/Dignite.Paperbase.Contracts.HttpApi.Client.csproj" />
+        <Project Path="modules/contracts/src/Dignite.Paperbase.Contracts.Installer/Dignite.Paperbase.Contracts.Installer.csproj" />
+    </Folder>
+
+    <Folder Name="/modules/contracts/test/">
+        <Project Path="modules/contracts/test/Dignite.Paperbase.Contracts.TestBase/Dignite.Paperbase.Contracts.TestBase.csproj" />
+        <Project Path="modules/contracts/test/Dignite.Paperbase.Contracts.Domain.Tests/Dignite.Paperbase.Contracts.Domain.Tests.csproj" />
+        <Project Path="modules/contracts/test/Dignite.Paperbase.Contracts.EntityFrameworkCore.Tests/Dignite.Paperbase.Contracts.EntityFrameworkCore.Tests.csproj" />
+        <Project Path="modules/contracts/test/Dignite.Paperbase.Contracts.Application.Tests/Dignite.Paperbase.Contracts.Application.Tests.csproj" />
+    </Folder>
+
+</Solution>

@@ -4,12 +4,11 @@
         <Version>1.0.0</Version>
         <NoWarn>$(NoWarn);CS1591</NoWarn>
         <NuGetAudit>false</NuGetAudit>
-        <AbpProjectType>module</AbpProjectType>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="ConfigureAwait.Fody" Version="3.3.1" PrivateAssets="All"/>
-        <PackageReference Include="Fody" Version="6.5.3">
+        <PackageReference Include="ConfigureAwait.Fody" PrivateAssets="All"/>
+        <PackageReference Include="Fody">
             <PrivateAssets>All</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
         </PackageReference>

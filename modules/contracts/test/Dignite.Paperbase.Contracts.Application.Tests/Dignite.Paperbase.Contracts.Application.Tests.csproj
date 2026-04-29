@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <Import Project="..\..\common.props" />
+  <Import Project="..\..\..\..\common.test.props" />
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -11,7 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Dignite.Paperbase.Contracts.Application\Dignite.Paperbase.Contracts.Application.csproj" />
     <ProjectReference Include="..\Dignite.Paperbase.Contracts.Domain.Tests\Dignite.Paperbase.Contracts.Domain.Tests.csproj" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
   </ItemGroup>
 
 </Project>
