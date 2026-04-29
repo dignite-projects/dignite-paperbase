@@ -19,7 +19,7 @@
         ],
         "tsConfig": "apps/host/tsconfig.app.json",
         "inlineStyleLanguage": "scss",
-        "allowedCommonJsDependencies": ["chart.js", "js-sha256"],
+        "allowedCommonJsDependencies": ["chart.js"],
         "assets": [
           "apps/host/src/favicon.ico",
           "apps/host/src/assets",
