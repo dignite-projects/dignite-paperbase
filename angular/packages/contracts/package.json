@@ -1,5 +1,5 @@
 {
-  "name": "@dignite.Paperbase/contracts",
+  "name": "@dignite/contracts",
   "version": "0.0.1",
   "dependencies": {
     "@abp/ng.core": "~10.2.0",
