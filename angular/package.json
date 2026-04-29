@@ -19,8 +19,7 @@
   },
   "dependencies": {
     "@abp/ng.account": "~10.2.0",
-    "@swimlane/ngx-datatable": "^23.0.1",
-    "js-sha256": "^0.11.1",
+    "@swimlane/ngx-datatable": "~22.0.0",
     "@abp/ng.components": "~10.2.0",
     "@abp/ng.core": "~10.2.0",
     "@abp/ng.feature-management": "~10.2.0",
