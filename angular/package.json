@@ -2,6 +2,10 @@
   "name": "dignite-paperbase-workspace",
   "version": "0.0.0",
   "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
     "start": "nx serve host",
     "build": "nx run-many -t build",
@@ -15,6 +19,8 @@
   },
   "dependencies": {
     "@abp/ng.account": "~10.2.0",
+    "@swimlane/ngx-datatable": "^23.0.1",
+    "js-sha256": "^0.11.1",
     "@abp/ng.components": "~10.2.0",
     "@abp/ng.core": "~10.2.0",
     "@abp/ng.feature-management": "~10.2.0",

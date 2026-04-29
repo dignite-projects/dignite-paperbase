@@ -95,6 +95,6 @@ export class ContractsService {
     if (input?.amountMin != null) params.set('totalAmountMin', String(input.amountMin));
     if (input?.amountMax != null) params.set('totalAmountMax', String(input.amountMax));
     const qs = params.toString();
-    return `${this.env.getApiUrl()}/api/paperbase/contracts/export${qs ? '?' + qs : ''}`;
+    return `${this.env.getApiUrl(undefined)}/api/paperbase/contracts/export${qs ? '?' + qs : ''}`;
   }
 }

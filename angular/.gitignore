@@ -2,6 +2,10 @@
 .nx/cache
 .nx/workspace-data
 
+# Un-ignore Angular library packages (overrides parent repo's NuGet Packages rule)
+!packages/
+!packages/**
+
 # Dependencies
 node_modules/
 dist/
