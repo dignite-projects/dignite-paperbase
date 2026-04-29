@@ -22,6 +22,7 @@
         <Project Path="core/test/Dignite.Paperbase.Domain.Tests/Dignite.Paperbase.Domain.Tests.csproj" />
         <Project Path="core/test/Dignite.Paperbase.EntityFrameworkCore.Tests/Dignite.Paperbase.EntityFrameworkCore.Tests.csproj" />
         <Project Path="core/test/Dignite.Paperbase.Application.Tests/Dignite.Paperbase.Application.Tests.csproj" />
+        <Project Path="core/test/Dignite.Paperbase.Rag.Tests/Dignite.Paperbase.Rag.Tests.csproj" />
     </Folder>
 
     <Folder Name="/host/">

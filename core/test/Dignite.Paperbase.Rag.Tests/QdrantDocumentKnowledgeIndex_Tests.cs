@@ -10,7 +10,7 @@ using Qdrant.Client.Grpc;
 using Shouldly;
 using Xunit;
 
-namespace Dignite.Paperbase.Documents;
+namespace Dignite.Paperbase.Rag.Qdrant;
 
 public class QdrantDocumentKnowledgeIndex_Tests
 {

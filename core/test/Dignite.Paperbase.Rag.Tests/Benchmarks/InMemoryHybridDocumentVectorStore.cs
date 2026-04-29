@@ -4,13 +4,12 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Rag;
 
-namespace Dignite.Paperbase.Documents.Benchmarks;
+namespace Dignite.Paperbase.Rag.Benchmarks;
 
 /// <summary>
 /// Synthetic <see cref="IDocumentKnowledgeIndex"/> for the hybrid-search benchmark.
-/// Skips the real embedding / Postgres path entirely so the harness runs without
+/// Skips the real embedding / provider path entirely so the harness runs without
 /// external services.
 ///
 /// Scoring choices, calibrated to model the production pipeline's failure mode:
@@ -22,7 +21,7 @@ namespace Dignite.Paperbase.Documents.Benchmarks;
 ///         identifier (e.g., "ABC-001" vs "ABC-002" inside otherwise-identical
 ///         contract templates). This is the canonical hybrid-wins scenario.</item>
 ///   <item><b>Keyword path</b>: token-level exact match using the same
-///         <c>[\w\-]+</c> tokenization as PostgreSQL's <c>simple</c> regconfig.
+///         <c>[\w\-]+</c> tokenization as a simple regconfig.
 ///         Score = matched-token-count / query-token-count. Rare IDs ("ABC-001",
 ///         "INV-2026-04-001") matched intact win; semantic queries with broad
 ///         vocabulary score evenly across many chunks.</item>
@@ -33,9 +32,9 @@ namespace Dignite.Paperbase.Documents.Benchmarks;
 /// </list>
 ///
 /// What this <em>doesn't</em> simulate:
-/// real Embedding model behavior (token-level instead of dimensional), real
-/// PostgreSQL ts_rank_cd (no IDF weighting), recall@K saturation under millions
-/// of chunks. Production validation with real data is the follow-up issue.
+/// real embedding model behavior (token-level instead of dimensional), real
+/// BM25/IDF weighting, recall@K saturation under millions of chunks.
+/// Production validation with real data is the follow-up issue.
 /// </summary>
 public class InMemoryHybridDocumentVectorStore : IDocumentKnowledgeIndex
 {
@@ -72,14 +71,14 @@ public class InMemoryHybridDocumentVectorStore : IDocumentKnowledgeIndex
     }
 
     public Task UpsertDocumentAsync(DocumentVectorIndexUpdate update, CancellationToken ct = default)
-        => Task.CompletedTask; // Benchmark seeds via Seed(); write path is unused here.
+        => Task.CompletedTask;
 
     public Task DeleteByDocumentIdAsync(Guid documentId, Guid? tenantId, CancellationToken ct = default)
         => Task.CompletedTask;
 
     public Task<IReadOnlyList<DocumentSimilarityResult>> SearchSimilarDocumentsAsync(
         Guid documentId, Guid? tenantId, int topK, CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<DocumentSimilarityResult>>([]); // Not implemented in benchmark store.
+        => Task.FromResult<IReadOnlyList<DocumentSimilarityResult>>([]);
 
     public Task<IReadOnlyList<VectorSearchResult>> SearchAsync(
         VectorSearchRequest request, CancellationToken cancellationToken = default)
@@ -141,8 +140,7 @@ public class InMemoryHybridDocumentVectorStore : IDocumentKnowledgeIndex
 
     private static VectorSearchResult ToResult(IndexedChunk chunk, double score) => new()
     {
-        // RecordId is a stable derived GUID so RrfFusion can dedupe by id —
-        // critical because the same chunk may appear in both ranked lists.
+        // RecordId is a stable derived GUID so RrfFusion can dedupe by id.
         RecordId = DeterministicGuid(chunk.Id),
         DocumentId = DeterministicGuid(chunk.Id),
         ChunkIndex = 0,
@@ -150,8 +148,6 @@ public class InMemoryHybridDocumentVectorStore : IDocumentKnowledgeIndex
         Score = score,
         DocumentTypeCode = chunk.Id  // Repurposed as the synthetic chunk id for assertion-time lookup.
     };
-
-    // ── Scoring helpers ─────────────────────────────────────────────────
 
     private static double CosineBigram(HashSet<string> a, HashSet<string> b)
     {
@@ -179,8 +175,6 @@ public class InMemoryHybridDocumentVectorStore : IDocumentKnowledgeIndex
     private static List<string> Tokenize(string s)
         => TokenRegex.Matches(s).Select(m => m.Value.ToLowerInvariant()).ToList();
 
-    /// <summary>Stable GUID derived from chunk id, so the same chunk produces
-    /// the same RecordId across vector and keyword paths (RrfFusion dedupes by id).</summary>
     private static Guid DeterministicGuid(string id)
     {
         var bytes = new byte[16];

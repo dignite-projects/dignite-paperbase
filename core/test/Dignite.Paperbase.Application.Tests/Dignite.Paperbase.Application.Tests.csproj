@@ -11,8 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Dignite.Paperbase.Application\Dignite.Paperbase.Application.csproj" />
     <ProjectReference Include="..\..\src\Dignite.Paperbase.EntityFrameworkCore\Dignite.Paperbase.EntityFrameworkCore.csproj" />
-    <ProjectReference Include="..\..\src\Dignite.Paperbase.Rag.Qdrant\Dignite.Paperbase.Rag.Qdrant.csproj" />
-    <ProjectReference Include="..\..\src\Dignite.Paperbase.TextExtraction\Dignite.Paperbase.TextExtraction.csproj" />
+<ProjectReference Include="..\..\src\Dignite.Paperbase.TextExtraction\Dignite.Paperbase.TextExtraction.csproj" />
     <ProjectReference Include="..\Dignite.Paperbase.Domain.Tests\Dignite.Paperbase.Domain.Tests.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
   </ItemGroup>

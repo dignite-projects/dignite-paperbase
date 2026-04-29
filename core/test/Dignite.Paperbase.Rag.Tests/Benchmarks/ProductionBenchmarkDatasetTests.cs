@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using Shouldly;
 using Xunit;
 
-namespace Dignite.Paperbase.Documents.Benchmarks;
+namespace Dignite.Paperbase.Rag.Benchmarks;
 
 public class ProductionBenchmarkDatasetTests
 {

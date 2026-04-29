@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Dignite.Paperbase.Documents.Benchmarks;
+namespace Dignite.Paperbase.Rag.Benchmarks;
 
 /// <summary>
 /// Pure scoring helpers for retrieval evaluation. Used by the hybrid-search

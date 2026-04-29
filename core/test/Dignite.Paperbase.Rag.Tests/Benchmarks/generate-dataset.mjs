@@ -271,7 +271,7 @@ const dataset = {
   queries: encodedQueries,
 };
 
-const outPath = 'core/test/Dignite.Paperbase.Application.Tests/Benchmarks/rag-gold-dataset.json';
+const outPath = 'core/test/Dignite.Paperbase.Rag.Tests/Benchmarks/rag-gold-dataset.json';
 writeFileSync(outPath, JSON.stringify(dataset, null, 2), 'utf-8');
 console.log(`\nDataset written to ${outPath}`);
 console.log(`  chunks: ${encodedChunks.length}, queries: ${encodedQueries.length}`);

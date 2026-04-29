@@ -2,11 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Dignite.Paperbase.Documents.Benchmarks;
+namespace Dignite.Paperbase.Rag.Benchmarks;
 
 /// <summary>
 /// Synthetic JP/EN dataset for the Slice 7 hybrid-search benchmark. The corpus
-/// is hand-built (not脱敏 production data) so the harness is reproducible in
+/// is hand-built (not desensitized production data) so the harness is reproducible in
 /// CI without external data. Each <see cref="BenchmarkChunk"/> has a stable id
 /// and explicit business intent (contract, invoice, certificate, prose) so we
 /// can label which chunks are the "correct" answer for each query.
@@ -125,7 +125,6 @@ public static class BenchmarkDataset
 
         // ── Semantic queries (15) — broader Japanese, multiple plausible chunks ──
         queries.Add(Q(QueryCategory.Semantic, "甲乙双方の責任範囲はどうなっていますか",
-            // Any of the contract chunks is a valid answer
             BuildAllContractIds()));
         queries.Add(Q(QueryCategory.Semantic, "秘密保持義務について",
             BuildAllContractIds()));

@@ -1,11 +1,10 @@
-using Dignite.Paperbase.Rag;
 using Dignite.Paperbase.Rag.Qdrant;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Shouldly;
 using Xunit;
 
-namespace Dignite.Paperbase.Documents;
+namespace Dignite.Paperbase.Rag.Qdrant;
 
 /// <summary>
 /// 守护"PaperbaseRagOptions.EmbeddingDimension 必须等于 QdrantRagOptions.VectorDimension"
