@@ -10,8 +10,8 @@ namespace Dignite.Paperbase.Documents.Benchmarks;
 /// <summary>
 /// Loads the desensitized gold dataset used by <see cref="ProductionHybridSearchBenchmark"/>.
 /// The dataset JSON is NOT committed to the repo (contains desensitized real data).
-/// See <c>docs/benchmarks/README.md</c> for preparation instructions and
-/// <c>docs/benchmarks/rag-gold-dataset-sample.json</c> for the expected schema.
+/// See <c>core/test/Dignite.Paperbase.Application.Tests/Benchmarks/README.md</c> for preparation instructions and
+/// <c>core/test/Dignite.Paperbase.Application.Tests/Benchmarks/rag-gold-dataset-sample.json</c> for the expected schema.
 /// </summary>
 public sealed class ProductionBenchmarkDataset
 {
@@ -134,7 +134,7 @@ public sealed class ProductionBenchmarkDataset
 
     /// <summary>
     /// Walks up from the test assembly directory until it finds
-    /// <c>docs/benchmarks/rag-gold-dataset.json</c> relative to the repo root.
+    /// <c>core/test/Dignite.Paperbase.Application.Tests/Benchmarks/rag-gold-dataset.json</c> relative to the repo root.
     /// Throws if not found (the file is not committed — user must prepare it).
     /// </summary>
     public static string LocateDatasetPath()
@@ -146,7 +146,7 @@ public sealed class ProductionBenchmarkDataset
         var dir = AppContext.BaseDirectory;
         for (var i = 0; i < 10; i++)
         {
-            var candidate = Path.Combine(dir, "docs", "benchmarks", "rag-gold-dataset.json");
+            var candidate = Path.Combine(dir, "core", "test", "Dignite.Paperbase.Application.Tests", "Benchmarks", "rag-gold-dataset.json");
             if (File.Exists(candidate)) return candidate;
             var parent = Path.GetDirectoryName(dir);
             if (parent is null || parent == dir) break;
@@ -154,8 +154,8 @@ public sealed class ProductionBenchmarkDataset
         }
 
         throw new FileNotFoundException(
-            "docs/benchmarks/rag-gold-dataset.json not found. " +
-            "Prepare the desensitized dataset per docs/benchmarks/README.md, " +
+            "core/test/Dignite.Paperbase.Application.Tests/Benchmarks/rag-gold-dataset.json not found. " +
+            "Prepare the desensitized dataset per Benchmarks/README.md, " +
             "or set PAPERBASE_BENCH_DATASET_PATH to an explicit path.");
     }
 }

@@ -1,5 +1,5 @@
 {
-  "_comment": "SAMPLE ONLY — embeddings are zero placeholders. Replace with real desensitized data + real embeddings before running the production benchmark. See docs/benchmarks/README.md.",
+  "_comment": "SAMPLE ONLY — embeddings are zero placeholders. Replace with real desensitized data + real embeddings before running the production benchmark. See core/test/Dignite.Paperbase.Application.Tests/Benchmarks/README.md.",
   "version": "1",
   "privacy": "All texts are synthetic placeholders. Real dataset is prepared offline and not committed to the repo.",
   "embeddingModel": "text-embedding-3-small",
