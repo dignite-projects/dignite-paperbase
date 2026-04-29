@@ -1,0 +1,8 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "paperbase-dev-app",
+  "projectType": "application",
+  "sourceRoot": "apps/paperbase-dev-app/src",
+  "prefix": "app",
+  "implicitDependencies": ["paperbase"]
+}

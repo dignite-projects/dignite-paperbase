@@ -1,0 +1,193 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "host",
+  "projectType": "application",
+  "sourceRoot": "apps/host/src",
+  "prefix": "app",
+  "targets": {
+    "build": {
+      "executor": "@angular/build:application",
+      "options": {
+        "outputPath": {
+          "base": "dist/host"
+        },
+        "index": "apps/host/src/index.html",
+        "browser": "apps/host/src/main.ts",
+        "polyfills": [
+          "apps/host/src/polyfills.ts"
+        ],
+        "tsConfig": "apps/host/tsconfig.app.json",
+        "inlineStyleLanguage": "scss",
+        "allowedCommonJsDependencies": ["chart.js", "js-sha256"],
+        "assets": [
+          "apps/host/src/favicon.ico",
+          "apps/host/src/assets",
+          {
+            "glob": "web.config",
+            "input": "apps/host",
+            "output": "."
+          },
+          {
+            "glob": "dynamic-env.json",
+            "input": "apps/host",
+            "output": "."
+          }
+        ],
+        "styles": [
+          {
+            "input": "node_modules/@fortawesome/fontawesome-free/css/all.min.css",
+            "inject": true,
+            "bundleName": "fontawesome-all.min"
+          },
+          {
+            "input": "node_modules/@fortawesome/fontawesome-free/css/v4-shims.min.css",
+            "inject": true,
+            "bundleName": "fontawesome-v4-shims.min"
+          },
+          {
+            "input": "node_modules/ng-zorro-antd/tree/style/index.min.css",
+            "inject": false,
+            "bundleName": "ng-zorro-antd-tree"
+          },
+          {
+            "input": "node_modules/@swimlane/ngx-datatable/index.css",
+            "inject": true,
+            "bundleName": "ngx-datatable-index"
+          },
+          {
+            "input": "node_modules/@swimlane/ngx-datatable/assets/icons.css",
+            "inject": true,
+            "bundleName": "ngx-datatable-icons"
+          },
+          {
+            "input": "node_modules/@swimlane/ngx-datatable/themes/material.css",
+            "inject": true,
+            "bundleName": "ngx-datatable-material"
+          },
+          {
+            "input": "node_modules/@volo/ngx-lepton-x.lite/assets/css/bootstrap-dim.css",
+            "inject": false,
+            "bundleName": "bootstrap-dim"
+          },
+          {
+            "input": "node_modules/@volo/ngx-lepton-x.lite/assets/css/ng-bundle.css",
+            "inject": false,
+            "bundleName": "ng-bundle"
+          },
+          {
+            "input": "node_modules/@volo/ngx-lepton-x.lite/assets/css/side-menu/layout-bundle.css",
+            "inject": false,
+            "bundleName": "layout-bundle"
+          },
+          {
+            "input": "node_modules/@abp/ng.theme.lepton-x/assets/css/abp-bundle.css",
+            "inject": false,
+            "bundleName": "abp-bundle"
+          },
+          {
+            "input": "node_modules/@volo/ngx-lepton-x.lite/assets/css/bootstrap-dim.rtl.css",
+            "inject": false,
+            "bundleName": "bootstrap-dim.rtl"
+          },
+          {
+            "input": "node_modules/@volo/ngx-lepton-x.lite/assets/css/font-bundle.css",
+            "inject": false,
+            "bundleName": "font-bundle"
+          },
+          {
+            "input": "node_modules/@volo/ngx-lepton-x.lite/assets/css/font-bundle.rtl.css",
+            "inject": false,
+            "bundleName": "font-bundle.rtl"
+          },
+          {
+            "input": "node_modules/@volo/ngx-lepton-x.lite/assets/css/ng-bundle.rtl.css",
+            "inject": false,
+            "bundleName": "ng-bundle.rtl"
+          },
+          {
+            "input": "node_modules/@volo/ngx-lepton-x.lite/assets/css/side-menu/layout-bundle.rtl.css",
+            "inject": false,
+            "bundleName": "layout-bundle.rtl"
+          },
+          {
+            "input": "node_modules/@abp/ng.theme.lepton-x/assets/css/abp-bundle.rtl.css",
+            "inject": false,
+            "bundleName": "abp-bundle.rtl"
+          },
+          {
+            "input": "node_modules/bootstrap-icons/font/bootstrap-icons.css",
+            "inject": true,
+            "bundleName": "bootstrap-icons"
+          },
+          "apps/host/src/styles.scss"
+        ],
+        "scripts": []
+      },
+      "configurations": {
+        "production": {
+          "budgets": [
+            {
+              "type": "initial",
+              "maximumWarning": "2mb",
+              "maximumError": "2.5mb"
+            },
+            {
+              "type": "anyComponentStyle",
+              "maximumWarning": "2kb",
+              "maximumError": "100kb"
+            }
+          ],
+          "fileReplacements": [
+            {
+              "replace": "apps/host/src/environments/environment.ts",
+              "with": "apps/host/src/environments/environment.prod.ts"
+            }
+          ],
+          "outputHashing": "all"
+        },
+        "development": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true,
+          "namedChunks": true
+        }
+      },
+      "defaultConfiguration": "production"
+    },
+    "serve": {
+      "executor": "@angular/build:dev-server",
+      "configurations": {
+        "production": {
+          "buildTarget": "host:build:production"
+        },
+        "development": {
+          "buildTarget": "host:build:development"
+        }
+      },
+      "defaultConfiguration": "development"
+    },
+    "extract-i18n": {
+      "executor": "@angular/build:extract-i18n",
+      "options": {
+        "buildTarget": "host:build"
+      }
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "options": {
+        "tsConfig": "apps/host/tsconfig.spec.json",
+        "buildTarget": "host:build",
+        "runner": "vitest"
+      }
+    },
+    "lint": {
+      "executor": "@angular-eslint/builder:lint",
+      "options": {
+        "lintFilePatterns": [
+          "apps/host/src/**/*.ts",
+          "apps/host/src/**/*.html"
+        ]
+      }
+    }
+  }
+}

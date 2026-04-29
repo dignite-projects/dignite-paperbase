@@ -1,4 +1,0 @@
-export * from './lib/components';
-export * from './lib/services';
-export * from './lib/paperbase.routes';
-export * from './lib/proxy';

@@ -40,3 +40,33 @@ jobs:
       - name: Build Docker image
         run: docker build -f host/Dockerfile -t paperbase-api:${{ github.sha }} .
         if: github.event_name == 'push'
+
+  build-angular:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: angular/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: angular
+
+      - name: Build paperbase library
+        run: npx nx build paperbase --configuration production
+        working-directory: angular
+
+      - name: Build contracts library
+        run: npx nx build contracts --configuration production
+        working-directory: angular
+
+      - name: Build host application
+        run: npx nx build host --configuration production
+        working-directory: angular
