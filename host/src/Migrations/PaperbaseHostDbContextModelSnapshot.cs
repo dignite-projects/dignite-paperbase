@@ -143,7 +143,7 @@ namespace Dignite.Paperbase.Host.Migrations
                     b.ToTable("PaperbaseContracts", (string)null);
                 });
 
-            modelBuilder.Entity("Dignite.Paperbase.Documents.Chat.ChatConversation", b =>
+            modelBuilder.Entity("Dignite.Paperbase.Chat.ChatConversation", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -220,7 +220,7 @@ namespace Dignite.Paperbase.Host.Migrations
                     b.ToTable("PaperbaseDocumentChatConversations", (string)null);
                 });
 
-            modelBuilder.Entity("Dignite.Paperbase.Documents.Chat.ChatMessage", b =>
+            modelBuilder.Entity("Dignite.Paperbase.Chat.ChatMessage", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -2327,9 +2327,9 @@ namespace Dignite.Paperbase.Host.Migrations
                     b.ToTable("AbpSettingDefinitions", (string)null);
                 });
 
-            modelBuilder.Entity("Dignite.Paperbase.Documents.Chat.ChatMessage", b =>
+            modelBuilder.Entity("Dignite.Paperbase.Chat.ChatMessage", b =>
                 {
-                    b.HasOne("Dignite.Paperbase.Documents.Chat.ChatConversation", null)
+                    b.HasOne("Dignite.Paperbase.Chat.ChatConversation", null)
                         .WithMany("Messages")
                         .HasForeignKey("ConversationId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -2584,7 +2584,7 @@ namespace Dignite.Paperbase.Host.Migrations
                         .HasForeignKey("AuthorizationId");
                 });
 
-            modelBuilder.Entity("Dignite.Paperbase.Documents.Chat.ChatConversation", b =>
+            modelBuilder.Entity("Dignite.Paperbase.Chat.ChatConversation", b =>
                 {
                     b.Navigation("Messages");
                 });

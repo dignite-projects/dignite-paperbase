@@ -1,8 +1,8 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
-namespace Dignite.Paperbase.Documents.Chat;
+namespace Dignite.Paperbase.Chat;
 
 public class CreateChatConversationInput : IValidatableObject
 {

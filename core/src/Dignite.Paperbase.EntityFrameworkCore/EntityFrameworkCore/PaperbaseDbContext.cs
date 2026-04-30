@@ -1,5 +1,5 @@
-using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Documents.Chat;
+﻿using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Chat;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp.Data;
 using Volo.Abp.EntityFrameworkCore;

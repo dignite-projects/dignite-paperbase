@@ -1,7 +1,7 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
-namespace Dignite.Paperbase.Documents.Chat;
+namespace Dignite.Paperbase.Chat;
 
 public class ChatTurnResultDto
 {

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -8,7 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.DependencyInjection;
 using MeAi = Microsoft.Extensions.AI;
 
-namespace Dignite.Paperbase.Documents.Chat;
+namespace Dignite.Paperbase.Chat;
 
 public class PaperbasePostgresChatHistoryProvider : ChatHistoryProvider, ITransientDependency
 {

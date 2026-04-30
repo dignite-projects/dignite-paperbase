@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -14,7 +14,7 @@ using Volo.Abp.Security.Claims;
 using Xunit;
 using MEAI = Microsoft.Extensions.AI;
 
-namespace Dignite.Paperbase.Documents.Chat;
+namespace Dignite.Paperbase.Chat;
 
 /// <summary>
 /// Tests for <see cref="IDocumentChatAppService.SendMessageStreamingAsync"/>. Exercises:

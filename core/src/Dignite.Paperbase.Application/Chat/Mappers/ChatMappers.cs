@@ -1,8 +1,8 @@
-using Dignite.Paperbase.Documents.Chat;
+﻿using Dignite.Paperbase.Chat;
 using Riok.Mapperly.Abstractions;
 using Volo.Abp.Mapperly;
 
-namespace Dignite.Paperbase.Documents.Chat.Mappers;
+namespace Dignite.Paperbase.Chat.Mappers;
 
 [Mapper(RequiredMappingStrategy = RequiredMappingStrategy.Target)]
 public partial class ChatConversationToChatConversationDtoMapper

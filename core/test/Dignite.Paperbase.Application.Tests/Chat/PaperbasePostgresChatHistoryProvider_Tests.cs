@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -12,7 +12,7 @@ using Shouldly;
 using Xunit;
 using MeAi = Microsoft.Extensions.AI;
 
-namespace Dignite.Paperbase.Documents.Chat;
+namespace Dignite.Paperbase.Chat;
 
 public class PaperbasePostgresChatHistoryProvider_Tests
     : PaperbaseApplicationTestBase<DocumentChatAppServiceTestModule>

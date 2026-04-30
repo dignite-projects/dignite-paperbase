@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
@@ -17,7 +17,7 @@ using Volo.Abp.Validation;
 using Xunit;
 using MEAI = Microsoft.Extensions.AI;
 
-namespace Dignite.Paperbase.Documents.Chat;
+namespace Dignite.Paperbase.Chat;
 
 /// <summary>
 /// Behavioral tests for <see cref="DocumentChatAppService"/>. Exercises:

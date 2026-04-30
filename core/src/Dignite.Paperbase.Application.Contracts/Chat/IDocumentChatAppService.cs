@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -6,7 +6,7 @@ using Volo.Abp;
 using Volo.Abp.Application.Services;
 using Volo.Abp.Application.Dtos;
 
-namespace Dignite.Paperbase.Documents.Chat;
+namespace Dignite.Paperbase.Chat;
 
 public interface IDocumentChatAppService : IApplicationService
 {

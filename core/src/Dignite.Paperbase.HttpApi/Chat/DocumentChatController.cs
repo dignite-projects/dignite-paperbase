@@ -1,12 +1,12 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Documents.Chat;
+using Dignite.Paperbase.Chat;
 using Microsoft.AspNetCore.Mvc;
 using Volo.Abp.Application.Dtos;
 
-namespace Dignite.Paperbase.HttpApi.Documents;
+namespace Dignite.Paperbase.HttpApi.Chat;
 
 [Area("paperbase")]
 [Route("api/paperbase/document-chat")]

@@ -1,9 +1,9 @@
-using System;
-using Dignite.Paperbase.Documents.Chat;
+﻿using System;
+using Dignite.Paperbase.Chat;
 using Volo.Abp;
 using Volo.Abp.Domain.Entities;
 
-namespace Dignite.Paperbase.Documents.Chat;
+namespace Dignite.Paperbase.Chat;
 
 public class ChatMessage : Entity<Guid>
 {

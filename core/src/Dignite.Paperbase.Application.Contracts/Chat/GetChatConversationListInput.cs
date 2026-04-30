@@ -1,6 +1,6 @@
-using Volo.Abp.Application.Dtos;
+﻿using Volo.Abp.Application.Dtos;
 
-namespace Dignite.Paperbase.Documents.Chat;
+namespace Dignite.Paperbase.Chat;
 
 public class GetChatConversationListInput : PagedAndSortedResultRequestDto
 {

@@ -1,6 +1,6 @@
-using System;
+﻿using System;
 
-namespace Dignite.Paperbase.Documents.Chat;
+namespace Dignite.Paperbase.Chat;
 
 public class ChatCitationDto
 {

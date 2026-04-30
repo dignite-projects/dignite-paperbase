@@ -1,13 +1,13 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using Dignite.Paperbase.Documents.Chat;
+using Dignite.Paperbase.Chat;
 using Volo.Abp;
 using Volo.Abp.Domain.Entities.Auditing;
 using Volo.Abp.MultiTenancy;
 using Volo.Abp.Timing;
 
-namespace Dignite.Paperbase.Documents.Chat;
+namespace Dignite.Paperbase.Chat;
 
 public class ChatConversation : FullAuditedAggregateRoot<Guid>, IMultiTenant
 {

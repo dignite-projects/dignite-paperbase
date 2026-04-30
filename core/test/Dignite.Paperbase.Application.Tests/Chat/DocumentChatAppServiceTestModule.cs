@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.EntityFrameworkCore;
@@ -15,7 +15,7 @@ using Volo.Abp.EntityFrameworkCore.Sqlite;
 using Volo.Abp.Modularity;
 using Volo.Abp.Uow;
 
-namespace Dignite.Paperbase.Documents.Chat;
+namespace Dignite.Paperbase.Chat;
 
 [DependsOn(
     typeof(PaperbaseApplicationTestModule),

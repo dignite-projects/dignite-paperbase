@@ -1,8 +1,8 @@
-using System;
+﻿using System;
 using System.ComponentModel.DataAnnotations;
 using Volo.Abp.Validation;
 
-namespace Dignite.Paperbase.Documents.Chat;
+namespace Dignite.Paperbase.Chat;
 
 public class SendChatMessageInput
 {

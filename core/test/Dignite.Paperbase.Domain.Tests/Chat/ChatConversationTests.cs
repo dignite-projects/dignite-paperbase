@@ -1,12 +1,12 @@
-using System;
-using Dignite.Paperbase.Documents.Chat;
+﻿using System;
+using Dignite.Paperbase.Chat;
 using NSubstitute;
 using Shouldly;
 using Volo.Abp;
 using Volo.Abp.Timing;
 using Xunit;
 
-namespace Dignite.Paperbase.Documents.Chat;
+namespace Dignite.Paperbase.Chat;
 
 public class ChatConversationTests
 {

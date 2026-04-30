@@ -1,4 +1,4 @@
-namespace Dignite.Paperbase.Documents.Chat;
+﻿namespace Dignite.Paperbase.Chat;
 
 public enum ChatMessageRole
 {
