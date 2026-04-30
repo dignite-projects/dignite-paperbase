@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents.Chat;
 using Microsoft.AspNetCore.Mvc;
@@ -42,6 +44,16 @@ public class DocumentChatController : PaperbaseController, IDocumentChatAppServi
     {
         return _documentChatAppService.DeleteConversationAsync(conversationId);
     }
+
+    // SSE streaming is handled by DocumentChatStreamController in the host project.
+    // This stub satisfies the C# interface contract; [RemoteService(false)] on the
+    // interface method prevents ABP from generating an auto-API route for it.
+    [NonAction]
+    public virtual IAsyncEnumerable<ChatTurnDeltaDto> SendMessageStreamingAsync(
+        Guid conversationId,
+        SendChatMessageInput input,
+        CancellationToken cancellationToken = default)
+        => _documentChatAppService.SendMessageStreamingAsync(conversationId, input, cancellationToken);
 
     [HttpPost("conversations/{conversationId}/messages")]
     public virtual Task<ChatTurnResultDto> SendMessageAsync(

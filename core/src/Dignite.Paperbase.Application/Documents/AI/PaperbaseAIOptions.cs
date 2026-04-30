@@ -72,4 +72,17 @@ public class PaperbaseAIOptions
     /// 开发/测试环境若需每次强制请求 LLM，可在 appsettings 中将此项设为 false。
     /// </summary>
     public bool PromptCachingEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Controls when the <c>TextSearchProvider</c> fetches document context during a
+    /// chat turn. Defaults to <see cref="ChatSearchBehavior.BeforeAIInvoke"/> (retrieval
+    /// before every AI invocation; citations always populated).
+    /// <para>
+    /// Switch to <see cref="ChatSearchBehavior.OnDemandFunctionCalling"/> to let the
+    /// model decide when to search. This saves tokens but may yield an empty citation
+    /// list when the model declines to call the tool
+    /// (<c>ChatTurnResultDto.IsDegraded = true</c> in that case).
+    /// </para>
+    /// </summary>
+    public ChatSearchBehavior ChatSearchBehavior { get; set; } = ChatSearchBehavior.BeforeAIInvoke;
 }

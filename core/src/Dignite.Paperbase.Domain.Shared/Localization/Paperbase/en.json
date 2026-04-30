@@ -105,6 +105,7 @@
     "Paperbase:DocumentDuplicate": "This file has already been uploaded ({FileName}).",
     "Paperbase:DocumentInRecycleBin": "This file already exists in the recycle bin ({FileName}).",
 
-    "DocumentChat:UntitledConversation": "Untitled conversation"
+    "DocumentChat:UntitledConversation": "Untitled conversation",
+    "DocumentChat:StreamError": "An error occurred while generating the response. Please try again."
   }
 }

@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.Permissions;
@@ -182,8 +184,51 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             AssistantMessageId = assistantMessageId,
             Answer = run.Text,
             Citations = citations,
-            IsDegraded = false
+            // null LastResults means the model did not invoke the search tool (OnDemand mode).
+            IsDegraded = run.Capture.LastResults == null
         };
+    }
+
+    [Authorize(PaperbasePermissions.Documents.Chat.SendMessage)]
+    public virtual async IAsyncEnumerable<ChatTurnDeltaDto> SendMessageStreamingAsync(
+        Guid conversationId,
+        SendChatMessageInput input,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var conversation = await LoadAndAuthorizeAsync(conversationId, includeMessages: true, cancellationToken);
+
+        // Idempotency short-circuit: replay as a single Done event without re-invoking the model.
+        var existingUserMessage = conversation.Messages
+            .FirstOrDefault(m => m.Role == ChatMessageRole.User && m.ClientTurnId == input.ClientTurnId);
+        if (existingUserMessage != null)
+        {
+            var priorResult = BuildTurnResultFromPersisted(conversation, existingUserMessage);
+            yield return new ChatTurnDeltaDto
+            {
+                Kind = ChatTurnDeltaKind.Done,
+                UserMessageId = priorResult.UserMessageId,
+                AssistantMessageId = priorResult.AssistantMessageId,
+                Citations = priorResult.Citations
+            };
+            yield break;
+        }
+
+        // Use a channel to bridge the producer (agent streaming + persistence) with this
+        // async iterator. This allows full try/catch inside the producer without violating
+        // the C# restriction on yield-inside-catch, while still delivering incremental
+        // deltas to the consumer as they arrive from the LLM.
+        var channel = Channel.CreateUnbounded<ChatTurnDeltaDto>(
+            new UnboundedChannelOptions { SingleWriter = true, SingleReader = true });
+
+        var fillTask = FillStreamingChannelAsync(conversation, input, channel.Writer, cancellationToken);
+
+        await foreach (var delta in channel.Reader.ReadAllAsync(cancellationToken))
+            yield return delta;
+
+        // fillTask always completes before ReadAllAsync (the writer calls Complete() before
+        // returning). Await to surface any unexpected unhandled exception.
+        try { await fillTask; }
+        catch { /* error event was already written to the channel */ }
     }
 
     /// <summary>
@@ -226,9 +271,12 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         return conversation;
     }
 
-    protected virtual async Task<AgentRunOutcome> InvokeAgentAsync(
+    /// <summary>
+    /// Prepares the MAF agent and a restored (or fresh) <see cref="AgentSession"/> for
+    /// the given conversation. Shared by both the synchronous and streaming paths.
+    /// </summary>
+    protected virtual async Task<AgentSetup> PrepareAgentSetupAsync(
         ChatConversation conversation,
-        string message,
         CancellationToken cancellationToken = default)
     {
         // Capture tenant + scope from the conversation aggregate, not from ICurrentTenant.
@@ -243,7 +291,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         };
         var (provider, capture) = _textSearchAdapter.CreateForTenant(
             conversation.TenantId,
-            providerOptions: null,
+            providerOptions: BuildChatSearchProviderOptions(),
             scope: scope);
 
         var template = _promptProvider.GetQaPrompt(_aiOptions.DefaultLanguage);
@@ -270,8 +318,46 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
                 doc.RootElement, jsonSerializerOptions: null, cancellationToken);
         }
 
-        var response = await agent.RunAsync(message, session, options: null, cancellationToken);
-        return new AgentRunOutcome(response.Text, agent, session, capture);
+        return new AgentSetup(agent, session, capture);
+    }
+
+    /// <summary>
+    /// Returns <see cref="TextSearchProviderOptions"/> tailored to the current
+    /// <see cref="PaperbaseAIOptions.ChatSearchBehavior"/>.
+    /// Returns <see langword="null"/> for <c>BeforeAIInvoke</c> so the adapter uses its
+    /// own defaults (same as before this method existed).
+    /// <para>
+    /// <strong>Security note:</strong> <c>FunctionToolName</c> and
+    /// <c>FunctionToolDescription</c> are static string literals. They MUST NOT contain
+    /// user input, conversation titles, or any dynamic values to prevent prompt injection
+    /// through the tool description.
+    /// </para>
+    /// </summary>
+    protected virtual TextSearchProviderOptions? BuildChatSearchProviderOptions()
+    {
+        if (_aiOptions.ChatSearchBehavior == ChatSearchBehavior.OnDemandFunctionCalling)
+        {
+            return new TextSearchProviderOptions
+            {
+                SearchTime = TextSearchProviderOptions.TextSearchBehavior.OnDemandFunctionCalling,
+                RecentMessageMemoryLimit = 5,
+                // Static literals only — no user input, no conversation metadata.
+                FunctionToolName = "search_paperbase_documents",
+                FunctionToolDescription = "Search Paperbase documents within the conversation's scope. Returns relevant chunks with citations."
+            };
+        }
+
+        return null; // null → adapter's BuildOptions fills in BeforeAIInvoke defaults
+    }
+
+    protected virtual async Task<AgentRunOutcome> InvokeAgentAsync(
+        ChatConversation conversation,
+        string message,
+        CancellationToken cancellationToken = default)
+    {
+        var setup = await PrepareAgentSetupAsync(conversation, cancellationToken);
+        var response = await setup.Agent.RunAsync(message, setup.Session, options: null, cancellationToken);
+        return new AgentRunOutcome(response.Text, setup.Agent, setup.Session, setup.Capture);
     }
 
     protected virtual async Task<string?> SerializeSessionAsync(
@@ -368,6 +454,88 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         }).ToList();
     }
 
+    /// <summary>
+    /// Runs the agent in streaming mode and writes <see cref="ChatTurnDeltaDto"/> events
+    /// to <paramref name="writer"/>. Persists the full turn only on successful completion.
+    /// On cancellation, the partial text is discarded and a warning is logged.
+    /// On error, a <see cref="ChatTurnDeltaKind.Error"/> event is written before closing
+    /// the channel.
+    /// </summary>
+    private async Task FillStreamingChannelAsync(
+        ChatConversation conversation,
+        SendChatMessageInput input,
+        ChannelWriter<ChatTurnDeltaDto> writer,
+        CancellationToken ct)
+    {
+        var userMessageId = GuidGenerator.Create();
+        var assistantMessageId = GuidGenerator.Create();
+        var sb = new StringBuilder();
+
+        try
+        {
+            var setup = await PrepareAgentSetupAsync(conversation, ct);
+
+            await foreach (var update in setup.Agent.RunStreamingAsync(
+                input.Message, setup.Session, options: null, ct))
+            {
+                var text = update.Text;
+                if (!string.IsNullOrEmpty(text))
+                {
+                    sb.Append(text);
+                    await writer.WriteAsync(
+                        new ChatTurnDeltaDto { Kind = ChatTurnDeltaKind.PartialText, Text = text },
+                        ct);
+                }
+            }
+
+            // Stream completed — persist the full turn in one shot.
+            var fullText = sb.ToString();
+            conversation.AppendUserMessage(Clock, userMessageId, input.Message, input.ClientTurnId);
+            var citationsJson = SerializeCitations(setup.Capture.LastResults);
+            conversation.AppendAssistantMessage(Clock, assistantMessageId, fullText, citationsJson);
+            var sessionElement = await setup.Agent.SerializeSessionAsync(
+                setup.Session, jsonSerializerOptions: null, ct);
+            conversation.UpdateAgentSession(sessionElement.GetRawText());
+
+            var citations = BuildCitationDtos(setup.Capture.LastResults);
+
+            await writer.WriteAsync(new ChatTurnDeltaDto
+            {
+                Kind = ChatTurnDeltaKind.Done,
+                UserMessageId = userMessageId,
+                AssistantMessageId = assistantMessageId,
+                Citations = citations,
+                // null LastResults → model did not invoke the search tool (OnDemand mode).
+                IsDegraded = setup.Capture.LastResults == null
+            }, ct);
+
+            writer.Complete();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Client disconnected or request timed out. Partial text is discarded — we do
+            // not persist an incomplete assistant turn to avoid confusing the idempotency
+            // key logic on the next retry.
+            Logger.LogWarning(
+                "doc-chat streaming cancelled: ConversationId={ConversationId}; {Length} chars discarded.",
+                conversation.Id, sb.Length);
+            writer.Complete();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex,
+                "doc-chat streaming error: ConversationId={ConversationId}", conversation.Id);
+
+            // Write a safe error event (never expose internal exception details to the client).
+            writer.TryWrite(new ChatTurnDeltaDto
+            {
+                Kind = ChatTurnDeltaKind.Error,
+                ErrorMessage = L["DocumentChat:StreamError"].Value
+            });
+            writer.Complete();
+        }
+    }
+
     private static string TruncateByGrapheme(string text, int maxGraphemes)
     {
         if (string.IsNullOrEmpty(text))
@@ -383,6 +551,16 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         }
         return sb.ToString();
     }
+
+    // ── nested types ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Fully-prepared agent ready to run a turn. Shared between sync and streaming paths.
+    /// </summary>
+    protected record AgentSetup(
+        ChatClientAgent Agent,
+        AgentSession Session,
+        DocumentSearchCapture Capture);
 
     protected record AgentRunOutcome(
         string Text,
