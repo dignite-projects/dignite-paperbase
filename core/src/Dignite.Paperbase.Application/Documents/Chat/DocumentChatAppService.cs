@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,6 +30,8 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     /// <c>TextSearchProviderOptions.RecentMessageMemoryLimit</c>.
     /// </summary>
     protected virtual int MaxHistoryMessages => 50;
+
+    private const int SnippetMaxGraphemes = 200;
 
     private readonly IChatConversationRepository _conversationRepository;
     private readonly IDocumentRepository _documentRepository;
@@ -158,10 +162,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
 
         conversation.AppendUserMessage(Clock, userMessageId, input.Message, input.ClientTurnId);
 
-        // TODO(#60): wire ContextFormatter capture so citations reflect the chunks
-        // actually injected into the prompt. Until then citations are an empty array
-        // and CitationsJson is null — replays after #60 will populate them.
-        string? citationsJson = null;
+        var citationsJson = SerializeCitations(run.Capture.LastResults);
         conversation.AppendAssistantMessage(Clock, assistantMessageId, run.Text, citationsJson);
 
         // Persist updated session JSON so the next turn restores the same MAF state bag.
@@ -174,12 +175,13 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         // ConcurrencyStamp original values. ABP's UoW commits via SaveChanges; concurrency
         // mismatch surfaces as AbpDbConcurrencyException → 409 (mapping handled by ABP).
 
+        var citations = BuildCitationDtos(run.Capture.LastResults);
         return new ChatTurnResultDto
         {
             UserMessageId = userMessageId,
             AssistantMessageId = assistantMessageId,
             Answer = run.Text,
-            Citations = new List<ChatCitationDto>(),
+            Citations = citations,
             IsDegraded = false
         };
     }
@@ -239,7 +241,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             TopK = conversation.TopK,
             MinScore = conversation.MinScore
         };
-        var provider = _textSearchAdapter.CreateForTenant(
+        var (provider, capture) = _textSearchAdapter.CreateForTenant(
             conversation.TenantId,
             providerOptions: null,
             scope: scope);
@@ -269,7 +271,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         }
 
         var response = await agent.RunAsync(message, session, options: null, cancellationToken);
-        return new AgentRunOutcome(response.Text, agent, session);
+        return new AgentRunOutcome(response.Text, agent, session, capture);
     }
 
     protected virtual async Task<string?> SerializeSessionAsync(
@@ -320,5 +322,71 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         }
     }
 
-    protected record AgentRunOutcome(string Text, ChatClientAgent Agent, AgentSession Session);
+    /// <summary>
+    /// Serializes <paramref name="results"/> to JSON for persistence.
+    /// Applies a soft upper-bound (<see cref="DocumentChatConsts.MaxCitationsJsonLength"/>):
+    /// if the serialized string is too long, trailing citations are dropped and a warning is logged.
+    /// </summary>
+    protected virtual string? SerializeCitations(IReadOnlyList<VectorSearchResult>? results)
+    {
+        if (results == null || results.Count == 0)
+            return null;
+
+        var dtos = BuildCitationDtos(results);
+        var json = JsonSerializer.Serialize(dtos);
+
+        if (json.Length <= DocumentChatConsts.MaxCitationsJsonLength)
+            return json;
+
+        Logger.LogWarning(
+            "CitationsJson exceeds {Max} chars; truncating from {Count} citations",
+            DocumentChatConsts.MaxCitationsJsonLength, dtos.Count);
+
+        while (dtos.Count > 0 && json.Length > DocumentChatConsts.MaxCitationsJsonLength)
+        {
+            dtos.RemoveAt(dtos.Count - 1);
+            json = JsonSerializer.Serialize(dtos);
+        }
+
+        return dtos.Count > 0 ? json : null;
+    }
+
+    protected virtual List<ChatCitationDto> BuildCitationDtos(IReadOnlyList<VectorSearchResult>? results)
+    {
+        if (results == null)
+            return new List<ChatCitationDto>();
+
+        return results.Select(r => new ChatCitationDto
+        {
+            DocumentId = r.DocumentId,
+            PageNumber = r.PageNumber,
+            ChunkIndex = r.ChunkIndex,
+            Snippet = TruncateByGrapheme(r.Text, SnippetMaxGraphemes),
+            SourceName = r.PageNumber.HasValue
+                ? $"Document {r.DocumentId} (page {r.PageNumber})"
+                : $"Document {r.DocumentId} (chunk #{r.ChunkIndex})"
+        }).ToList();
+    }
+
+    private static string TruncateByGrapheme(string text, int maxGraphemes)
+    {
+        if (string.IsNullOrEmpty(text))
+            return string.Empty;
+
+        var enumerator = StringInfo.GetTextElementEnumerator(text);
+        var sb = new StringBuilder();
+        var count = 0;
+        while (enumerator.MoveNext() && count < maxGraphemes)
+        {
+            sb.Append((string)enumerator.Current);
+            count++;
+        }
+        return sb.ToString();
+    }
+
+    protected record AgentRunOutcome(
+        string Text,
+        ChatClientAgent Agent,
+        AgentSession Session,
+        DocumentSearchCapture Capture);
 }

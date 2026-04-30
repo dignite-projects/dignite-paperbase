@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Rag;
@@ -55,31 +56,52 @@ public class DocumentTextSearchAdapter : ITransientDependency
     }
 
     /// <summary>
-    /// Build a <see cref="TextSearchProvider"/> scoped to the current ABP tenant.
-    /// Use from HTTP-context / scoped DI consumers where <see cref="ICurrentTenant"/>
-    /// is already aligned. For background jobs, use <see cref="CreateForTenant"/>
-    /// with an explicit tenant id.
+    /// Build a <see cref="TextSearchProvider"/> and a paired <see cref="DocumentSearchCapture"/>
+    /// scoped to the current ABP tenant. Use from HTTP-context / scoped DI consumers where
+    /// <see cref="ICurrentTenant"/> is already aligned. For background jobs, use
+    /// <see cref="CreateForTenant"/> with an explicit tenant id.
     /// </summary>
-    public virtual TextSearchProvider CreateForCurrentTenant(
+    public virtual (TextSearchProvider Provider, DocumentSearchCapture Capture) CreateForCurrentTenant(
         TextSearchProviderOptions? providerOptions = null,
         DocumentSearchScope? scope = null)
         => CreateForTenant(_currentTenant.Id, providerOptions, scope);
 
     /// <summary>
-    /// Build a <see cref="TextSearchProvider"/> scoped to an explicit tenant id.
-    /// Pass <c>null</c> for host-level documents. The tenant id is captured in the
-    /// returned provider's closure so subsequent invocations stay tenant-correct
-    /// even if ABP ambient context drifts.
+    /// Build a <see cref="TextSearchProvider"/> and a paired <see cref="DocumentSearchCapture"/>
+    /// scoped to an explicit tenant id. The capture is fresh for each call — there is no shared
+    /// instance state, so concurrent requests cannot cross-contaminate each other's results.
+    ///
+    /// After the agent invokes the provider's search delegate, <see cref="DocumentSearchCapture.LastResults"/>
+    /// holds the <see cref="VectorSearchResult"/> list that was actually injected into the prompt.
     /// </summary>
-    public virtual TextSearchProvider CreateForTenant(
+    public virtual (TextSearchProvider Provider, DocumentSearchCapture Capture) CreateForTenant(
         Guid? tenantId,
         TextSearchProviderOptions? providerOptions = null,
         DocumentSearchScope? scope = null)
     {
-        // Capture the parameters in a closure so the search delegate is self-contained.
-        return new TextSearchProvider(
-            (query, ct) => SearchAsync(tenantId, scope, query, ct),
-            options: providerOptions);
+        var capture = new DocumentSearchCapture();
+        var options = BuildOptions(providerOptions, capture);
+        var searchDelegate = CreateBoundSearchDelegate(tenantId, scope, capture);
+
+        var provider = new TextSearchProvider(searchDelegate, options: options);
+        return (provider, capture);
+    }
+
+    /// <summary>
+    /// Creates the search delegate that fetches vector results, feeds <paramref name="capture"/>,
+    /// and returns <see cref="TextSearchProvider.TextSearchResult"/> items. Factored out so
+    /// subclasses and tests can invoke the capture-setting path directly without needing a
+    /// <see cref="TextSearchProvider"/> wrapper.
+    /// </summary>
+    protected virtual Func<string, CancellationToken, Task<IEnumerable<TextSearchProvider.TextSearchResult>>>
+        CreateBoundSearchDelegate(Guid? tenantId, DocumentSearchScope? scope, DocumentSearchCapture capture)
+    {
+        return async (query, ct) =>
+        {
+            var vectorResults = await SearchVectorAsync(tenantId, scope, query, ct);
+            capture.Set(vectorResults); // set before return so ContextFormatter sees results
+            return vectorResults.Select(MapToTextSearchResult).ToList();
+        };
     }
 
     /// <summary>
@@ -87,6 +109,7 @@ public class DocumentTextSearchAdapter : ITransientDependency
     /// Public so it can be invoked directly for tests, custom Agent Framework
     /// integrations, or hosts that want the result list without going through
     /// <see cref="TextSearchProvider"/>'s context-injection lifecycle.
+    /// Results are NOT captured by <see cref="DocumentSearchCapture"/> when called this way.
     /// </summary>
     public virtual async Task<IEnumerable<TextSearchProvider.TextSearchResult>> SearchAsync(
         Guid? tenantId,
@@ -94,22 +117,41 @@ public class DocumentTextSearchAdapter : ITransientDependency
         string query,
         CancellationToken cancellationToken = default)
     {
-        var embeddings = await _embeddingGenerator.GenerateAsync(
-            [query], cancellationToken: cancellationToken);
-
-        var request = new VectorSearchRequest
-        {
-            TenantId = tenantId,
-            QueryVector = embeddings[0].Vector,
-            TopK = scope?.TopK ?? _ragOptions.DefaultTopK,
-            DocumentId = scope?.DocumentId,
-            DocumentTypeCode = scope?.DocumentTypeCode,
-            MinScore = scope?.MinScore ?? _ragOptions.MinScore,
-            QueryText = query
-        };
-
-        var results = await _vectorStore.SearchAsync(request, cancellationToken);
+        var results = await SearchVectorAsync(tenantId, scope, query, cancellationToken);
         return results.Select(MapToTextSearchResult);
+    }
+
+    /// <summary>
+    /// Formats the context block injected into the agent prompt. Each chunk is wrapped in
+    /// <c>&lt;document id="…" chunk="…"&gt;</c> tags; the chunk text is passed through
+    /// <see cref="PromptBoundary.WrapDocument"/> so that any <c>&lt;</c> characters are
+    /// escaped to <c>&amp;lt;</c> before injection, preventing tag-injection attacks.
+    /// Override in a subclass to customize the prompt structure.
+    /// </summary>
+    protected virtual string FormatSearchContext(
+        IList<TextSearchProvider.TextSearchResult> textResults,
+        IReadOnlyList<VectorSearchResult>? vectorResults)
+    {
+        var sb = new StringBuilder();
+        for (var i = 0; i < textResults.Count; i++)
+        {
+            var text = textResults[i].Text ?? string.Empty;
+            var vr = vectorResults != null && i < vectorResults.Count ? vectorResults[i] : null;
+
+            if (vr != null)
+            {
+                var pageAttr = vr.PageNumber.HasValue ? $" page=\"{vr.PageNumber}\"" : "";
+                sb.AppendLine($"<document id=\"{vr.DocumentId:D}\" chunk=\"{vr.ChunkIndex}\"{pageAttr}>");
+            }
+            else
+            {
+                sb.AppendLine("<document>");
+            }
+
+            sb.AppendLine(PromptBoundary.WrapDocument(text));
+            sb.AppendLine("</document>");
+        }
+        return sb.ToString();
     }
 
     /// <summary>
@@ -140,5 +182,41 @@ public class DocumentTextSearchAdapter : ITransientDependency
         return result.PageNumber.HasValue
             ? $"Document {result.DocumentId} (page {result.PageNumber})"
             : $"Document {result.DocumentId} (chunk #{result.ChunkIndex})";
+    }
+
+    protected virtual async Task<IReadOnlyList<VectorSearchResult>> SearchVectorAsync(
+        Guid? tenantId,
+        DocumentSearchScope? scope,
+        string query,
+        CancellationToken cancellationToken = default)
+    {
+        var embeddings = await _embeddingGenerator.GenerateAsync(
+            [query], cancellationToken: cancellationToken);
+
+        var request = new VectorSearchRequest
+        {
+            TenantId = tenantId,
+            QueryVector = embeddings[0].Vector,
+            TopK = scope?.TopK ?? _ragOptions.DefaultTopK,
+            DocumentId = scope?.DocumentId,
+            DocumentTypeCode = scope?.DocumentTypeCode,
+            MinScore = scope?.MinScore ?? _ragOptions.MinScore,
+            QueryText = query
+        };
+
+        return await _vectorStore.SearchAsync(request, cancellationToken);
+    }
+
+    protected virtual TextSearchProviderOptions BuildOptions(
+        TextSearchProviderOptions? callerOptions,
+        DocumentSearchCapture capture)
+    {
+        var opts = callerOptions ?? new TextSearchProviderOptions
+        {
+            RecentMessageMemoryLimit = 5
+        };
+
+        opts.ContextFormatter = results => FormatSearchContext(results, capture.LastResults);
+        return opts;
     }
 }

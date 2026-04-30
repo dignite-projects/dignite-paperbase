@@ -311,6 +311,117 @@ public class DocumentChatAppService_Tests
         });
     }
 
+    // ── 9. Citations reflect injected chunks ─────────────────────────────────
+
+    [Fact]
+    public async Task Citations_Reflect_Injected_Chunks()
+    {
+        // 配置知识库返回 3 条带有确定性元数据的 chunk。
+        var docId = Guid.NewGuid();
+        var fakeResults = new List<VectorSearchResult>
+        {
+            new() { RecordId = Guid.NewGuid(), DocumentId = docId, ChunkIndex = 0, PageNumber = 1, Text = "chunk 0 text" },
+            new() { RecordId = Guid.NewGuid(), DocumentId = docId, ChunkIndex = 1, PageNumber = 2, Text = "chunk 1 text" },
+            new() { RecordId = Guid.NewGuid(), DocumentId = docId, ChunkIndex = 2, PageNumber = null, Text = "chunk 2 text" }
+        };
+        _knowledgeIndex.SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
+            .Returns(fakeResults);
+
+        var conversationId = await CreateConversationAsync();
+        ChatTurnResultDto result = null!;
+
+        await WithUnitOfWorkAsync(async () =>
+        {
+            using (ChangeUser(OwnerUserId))
+            {
+                result = await _appService.SendMessageAsync(conversationId, new SendChatMessageInput
+                {
+                    Message = "payment terms?",
+                    ClientTurnId = Guid.NewGuid()
+                });
+            }
+        });
+
+        // DTO citations must align with what the knowledge index returned.
+        result.Citations.Count.ShouldBe(3);
+        for (var i = 0; i < 3; i++)
+        {
+            result.Citations[i].DocumentId.ShouldBe(docId);
+            result.Citations[i].ChunkIndex.ShouldBe(i);
+            result.Citations[i].PageNumber.ShouldBe(fakeResults[i].PageNumber);
+            result.Citations[i].Snippet.ShouldBe(fakeResults[i].Text);
+            result.Citations[i].SourceName.ShouldNotBeNullOrEmpty();
+        }
+
+        // Persisted CitationsJson must be parseable and contain the same 3 entries.
+        var conv = await WithUnitOfWorkAsync(async () =>
+        {
+            using (ChangeUser(OwnerUserId))
+            {
+                return await _repository.FindByIdWithMessagesAsync(conversationId, 50);
+            }
+        });
+
+        var assistantMsg = conv!.Messages
+            .Where(m => m.Role == ChatMessageRole.Assistant)
+            .OrderBy(m => m.CreationTime)
+            .First();
+
+        assistantMsg.CitationsJson.ShouldNotBeNullOrEmpty();
+
+        var persisted = System.Text.Json.JsonSerializer.Deserialize<List<ChatCitationDto>>(
+            assistantMsg.CitationsJson!);
+        persisted.ShouldNotBeNull();
+        persisted!.Count.ShouldBe(3);
+        persisted[0].DocumentId.ShouldBe(docId);
+        persisted[0].PageNumber.ShouldBe(1);
+        persisted[2].PageNumber.ShouldBeNull();
+    }
+
+    // ── 10. Snippet does not break multibyte characters ───────────────────────
+
+    [Fact]
+    public async Task Snippet_Does_Not_Break_Multibyte_Characters()
+    {
+        // 构造一段包含中日文字符 + emoji 的文本，头部超过 200 grapheme。
+        // 断言截断后 JSON 序列化不抛异常，且字符无错位。
+        var longText = string.Concat(Enumerable.Repeat("日本語テスト🚀", 30)); // ~240 graphemes
+        var docId = Guid.NewGuid();
+        _knowledgeIndex.SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new List<VectorSearchResult>
+            {
+                new() { RecordId = Guid.NewGuid(), DocumentId = docId, ChunkIndex = 0, Text = longText }
+            });
+
+        var conversationId = await CreateConversationAsync();
+        ChatTurnResultDto result = null!;
+
+        await WithUnitOfWorkAsync(async () =>
+        {
+            using (ChangeUser(OwnerUserId))
+            {
+                result = await _appService.SendMessageAsync(conversationId, new SendChatMessageInput
+                {
+                    Message = "q",
+                    ClientTurnId = Guid.NewGuid()
+                });
+            }
+        });
+
+        result.Citations.Count.ShouldBe(1);
+        var snippet = result.Citations[0].Snippet;
+
+        // Snippet must be at most 200 grapheme clusters (not 200 chars/bytes).
+        var graphemeCount = new System.Globalization.StringInfo(snippet).LengthInTextElements;
+        graphemeCount.ShouldBeLessThanOrEqualTo(200);
+
+        // Must round-trip through JSON without error.
+        var json = System.Text.Json.JsonSerializer.Serialize(result.Citations);
+        var roundTripped = System.Text.Json.JsonSerializer.Deserialize<List<ChatCitationDto>>(json);
+        roundTripped.ShouldNotBeNull();
+        roundTripped![0].Snippet.ShouldBe(snippet);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // helpers
     // ─────────────────────────────────────────────────────────────────────────
