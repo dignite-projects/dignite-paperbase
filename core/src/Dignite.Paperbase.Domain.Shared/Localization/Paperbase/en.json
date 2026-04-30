@@ -94,6 +94,10 @@
     "Permission:Documents.Restore": "Restore Documents",
     "Permission:Documents.ConfirmClassification": "Confirm Classification",
     "Permission:Documents.Ask": "Ask Documents (Q&A)",
+    "Permission:Documents.Chat": "Document Chat",
+    "Permission:Documents.Chat.Create": "Create chat conversation",
+    "Permission:Documents.Chat.SendMessage": "Send message",
+    "Permission:Documents.Chat.Delete": "Delete chat conversation",
     "Permission:DocumentRelations.ConfirmRelation": "Confirm Document Relation",
 
     "Paperbase:InvalidDocumentTypeCode": "Invalid document type code: '{documentTypeCode}'.",
