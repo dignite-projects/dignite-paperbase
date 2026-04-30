@@ -106,6 +106,50 @@ tools: Read, Grep, Glob, Bash
 - 🟡 **复用 `PaperbaseAIOptions.MaxTextLengthPerExtraction` 等共享阈值**——避免每个模块定义自己的截断长度。
 - 🟡 **遵循同样的结构化输出 + GUID/范围校验模式**。
 
+#### 规则 A：业务模块字段抽取 Agent 不得携带 AIContextProviders
+
+**适用范围**：`modules/**/src/**/*.cs` 中的 `ChatClientAgent` 实例化点。
+
+**判定**：
+- 业务模块（contracts、invoices 等）订阅 `DocumentClassifiedEto` 后构造的 `ChatClientAgent`
+  仅允许使用 `new ChatClientAgent(chatClient, instructions: "...")` + `RunAsync<TStructuredResult>(extractedText)` 形式
+- 不得设置 `ChatClientAgentOptions.AIContextProviders`（包括 `TextSearchProvider`）
+- 不得设置 `ChatHistoryProvider`
+
+**正例**：`modules/contracts/src/Dignite.Paperbase.Contracts.Domain/EventHandlers/ContractDocumentHandler.ExtractFieldsAsync`
+```csharp
+// ✅ 正例：仅注入 IChatClient + instructions，RunAsync<T> 结构化输出
+var agent = new ChatClientAgent(_chatClient, instructions: ContractAgentInstructions.SystemPrompt);
+var run = await agent.RunAsync<ContractExtractionResult>(extractedText);
+```
+
+**反例**：业务模块给字段抽取 agent 挂 `AIContextProviders`（如 `TextSearchProvider`），会导致：
+- RAG 检索结果混入其他文档的内容，污染结构化字段（合同金额被别的文档内容覆盖）
+- 业务模块与 Core RAG 管道产生隐式耦合，违反模块独立性约束
+- 参见 `docs/design/anti-patterns/doc-chat-anti-patterns.md` 中的反例 A
+
+### 2.10 DocumentChatAppService 发送路径的安全／一致性不变量
+
+**适用范围**：`core/src/Dignite.Paperbase.Application/Documents/Chat/DocumentChatAppService.cs`，重点关注 `SendMessageAsync` 方法。
+
+在 `SendMessageAsync` 被修改时必须验证以下不变量**依次全部存在**：
+
+1. **权限声明**：方法上有 `[Authorize(PaperbasePermissions.Documents.Chat.SendMessage)]`
+2. **租户断言**：`LoadAndAuthorizeAsync` 内对 `conversation.TenantId != CurrentTenant.Id` 显式检查；不通过抛 `EntityNotFoundException`（不允许改为 `AbpAuthorizationException`，避免泄露会话是否存在）
+3. **归属断言**：`conversation.CreatorId != CurrentUser.Id` 显式检查；不通过抛 `EntityNotFoundException`
+4. **幂等短路**：基于 `(ConversationId, ClientTurnId)` 查找已存在的 UserMessage；命中即返回历史 turn 结果，**不再调用 LLM**
+5. **并发异常冒泡**：方法内不得捕获 `AbpDbConcurrencyException`；让其冒泡，由 ABP HTTP 层映射为 409 Conflict
+
+**🔴 反例**（以下改动均为违规）：
+- 删除任一断言（以"ambient ICurrentTenant 已经过滤"为由跳过租户断言）
+- 以消息内容 hash 替代 `ClientTurnId` 作为幂等键（内容相同但意图不同时无法区分）
+- 在方法内 `try/catch AbpDbConcurrencyException` 并静默重试（屏蔽了 409，客户端无法感知并发冲突）
+- 用 `ICurrentTenant.Id` 替代聚合根上的 `conversation.TenantId` 构造 TextSearchProvider（绕过 fail-closed gate）
+
+**注释写法禁忌**：不得在代码注释中出现"即使租户过滤被绕过、闭包仍然安全"之类把 ambient filter propagation 当作 security boundary 的措辞——ambient filter 是可读性辅助，不是安全保证。
+
+参见 `docs/design/anti-patterns/doc-chat-anti-patterns.md` 中的反例 B。
+
 ## 3. 输出格式
 
 ```markdown
