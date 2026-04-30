@@ -391,16 +391,16 @@ public class DocumentChat_E2E_Tests
     {
         var conversationId = await CreateConversationAsync();
 
-        // Track the number of messages passed to IChatClient per turn.
-        var capturedMessageCounts = new List<int>();
+        // Track the messages passed to IChatClient per turn.
+        var capturedTurns = new List<List<MEAI.ChatMessage>>();
         _chatClient.GetResponseAsync(
                 Arg.Do<IEnumerable<MEAI.ChatMessage>>(msgs =>
-                    capturedMessageCounts.Add(msgs.Count())),
+                    capturedTurns.Add(msgs.ToList())),
                 Arg.Any<ChatOptions?>(),
                 Arg.Any<CancellationToken>())
             .Returns(call =>
             {
-                var n = capturedMessageCounts.Count;
+                var n = capturedTurns.Count;
                 return Task.FromResult(
                     new ChatResponse([new MEAI.ChatMessage(ChatRole.Assistant, $"answer-{n}")]));
             });
@@ -422,13 +422,25 @@ public class DocumentChat_E2E_Tests
         }
 
         // All 5 turns must have reached the LLM.
-        capturedMessageCounts.Count.ShouldBe(5);
+        capturedTurns.Count.ShouldBe(5);
+        capturedTurns[4].Count.ShouldBe(9);
 
-        // History accumulates: turn 5 must carry more messages than turn 1.
-        // Exact counts depend on MAF's InMemoryChatHistoryProvider and how system
-        // instructions are delivered (inline vs ChatOptions.Instructions), so we
-        // assert monotonic growth rather than a fixed number.
-        capturedMessageCounts[4].ShouldBeGreaterThan(capturedMessageCounts[0]);
+        var fifthTurnTexts = capturedTurns[4].Select(m => m.Text).ToList();
+        for (var i = 1; i <= 4; i++)
+        {
+            fifthTurnTexts.ShouldContain($"turn-{i}");
+            fifthTurnTexts.ShouldContain($"answer-{i}");
+        }
+        fifthTurnTexts.ShouldContain("turn-5");
+
+        var conv = await WithUnitOfWorkAsync(async () =>
+        {
+            using (ChangeUser(OwnerUserId))
+            {
+                return await _conversationRepository.FindByIdWithMessagesAsync(conversationId, 50);
+            }
+        });
+        conv!.Messages.Count.ShouldBe(10);
     }
 
     // ── 8. Validation: message content exceeding MaxMessageLength is rejected ──
@@ -576,6 +588,8 @@ public class DocumentChat_E2E_Tests
 
     private void SetupDefaultChatClient()
     {
+        _chatClient.GetService(Arg.Any<Type>(), Arg.Any<object?>()).Returns(null);
+
         _chatClient.GetResponseAsync(
                 Arg.Any<IEnumerable<MEAI.ChatMessage>>(),
                 Arg.Any<ChatOptions?>(),

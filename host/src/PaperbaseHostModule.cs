@@ -14,6 +14,7 @@ using OpenAI;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.OpenApi;
 using OpenIddict.Validation.AspNetCore;
@@ -206,6 +207,7 @@ public class PaperbaseHostModule : AbpModule
         ConfigureVirtualFiles(hostingEnvironment);
         ConfigureEfCore(context);
         ConfigureAI(context, configuration);
+        ConfigureDevOnlyRazorPages(hostingEnvironment);
 
         if (hostingEnvironment.IsDevelopment())
         {
@@ -415,6 +417,21 @@ public class PaperbaseHostModule : AbpModule
                 .GetEmbeddingClient(configuration["PaperbaseAI:EmbeddingModelId"]!)
                 .AsIEmbeddingGenerator())
             .UseLogging();
+    }
+
+    private void ConfigureDevOnlyRazorPages(IWebHostEnvironment hostingEnvironment)
+    {
+        Configure<RazorPagesOptions>(options =>
+        {
+            options.Conventions.AuthorizePage("/DocumentChat/Index");
+
+            if (!hostingEnvironment.IsDevelopment())
+            {
+                options.Conventions.AddPageRouteModelConvention(
+                    "/DocumentChat/Index",
+                    model => model.Selectors.Clear());
+            }
+        });
     }
 
     public override void OnApplicationInitialization(ApplicationInitializationContext context)

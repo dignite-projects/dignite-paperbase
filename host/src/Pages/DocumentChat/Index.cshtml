@@ -1,0 +1,297 @@
+@page
+@using System.Linq
+@using Dignite.Paperbase.Documents.Chat
+@model IndexModel
+@{
+    ViewData["Title"] = "Document Chat Demo (dev only)";
+}
+<style>
+    .document-chat-shell { min-height: calc(100vh - 160px); }
+    .sidebar { min-height: calc(100vh - 160px); overflow-y: auto; border-right: 1px solid #dee2e6; background: #f8f9fa; }
+    .chat-area { min-height: calc(100vh - 160px); display: flex; flex-direction: column; }
+    .messages-wrap { flex: 1; overflow-y: auto; padding: 1rem; }
+    .msg-user { background: #0d6efd; color: #fff; border-radius: 8px 8px 0 8px;
+                padding: 0.5rem 0.9rem; max-width: 78%; margin-left: auto; white-space: pre-wrap; }
+    .msg-asst { background: #f1f3f5; border-radius: 8px 8px 8px 0;
+                padding: 0.5rem 0.9rem; max-width: 78%; white-space: pre-wrap; }
+    .citation  { font-size: 0.72rem; color: #495057; border-left: 3px solid #0d6efd;
+                 padding: 0.15rem 0.5rem; margin-top: 0.25rem; background: #e7f1ff;
+                 border-radius: 0 4px 4px 0; }
+    .input-row { padding: 0.75rem 1rem; border-top: 1px solid #dee2e6; }
+    .conv-link { display: block; padding: 0.5rem 0.75rem; border-radius: 6px;
+                 text-decoration: none; color: #212529; transition: background 0.15s; }
+    .conv-link:hover, .conv-link.active { background: #dbeafe; }
+    .conv-link.active { border-left: 3px solid #0d6efd; padding-left: calc(0.75rem - 3px); }
+    #status { min-height: 1.2rem; font-size: 0.8rem; }
+    textarea { resize: none; }
+    .dev-banner { background: #fef3c7; font-size: 0.75rem; text-align: center; padding: 2px 0; }
+</style>
+
+@* Hidden anti-forgery token — read by JS for the RequestVerificationToken header *@
+@Html.AntiForgeryToken()
+
+<div class="dev-banner">&#9888; Dev-only smoke-test page — not mounted in production</div>
+<div class="container-fluid document-chat-shell">
+    <div class="row g-0 h-100 border rounded bg-white">
+
+        @* Left: Conversation list *@
+        <div class="col-3 sidebar p-3">
+            <p class="fw-bold mb-2 d-flex align-items-center gap-2">
+                Conversations
+                <span class="badge bg-secondary">@Model.Conversations.TotalCount</span>
+            </p>
+
+            @* New conversation form *@
+            <form method="post" asp-page-handler="Create" class="mb-3 border rounded p-2 bg-white">
+                <div class="mb-2">
+                    <input type="text" name="title" class="form-control form-control-sm"
+                           placeholder="Title (optional, max 200 chars)" maxlength="200" />
+                </div>
+                <div class="mb-2">
+                    <input type="text" name="documentTypeCode" class="form-control form-control-sm"
+                           placeholder="DocumentTypeCode (optional, max 64)" maxlength="64" />
+                </div>
+                <button type="submit" class="btn btn-sm btn-primary w-100">+ New Conversation</button>
+            </form>
+
+            @foreach (var conv in Model.Conversations.Items)
+            {
+                <a href="?conversationId=@conv.Id"
+                   class="conv-link @(Model.ConversationId == conv.Id ? "active" : "")">
+                    <div class="fw-semibold small text-truncate" title="@conv.Title">@conv.Title</div>
+                    <div class="text-muted" style="font-size:0.68rem">
+                        @(conv.DocumentTypeCode ?? (conv.DocumentId.HasValue ? "doc:" + conv.DocumentId.Value.ToString()[..8] : "global"))
+                        &nbsp;&middot;&nbsp;@conv.CreationTime.ToString("MM/dd HH:mm")
+                    </div>
+                </a>
+            }
+
+            @if (!Model.Conversations.Items.Any())
+            {
+                <p class="text-muted small mt-2">No conversations yet.</p>
+            }
+        </div>
+
+        @* Right: Chat area *@
+        <div class="col-9 chat-area">
+            @if (!string.IsNullOrEmpty(Model.NotFoundError))
+            {
+                <div class="alert alert-warning m-3" role="alert">@Model.NotFoundError</div>
+            }
+            else if (Model.ActiveConversation == null)
+            {
+                <div class="d-flex align-items-center justify-content-center h-100 text-muted">
+                    <p>Select or create a conversation on the left.</p>
+                </div>
+            }
+            else
+            {
+                @* Header *@
+                <div class="d-flex align-items-center gap-2 p-3 border-bottom">
+                    <h6 class="mb-0 fw-bold text-truncate">@Model.ActiveConversation.Title</h6>
+                    @if (!string.IsNullOrEmpty(Model.ActiveConversation.DocumentTypeCode))
+                    {
+                        <span class="badge bg-light text-dark border">@Model.ActiveConversation.DocumentTypeCode</span>
+                    }
+                    @if (Model.ActiveConversation.DocumentId.HasValue)
+                    {
+                        <span class="badge bg-light text-dark border"
+                              title="DocumentId: @Model.ActiveConversation.DocumentId">
+                            doc:@(Model.ActiveConversation.DocumentId.Value.ToString()[..8])&hellip;
+                        </span>
+                    }
+                </div>
+
+                @* Messages *@
+                <div class="messages-wrap" id="messages-wrap">
+                    @foreach (var msg in Model.Messages)
+                    {
+                        bool isUser = msg.Role == ChatMessageRole.User;
+                        <div class="d-flex @(isUser ? "justify-content-end" : "justify-content-start") mb-2">
+                            <div>
+                                <div class="@(isUser ? "msg-user" : "msg-asst")">@msg.Content</div>
+                                @if (!isUser && !string.IsNullOrEmpty(msg.CitationsJson))
+                                {
+                                    <div class="citations-raw d-none">@msg.CitationsJson</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                    <div id="typing-indicator" class="d-none text-muted small ms-2">Agent is thinking&hellip;</div>
+                </div>
+
+                @* Input row *@
+                <div class="input-row">
+                    <div id="status" class="text-muted mb-1"></div>
+                    <div id="retry-alert" class="alert alert-warning py-1 px-2 d-none" role="alert">
+                        Another send is in progress. Retry with the same request?
+                        <button class="btn btn-sm btn-warning ms-2" id="retry-btn">Retry</button>
+                    </div>
+                    <div class="input-group">
+                        <textarea id="msg-input" class="form-control" rows="2"
+                                  placeholder="Ask a question&#8230; (Ctrl+Enter to send)"
+                                  onkeydown="onKeyDown(event, '@Model.ActiveConversation.Id')"></textarea>
+                        <button class="btn btn-primary" id="send-btn"
+                                onclick="sendMessage('@Model.ActiveConversation.Id')">Send</button>
+                    </div>
+                    @if (Model.ActiveConversation.TopK.HasValue || Model.ActiveConversation.MinScore.HasValue)
+                    {
+                        <div class="text-muted mt-1" style="font-size:0.72rem">
+                            TopK=@(Model.ActiveConversation.TopK?.ToString() ?? "default")
+                            MinScore=@(Model.ActiveConversation.MinScore?.ToString() ?? "default")
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<script>
+// ── document-chat demo JS ────────────────────────────────────────────────────
+// Dev-only. Calls ?handler=SendMessage so the server invokes
+// IDocumentChatAppService via DI — no internal HTTP round-trip.
+(function () {
+    'use strict';
+
+    const wrap = document.getElementById('messages-wrap');
+
+    // Scroll to bottom on load
+    if (wrap) wrap.scrollTop = wrap.scrollHeight;
+
+    // Render server-side citation JSON blocks
+    document.querySelectorAll('.citations-raw').forEach(function (el) {
+        try {
+            renderCitations(JSON.parse(el.textContent || '[]'), el.parentNode);
+        } catch (_) { /* malformed JSON — silent */ }
+    });
+
+    // ── state ────────────────────────────────────────────────────────────────
+    let pendingMessage    = null;
+    let pendingTurnId     = null;
+    let pendingConversationId = null;
+
+    // ── helpers ──────────────────────────────────────────────────────────────
+    function getAntiForgeryToken() {
+        const input = document.querySelector('[name=__RequestVerificationToken]');
+        return input ? input.value : '';
+    }
+
+    function setStatus(msg, variant) {
+        const el = document.getElementById('status');
+        if (!el) return;
+        el.textContent = msg;
+        el.className = (variant ? 'text-' + variant : 'text-muted') + ' mb-1';
+    }
+
+    function setBusy(busy) {
+        const btn = document.getElementById('send-btn');
+        const inp = document.getElementById('msg-input');
+        const ti  = document.getElementById('typing-indicator');
+        if (btn) btn.disabled = busy;
+        if (inp) inp.disabled = busy;
+        if (ti)  ti.classList.toggle('d-none', !busy);
+    }
+
+    function renderCitations(citations, parentNode) {
+        if (!citations || !citations.length) return;
+        const container = document.createElement('div');
+        citations.forEach(function (c) {
+            const div = document.createElement('div');
+            div.className = 'citation';
+            div.textContent =
+                (c.sourceName || 'source') +
+                (c.pageNumber != null ? ' p.' + c.pageNumber : '') +
+                ' — ' + (c.snippet || '');
+            container.appendChild(div);
+        });
+        parentNode.appendChild(container);
+    }
+
+    function appendMessage(role, text, citations) {
+        if (!wrap) return;
+        const outer  = document.createElement('div');
+        outer.className = 'd-flex ' +
+            (role === 'user' ? 'justify-content-end' : 'justify-content-start') + ' mb-2';
+        const inner  = document.createElement('div');
+        const bubble = document.createElement('div');
+        bubble.className = role === 'user' ? 'msg-user' : 'msg-asst';
+        bubble.textContent = text;
+        inner.appendChild(bubble);
+        if (role === 'assistant') renderCitations(citations, inner);
+        outer.appendChild(inner);
+        const ti = document.getElementById('typing-indicator');
+        wrap.insertBefore(outer, ti || null);
+        wrap.scrollTop = wrap.scrollHeight;
+    }
+
+    // ── network call ─────────────────────────────────────────────────────────
+    async function doSend(conversationId, message, clientTurnId) {
+        setStatus('Sending…');
+        setBusy(true);
+        document.getElementById('retry-alert').classList.add('d-none');
+
+        try {
+            const resp = await fetch('?handler=SendMessage', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'RequestVerificationToken': getAntiForgeryToken()
+                },
+                body: JSON.stringify({ conversationId, message, clientTurnId })
+            });
+
+            const data = await resp.json();
+
+            if (resp.status === 409) {
+                // Stamp conflict — save state and offer retry with same ClientTurnId
+                pendingMessage        = message;
+                pendingTurnId         = clientTurnId;
+                pendingConversationId = conversationId;
+                setStatus('Conflict: another send is in progress.', 'warning');
+                document.getElementById('retry-alert').classList.remove('d-none');
+                document.getElementById('retry-btn').onclick = function () {
+                    document.getElementById('retry-alert').classList.add('d-none');
+                    doSend(pendingConversationId, pendingMessage, pendingTurnId);
+                };
+                return;
+            }
+
+            if (resp.status === 404 || !data.success) {
+                setStatus('Error: ' + (data.error || 'unknown'), 'danger');
+                return;
+            }
+
+            appendMessage('assistant', data.answer, data.citations);
+            setStatus(
+                data.isDegraded ? '⚠ Degraded response (retrieval skipped)' : '',
+                data.isDegraded ? 'warning' : null
+            );
+            pendingTurnId = null;
+        } catch (err) {
+            setStatus('Network error: ' + err.message, 'danger');
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    // ── public API (called by inline event attributes) ────────────────────────
+    window.sendMessage = function (conversationId) {
+        const inp = document.getElementById('msg-input');
+        if (!inp) return;
+        const message = inp.value.trim();
+        if (!message) return;
+        const clientTurnId = crypto.randomUUID();
+        appendMessage('user', message, null);
+        inp.value = '';
+        doSend(conversationId, message, clientTurnId);
+    };
+
+    window.onKeyDown = function (evt, conversationId) {
+        if (evt.ctrlKey && evt.key === 'Enter') {
+            evt.preventDefault();
+            window.sendMessage(conversationId);
+        }
+    };
+}());
+</script>

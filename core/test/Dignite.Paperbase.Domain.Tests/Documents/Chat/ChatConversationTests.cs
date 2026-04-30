@@ -161,8 +161,8 @@ public class ChatConversationTests
     }
 
     // ────────────────────────────────────────────────────────────────────────────
-    // 7. Rename / UpdateAgentSession 仅修改对应字段；ConcurrencyStamp 的轮换由 ABP
-    //    在 SaveChanges 阶段自动完成（参考 AbpDbContext.UpdateConcurrencyStamp）。
+    // 7. Rename 仅修改标题；ConcurrencyStamp 的轮换由 ABP 在 SaveChanges 阶段自动完成
+    //    （参考 AbpDbContext.UpdateConcurrencyStamp）。
     // ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -173,11 +173,4 @@ public class ChatConversationTests
         conv.Title.ShouldBe("New Title");
     }
 
-    [Fact]
-    public void UpdateAgentSession_Should_Update_Field()
-    {
-        var conv = CreateConversation();
-        conv.UpdateAgentSession("{\"key\":\"value\"}");
-        conv.AgentSessionJson.ShouldBe("{\"key\":\"value\"}");
-    }
 }

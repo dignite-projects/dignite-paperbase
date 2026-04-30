@@ -18,9 +18,6 @@ public class ChatConversation : FullAuditedAggregateRoot<Guid>, IMultiTenant
     public virtual int? TopK { get; private set; }
     public virtual double? MinScore { get; private set; }
 
-    /// <summary>Serialized MAF AgentSession; stage-1 only, retired in #62.</summary>
-    public virtual string? AgentSessionJson { get; private set; }
-
     private readonly List<ChatMessage> _messages = new();
     public virtual IReadOnlyCollection<ChatMessage> Messages => _messages.AsReadOnly();
 
@@ -89,8 +86,4 @@ public class ChatConversation : FullAuditedAggregateRoot<Guid>, IMultiTenant
         return message;
     }
 
-    public virtual void UpdateAgentSession(string? json)
-    {
-        AgentSessionJson = json;
-    }
 }

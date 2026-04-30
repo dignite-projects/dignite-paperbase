@@ -20,6 +20,7 @@ using Volo.Abp;
 using Volo.Abp.Application.Dtos;
 using Volo.Abp.Domain.Entities;
 using Volo.Abp.Domain.Repositories;
+using MeAi = Microsoft.Extensions.AI;
 
 namespace Dignite.Paperbase.Documents.Chat;
 
@@ -40,6 +41,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     private readonly DocumentTextSearchAdapter _textSearchAdapter;
     private readonly IChatClient _chatClient;
     private readonly IPromptProvider _promptProvider;
+    private readonly PaperbasePostgresChatHistoryProvider _historyProvider;
     private readonly PaperbaseAIOptions _aiOptions;
     private readonly PaperbaseRagOptions _ragOptions;
 
@@ -49,6 +51,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         DocumentTextSearchAdapter textSearchAdapter,
         IChatClient chatClient,
         IPromptProvider promptProvider,
+        PaperbasePostgresChatHistoryProvider historyProvider,
         IOptions<PaperbaseAIOptions> aiOptions,
         IOptions<PaperbaseRagOptions> ragOptions)
     {
@@ -57,6 +60,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         _textSearchAdapter = textSearchAdapter;
         _chatClient = chatClient;
         _promptProvider = promptProvider;
+        _historyProvider = historyProvider;
         _aiOptions = aiOptions.Value;
         _ragOptions = ragOptions.Value;
     }
@@ -167,10 +171,6 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         var citationsJson = SerializeCitations(run.Capture.LastResults);
         conversation.AppendAssistantMessage(Clock, assistantMessageId, run.Text, citationsJson);
 
-        // Persist updated session JSON so the next turn restores the same MAF state bag.
-        var sessionJson = await SerializeSessionAsync(run);
-        conversation.UpdateAgentSession(sessionJson);
-
         // The aggregate is already tracked through the FindByIdWithMessagesAsync load;
         // the ambient unit of work flushes changes on commit. Calling repository.UpdateAsync
         // on a tracked entity would route through DbContext.Update(), which can clobber
@@ -231,6 +231,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         catch { /* error event was already written to the channel */ }
     }
 
+
     /// <summary>
     /// Loads the conversation aggregate and runs the fail-closed authorization gate.
     /// Order: permission attribute (ABP) → tenant assertion → ownership assertion.
@@ -272,8 +273,8 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     }
 
     /// <summary>
-    /// Prepares the MAF agent and a restored (or fresh) <see cref="AgentSession"/> for
-    /// the given conversation. Shared by both the synchronous and streaming paths.
+    /// Prepares the MAF agent and a fresh <see cref="AgentSession"/> for the given
+    /// conversation. Shared by both the synchronous and streaming paths.
     /// </summary>
     protected virtual async Task<AgentSetup> PrepareAgentSetupAsync(
         ChatConversation conversation,
@@ -300,23 +301,15 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         var agentOptions = new ChatClientAgentOptions
         {
             ChatOptions = new ChatOptions { Instructions = instructions },
-            ChatHistoryProvider = new InMemoryChatHistoryProvider(),
+            ChatHistoryProvider = _historyProvider,
             AIContextProviders = new List<AIContextProvider> { provider }
         };
 
         var agent = new ChatClientAgent(_chatClient, agentOptions);
-
-        AgentSession session;
-        if (string.IsNullOrEmpty(conversation.AgentSessionJson))
-        {
-            session = await agent.CreateSessionAsync(cancellationToken);
-        }
-        else
-        {
-            using var doc = JsonDocument.Parse(conversation.AgentSessionJson);
-            session = await agent.DeserializeSessionAsync(
-                doc.RootElement, jsonSerializerOptions: null, cancellationToken);
-        }
+        var session = await agent.CreateSessionAsync(cancellationToken);
+        session.StateBag.SetValue(
+            PaperbasePostgresChatHistoryProvider.ConversationIdStateKey,
+            conversation.Id.ToString());
 
         return new AgentSetup(agent, session, capture);
     }
@@ -356,17 +349,12 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         CancellationToken cancellationToken = default)
     {
         var setup = await PrepareAgentSetupAsync(conversation, cancellationToken);
-        var response = await setup.Agent.RunAsync(message, setup.Session, options: null, cancellationToken);
-        return new AgentRunOutcome(response.Text, setup.Agent, setup.Session, setup.Capture);
-    }
-
-    protected virtual async Task<string?> SerializeSessionAsync(
-        AgentRunOutcome run,
-        CancellationToken cancellationToken = default)
-    {
-        var element = await run.Agent.SerializeSessionAsync(
-            run.Session, jsonSerializerOptions: null, cancellationToken);
-        return element.GetRawText();
+        var history = await _historyProvider.GetChatHistoryAsync(setup.Session, cancellationToken);
+        var messages = history
+            .Concat([new MeAi.ChatMessage(MeAi.ChatRole.User, message)])
+            .ToList();
+        var response = await setup.Agent.RunAsync(messages, setup.Session, options: null, cancellationToken);
+        return new AgentRunOutcome(response.Text, setup.Capture);
     }
 
     protected virtual ChatTurnResultDto BuildTurnResultFromPersisted(
@@ -474,9 +462,13 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         try
         {
             var setup = await PrepareAgentSetupAsync(conversation, ct);
+            var history = await _historyProvider.GetChatHistoryAsync(setup.Session, ct);
+            var messages = history
+                .Concat([new MeAi.ChatMessage(MeAi.ChatRole.User, input.Message)])
+                .ToList();
 
             await foreach (var update in setup.Agent.RunStreamingAsync(
-                input.Message, setup.Session, options: null, ct))
+                messages, setup.Session, options: null, ct))
             {
                 var text = update.Text;
                 if (!string.IsNullOrEmpty(text))
@@ -493,9 +485,6 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             conversation.AppendUserMessage(Clock, userMessageId, input.Message, input.ClientTurnId);
             var citationsJson = SerializeCitations(setup.Capture.LastResults);
             conversation.AppendAssistantMessage(Clock, assistantMessageId, fullText, citationsJson);
-            var sessionElement = await setup.Agent.SerializeSessionAsync(
-                setup.Session, jsonSerializerOptions: null, ct);
-            conversation.UpdateAgentSession(sessionElement.GetRawText());
 
             var citations = BuildCitationDtos(setup.Capture.LastResults);
 
@@ -564,7 +553,5 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
 
     protected record AgentRunOutcome(
         string Text,
-        ChatClientAgent Agent,
-        AgentSession Session,
         DocumentSearchCapture Capture);
 }

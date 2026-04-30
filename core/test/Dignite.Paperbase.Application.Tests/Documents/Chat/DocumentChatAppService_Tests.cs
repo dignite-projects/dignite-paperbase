@@ -110,16 +110,16 @@ public class DocumentChatAppService_Tests
     {
         var conversationId = await CreateConversationAsync();
 
-        // Capture every IChatClient call so we can inspect the history payload of the last turn.
-        var capturedMessageCounts = new List<int>();
+        // Capture every IChatClient call so we can inspect the history payload of each turn.
+        var capturedTurns = new List<List<MEAI.ChatMessage>>();
         _chatClient.GetResponseAsync(
                 Arg.Do<IEnumerable<MEAI.ChatMessage>>(msgs =>
-                    capturedMessageCounts.Add(msgs.Count())),
+                    capturedTurns.Add(msgs.ToList())),
                 Arg.Any<ChatOptions?>(),
                 Arg.Any<CancellationToken>())
             .Returns(call =>
             {
-                var n = capturedMessageCounts.Count; // 1-indexed turn marker
+                var n = capturedTurns.Count; // 1-indexed turn marker
                 return Task.FromResult(
                     new ChatResponse([new MEAI.ChatMessage(ChatRole.Assistant, $"answer-{n}")]));
             });
@@ -139,12 +139,28 @@ public class DocumentChatAppService_Tests
             });
         }
 
-        capturedMessageCounts.Count.ShouldBe(3);
-        // Turn 1 receives one input message; later turns must receive more (prior history is replayed
-        // through InMemoryChatHistoryProvider). Exact composition depends on whether ChatClientAgent
-        // delivers system instructions inline or via ChatOptions.Instructions, so we assert the
-        // monotonic-growth contract rather than a fixed count.
-        capturedMessageCounts[2].ShouldBeGreaterThan(capturedMessageCounts[0]);
+        capturedTurns.Count.ShouldBe(3);
+        capturedTurns[0].Count.ShouldBe(1);
+        capturedTurns[1].Count.ShouldBe(3);
+        capturedTurns[2].Count.ShouldBe(5);
+        capturedTurns[0].Select(m => m.Text).ShouldContain("q-1");
+        capturedTurns[1].Select(m => m.Text).ShouldContain("q-1");
+        capturedTurns[1].Select(m => m.Text).ShouldContain("answer-1");
+        capturedTurns[1].Select(m => m.Text).ShouldContain("q-2");
+        capturedTurns[2].Select(m => m.Text).ShouldContain("q-1");
+        capturedTurns[2].Select(m => m.Text).ShouldContain("answer-1");
+        capturedTurns[2].Select(m => m.Text).ShouldContain("q-2");
+        capturedTurns[2].Select(m => m.Text).ShouldContain("answer-2");
+        capturedTurns[2].Select(m => m.Text).ShouldContain("q-3");
+
+        var conv = await WithUnitOfWorkAsync(async () =>
+        {
+            using (ChangeUser(OwnerUserId))
+            {
+                return await _repository.FindByIdWithMessagesAsync(conversationId, 50);
+            }
+        });
+        conv!.Messages.Count.ShouldBe(6);
     }
 
     // ── 4. SendMessage: scope propagated to vector search ───────────────────
@@ -471,6 +487,8 @@ public class DocumentChatAppService_Tests
 
     private void SetupDefaultChatClient()
     {
+        _chatClient.GetService(Arg.Any<Type>(), Arg.Any<object?>()).Returns(null);
+
         _chatClient.GetResponseAsync(
                 Arg.Any<IEnumerable<MEAI.ChatMessage>>(),
                 Arg.Any<ChatOptions?>(),
