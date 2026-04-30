@@ -12,14 +12,13 @@ import { LocalizationPipe } from '@abp/ng.core';
 import { interval, Subscription, switchMap, startWith } from 'rxjs';
 import { DocumentService } from '../../proxy/document.service';
 import { DocumentDto, DocumentLifecycleStatus, DocumentReviewStatus } from '../../proxy/models';
-import { DocumentQaPanelComponent } from '../document-qa-panel/document-qa-panel.component';
 import { DocumentRelationsComponent } from '../document-relations/document-relations.component';
 
 @Component({
   selector: 'app-document-detail',
   templateUrl: './document-detail.component.html',
   styleUrls: ['./document-detail.component.scss'],
-  imports: [CommonModule, RouterModule, LocalizationPipe, DocumentQaPanelComponent, DocumentRelationsComponent],
+  imports: [CommonModule, RouterModule, LocalizationPipe, DocumentRelationsComponent],
 })
 export class DocumentDetailComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
@@ -30,7 +29,7 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
   isLoading = signal(true);
   isTextExpanded = signal(false);
   imageError = signal(false);
-  activeTab = signal<'info' | 'qa' | 'relations'>('info');
+  activeTab = signal<'info' | 'relations'>('info');
 
   readonly DocumentLifecycleStatus = DocumentLifecycleStatus;
   readonly DocumentReviewStatus = DocumentReviewStatus;
@@ -93,7 +92,7 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
     this.pollSubscription = undefined;
   }
 
-  setTab(tab: 'info' | 'qa' | 'relations'): void {
+  setTab(tab: 'info' | 'relations'): void {
     this.activeTab.set(tab);
   }
 
@@ -111,6 +110,19 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
 
   goBack(): void {
     this.router.navigate(['/documents']);
+  }
+
+  openChat(): void {
+    const doc = this.document();
+    if (!doc?.id) return;
+
+    this.router.navigate(['/document-chat'], {
+      queryParams: {
+        documentId: doc.id,
+        documentTypeCode: doc.documentTypeCode || null,
+        title: doc.fileOrigin?.originalFileName || doc.originalFileBlobName,
+      },
+    });
   }
 
   getStatusBadgeClass(status: DocumentLifecycleStatus): string {

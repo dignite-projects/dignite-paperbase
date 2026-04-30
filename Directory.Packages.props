@@ -72,7 +72,6 @@
     </ItemGroup>
 
     <ItemGroup Label="Infrastructure">
-        <PackageVersion Include="Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation" Version="10.0.2" />
         <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.2" />
         <PackageVersion Include="Microsoft.EntityFrameworkCore.Proxies" Version="10.0.2" />
         <PackageVersion Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.2" />

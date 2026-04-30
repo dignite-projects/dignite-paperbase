@@ -16,6 +16,10 @@
         }
         {{ getStatusLabel(document()!.lifecycleStatus) | abpLocalization }}
       </span>
+      <button class="btn btn-primary btn-sm ms-auto" (click)="openChat()">
+        <i class="fas fa-comments me-1"></i>
+        {{ '::DocumentChat:OpenChat' | abpLocalization }}
+      </button>
     }
   </div>
 
@@ -88,12 +92,6 @@
             <button class="nav-link" [class.active]="activeTab() === 'info'" (click)="setTab('info')">
               <i class="fas fa-info-circle me-1"></i>
               {{ '::Document:Metadata' | abpLocalization }}
-            </button>
-          </li>
-          <li class="nav-item">
-            <button class="nav-link" [class.active]="activeTab() === 'qa'" (click)="setTab('qa')">
-              <i class="fas fa-robot me-1"></i>
-              {{ '::Document:QA' | abpLocalization }}
             </button>
           </li>
           <li class="nav-item">
@@ -182,14 +180,6 @@
               </div>
             }
           </div>
-        }
-
-        <!-- Tab: Q&A -->
-        @if (activeTab() === 'qa') {
-          <app-document-qa-panel
-            [documentId]="document()!.id"
-            [hasEmbedding]="document()!.hasEmbedding"
-          />
         }
 
         <!-- Tab: Relations -->

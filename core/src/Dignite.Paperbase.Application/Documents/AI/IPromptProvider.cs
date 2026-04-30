@@ -10,6 +10,4 @@ public interface IPromptProvider
     PromptTemplate GetClassificationPrompt(string language);
 
     PromptTemplate GetQaPrompt(string language);
-
-    PromptTemplate GetRerankPrompt(string language);
 }

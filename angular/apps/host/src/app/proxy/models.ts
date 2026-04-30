@@ -75,35 +75,6 @@ export interface GetDocumentListInput {
   reviewStatus?: DocumentReviewStatus;
 }
 
-// ─── Q&A models ─────────────────────────────────────────────────────────────
-
-export enum QaMode {
-  Auto = 0,
-  Rag = 1,
-  FullText = 2,
-}
-
-export interface AskDocumentInput {
-  question: string;
-}
-
-export interface GlobalAskInput {
-  question: string;
-  documentTypeCode?: string;
-}
-
-export interface QaSourceDto {
-  text: string;
-  chunkIndex?: number;
-}
-
-export interface QaResultDto {
-  answer: string;
-  sources: QaSourceDto[];
-  actualMode: string;
-  isDegraded: boolean;
-}
-
 // ─── Document relation models ────────────────────────────────────────────────
 
 export enum RelationSource {

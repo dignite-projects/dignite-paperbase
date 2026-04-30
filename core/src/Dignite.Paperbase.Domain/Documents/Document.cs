@@ -64,7 +64,7 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
 
     /// <summary>
     /// 文档是否已完成向量化。
-    /// false 时 Q&amp;A 功能降级为全文检索，不影响分类和字段提取。
+    /// false 时文档暂不可被向量检索命中，不影响分类和字段提取。
     /// </summary>
     public bool HasEmbedding
         => GetLatestRun(PaperbasePipelines.Embedding)?.Status == PipelineRunStatus.Succeeded;

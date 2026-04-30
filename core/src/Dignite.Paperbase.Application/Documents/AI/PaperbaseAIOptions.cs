@@ -30,31 +30,6 @@ public class PaperbaseAIOptions
     public int MaxTextLengthPerExtraction { get; set; } = 8000;
 
     /// <summary>
-    /// 向量检索返回的最大 Chunk 数（Top-K）。
-    /// </summary>
-    public int QaTopKChunks { get; set; } = 5;
-
-    /// <summary>
-    /// QA 检索的最低 cosine 相似度阈值，取值范围 [0, 1]，越大越严格。
-    /// 命中 chunk 的相似度低于此值时将被丢弃，避免无关上下文污染 prompt。
-    /// 设为 0 关闭阈值过滤（保持 Slice 4 之前的行为）。
-    /// </summary>
-    public double QaMinScore { get; set; } = 0.65;
-
-    /// <summary>
-    /// 启用 LLM 精排：先按 <see cref="QaTopKChunks"/> × <see cref="RecallExpandFactor"/>
-    /// 召回扩大，再让 LLM 给每个候选 chunk 打分，取分数最高的 <see cref="QaTopKChunks"/> 个进入 RAG。
-    /// 默认关闭以保守 token 成本；中文/多语言场景或召回质量不佳时建议启用。
-    /// </summary>
-    public bool EnableLlmRerank { get; set; } = false;
-
-    /// <summary>
-    /// 启用 <see cref="EnableLlmRerank"/> 时的召回扩大倍数（实际召回 = QaTopKChunks × 此值）。
-    /// 默认 4，意味着 TopK=5 时召回 20 个候选，由 LLM 重排后取前 5。
-    /// </summary>
-    public int RecallExpandFactor { get; set; } = 4;
-
-    /// <summary>
     /// AI 交互默认语言（影响系统提示词语言）。
     /// </summary>
     public string DefaultLanguage { get; set; } = "ja";

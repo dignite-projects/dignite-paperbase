@@ -15,7 +15,7 @@ using Xunit;
 namespace Dignite.Paperbase.Documents;
 
 /// <summary>
-/// 验证三个 Workflow 在每次 RunAsync 调用时都重新从 IPromptProvider 取得提示词，
+/// 验证 Workflow 在每次 RunAsync 调用时都重新从 IPromptProvider 取得提示词，
 /// 而非在构造函数中固定 — 保证 IPromptProvider 的动态变更（语言切换、租户定制）
 /// 在下一次调用时立即生效，无需重启宿主。
 /// </summary>
@@ -66,47 +66,6 @@ public class DocumentWorkflowPromptLifetime_Tests
 
         await workflow.RunAsync(types, "text");
         await workflow.RunAsync(types, "text");
-
-        capturedSystemMessages.Count.ShouldBe(2);
-        capturedSystemMessages[0].ShouldContain("Prompt-A");
-        capturedSystemMessages[1].ShouldContain("Prompt-B");
-    }
-
-    // ── QA ────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task QaWorkflow_GetQaPrompt_CalledOnEachRunAsync()
-    {
-        var inner = BuildChatClientReturning("Answer.");
-
-        var promptProvider = Substitute.For<IPromptProvider>();
-        promptProvider.GetQaPrompt(Arg.Any<string>())
-            .Returns(new PromptTemplate("Prompt-A"), new PromptTemplate("Prompt-B"));
-
-        var workflow = new DocumentQaWorkflow(
-            inner, Options.Create(new PaperbaseAIOptions()), promptProvider);
-
-        await workflow.RunFullTextAsync("question", "doc text");
-        await workflow.RunFullTextAsync("question", "doc text");
-
-        promptProvider.Received(2).GetQaPrompt(Arg.Any<string>());
-    }
-
-    [Fact]
-    public async Task QaWorkflow_SystemInstructions_ReflectFreshPromptOnEachCall()
-    {
-        var capturedSystemMessages = new List<string>();
-        var inner = BuildChatClientCapturing(capturedSystemMessages, "Answer.");
-
-        var promptProvider = Substitute.For<IPromptProvider>();
-        promptProvider.GetQaPrompt(Arg.Any<string>())
-            .Returns(new PromptTemplate("Prompt-A"), new PromptTemplate("Prompt-B"));
-
-        var workflow = new DocumentQaWorkflow(
-            inner, Options.Create(new PaperbaseAIOptions()), promptProvider);
-
-        await workflow.RunFullTextAsync("question", "doc text");
-        await workflow.RunFullTextAsync("question", "doc text");
 
         capturedSystemMessages.Count.ShouldBe(2);
         capturedSystemMessages[0].ShouldContain("Prompt-A");

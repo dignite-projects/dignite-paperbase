@@ -19,7 +19,7 @@ Paperbase uses `Microsoft.Extensions.AI` for chat and embeddings. Any OpenAI-com
 | --- | --- |
 | `Endpoint` | API base URL, usually OpenAI-compatible `/v1` format |
 | `ApiKey` | API key for the provider |
-| `ChatModelId` | Model used for classification, relation inference, and QA |
+| `ChatModelId` | Model used for classification, relation inference, and document chat |
 | `EmbeddingModelId` | Model used for document chunk embeddings |
 
 ## AI Behavior
@@ -33,10 +33,6 @@ Paperbase uses `Microsoft.Extensions.AI` for chat and embeddings. Any OpenAI-com
   "ChunkOverlap": 100,
   "ChunkBoundaryTolerance": 120,
   "MaxTextLengthPerExtraction": 8000,
-  "QaTopKChunks": 5,
-  "QaMinScore": 0.65,
-  "EnableLlmRerank": false,
-  "RecallExpandFactor": 4,
   "DefaultLanguage": "ja"
 }
 ```
@@ -46,10 +42,6 @@ Paperbase uses `Microsoft.Extensions.AI` for chat and embeddings. Any OpenAI-com
 | `ChunkSize` | `800` | Characters per text chunk for embedding |
 | `ChunkOverlap` | `100` | Overlap between adjacent chunks |
 | `ChunkBoundaryTolerance` | `120` | Backtrack tolerance to snap chunk boundaries to natural breaks |
-| `QaTopKChunks` | `5` | Final number of chunks used as QA context |
-| `QaMinScore` | `0.65` | Minimum score applied only when the provider reports normalized scores. Set to `null` to disable |
-| `EnableLlmRerank` | `false` | Expands recall and lets an LLM rerank candidates before QA |
-| `RecallExpandFactor` | `4` | Recall multiplier when rerank is enabled |
 | `DefaultLanguage` | `"ja"` | Language hint appended to AI prompts |
 
 ## RAG Defaults

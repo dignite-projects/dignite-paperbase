@@ -6,10 +6,6 @@ import type { PipelineRunStatus } from './pipeline-run-status.enum';
 import type { RelationSource } from './relation-source.enum';
 import type { IRemoteStreamContent } from '../volo/abp/content/models';
 
-export interface AskDocumentInput {
-  question: string;
-}
-
 export interface CreateDocumentRelationInput {
   sourceDocumentId: string;
   targetDocumentId: string;
@@ -94,23 +90,6 @@ export interface GetDocumentRelationGraphInput {
   rootDocumentId: string;
   depth?: number;
   includeAiSuggested?: boolean;
-}
-
-export interface GlobalAskInput {
-  question: string;
-  documentTypeCode?: string | null;
-}
-
-export interface QaResultDto {
-  answer?: string;
-  sources?: QaSourceDto[];
-  actualMode?: string;
-  isDegraded?: boolean;
-}
-
-export interface QaSourceDto {
-  text?: string;
-  chunkIndex?: number | null;
 }
 
 export interface UploadDocumentInput {

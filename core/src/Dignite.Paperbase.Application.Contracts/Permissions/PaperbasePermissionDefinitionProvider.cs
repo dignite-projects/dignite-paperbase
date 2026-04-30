@@ -16,7 +16,6 @@ public class PaperbasePermissionDefinitionProvider : PermissionDefinitionProvide
         documents.AddChild(PaperbasePermissions.Documents.Restore, L("Permission:Documents.Restore"));
         documents.AddChild(PaperbasePermissions.Documents.Export, L("Permission:Documents.Export"));
         documents.AddChild(PaperbasePermissions.Documents.ConfirmClassification, L("Permission:Documents.ConfirmClassification"));
-        documents.AddChild(PaperbasePermissions.Documents.Ask, L("Permission:Documents.Ask"));
 
         var chat = documents.AddChild(PaperbasePermissions.Documents.Chat.Default, L("Permission:Documents.Chat"));
         chat.AddChild(PaperbasePermissions.Documents.Chat.Create, L("Permission:Documents.Chat.Create"));

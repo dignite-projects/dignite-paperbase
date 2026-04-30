@@ -1,0 +1,179 @@
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+    <div>
+      <h4 class="mb-1">
+        <i class="fas fa-comments me-2"></i>
+        {{ '::DocumentChat:Title' | abpLocalization }}
+      </h4>
+    </div>
+    <button class="btn btn-outline-secondary" (click)="loadConversations()">
+      <i class="fas fa-sync-alt me-1"></i>
+      {{ 'AbpUi::Refresh' | abpLocalization }}
+    </button>
+  </div>
+
+  <div class="document-chat-shell border rounded bg-white">
+    <aside class="conversation-list">
+      <form class="new-conversation" (ngSubmit)="createConversation()">
+        <input
+          type="text"
+          class="form-control form-control-sm"
+          [placeholder]="'::DocumentChat:TitlePlaceholder' | abpLocalization"
+          [ngModel]="title()"
+          (ngModelChange)="title.set($event)"
+          name="title"
+          maxlength="200"
+        />
+        <input
+          type="text"
+          class="form-control form-control-sm"
+          [placeholder]="'::DocumentChat:DocumentIdPlaceholder' | abpLocalization"
+          [ngModel]="documentId()"
+          (ngModelChange)="documentId.set($event)"
+          name="documentId"
+        />
+        <input
+          type="text"
+          class="form-control form-control-sm"
+          [placeholder]="'::DocumentChat:DocumentTypePlaceholder' | abpLocalization"
+          [ngModel]="documentTypeCode()"
+          (ngModelChange)="documentTypeCode.set($event)"
+          name="documentTypeCode"
+          maxlength="64"
+        />
+        <button class="btn btn-primary btn-sm w-100" type="submit" [disabled]="isCreating()">
+          @if (isCreating()) {
+            <span class="spinner-border spinner-border-sm me-1"></span>
+          }
+          <i class="fas fa-plus me-1"></i>
+          {{ '::DocumentChat:NewConversation' | abpLocalization }}
+        </button>
+      </form>
+
+      <div class="conversation-scroll">
+        @if (isLoadingConversations()) {
+          <div class="text-center text-muted py-3">
+            <span class="spinner-border spinner-border-sm"></span>
+          </div>
+        }
+
+        @for (conversation of conversations(); track conversation.id) {
+          <div
+            class="conversation-item"
+            [class.active]="activeConversationId() === conversation.id"
+            (click)="selectConversation(conversation.id)"
+            (keydown.enter)="selectConversation(conversation.id)"
+            role="button"
+            tabindex="0"
+          >
+            <span class="conversation-main">
+              <span class="fw-semibold text-truncate">{{ conversation.title }}</span>
+              <span class="text-muted small">{{ sourceLabel(conversation) }}</span>
+            </span>
+            <span class="conversation-actions">
+              <small class="text-muted">{{ conversation.creationTime | date:'MM-dd HH:mm' }}</small>
+              <button
+                type="button"
+                class="btn btn-link btn-sm text-danger p-0"
+                title="{{ '::Delete' | abpLocalization }}"
+                (click)="deleteConversation(conversation, $event)"
+              >
+                <i class="fas fa-trash"></i>
+              </button>
+            </span>
+          </div>
+        }
+
+        @if (!isLoadingConversations() && conversations().length === 0) {
+          <div class="empty-state">
+            <i class="fas fa-comment-dots d-block mb-2"></i>
+            {{ '::DocumentChat:NoConversations' | abpLocalization }}
+          </div>
+        }
+      </div>
+    </aside>
+
+    <main class="chat-panel">
+      @if (activeConversation(); as conversation) {
+        <header class="chat-header">
+          <div>
+            <h5 class="mb-1">{{ conversation.title }}</h5>
+            <span class="badge bg-light text-dark border">{{ sourceLabel(conversation) }}</span>
+          </div>
+        </header>
+
+        <section class="messages">
+          @if (isLoadingMessages()) {
+            <div class="text-center text-muted py-4">
+              <span class="spinner-border"></span>
+            </div>
+          }
+
+          @for (item of messages(); track item.id) {
+            <div class="message-row" [class.user]="item.role === ChatMessageRole.User">
+              <div
+                class="message-bubble"
+                [class.assistant]="item.role === ChatMessageRole.Assistant"
+                [class.error]="item.isError"
+              >
+                @if (item.isPending) {
+                  <span class="spinner-border spinner-border-sm me-2"></span>
+                  {{ '::DocumentChat:Thinking' | abpLocalization }}
+                } @else if (item.isError) {
+                  {{ '::DocumentChat:SendFailed' | abpLocalization }}
+                } @else {
+                  <span>{{ item.content }}</span>
+                }
+              </div>
+
+              @if (item.isDegraded) {
+                <div class="message-meta text-warning">
+                  <i class="fas fa-exclamation-triangle me-1"></i>
+                  {{ '::DocumentChat:Degraded' | abpLocalization }}
+                </div>
+              }
+
+              @if (item.citations.length > 0) {
+                <div class="citations">
+                  @for (citation of item.citations; track $index) {
+                    <div class="citation">
+                      <span class="fw-semibold">{{ citation.sourceName }}</span>
+                      @if (citation.pageNumber != null) {
+                        <span> p.{{ citation.pageNumber }}</span>
+                      }
+                      <span class="d-block text-muted">{{ citation.snippet }}</span>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          }
+        </section>
+
+        <footer class="composer">
+          <textarea
+            class="form-control"
+            rows="3"
+            [placeholder]="'::DocumentChat:MessagePlaceholder' | abpLocalization"
+            [ngModel]="message()"
+            (ngModelChange)="message.set($event)"
+            (keydown)="onMessageKeydown($event)"
+            [disabled]="isSending()"
+          ></textarea>
+          <button class="btn btn-primary" type="button" (click)="sendMessage()" [disabled]="!canSend()">
+            @if (isSending()) {
+              <span class="spinner-border spinner-border-sm me-1"></span>
+            }
+            <i class="fas fa-paper-plane me-1"></i>
+            {{ '::DocumentChat:Send' | abpLocalization }}
+          </button>
+        </footer>
+      } @else {
+        <div class="no-active-conversation">
+          <i class="fas fa-comments d-block mb-3"></i>
+          <h5>{{ '::DocumentChat:SelectConversation' | abpLocalization }}</h5>
+        </div>
+      }
+    </main>
+  </div>
+</div>

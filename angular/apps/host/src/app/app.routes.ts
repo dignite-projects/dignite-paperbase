@@ -23,4 +23,11 @@ export const APP_ROUTES: Routes = [
     path: 'documents',
     loadChildren: () => import('./document/document.routes').then(r => r.DOCUMENT_ROUTES),
   },
+  {
+    path: 'document-chat',
+    canActivate: [authGuard, permissionGuard],
+    data: { requiredPolicy: 'Paperbase.Documents.Chat' },
+    loadComponent: () =>
+      import('./document-chat/document-chat.component').then(c => c.DocumentChatComponent),
+  },
 ];

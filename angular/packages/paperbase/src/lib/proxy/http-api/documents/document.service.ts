@@ -1,7 +1,7 @@
 import { RestService, Rest } from '@abp/ng.core';
 import type { PagedResultDto } from '@abp/ng.core';
 import { Injectable, inject } from '@angular/core';
-import type { AskDocumentInput, DocumentDto, GetDocumentListInput, QaResultDto, UploadDocumentInput } from '../../documents/models';
+import type { DocumentDto, GetDocumentListInput, UploadDocumentInput } from '../../documents/models';
 
 @Injectable({
   providedIn: 'root',
@@ -9,15 +9,6 @@ import type { AskDocumentInput, DocumentDto, GetDocumentListInput, QaResultDto, 
 export class DocumentService {
   private restService = inject(RestService);
   apiName = 'Default';
-  
-
-  ask = (id: string, input: AskDocumentInput, config?: Partial<Rest.Config>) =>
-    this.restService.request<any, QaResultDto>({
-      method: 'POST',
-      url: `/api/paperbase/documents/${id}/ask`,
-      body: input,
-    },
-    { apiName: this.apiName,...config });
   
 
   confirmClassification = (id: string, documentTypeCode: string, config?: Partial<Rest.Config>) =>

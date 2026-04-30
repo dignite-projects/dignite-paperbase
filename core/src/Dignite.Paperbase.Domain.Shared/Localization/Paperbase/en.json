@@ -13,6 +13,7 @@
     "Menu:Home": "Home",
     "Menu:Documents": "Documents",
     "Menu:UploadDocument": "Upload Document",
+    "Menu:DocumentChat": "Document Chat",
 
     "Document:Documents": "Documents",
     "Document:Upload": "Upload Document",
@@ -72,18 +73,9 @@
 
     "Failed": "Failed",
 
-    "Document:QA": "Q&A",
-    "Document:AskQuestion": "Ask a question",
-    "Document:Ask": "Ask",
-    "Document:DegradedModeNotice": "Vector index not ready — answering from full text.",
-    "Document:NoRelevantDocumentsFound": "No relevant documents found.",
-    "Document:NoRelevantContextFound": "No relevant content found in this document.",
     "Document:Relations": "Relations",
     "Document:ConfirmRelation": "Confirm Relation",
     "Document:NoRelations": "No relations found.",
-    "Document:GlobalAsk": "Ask Across Documents",
-    "Document:Sources": "Sources",
-    "Document:QaError": "Failed to get an answer. Please try again.",
     "Document:RelationDescription": "Relation Description",
     "Document:TargetDocument": "Target Document",
     "Document:RelationSource": "Source",
@@ -101,7 +93,6 @@
     "Permission:DocumentRelations.Delete": "Delete Document Relation",
     "Permission:Documents.Restore": "Restore Documents",
     "Permission:Documents.ConfirmClassification": "Confirm Classification",
-    "Permission:Documents.Ask": "Ask Documents (Q&A)",
     "Permission:Documents.Chat": "Document Chat",
     "Permission:Documents.Chat.Create": "Create chat conversation",
     "Permission:Documents.Chat.SendMessage": "Send message",
@@ -114,6 +105,23 @@
     "Paperbase:DocumentInRecycleBin": "This file already exists in the recycle bin ({FileName}).",
 
     "DocumentChat:UntitledConversation": "Untitled conversation",
-    "DocumentChat:StreamError": "An error occurred while generating the response. Please try again."
+    "DocumentChat:StreamError": "An error occurred while generating the response. Please try again.",
+    "DocumentChat:Title": "Document Chat",
+    "DocumentChat:TitlePlaceholder": "Title (optional)",
+    "DocumentChat:DocumentIdPlaceholder": "Document ID (optional)",
+    "DocumentChat:DocumentTypePlaceholder": "Document type code (optional)",
+    "DocumentChat:NewConversation": "New conversation",
+    "DocumentChat:NoConversations": "No conversations yet.",
+    "DocumentChat:SelectConversation": "Select or create a conversation.",
+    "DocumentChat:MessagePlaceholder": "Ask a question...",
+    "DocumentChat:Send": "Send",
+    "DocumentChat:Thinking": "Thinking...",
+    "DocumentChat:Degraded": "Retrieval was skipped for this answer.",
+    "DocumentChat:OpenChat": "Chat",
+    "DocumentChat:LoadFailed": "Failed to load document chat.",
+    "DocumentChat:CreateFailed": "Failed to create conversation.",
+    "DocumentChat:SendFailed": "Failed to send message.",
+    "DocumentChat:DeleteFailed": "Failed to delete conversation.",
+    "DocumentChat:AreYouSureToDelete": "Are you sure you want to delete this conversation?"
   }
 }

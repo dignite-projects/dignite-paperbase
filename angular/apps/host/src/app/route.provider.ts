@@ -32,5 +32,12 @@ function configureRoutes() {
       order: 1,
       layout: eLayoutType.application,
     },
+    {
+      path: '/document-chat',
+      name: '::Menu:DocumentChat',
+      iconClass: 'fas fa-comments',
+      order: 3,
+      layout: eLayoutType.application,
+    },
   ]);
 }

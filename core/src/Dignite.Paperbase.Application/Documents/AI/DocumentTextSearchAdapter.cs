@@ -32,9 +32,7 @@ namespace Dignite.Paperbase.Documents.AI;
 ///         the agent can cite sources in its answer.</item>
 /// </list>
 ///
-/// This adapter does NOT replace <c>DocumentQaWorkflow</c> — it lives alongside it
-/// as an optional path. Both share the same <see cref="IDocumentKnowledgeIndex"/>
-/// implementation.
+/// This adapter is the shared document retrieval path used by document chat.
 /// </summary>
 public class DocumentTextSearchAdapter : ITransientDependency
 {
