@@ -21,10 +21,4 @@ public class DocumentQaController : PaperbaseController, IDocumentQaAppService
     {
         return _documentQaAppService.AskAsync(documentId, input);
     }
-
-    [HttpPost("global-ask")]
-    public virtual Task<QaResultDto> GlobalAskAsync([FromBody] GlobalAskInput input)
-    {
-        return _documentQaAppService.GlobalAskAsync(input);
-    }
 }

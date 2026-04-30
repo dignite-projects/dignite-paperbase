@@ -53,7 +53,6 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
             var qaChunks = await RetrieveQaChunksAsync(
                 input.Question,
                 finalTopK: _aiOptions.QaTopKChunks,
-                baselineMultiplier: 1,
                 documentId: documentId);
 
             if (qaChunks.Count == 0)
@@ -86,56 +85,21 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
         };
     }
 
-    public virtual async Task<QaResultDto> GlobalAskAsync(GlobalAskInput input)
-    {
-        var qaChunks = await RetrieveQaChunksAsync(
-            input.Question,
-            finalTopK: _aiOptions.QaTopKChunks,
-            baselineMultiplier: 3,
-            documentTypeCode: input.DocumentTypeCode);
-
-        if (qaChunks.Count == 0)
-        {
-            return new QaResultDto
-            {
-                Answer = L["Document:NoRelevantDocumentsFound"],
-                ActualMode = QaMode.Rag
-            };
-        }
-
-        var outcome = await _qaWorkflow.RunRagAsync(input.Question, qaChunks);
-
-        return new QaResultDto
-        {
-            Answer = outcome.Answer,
-            ActualMode = outcome.ActualMode,
-            IsDegraded = false,
-            Sources = outcome.Sources.Select(s => new QaSourceDto
-            {
-                Text = s.Text,
-                ChunkIndex = s.ChunkIndex
-            }).ToList()
-        };
-    }
-
     /// <summary>
-    /// 统一的检索 + 阈值过滤 + 可选 LLM 精排管线。
+    /// 单文档检索 + 阈值过滤 + 可选 LLM 精排管线。
     /// <paramref name="finalTopK"/> 是最终供 RAG 使用的 chunk 数；
-    /// <paramref name="baselineMultiplier"/> 是关闭精排时的召回倍数（GlobalAsk 历史上是 3，单文档是 1）。
     /// 启用 <see cref="PaperbaseAIOptions.EnableLlmRerank"/> 时召回 = finalTopK × RecallExpandFactor，
     /// 然后用 LLM 重排取前 finalTopK。
     /// </summary>
     protected virtual async Task<List<QaChunk>> RetrieveQaChunksAsync(
         string question,
         int finalTopK,
-        int baselineMultiplier,
-        Guid? documentId = null,
-        string? documentTypeCode = null)
+        Guid documentId)
     {
         var rerank = _aiOptions.EnableLlmRerank;
         var recallTopK = rerank
             ? finalTopK * Math.Max(1, _aiOptions.RecallExpandFactor)
-            : finalTopK * Math.Max(1, baselineMultiplier);
+            : finalTopK;
 
         var questionEmbeddings = await _embeddingGenerator.GenerateAsync([question]);
         var canApplyMinScore = _aiOptions.QaMinScore > 0;
@@ -146,7 +110,6 @@ public class DocumentQaAppService : PaperbaseAppService, IDocumentQaAppService
             QueryText = question,
             TopK = recallTopK,
             DocumentId = documentId,
-            DocumentTypeCode = documentTypeCode,
             MinScore = canApplyMinScore ? _aiOptions.QaMinScore : null
         };
 

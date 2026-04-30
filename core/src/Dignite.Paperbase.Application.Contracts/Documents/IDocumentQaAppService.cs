@@ -7,6 +7,4 @@ namespace Dignite.Paperbase.Documents;
 public interface IDocumentQaAppService : IApplicationService
 {
     Task<QaResultDto> AskAsync(Guid documentId, AskDocumentInput input);
-
-    Task<QaResultDto> GlobalAskAsync(GlobalAskInput input);
 }

@@ -19,7 +19,7 @@ The platform now distinguishes three AI invocation patterns. Their boundaries ar
 
 | Mode | Entry point | Retrieval ownership | Multi-turn | Agent shape | Use when |
 |---|---|---|---|---|---|
-| **A. Explicit QA** (existing) | `DocumentQaAppService.AskAsync / GlobalAskAsync` | AppService owns retrieval | No | `ChatClientAgent.RunAsync(prompt)` one-shot | Deterministic, auditable single-turn QA over a known document or type |
+| **A. Explicit QA** (existing) | `DocumentQaAppService.AskAsync` | AppService owns retrieval | No | `ChatClientAgent.RunAsync(prompt)` one-shot | Deterministic, auditable single-turn QA over a known document |
 | **B. Document Conversation Agent** (new) | `DocumentChatAppService` | MAF `TextSearchProvider` owns retrieval; AppService only fixes the scope | Yes | `ChatClientAgent` with `AIContextProviders` and `ChatHistoryProvider` driven by an `AgentSession` | Multi-turn dialog where each user message may need a fresh retrieval over the same scope |
 | **C. Module Field Extraction** (existing) | Business module `IDistributedEventHandler<DocumentClassifiedEto>` (e.g., `ContractDocumentHandler`) | None — uses only `eventData.ExtractedText` | No | `ChatClientAgent.RunAsync<TStructuredResult>` | OCR-to-entity field extraction in a business module |
 
@@ -219,7 +219,6 @@ The roadmap describes coarse increments. Detailed task breakdown lives in GitHub
 4. **Persistence cutover** — `PaperbasePostgresChatHistoryProvider` replaces double-write; `AgentSessionJson` is retired.
 5. **Client surfaces** — Angular proxy regeneration; minimal demo page in host.
 6. **Optional** — streaming responses; opt-in `OnDemandFunctionCalling`.
-7. **Optional** — retire `DocumentQaAppService.GlobalAskAsync` in favor of conversations.
 
 ## Risk Register
 
@@ -245,7 +244,6 @@ The roadmap describes coarse increments. Detailed task breakdown lives in GitHub
 - Cross-tenant or shared conversations
 - Multimodal input (images, audio)
 - Conversation summarization or vector-indexing of chat history itself
-- Migration of `DocumentQaAppService.GlobalAskAsync` users to conversations (handled in a later issue)
 - Per-conversation distributed locks or send queues (MVP relies on optimistic concurrency + idempotency key; if collision rates become a real-world concern, a queue is added later)
 
 ## Decision Log
