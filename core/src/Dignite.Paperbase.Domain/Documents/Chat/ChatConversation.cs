@@ -45,13 +45,15 @@ public class ChatConversation : FullAuditedAggregateRoot<Guid>, IMultiTenant
         DocumentTypeCode = documentTypeCode;
         TopK = topK;
         MinScore = minScore;
-        ConcurrencyStamp = Guid.NewGuid().ToString("N");
+        // ConcurrencyStamp is owned by ABP. Manually rotating it here would conflict
+        // with AbpDbContext.UpdateConcurrencyStamp, which sets OriginalValue from the
+        // entity's current ConcurrencyStamp at save time — pre-rotated entities would
+        // produce a WHERE clause that never matches the persisted row.
     }
 
     public virtual void Rename(string title)
     {
         Title = Check.NotNullOrWhiteSpace(title, nameof(title), maxLength: DocumentChatConsts.MaxTitleLength);
-        RotateConcurrencyStamp();
     }
 
     public virtual ChatMessage AppendUserMessage(IClock clock, Guid messageId, string content, Guid clientTurnId)
@@ -69,7 +71,6 @@ public class ChatConversation : FullAuditedAggregateRoot<Guid>, IMultiTenant
             clock.Now);
 
         _messages.Add(message);
-        RotateConcurrencyStamp();
         return message;
     }
 
@@ -85,18 +86,11 @@ public class ChatConversation : FullAuditedAggregateRoot<Guid>, IMultiTenant
             clock.Now);
 
         _messages.Add(message);
-        RotateConcurrencyStamp();
         return message;
     }
 
     public virtual void UpdateAgentSession(string? json)
     {
         AgentSessionJson = json;
-        RotateConcurrencyStamp();
-    }
-
-    protected virtual void RotateConcurrencyStamp()
-    {
-        ConcurrencyStamp = Guid.NewGuid().ToString("N");
     }
 }

@@ -117,20 +117,9 @@ public class ChatConversationTests
     }
 
     // ────────────────────────────────────────────────────────────────────────────
-    // 4. AppendUserMessage 旋转 ConcurrencyStamp
+    // 4. ConcurrencyStamp 由 ABP AbpDbContext 在保存时自动轮换；domain 不再手动轮换。
+    //    见 AbpDbContext.UpdateConcurrencyStamp / ChangeTracker_Tracked。
     // ────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void AppendUserMessage_Should_Rotate_ConcurrencyStamp()
-    {
-        var conv = CreateConversation();
-        var stampBefore = conv.ConcurrencyStamp;
-
-        conv.AppendUserMessage(CreateClock(), Guid.NewGuid(), "Hello world", Guid.NewGuid());
-
-        conv.ConcurrencyStamp.ShouldNotBe(stampBefore);
-        conv.ConcurrencyStamp.ShouldNotBeNullOrEmpty();
-    }
 
     // ────────────────────────────────────────────────────────────────────────────
     // 5. AppendUserMessage 重复 ClientTurnId → BusinessException
@@ -172,53 +161,23 @@ public class ChatConversationTests
     }
 
     // ────────────────────────────────────────────────────────────────────────────
-    // 7. Rename 旋转 ConcurrencyStamp；UpdateAgentSession 旋转 ConcurrencyStamp
+    // 7. Rename / UpdateAgentSession 仅修改对应字段；ConcurrencyStamp 的轮换由 ABP
+    //    在 SaveChanges 阶段自动完成（参考 AbpDbContext.UpdateConcurrencyStamp）。
     // ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Rename_Should_Rotate_ConcurrencyStamp()
+    public void Rename_Should_Update_Title()
     {
         var conv = CreateConversation();
-        var stamp0 = conv.ConcurrencyStamp;
-
         conv.Rename("New Title");
-
         conv.Title.ShouldBe("New Title");
-        conv.ConcurrencyStamp.ShouldNotBe(stamp0);
     }
 
     [Fact]
-    public void UpdateAgentSession_Should_Rotate_ConcurrencyStamp()
+    public void UpdateAgentSession_Should_Update_Field()
     {
         var conv = CreateConversation();
-        var stampBefore = conv.ConcurrencyStamp;
-
         conv.UpdateAgentSession("{\"key\":\"value\"}");
-
         conv.AgentSessionJson.ShouldBe("{\"key\":\"value\"}");
-        conv.ConcurrencyStamp.ShouldNotBe(stampBefore);
-    }
-
-    // ────────────────────────────────────────────────────────────────────────────
-    // 8. 每个 mutate 方法都会生成不同的 ConcurrencyStamp（无碰撞）
-    // ────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void Each_Mutate_Produces_Different_ConcurrencyStamp()
-    {
-        var conv = CreateConversation();
-        var clock = CreateClock();
-
-        var s0 = conv.ConcurrencyStamp;
-        conv.Rename("A");
-        var s1 = conv.ConcurrencyStamp;
-        conv.AppendUserMessage(clock, Guid.NewGuid(), "Hello", Guid.NewGuid());
-        var s2 = conv.ConcurrencyStamp;
-        conv.AppendAssistantMessage(clock, Guid.NewGuid(), "World", null);
-        var s3 = conv.ConcurrencyStamp;
-        conv.UpdateAgentSession("{}");
-        var s4 = conv.ConcurrencyStamp;
-
-        new[] { s0, s1, s2, s3, s4 }.ShouldBeUnique();
     }
 }
