@@ -35,6 +35,19 @@ public class PaperbaseAIOptions
     public string DefaultLanguage { get; set; } = "ja";
 
     /// <summary>
+    /// 启用 LLM 精排：文档聊天检索先按 <see cref="RecallExpandFactor"/> 扩大召回，
+    /// 再让 LLM 对候选 chunk 重新排序，最后只把最终 TopK 注入 prompt。
+    /// 默认关闭以保守 token 成本；中文/多语言场景或召回质量不佳时建议启用。
+    /// </summary>
+    public bool EnableLlmRerank { get; set; } = false;
+
+    /// <summary>
+    /// 启用 <see cref="EnableLlmRerank"/> 时的召回扩大倍数。
+    /// 实际召回数 = 文档聊天 TopK × 此值。
+    /// </summary>
+    public int RecallExpandFactor { get; set; } = 4;
+
+    /// <summary>
     /// 启用时向 LLM 传递 <c>ChatOptions.ResponseFormat = Json</c>，
     /// 由 SDK 注入类型 schema 约束，同时从 prompt 中移除手写的 JSON schema 文本。
     /// 关闭时回退到旧的 prompt 内联 schema（适用于不支持 JSON mode 的 Provider）。

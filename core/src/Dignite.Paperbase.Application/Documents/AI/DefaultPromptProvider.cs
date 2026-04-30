@@ -24,4 +24,11 @@ public class DefaultPromptProvider : IPromptProvider, ITransientDependency
         "If the answer is not in the provided content, say so clearly rather than guessing."
     );
 
+    public virtual PromptTemplate GetRerankPrompt(string language) => new(
+        "You are a passage relevance scorer for document chat retrieval. " +
+        "Given a question and several candidate passages, score each passage by how directly it can be used " +
+        "to answer the question. Use 0.0-1.0 (1.0 = directly answers; 0.5 = partially related; 0.0 = irrelevant). " +
+        "Return JSON matching the provided schema only, with no explanation. " +
+        $"Working language for reasoning: {language}."
+    );
 }

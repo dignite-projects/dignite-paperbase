@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents.AI;
+using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Rag;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
@@ -26,6 +27,9 @@ public class DocumentTextSearchAdapterTestModule : AbpModule
         // the search results and assert on the embedding call.
         context.Services.AddSingleton(Substitute.For<IDocumentKnowledgeIndex>());
         context.Services.AddSingleton(Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>());
+        context.Services.AddSingleton<TestDocumentRerankWorkflow>();
+        context.Services.AddSingleton<DocumentRerankWorkflow>(sp =>
+            sp.GetRequiredService<TestDocumentRerankWorkflow>());
 
         // Register a testable subclass so FormatSearchContext and CreateBoundSearchDelegate
         // are accessible via their promoted public wrappers.
@@ -41,9 +45,11 @@ public class TestableDocumentTextSearchAdapter : DocumentTextSearchAdapter
     public TestableDocumentTextSearchAdapter(
         IDocumentKnowledgeIndex vectorStore,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
+        DocumentRerankWorkflow rerankWorkflow,
         ICurrentTenant currentTenant,
+        IOptions<PaperbaseAIOptions> aiOptions,
         IOptions<PaperbaseRagOptions> ragOptions)
-        : base(vectorStore, embeddingGenerator, currentTenant, ragOptions)
+        : base(vectorStore, embeddingGenerator, rerankWorkflow, currentTenant, aiOptions, ragOptions)
     {
     }
 
@@ -69,6 +75,41 @@ public class TestableDocumentTextSearchAdapter : DocumentTextSearchAdapter
     }
 }
 
+public class TestDocumentRerankWorkflow : DocumentRerankWorkflow
+{
+    public string? LastQuestion { get; private set; }
+    public IReadOnlyList<RerankCandidate>? LastCandidates { get; private set; }
+    public int? LastTopK { get; private set; }
+    public Func<IReadOnlyList<RerankCandidate>, int, IReadOnlyList<RerankedChunk>>? Handler { get; set; }
+
+    public TestDocumentRerankWorkflow()
+        : base(
+            Substitute.For<IChatClient>(),
+            Options.Create(new PaperbaseAIOptions()),
+            Substitute.For<IPromptProvider>())
+    {
+    }
+
+    public override Task<IReadOnlyList<RerankedChunk>> RerankAsync(
+        string question,
+        IReadOnlyList<RerankCandidate> candidates,
+        int topK,
+        CancellationToken cancellationToken = default)
+    {
+        LastQuestion = question;
+        LastCandidates = candidates;
+        LastTopK = topK;
+
+        var result = Handler?.Invoke(candidates, topK)
+            ?? candidates
+                .Take(topK)
+                .Select((c, i) => new RerankedChunk(c, c.OriginalScore, i))
+                .ToList();
+
+        return Task.FromResult(result);
+    }
+}
+
 /// <summary>
 /// Slice 8 守护：<see cref="DocumentTextSearchAdapter"/> 让 Microsoft Agent Framework 的
 /// <see cref="TextSearchProvider"/> 能复用 Paperbase 的 <see cref="IDocumentKnowledgeIndex"/>。
@@ -81,12 +122,18 @@ public class DocumentTextSearchAdapter_Tests
     private readonly TestableDocumentTextSearchAdapter _adapter;
     private readonly IDocumentKnowledgeIndex _vectorStore;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
+    private readonly TestDocumentRerankWorkflow _rerankWorkflow;
+    private readonly PaperbaseAIOptions _aiOptions;
 
     public DocumentTextSearchAdapter_Tests()
     {
         _adapter = (TestableDocumentTextSearchAdapter)GetRequiredService<DocumentTextSearchAdapter>();
         _vectorStore = GetRequiredService<IDocumentKnowledgeIndex>();
         _embeddingGenerator = GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
+        _rerankWorkflow = GetRequiredService<TestDocumentRerankWorkflow>();
+        _aiOptions = GetRequiredService<IOptions<PaperbaseAIOptions>>().Value;
+        _aiOptions.EnableLlmRerank = false;
+        _aiOptions.RecallExpandFactor = 4;
 
         SetupDefaultEmbedding();
     }
@@ -154,6 +201,100 @@ public class DocumentTextSearchAdapter_Tests
         captured.DocumentTypeCode.ShouldBe("contract.general");
         captured.TopK.ShouldBe(17);
         captured.MinScore.ShouldBe(0.42);
+    }
+
+    [Fact]
+    public async Task Rerank_Disabled_Uses_FinalTopK_Directly()
+    {
+        VectorSearchRequest? captured = null;
+        _vectorStore.SearchAsync(Arg.Do<VectorSearchRequest>(r => captured = r), Arg.Any<CancellationToken>())
+            .Returns(new List<VectorSearchResult>());
+
+        await _adapter.SearchAsync(
+            tenantId: null,
+            scope: new DocumentSearchScope { TopK = 3 },
+            query: "Q");
+
+        captured.ShouldNotBeNull();
+        captured!.TopK.ShouldBe(3);
+        _rerankWorkflow.LastCandidates.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Rerank_Enabled_Expands_Recall_And_Returns_Reranked_FinalTopK()
+    {
+        _aiOptions.EnableLlmRerank = true;
+        _aiOptions.RecallExpandFactor = 3;
+
+        var docId = Guid.NewGuid();
+        var results = Enumerable.Range(0, 6)
+            .Select(i => new VectorSearchResult
+            {
+                RecordId = Guid.NewGuid(),
+                DocumentId = docId,
+                ChunkIndex = i,
+                Text = $"chunk-{i}",
+                Score = 0.9 - i * 0.1
+            })
+            .ToList();
+
+        VectorSearchRequest? captured = null;
+        _vectorStore.SearchAsync(Arg.Do<VectorSearchRequest>(r => captured = r), Arg.Any<CancellationToken>())
+            .Returns(results);
+        _rerankWorkflow.Handler = (candidates, topK) =>
+            new List<RerankedChunk>
+            {
+                new(candidates[4], 1.0, 4),
+                new(candidates[2], 0.9, 2)
+            };
+
+        var textResults = (await _adapter.SearchAsync(
+            tenantId: null,
+            scope: new DocumentSearchScope { TopK = 2 },
+            query: "Q")).ToList();
+
+        captured.ShouldNotBeNull();
+        captured!.TopK.ShouldBe(6);
+        _rerankWorkflow.LastQuestion.ShouldBe("Q");
+        _rerankWorkflow.LastCandidates!.Count.ShouldBe(6);
+        _rerankWorkflow.LastTopK.ShouldBe(2);
+        textResults.Count.ShouldBe(2);
+        textResults[0].Text.ShouldBe("chunk-4");
+        textResults[1].Text.ShouldBe("chunk-2");
+    }
+
+    [Fact]
+    public async Task Bound_Search_Capture_Stores_Reranked_Vector_Results()
+    {
+        _aiOptions.EnableLlmRerank = true;
+        _aiOptions.RecallExpandFactor = 2;
+
+        var docId = Guid.NewGuid();
+        var results = Enumerable.Range(0, 4)
+            .Select(i => new VectorSearchResult
+            {
+                RecordId = Guid.NewGuid(),
+                DocumentId = docId,
+                ChunkIndex = i,
+                Text = $"chunk-{i}",
+                Score = 0.8
+            })
+            .ToList();
+
+        _vectorStore.SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
+            .Returns(results);
+        _rerankWorkflow.Handler = (candidates, _) =>
+            new List<RerankedChunk> { new(candidates[3], 1.0, 3), new(candidates[1], 0.9, 1) };
+
+        var capture = new DocumentSearchCapture();
+        await _adapter.InvokeSearchDelegate(
+            tenantId: null,
+            scope: new DocumentSearchScope { TopK = 2 },
+            capture,
+            query: "Q");
+
+        capture.LastResults.ShouldNotBeNull();
+        capture.LastResults!.Select(r => r.ChunkIndex).ShouldBe([3, 1]);
     }
 
     [Fact]

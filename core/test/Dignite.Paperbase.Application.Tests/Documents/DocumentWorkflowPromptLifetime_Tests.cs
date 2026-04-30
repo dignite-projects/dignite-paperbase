@@ -72,7 +72,62 @@ public class DocumentWorkflowPromptLifetime_Tests
         capturedSystemMessages[1].ShouldContain("Prompt-B");
     }
 
+    // ── Rerank ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task RerankWorkflow_GetRerankPrompt_CalledOnEachRunAsync()
+    {
+        var inner = BuildChatClientReturning(
+            """{"items":[{"id":1,"score":1.0},{"id":0,"score":0.2}]}""");
+
+        var promptProvider = Substitute.For<IPromptProvider>();
+        promptProvider.GetRerankPrompt(Arg.Any<string>())
+            .Returns(new PromptTemplate("Prompt-A"), new PromptTemplate("Prompt-B"));
+
+        var workflow = new DocumentRerankWorkflow(
+            inner, Options.Create(new PaperbaseAIOptions()), promptProvider);
+
+        var candidates = BuildRerankCandidates();
+
+        await workflow.RerankAsync("question one", candidates, topK: 1);
+        await workflow.RerankAsync("question two", candidates, topK: 1);
+
+        promptProvider.Received(2).GetRerankPrompt(Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task RerankWorkflow_SystemInstructions_ReflectFreshPromptOnEachCall()
+    {
+        var capturedSystemMessages = new List<string>();
+        var inner = BuildChatClientCapturing(
+            capturedSystemMessages,
+            """{"items":[{"id":1,"score":1.0},{"id":0,"score":0.2}]}""");
+
+        var promptProvider = Substitute.For<IPromptProvider>();
+        promptProvider.GetRerankPrompt(Arg.Any<string>())
+            .Returns(new PromptTemplate("Prompt-A"), new PromptTemplate("Prompt-B"));
+
+        var workflow = new DocumentRerankWorkflow(
+            inner, Options.Create(new PaperbaseAIOptions()), promptProvider);
+
+        var candidates = BuildRerankCandidates();
+
+        await workflow.RerankAsync("question", candidates, topK: 1);
+        await workflow.RerankAsync("question", candidates, topK: 1);
+
+        capturedSystemMessages.Count.ShouldBe(2);
+        capturedSystemMessages[0].ShouldContain("Prompt-A");
+        capturedSystemMessages[1].ShouldContain("Prompt-B");
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    private static List<RerankCandidate> BuildRerankCandidates()
+        =>
+        [
+            new("first passage", 0.8),
+            new("second passage", 0.7)
+        ];
 
     private static IChatClient BuildChatClientReturning(string responseText)
     {

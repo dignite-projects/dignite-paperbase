@@ -33,7 +33,9 @@ Paperbase uses `Microsoft.Extensions.AI` for chat and embeddings. Any OpenAI-com
   "ChunkOverlap": 100,
   "ChunkBoundaryTolerance": 120,
   "MaxTextLengthPerExtraction": 8000,
-  "DefaultLanguage": "ja"
+  "DefaultLanguage": "ja",
+  "EnableLlmRerank": false,
+  "RecallExpandFactor": 4
 }
 ```
 
@@ -43,6 +45,8 @@ Paperbase uses `Microsoft.Extensions.AI` for chat and embeddings. Any OpenAI-com
 | `ChunkOverlap` | `100` | Overlap between adjacent chunks |
 | `ChunkBoundaryTolerance` | `120` | Backtrack tolerance to snap chunk boundaries to natural breaks |
 | `DefaultLanguage` | `"ja"` | Language hint appended to AI prompts |
+| `EnableLlmRerank` | `false` | When enabled, document chat retrieves an expanded candidate set, asks the chat model to rerank the chunks, and injects only the final TopK into the prompt |
+| `RecallExpandFactor` | `4` | Multiplier applied to `PaperbaseRag:DefaultTopK` or per-chat `DocumentSearchScope.TopK` before LLM rerank |
 
 ## RAG Defaults
 

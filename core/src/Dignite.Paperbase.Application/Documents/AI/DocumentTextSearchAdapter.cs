@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Rag;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
@@ -38,18 +39,24 @@ public class DocumentTextSearchAdapter : ITransientDependency
 {
     private readonly IDocumentKnowledgeIndex _vectorStore;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
+    private readonly DocumentRerankWorkflow _rerankWorkflow;
     private readonly ICurrentTenant _currentTenant;
+    private readonly PaperbaseAIOptions _aiOptions;
     private readonly PaperbaseRagOptions _ragOptions;
 
     public DocumentTextSearchAdapter(
         IDocumentKnowledgeIndex vectorStore,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
+        DocumentRerankWorkflow rerankWorkflow,
         ICurrentTenant currentTenant,
+        IOptions<PaperbaseAIOptions> aiOptions,
         IOptions<PaperbaseRagOptions> ragOptions)
     {
         _vectorStore = vectorStore;
         _embeddingGenerator = embeddingGenerator;
+        _rerankWorkflow = rerankWorkflow;
         _currentTenant = currentTenant;
+        _aiOptions = aiOptions.Value;
         _ragOptions = ragOptions.Value;
     }
 
@@ -188,6 +195,12 @@ public class DocumentTextSearchAdapter : ITransientDependency
         string query,
         CancellationToken cancellationToken = default)
     {
+        var finalTopK = scope?.TopK ?? _ragOptions.DefaultTopK;
+        var rerank = _aiOptions.EnableLlmRerank && finalTopK > 0;
+        var recallTopK = rerank
+            ? finalTopK * Math.Max(1, _aiOptions.RecallExpandFactor)
+            : finalTopK;
+
         var embeddings = await _embeddingGenerator.GenerateAsync(
             [query], cancellationToken: cancellationToken);
 
@@ -195,14 +208,32 @@ public class DocumentTextSearchAdapter : ITransientDependency
         {
             TenantId = tenantId,
             QueryVector = embeddings[0].Vector,
-            TopK = scope?.TopK ?? _ragOptions.DefaultTopK,
+            TopK = recallTopK,
             DocumentId = scope?.DocumentId,
             DocumentTypeCode = scope?.DocumentTypeCode,
             MinScore = scope?.MinScore ?? _ragOptions.MinScore,
             QueryText = query
         };
 
-        return await _vectorStore.SearchAsync(request, cancellationToken);
+        var results = await _vectorStore.SearchAsync(request, cancellationToken);
+        if (!rerank || results.Count <= finalTopK)
+        {
+            return results.Take(finalTopK).ToList();
+        }
+
+        var candidates = results
+            .Select(r => new RerankCandidate(r.Text, r.Score ?? 0.0, r))
+            .ToList();
+
+        var reranked = await _rerankWorkflow.RerankAsync(
+            query,
+            candidates,
+            finalTopK,
+            cancellationToken);
+
+        return reranked
+            .Select(r => (VectorSearchResult)r.Candidate.Tag!)
+            .ToList();
     }
 
     protected virtual TextSearchProviderOptions BuildOptions(
