@@ -9,4 +9,6 @@ public static class PaperbaseErrorCodes
     public const string InvalidDocumentTypeCode = "Paperbase:InvalidDocumentTypeCode";
     public const string DocumentDuplicate = "Paperbase:DocumentDuplicate";
     public const string DocumentInRecycleBin = "Paperbase:DocumentInRecycleBin";
+    public const string DuplicateClientTurnId = "Paperbase:DuplicateClientTurnId";
+    public const string ChatConversationScopeConflict = "Paperbase:ChatConversationScopeConflict";
 }

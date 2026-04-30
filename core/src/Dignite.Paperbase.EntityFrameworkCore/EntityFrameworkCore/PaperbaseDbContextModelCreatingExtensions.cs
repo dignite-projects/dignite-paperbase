@@ -1,4 +1,5 @@
 using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Documents.Chat;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp;
 using Volo.Abp.EntityFrameworkCore.Modeling;
@@ -74,6 +75,41 @@ public static class PaperbaseDbContextModelCreatingExtensions
 
             b.HasIndex(x => x.SourceDocumentId);
             b.HasIndex(x => x.TargetDocumentId);
+        });
+
+        builder.Entity<ChatConversation>(b =>
+        {
+            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "DocumentChatConversations", PaperbaseDbProperties.DbSchema);
+            b.ConfigureByConvention();
+
+            b.Property(x => x.Title).IsRequired().HasMaxLength(DocumentChatConsts.MaxTitleLength);
+            b.Property(x => x.DocumentTypeCode).HasMaxLength(DocumentConsts.MaxDocumentTypeCodeLength);
+            b.Property(x => x.AgentSessionJson).HasColumnType("text");
+
+            b.HasMany(x => x.Messages)
+                .WithOne()
+                .HasForeignKey(m => m.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            b.HasIndex(x => new { x.TenantId, x.CreatorId, x.CreationTime });
+        });
+
+        builder.Entity<ChatMessage>(b =>
+        {
+            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "DocumentChatMessages", PaperbaseDbProperties.DbSchema);
+            b.ConfigureByConvention();
+
+            b.Property(x => x.Content).IsRequired().HasMaxLength(DocumentChatConsts.MaxMessageLength);
+            b.Property(x => x.CitationsJson).HasColumnType("jsonb");
+            b.Property(x => x.Role).IsRequired();
+
+            b.HasIndex(x => new { x.ConversationId, x.CreationTime });
+
+            // Partial unique index: enforces per-conversation idempotency for user turns only.
+            // ClientTurnId is null for assistant messages, so a full unique index would conflict.
+            b.HasIndex(x => new { x.ConversationId, x.ClientTurnId })
+                .IsUnique()
+                .HasFilter("\"ClientTurnId\" IS NOT NULL");
         });
 
         // RAG chunk storage is external to the core EF model and is owned by the

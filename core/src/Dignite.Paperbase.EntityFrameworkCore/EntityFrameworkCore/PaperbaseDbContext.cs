@@ -1,4 +1,5 @@
 using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Documents.Chat;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp.Data;
 using Volo.Abp.EntityFrameworkCore;
@@ -11,6 +12,7 @@ public class PaperbaseDbContext : AbpDbContext<PaperbaseDbContext>, IPaperbaseDb
     public DbSet<Document> Documents { get; set; }
     public DbSet<DocumentPipelineRun> DocumentPipelineRuns { get; set; }
     public DbSet<DocumentRelation> DocumentRelations { get; set; }
+    public DbSet<ChatConversation> ChatConversations { get; set; }
 
     public PaperbaseDbContext(DbContextOptions<PaperbaseDbContext> options)
         : base(options)
