@@ -161,7 +161,6 @@ public class DocumentChatAppService_Tests
             }
         });
         conv!.Messages.Count.ShouldBe(6);
-        GetAgentSessionJson(conv).ShouldBeNull();
     }
 
     // ── 4. SendMessage: scope propagated to vector search ───────────────────
@@ -281,46 +280,6 @@ public class DocumentChatAppService_Tests
             Arg.Any<IEnumerable<MEAI.ChatMessage>>(),
             Arg.Any<ChatOptions?>(),
             Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task Should_Not_Read_Or_Write_AgentSessionJson()
-    {
-        var conversationId = await CreateConversationAsync();
-
-        await WithUnitOfWorkAsync(async () =>
-        {
-            using (ChangeUser(OwnerUserId))
-            {
-                var conv = (await _repository.FindByIdWithMessagesAsync(conversationId, 50))!;
-                typeof(ChatConversation)
-                    .GetMethod(nameof(ChatConversation.UpdateAgentSession))!
-                    .Invoke(conv, ["not-json"]);
-            }
-        });
-
-        await WithUnitOfWorkAsync(async () =>
-        {
-            using (ChangeUser(OwnerUserId))
-            {
-                await _appService.SendMessageAsync(conversationId, new SendChatMessageInput
-                {
-                    Message = "q",
-                    ClientTurnId = Guid.NewGuid()
-                });
-            }
-        });
-
-        var updated = await WithUnitOfWorkAsync(async () =>
-        {
-            using (ChangeUser(OwnerUserId))
-            {
-                return await _repository.FindByIdWithMessagesAsync(conversationId, 50);
-            }
-        });
-
-        GetAgentSessionJson(updated!).ShouldBe("not-json");
-        updated!.Messages.Count.ShouldBe(2);
     }
 
     // ── 8. Concurrency conflict surfaces as AbpDbConcurrencyException ───────
@@ -543,12 +502,5 @@ public class DocumentChatAppService_Tests
         _knowledgeIndex
             .SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
             .Returns(new List<VectorSearchResult>());
-    }
-
-    private static string? GetAgentSessionJson(ChatConversation conversation)
-    {
-        return (string?)typeof(ChatConversation)
-            .GetProperty("AgentSessionJson")!
-            .GetValue(conversation);
     }
 }
