@@ -1,6 +1,14 @@
 {
   "culture": "ja",
   "texts": {
+    "Permission:Paperbase": "Paperbase",
+    "Permission:Documents": "ドキュメント",
+    "Permission:Documents.Upload": "ドキュメントのアップロード",
+    "Permission:Documents.Delete": "ドキュメントの削除",
+    "Permission:Documents.Export": "ドキュメントのエクスポート",
+    "Permission:DocumentRelations": "ドキュメント関係",
+    "Permission:DocumentRelations.Create": "ドキュメント関係の作成",
+    "Permission:DocumentRelations.Delete": "ドキュメント関係の削除",
     "Permission:Documents.Chat": "ドキュメントチャット",
     "Permission:Documents.Chat.Create": "チャット会話の作成",
     "Permission:Documents.Chat.SendMessage": "メッセージ送信",
