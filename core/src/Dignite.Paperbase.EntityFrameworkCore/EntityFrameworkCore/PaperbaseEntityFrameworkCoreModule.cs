@@ -1,4 +1,5 @@
 using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Documents.Chat;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.EntityFrameworkCore;
 using Volo.Abp.Modularity;
@@ -19,6 +20,7 @@ public class PaperbaseEntityFrameworkCoreModule : AbpModule
 
             options.AddRepository<Document, EfCoreDocumentRepository>();
             options.AddRepository<DocumentRelation, EfCoreDocumentRelationRepository>();
+            options.AddRepository<ChatConversation, EfCoreChatConversationRepository>();
         });
     }
 }

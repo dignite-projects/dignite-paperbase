@@ -1,0 +1,9 @@
+{
+  "culture": "ja",
+  "texts": {
+    "Permission:Documents.Chat": "ドキュメントチャット",
+    "Permission:Documents.Chat.Create": "チャット会話の作成",
+    "Permission:Documents.Chat.SendMessage": "メッセージ送信",
+    "Permission:Documents.Chat.Delete": "チャット会話の削除"
+  }
+}

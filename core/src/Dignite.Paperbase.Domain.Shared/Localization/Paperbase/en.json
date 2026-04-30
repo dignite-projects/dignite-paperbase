@@ -94,11 +94,17 @@
     "Permission:Documents.Restore": "Restore Documents",
     "Permission:Documents.ConfirmClassification": "Confirm Classification",
     "Permission:Documents.Ask": "Ask Documents (Q&A)",
+    "Permission:Documents.Chat": "Document Chat",
+    "Permission:Documents.Chat.Create": "Create chat conversation",
+    "Permission:Documents.Chat.SendMessage": "Send message",
+    "Permission:Documents.Chat.Delete": "Delete chat conversation",
     "Permission:DocumentRelations.ConfirmRelation": "Confirm Document Relation",
 
     "Paperbase:InvalidDocumentTypeCode": "Invalid document type code: '{documentTypeCode}'.",
     "Paperbase:ExtractedTextIsImmutable": "Extracted text has already been set and cannot be changed.",
     "Paperbase:DocumentDuplicate": "This file has already been uploaded ({FileName}).",
-    "Paperbase:DocumentInRecycleBin": "This file already exists in the recycle bin ({FileName})."
+    "Paperbase:DocumentInRecycleBin": "This file already exists in the recycle bin ({FileName}).",
+
+    "DocumentChat:UntitledConversation": "Untitled conversation"
   }
 }

@@ -15,6 +15,16 @@ public class PaperbasePermissions
         public const string Export = Default + ".Export";
         public const string ConfirmClassification = Default + ".ConfirmClassification";
         public const string Ask = Default + ".Ask";
+
+        // Permission tree definition (registration via PermissionDefinitionProvider)
+        // is owned by issue #59. This issue (#58) wires [Authorize] to these constants.
+        public static class Chat
+        {
+            public const string Default = Documents.Default + ".Chat";
+            public const string Create = Default + ".Create";
+            public const string SendMessage = Default + ".SendMessage";
+            public const string Delete = Default + ".Delete";
+        }
     }
 
     public static class DocumentRelations
