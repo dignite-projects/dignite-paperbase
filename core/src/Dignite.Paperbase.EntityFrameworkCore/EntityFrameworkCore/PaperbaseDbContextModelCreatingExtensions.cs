@@ -84,7 +84,7 @@ public static class PaperbaseDbContextModelCreatingExtensions
 
             b.Property(x => x.Title).IsRequired().HasMaxLength(DocumentChatConsts.MaxTitleLength);
             b.Property(x => x.DocumentTypeCode).HasMaxLength(DocumentConsts.MaxDocumentTypeCodeLength);
-            b.Property(x => x.AgentSessionJson).HasColumnType("text");
+            b.Property<string?>("AgentSessionJson").HasColumnType("text");
 
             b.HasMany(x => x.Messages)
                 .WithOne()

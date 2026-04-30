@@ -18,6 +18,7 @@ using Volo.Abp;
 using Volo.Abp.Application.Dtos;
 using Volo.Abp.Domain.Entities;
 using Volo.Abp.Domain.Repositories;
+using MeAi = Microsoft.Extensions.AI;
 
 namespace Dignite.Paperbase.Documents.Chat;
 
@@ -38,6 +39,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     private readonly DocumentTextSearchAdapter _textSearchAdapter;
     private readonly IChatClient _chatClient;
     private readonly IPromptProvider _promptProvider;
+    private readonly PaperbasePostgresChatHistoryProvider _historyProvider;
     private readonly PaperbaseAIOptions _aiOptions;
     private readonly PaperbaseRagOptions _ragOptions;
 
@@ -47,6 +49,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         DocumentTextSearchAdapter textSearchAdapter,
         IChatClient chatClient,
         IPromptProvider promptProvider,
+        PaperbasePostgresChatHistoryProvider historyProvider,
         IOptions<PaperbaseAIOptions> aiOptions,
         IOptions<PaperbaseRagOptions> ragOptions)
     {
@@ -55,6 +58,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         _textSearchAdapter = textSearchAdapter;
         _chatClient = chatClient;
         _promptProvider = promptProvider;
+        _historyProvider = historyProvider;
         _aiOptions = aiOptions.Value;
         _ragOptions = ragOptions.Value;
     }
@@ -165,10 +169,6 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         var citationsJson = SerializeCitations(run.Capture.LastResults);
         conversation.AppendAssistantMessage(Clock, assistantMessageId, run.Text, citationsJson);
 
-        // Persist updated session JSON so the next turn restores the same MAF state bag.
-        var sessionJson = await SerializeSessionAsync(run);
-        conversation.UpdateAgentSession(sessionJson);
-
         // The aggregate is already tracked through the FindByIdWithMessagesAsync load;
         // the ambient unit of work flushes changes on commit. Calling repository.UpdateAsync
         // on a tracked entity would route through DbContext.Update(), which can clobber
@@ -252,35 +252,24 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         var agentOptions = new ChatClientAgentOptions
         {
             ChatOptions = new ChatOptions { Instructions = instructions },
-            ChatHistoryProvider = new InMemoryChatHistoryProvider(),
+            ChatHistoryProvider = _historyProvider,
             AIContextProviders = new List<AIContextProvider> { provider }
         };
 
         var agent = new ChatClientAgent(_chatClient, agentOptions);
 
-        AgentSession session;
-        if (string.IsNullOrEmpty(conversation.AgentSessionJson))
-        {
-            session = await agent.CreateSessionAsync(cancellationToken);
-        }
-        else
-        {
-            using var doc = JsonDocument.Parse(conversation.AgentSessionJson);
-            session = await agent.DeserializeSessionAsync(
-                doc.RootElement, jsonSerializerOptions: null, cancellationToken);
-        }
+        var session = await agent.CreateSessionAsync(cancellationToken);
+        session.StateBag.SetValue(
+            PaperbasePostgresChatHistoryProvider.ConversationIdStateKey,
+            conversation.Id.ToString());
 
-        var response = await agent.RunAsync(message, session, options: null, cancellationToken);
-        return new AgentRunOutcome(response.Text, agent, session, capture);
-    }
+        var history = await _historyProvider.GetChatHistoryAsync(session, cancellationToken);
+        var messages = history
+            .Concat([new MeAi.ChatMessage(MeAi.ChatRole.User, message)])
+            .ToList();
 
-    protected virtual async Task<string?> SerializeSessionAsync(
-        AgentRunOutcome run,
-        CancellationToken cancellationToken = default)
-    {
-        var element = await run.Agent.SerializeSessionAsync(
-            run.Session, jsonSerializerOptions: null, cancellationToken);
-        return element.GetRawText();
+        var response = await agent.RunAsync(messages, session, options: null, cancellationToken);
+        return new AgentRunOutcome(response.Text, capture);
     }
 
     protected virtual ChatTurnResultDto BuildTurnResultFromPersisted(
@@ -386,7 +375,5 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
 
     protected record AgentRunOutcome(
         string Text,
-        ChatClientAgent Agent,
-        AgentSession Session,
         DocumentSearchCapture Capture);
 }
