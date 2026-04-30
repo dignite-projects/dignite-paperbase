@@ -2,7 +2,14 @@
 
 Base URL: `{selfUrl}/api/paperbase/document-chat`
 
-All endpoints require an OAuth 2.0 Bearer token with the `Documents.Chat` permission.
+All endpoints require an OAuth 2.0 Bearer token. The required permission depends on the operation:
+
+| Permission | Grants |
+|---|---|
+| `Paperbase.Documents.Chat` | Read own conversations and messages (default) |
+| `Paperbase.Documents.Chat.Create` | Create a new conversation |
+| `Paperbase.Documents.Chat.SendMessage` | Send a message in an existing conversation |
+| `Paperbase.Documents.Chat.Delete` | Delete an owned conversation |
 
 ---
 

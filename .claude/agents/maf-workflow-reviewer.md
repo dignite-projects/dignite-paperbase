@@ -126,7 +126,7 @@ var run = await agent.RunAsync<ContractExtractionResult>(extractedText);
 **反例**：业务模块给字段抽取 agent 挂 `AIContextProviders`（如 `TextSearchProvider`），会导致：
 - RAG 检索结果混入其他文档的内容，污染结构化字段（合同金额被别的文档内容覆盖）
 - 业务模块与 Core RAG 管道产生隐式耦合，违反模块独立性约束
-- 参见 `docs/design/anti-patterns/doc-chat-anti-patterns.md` 中的反例 A
+- 参见 `.claude/rules/doc-chat-anti-patterns.md` 中的反例 A
 
 ### 2.10 DocumentChatAppService 发送路径的安全／一致性不变量
 
@@ -148,7 +148,7 @@ var run = await agent.RunAsync<ContractExtractionResult>(extractedText);
 
 **注释写法禁忌**：不得在代码注释中出现"即使租户过滤被绕过、闭包仍然安全"之类把 ambient filter propagation 当作 security boundary 的措辞——ambient filter 是可读性辅助，不是安全保证。
 
-参见 `docs/design/anti-patterns/doc-chat-anti-patterns.md` 中的反例 B。
+参见 `.claude/rules/doc-chat-anti-patterns.md` 中的反例 B。
 
 ## 3. 输出格式
 
