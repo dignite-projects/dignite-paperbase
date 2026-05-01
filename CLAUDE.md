@@ -29,7 +29,7 @@ Paperbase 采用**三层分离**的模块化架构：
 
 2. **Dignite.Paperbase 核心模块栈**
    - **Domain.Shared / Domain / Application / EntityFrameworkCore / HttpApi**：标准 ABP 分层
-   - **核心 AI 能力（分类 / 向量-RAG / 关系推断 / 问答）直接在 Application 层落地**——通过 Microsoft Agent Framework (MAF) 1.0 的 `ChatClientAgent` 实现，不再独立成 AI 模块
+   - **核心 AI 能力（分类 / 向量-RAG / 关系推断 / Chat 问答）直接在 Application 层落地**——通过 Microsoft Agent Framework (MAF) 1.0 的 `ChatClientAgent` 实现，不再独立成 AI 模块
    - **能力模块**：`TextExtraction`（默认文本提取）、`Ocr.AzureDocumentIntelligence`（Azure OCR Provider）
 
 ### 第二层：Modules（业务模块生态）
@@ -88,11 +88,11 @@ Dignite.Paperbase.Abstractions（扩展契约层，无其他项目依赖）
 
 ### AI 实现约定
 
-- 核心三大 AI 功能 + QA 全部以 MAF `ChatClientAgent` 形式落地在 `Paperbase.Application/Documents/AI/Workflows/`：
+- 后台流水线 AI 功能落在 `Paperbase.Application/Documents/AI/Workflows/`，全部以 MAF `ChatClientAgent` 形式实现：
   - `DocumentClassificationWorkflow` — 分类
   - `DocumentEmbeddingWorkflow` — 文本分块 + 向量
   - `DocumentRelationInferenceWorkflow` — 关系推断
-  - `DocumentQaWorkflow` — RAG / FullText 问答
+- 文档问答（Chat）走在线请求路径，由 `Paperbase.Application/Chat/DocumentChatAppService`（命名空间 `Dignite.Paperbase.Chat`）承担，检索通过 `Documents/AI/DocumentTextSearchAdapter` 桥接到 MAF `TextSearchProvider`；**不保留 FullText 降级**——未向量化文档由上游流水线保证最终被向量化
 - BackgroundJob 在 `Paperbase.Application/Documents/BackgroundJobs/`，调用上述 Workflow 编排流水线
 - 业务模块（如 Contracts）字段提取自实现：注入 `IChatClient`，构造领域专属 `ChatClientAgent`，使用 `RunAsync<T>` 结构化输出反序列化到自己的 POCO
 
