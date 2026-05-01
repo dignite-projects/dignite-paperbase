@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Dignite.Paperbase.Rag;
 
@@ -25,6 +26,15 @@ public sealed record VectorSearchRequest
 
     /// <summary>Restrict results to a specific document. Null means all documents.</summary>
     public Guid? DocumentId { get; init; }
+
+    /// <summary>
+    /// Restrict results to a set of documents.
+    /// When non-null and non-empty this supersedes <see cref="DocumentId"/>.
+    /// Typical use: the LLM retrieved a list of matching document IDs from a business-module
+    /// tool (e.g. <c>search_contracts</c>) and wants to do a focused RAG pass over exactly
+    /// those documents.
+    /// </summary>
+    public IReadOnlyList<Guid>? DocumentIds { get; init; }
 
     /// <summary>Restrict results to a specific document type. Null means all types.</summary>
     public string? DocumentTypeCode { get; init; }
