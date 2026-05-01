@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Dignite.Paperbase.Rag;
 
 namespace Dignite.Paperbase.Documents.AI;
@@ -23,4 +24,10 @@ public sealed class DocumentSearchScope
     /// <summary>Override <see cref="PaperbaseRagOptions.MinScore"/>.</summary>
     public double? MinScore { get; init; }
 
+    /// <summary>
+    /// Restrict search to a set of documents.
+    /// When non-null and non-empty this supersedes <see cref="DocumentId"/>.
+    /// Passed through to <see cref="VectorSearchRequest.DocumentIds"/>.
+    /// </summary>
+    public IReadOnlyList<Guid>? DocumentIds { get; init; }
 }

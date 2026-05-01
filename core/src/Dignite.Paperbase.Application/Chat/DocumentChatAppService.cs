@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Dignite.Paperbase.Abstractions.Chat;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.Permissions;
@@ -45,6 +46,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     private readonly PaperbasePostgresChatHistoryProvider _historyProvider;
     private readonly PaperbaseAIOptions _aiOptions;
     private readonly PaperbaseRagOptions _ragOptions;
+    private readonly IEnumerable<IDocumentChatToolContributor> _toolContributors;
 
     public DocumentChatAppService(
         IChatConversationRepository conversationRepository,
@@ -54,7 +56,8 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         IPromptProvider promptProvider,
         PaperbasePostgresChatHistoryProvider historyProvider,
         IOptions<PaperbaseAIOptions> aiOptions,
-        IOptions<PaperbaseRagOptions> ragOptions)
+        IOptions<PaperbaseRagOptions> ragOptions,
+        IEnumerable<IDocumentChatToolContributor> toolContributors)
     {
         _conversationRepository = conversationRepository;
         _documentRepository = documentRepository;
@@ -64,6 +67,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         _historyProvider = historyProvider;
         _aiOptions = aiOptions.Value;
         _ragOptions = ragOptions.Value;
+        _toolContributors = toolContributors;
     }
 
     [Authorize(PaperbasePermissions.Documents.Chat.Create)]
@@ -276,14 +280,20 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     /// <summary>
     /// Prepares the MAF agent and a fresh <see cref="AgentSession"/> for the given
     /// conversation. Shared by both the synchronous and streaming paths.
+    ///
+    /// <para>
+    /// Security invariant: <c>conversation.TenantId</c> and <c>conversation.DocumentTypeCode</c>
+    /// are read from the aggregate (loaded and authorized in <see cref="LoadAndAuthorizeAsync"/>),
+    /// never from <c>ICurrentTenant</c>. This preserves the fail-closed tenant assertion
+    /// in all code paths.
+    /// </para>
     /// </summary>
     protected virtual async Task<AgentSetup> PrepareAgentSetupAsync(
         ChatConversation conversation,
         CancellationToken cancellationToken = default)
     {
-        // Capture tenant + scope from the conversation aggregate, not from ICurrentTenant.
-        // The closure inside TextSearchProvider must see the right values when MAF
-        // dispatches the search delegate on a possibly-different thread.
+        // Scope is built from the aggregate, not from ambient context — required so the
+        // search delegate closure captures the right tenant even on background threads.
         var scope = new DocumentSearchScope
         {
             DocumentId = conversation.DocumentId,
@@ -291,22 +301,87 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             TopK = conversation.TopK,
             MinScore = conversation.MinScore
         };
-        var (provider, capture) = _textSearchAdapter.CreateForTenant(
-            conversation.TenantId,
-            providerOptions: BuildChatSearchProviderOptions(),
-            scope: scope);
 
         var template = _promptProvider.GetQaPrompt(_aiOptions.DefaultLanguage);
         var instructions = template.SystemInstructions + " " + PromptBoundary.BoundaryRule;
 
-        var agentOptions = new ChatClientAgentOptions
-        {
-            ChatOptions = new ChatOptions { Instructions = instructions },
-            ChatHistoryProvider = _historyProvider,
-            AIContextProviders = new List<AIContextProvider> { provider }
-        };
+        // Collect AIFunction tools from all contributors registered for this document type.
+        var contributorTools = CollectContributorTools(conversation);
 
-        var agent = new ChatClientAgent(_chatClient, agentOptions);
+        // When contributors are present, the model must be able to decide when to call the RAG
+        // tool (e.g. chain: search_contracts → search_paperbase_documents).  BeforeAIInvoke
+        // would force vector search unconditionally, which wastes tokens for structured queries
+        // and prevents the model from skipping it when the contributor already answered fully.
+        var effectiveBehavior = contributorTools.Count > 0
+            ? ChatSearchBehavior.OnDemandFunctionCalling
+            : _aiOptions.ChatSearchBehavior;
+
+        ChatClientAgentOptions agentOptions;
+        DocumentSearchCapture capture;
+
+        if (effectiveBehavior == ChatSearchBehavior.OnDemandFunctionCalling)
+        {
+            // OnDemandFunctionCalling: expose both the RAG search function and contributor
+            // tools as LLM-callable functions.  The search function accepts an optional
+            // documentIds parameter so the LLM can do a focused RAG pass on document IDs
+            // returned by contributor tools (e.g. search_contracts → search_paperbase_documents).
+            //
+            // Security note: function name and description are static string literals —
+            // they MUST NOT contain user input or conversation metadata (prompt-injection risk).
+            capture = new DocumentSearchCapture();
+            var searchFn = _textSearchAdapter.CreateSearchFunction(
+                conversation.TenantId,
+                scope,
+                capture,
+                functionName: "search_paperbase_documents",
+                functionDescription:
+                    "Search Paperbase documents within the conversation's scope. " +
+                    "Returns relevant text chunks with source citations. " +
+                    "Pass documentIds to restrict the search to specific documents " +
+                    "whose IDs were returned by another tool.");
+
+            var allTools = new List<AITool> { searchFn };
+            allTools.AddRange(contributorTools);
+
+            agentOptions = new ChatClientAgentOptions
+            {
+                ChatOptions = new ChatOptions
+                {
+                    Instructions = instructions,
+                    Tools = allTools
+                },
+                ChatHistoryProvider = _historyProvider
+            };
+        }
+        else
+        {
+            // BeforeAIInvoke: TextSearchProvider injects RAG context automatically before
+            // each AI invocation; citations are always populated.  Contributor tools (if any)
+            // are still exposed as LLM-callable functions so iterative tool calling works.
+            var (provider, providerCapture) = _textSearchAdapter.CreateForTenant(
+                conversation.TenantId,
+                providerOptions: BuildChatSearchProviderOptions(),
+                scope: scope);
+            capture = providerCapture;
+
+            agentOptions = new ChatClientAgentOptions
+            {
+                ChatOptions = new ChatOptions
+                {
+                    Instructions = instructions,
+                    Tools = contributorTools.Count > 0 ? contributorTools : null
+                },
+                ChatHistoryProvider = _historyProvider,
+                AIContextProviders = new List<AIContextProvider> { provider }
+            };
+        }
+
+        // Wrap the shared IChatClient with a per-turn counter.  A new instance is created
+        // each call so concurrent turns never share tool-call state.
+        var limitedClient = new MaxToolCallsChatClient(
+            _chatClient, _aiOptions.MaxToolCallsPerTurn, Logger);
+
+        var agent = new ChatClientAgent(limitedClient, agentOptions);
         var session = await agent.CreateSessionAsync(cancellationToken);
         session.StateBag.SetValue(
             PaperbasePostgresChatHistoryProvider.ConversationIdStateKey,
@@ -316,33 +391,37 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     }
 
     /// <summary>
-    /// Returns <see cref="TextSearchProviderOptions"/> tailored to the current
-    /// <see cref="PaperbaseAIOptions.ChatSearchBehavior"/>.
-    /// Returns <see langword="null"/> for <c>BeforeAIInvoke</c> so the adapter uses its
-    /// own defaults (same as before this method existed).
-    /// <para>
-    /// <strong>Security note:</strong> <c>FunctionToolName</c> and
-    /// <c>FunctionToolDescription</c> are static string literals. They MUST NOT contain
-    /// user input, conversation titles, or any dynamic values to prevent prompt injection
-    /// through the tool description.
-    /// </para>
+    /// Collects <see cref="AIFunction"/> tools from all <see cref="IDocumentChatToolContributor"/>
+    /// implementations whose <see cref="IDocumentChatToolContributor.DocumentTypeCode"/> matches
+    /// the conversation's document type.  Returns an empty list when no contributors match.
     /// </summary>
-    protected virtual TextSearchProviderOptions? BuildChatSearchProviderOptions()
+    protected virtual List<AITool> CollectContributorTools(ChatConversation conversation)
     {
-        if (_aiOptions.ChatSearchBehavior == ChatSearchBehavior.OnDemandFunctionCalling)
-        {
-            return new TextSearchProviderOptions
-            {
-                SearchTime = TextSearchProviderOptions.TextSearchBehavior.OnDemandFunctionCalling,
-                RecentMessageMemoryLimit = 5,
-                // Static literals only — no user input, no conversation metadata.
-                FunctionToolName = "search_paperbase_documents",
-                FunctionToolDescription = "Search Paperbase documents within the conversation's scope. Returns relevant chunks with citations."
-            };
-        }
+        if (!_toolContributors.Any())
+            return new List<AITool>();
 
-        return null; // null → adapter's BuildOptions fills in BeforeAIInvoke defaults
+        var ctx = new DocumentChatToolContext
+        {
+            DocumentTypeCode = conversation.DocumentTypeCode,
+            TenantId = conversation.TenantId,
+            ConversationId = conversation.Id
+        };
+
+        return _toolContributors
+            .Where(c => c.DocumentTypeCode == conversation.DocumentTypeCode)
+            .SelectMany(c => c.ContributeTools(ctx))
+            .Cast<AITool>()
+            .ToList();
     }
+
+    /// <summary>
+    /// Returns <see cref="TextSearchProviderOptions"/> for the <c>BeforeAIInvoke</c> path.
+    /// Returns <see langword="null"/> so the adapter applies its own defaults
+    /// (<c>RecentMessageMemoryLimit = 5</c>, <c>BeforeAIInvoke</c> search time).
+    /// Override in a subclass to customize retrieval behaviour without touching
+    /// <see cref="PrepareAgentSetupAsync"/>.
+    /// </summary>
+    protected virtual TextSearchProviderOptions? BuildChatSearchProviderOptions() => null;
 
     protected virtual async Task<AgentRunOutcome> InvokeAgentAsync(
         ChatConversation conversation,

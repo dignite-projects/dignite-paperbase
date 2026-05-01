@@ -9,6 +9,7 @@ using Dignite.Paperbase.Rag;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
@@ -48,8 +49,9 @@ public class TestableDocumentTextSearchAdapter : DocumentTextSearchAdapter
         DocumentRerankWorkflow rerankWorkflow,
         ICurrentTenant currentTenant,
         IOptions<PaperbaseAIOptions> aiOptions,
-        IOptions<PaperbaseRagOptions> ragOptions)
-        : base(vectorStore, embeddingGenerator, rerankWorkflow, currentTenant, aiOptions, ragOptions)
+        IOptions<PaperbaseRagOptions> ragOptions,
+        ILogger<DocumentTextSearchAdapter> logger)
+        : base(vectorStore, embeddingGenerator, rerankWorkflow, currentTenant, aiOptions, ragOptions, logger)
     {
     }
 

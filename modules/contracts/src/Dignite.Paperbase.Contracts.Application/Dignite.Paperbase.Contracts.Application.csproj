@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="Volo.Abp.Mapperly" />
+    <PackageReference Include="Volo.Abp.Authorization" />
     <PackageReference Include="Volo.Abp.Ddd.Application" />
     <ProjectReference Include="..\Dignite.Paperbase.Contracts.Application.Contracts\Dignite.Paperbase.Contracts.Application.Contracts.csproj" />
     <ProjectReference Include="..\Dignite.Paperbase.Contracts.Domain\Dignite.Paperbase.Contracts.Domain.csproj" />

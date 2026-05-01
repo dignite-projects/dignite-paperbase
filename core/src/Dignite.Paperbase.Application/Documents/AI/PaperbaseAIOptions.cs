@@ -73,4 +73,12 @@ public class PaperbaseAIOptions
     /// </para>
     /// </summary>
     public ChatSearchBehavior ChatSearchBehavior { get; set; } = ChatSearchBehavior.BeforeAIInvoke;
+
+    /// <summary>
+    /// Maximum number of tool-call rounds the LLM may execute within a single chat turn.
+    /// Once this limit is reached <c>MaxToolCallsChatClient</c> strips tools from the next
+    /// completion request, forcing the model to produce a final answer rather than looping
+    /// indefinitely.  A value of 0 means unlimited (not recommended for production).
+    /// </summary>
+    public int MaxToolCallsPerTurn { get; set; } = 10;
 }

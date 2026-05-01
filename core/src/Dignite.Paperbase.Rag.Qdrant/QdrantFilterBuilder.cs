@@ -31,7 +31,29 @@ public class QdrantFilterBuilder : ITransientDependency
     {
         var filter = BuildTenantFilter(request.TenantId);
 
-        if (request.DocumentId.HasValue)
+        // DocumentIds (multi) supersedes DocumentId (single).
+        if (request.DocumentIds?.Count > 0)
+        {
+            if (request.DocumentIds.Count == 1)
+            {
+                filter.Must.Add(MatchKeyword(
+                    QdrantPayloadFields.DocumentId,
+                    QdrantPayloadEncoder.EncodeDocumentId(request.DocumentIds[0])));
+            }
+            else
+            {
+                // Wrap multiple document IDs in a Should (OR) sub-filter nested inside Must.
+                var shouldFilter = new Filter();
+                foreach (var docId in request.DocumentIds)
+                {
+                    shouldFilter.Should.Add(MatchKeyword(
+                        QdrantPayloadFields.DocumentId,
+                        QdrantPayloadEncoder.EncodeDocumentId(docId)));
+                }
+                filter.Must.Add(new Condition { Filter = shouldFilter });
+            }
+        }
+        else if (request.DocumentId.HasValue)
         {
             filter.Must.Add(MatchKeyword(
                 QdrantPayloadFields.DocumentId,
