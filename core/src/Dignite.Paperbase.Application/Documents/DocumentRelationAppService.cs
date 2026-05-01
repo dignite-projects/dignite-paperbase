@@ -7,7 +7,7 @@ using Dignite.Paperbase.Permissions;
 using Microsoft.AspNetCore.Authorization;
 using Volo.Abp.Application.Dtos;
 
-namespace Dignite.Paperbase.Application.Documents;
+namespace Dignite.Paperbase.Documents;
 
 public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelationAppService
 {

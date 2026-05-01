@@ -22,7 +22,7 @@ using Volo.Abp.Domain.Repositories;
 using Volo.Abp.EventBus.Distributed;
 using Volo.Abp.EventBus.Local;
 
-namespace Dignite.Paperbase.Application.Documents;
+namespace Dignite.Paperbase.Documents;
 
 public class DocumentAppService : PaperbaseAppService, IDocumentAppService
 {

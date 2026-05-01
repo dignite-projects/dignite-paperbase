@@ -4,7 +4,6 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Documents;
-using Dignite.Paperbase.Application.Documents;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.Events;
 using Microsoft.Extensions.DependencyInjection;
