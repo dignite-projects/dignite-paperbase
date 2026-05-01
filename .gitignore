@@ -433,7 +433,6 @@ Dignite.Paperbase/Logs/*
 **/.DS_Store
 .claude/settings.local.json
 .claude/worktrees/
-.claudeignore
 .obsidian/
 
 # Code coverage and analysis
