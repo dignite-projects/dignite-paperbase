@@ -3,14 +3,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Rag;
-using Dignite.Paperbase.Rag.Qdrant;
+using Dignite.Paperbase.KnowledgeIndex;
+using Dignite.Paperbase.KnowledgeIndex.Qdrant;
 using Microsoft.Extensions.Options;
 using Qdrant.Client.Grpc;
 using Shouldly;
 using Xunit;
 
-namespace Dignite.Paperbase.Rag.Qdrant;
+namespace Dignite.Paperbase.KnowledgeIndex.Qdrant;
 
 public class QdrantDocumentKnowledgeIndex_Tests
 {
@@ -25,7 +25,7 @@ public class QdrantDocumentKnowledgeIndex_Tests
             _gateway,
             new QdrantFilterBuilder(),
             new QdrantPointIdGenerator(),
-            Options.Create(new QdrantRagOptions { CollectionName = CollectionName }));
+            Options.Create(new QdrantKnowledgeIndexOptions { CollectionName = CollectionName }));
     }
 
     [Fact]
@@ -278,7 +278,7 @@ public class QdrantDocumentKnowledgeIndex_Tests
             _gateway,
             new QdrantFilterBuilder(),
             new QdrantPointIdGenerator(),
-            Options.Create(new QdrantRagOptions
+            Options.Create(new QdrantKnowledgeIndexOptions
             {
                 CollectionName = CollectionName,
                 EnableHybridSearch = enableHybrid
@@ -313,7 +313,7 @@ public class QdrantDocumentKnowledgeIndex_Tests
         public float? LastHybridScoreThreshold { get; private set; }
         public IReadOnlyList<ScoredPoint> NextHybridResults { get; set; } = [];
 
-        public Task EnsureCollectionAsync(QdrantRagOptions options, CancellationToken cancellationToken = default)
+        public Task EnsureCollectionAsync(QdrantKnowledgeIndexOptions options, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 
         public Task UpsertAsync(

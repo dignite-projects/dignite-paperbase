@@ -7,7 +7,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Ai;
-using Dignite.Paperbase.Rag;
+using Dignite.Paperbase.KnowledgeIndex;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -45,7 +45,7 @@ public class DocumentTextSearchAdapter : ITransientDependency
     private readonly DocumentRerankWorkflow _rerankWorkflow;
     private readonly ICurrentTenant _currentTenant;
     private readonly PaperbaseAIOptions _aiOptions;
-    private readonly PaperbaseRagOptions _ragOptions;
+    private readonly PaperbaseKnowledgeIndexOptions _ragOptions;
     private readonly ILogger<DocumentTextSearchAdapter> _logger;
 
     public DocumentTextSearchAdapter(
@@ -54,7 +54,7 @@ public class DocumentTextSearchAdapter : ITransientDependency
         DocumentRerankWorkflow rerankWorkflow,
         ICurrentTenant currentTenant,
         IOptions<PaperbaseAIOptions> aiOptions,
-        IOptions<PaperbaseRagOptions> ragOptions,
+        IOptions<PaperbaseKnowledgeIndexOptions> ragOptions,
         ILogger<DocumentTextSearchAdapter> logger)
     {
         _vectorStore = vectorStore;

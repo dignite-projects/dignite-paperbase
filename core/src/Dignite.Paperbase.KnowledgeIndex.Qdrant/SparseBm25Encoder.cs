@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 
-namespace Dignite.Paperbase.Rag.Qdrant;
+namespace Dignite.Paperbase.KnowledgeIndex.Qdrant;
 
 /// <summary>
 /// Client-side TF encoder for Qdrant's BM25 sparse vectors.

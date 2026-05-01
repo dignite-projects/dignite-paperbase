@@ -5,12 +5,12 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
-    <RootNamespace>Dignite.Paperbase.Rag</RootNamespace>
+    <RootNamespace>Dignite.Paperbase.KnowledgeIndex</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Dignite.Paperbase.Rag\Dignite.Paperbase.Rag.csproj" />
-    <ProjectReference Include="..\..\src\Dignite.Paperbase.Rag.Qdrant\Dignite.Paperbase.Rag.Qdrant.csproj" />
+    <ProjectReference Include="..\..\src\Dignite.Paperbase.KnowledgeIndex\Dignite.Paperbase.KnowledgeIndex.csproj" />
+    <ProjectReference Include="..\..\src\Dignite.Paperbase.KnowledgeIndex.Qdrant\Dignite.Paperbase.KnowledgeIndex.Qdrant.csproj" />
   </ItemGroup>
 
   <ItemGroup>

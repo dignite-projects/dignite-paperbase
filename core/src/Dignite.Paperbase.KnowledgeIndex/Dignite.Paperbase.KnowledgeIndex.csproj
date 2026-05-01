@@ -5,7 +5,7 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
-    <RootNamespace>Dignite.Paperbase.Rag</RootNamespace>
+    <RootNamespace>Dignite.Paperbase.KnowledgeIndex</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

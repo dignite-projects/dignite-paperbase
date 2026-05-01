@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using Dignite.Paperbase.Rag;
+using Dignite.Paperbase.KnowledgeIndex;
 
 namespace Dignite.Paperbase.Chat.Search;
 

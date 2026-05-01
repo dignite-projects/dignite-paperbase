@@ -4,15 +4,15 @@ using Microsoft.Extensions.Options;
 using Qdrant.Client;
 using Volo.Abp.DependencyInjection;
 
-namespace Dignite.Paperbase.Rag.Qdrant;
+namespace Dignite.Paperbase.KnowledgeIndex.Qdrant;
 
 public class QdrantClientFactory : ISingletonDependency
 {
-    private readonly QdrantRagOptions _options;
+    private readonly QdrantKnowledgeIndexOptions _options;
     private readonly ILoggerFactory _loggerFactory;
 
     public QdrantClientFactory(
-        IOptions<QdrantRagOptions> options,
+        IOptions<QdrantKnowledgeIndexOptions> options,
         ILoggerFactory loggerFactory)
     {
         _options = options.Value;
@@ -37,6 +37,6 @@ public class QdrantClientFactory : ISingletonDependency
             return uri;
         }
 
-        throw new InvalidOperationException("QdrantRag:Endpoint must be an absolute URI or host:port value.");
+        throw new InvalidOperationException("QdrantKnowledgeIndex:Endpoint must be an absolute URI or host:port value.");
     }
 }

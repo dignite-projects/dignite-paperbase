@@ -1,6 +1,6 @@
-namespace Dignite.Paperbase.Rag.Qdrant;
+namespace Dignite.Paperbase.KnowledgeIndex.Qdrant;
 
-public class QdrantRagOptions
+public class QdrantKnowledgeIndexOptions
 {
     public string Endpoint { get; set; } = "http://localhost:6334";
 

@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.Pipelines.Embedding;
-using Dignite.Paperbase.Rag;
+using Dignite.Paperbase.KnowledgeIndex;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -207,8 +207,8 @@ public class DocumentEmbeddingBackgroundJob_Tests
 
     private static float[] MakeVector(float firstValue)
     {
-        // Reflects PaperbaseRagOptions default value, not runtime config.
-        var v = new float[new PaperbaseRagOptions().EmbeddingDimension];
+        // Reflects PaperbaseKnowledgeIndexOptions default value, not runtime config.
+        var v = new float[new PaperbaseKnowledgeIndexOptions().EmbeddingDimension];
         v[0] = firstValue;
         return v;
     }

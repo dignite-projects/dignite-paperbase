@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
-using Dignite.Paperbase.Rag;
+using Dignite.Paperbase.KnowledgeIndex;
 
 namespace Dignite.Paperbase.Chat.Search;
 
 /// <summary>
 /// Optional per-call overrides for <see cref="DocumentTextSearchAdapter"/>. Anything
-/// left null falls back to <see cref="PaperbaseRagOptions"/> defaults so callers can
+/// left null falls back to <see cref="PaperbaseKnowledgeIndexOptions"/> defaults so callers can
 /// scope an Agent Framework search to a single document, document type, or change
 /// the retrieval mode without rebuilding the adapter wiring.
 /// </summary>
@@ -18,10 +18,10 @@ public sealed class DocumentSearchScope
     /// <summary>Restrict search to a document type. Ignored when <see cref="DocumentId"/> is set.</summary>
     public string? DocumentTypeCode { get; init; }
 
-    /// <summary>Override <see cref="PaperbaseRagOptions.DefaultTopK"/>.</summary>
+    /// <summary>Override <see cref="PaperbaseKnowledgeIndexOptions.DefaultTopK"/>.</summary>
     public int? TopK { get; init; }
 
-    /// <summary>Override <see cref="PaperbaseRagOptions.MinScore"/>.</summary>
+    /// <summary>Override <see cref="PaperbaseKnowledgeIndexOptions.MinScore"/>.</summary>
     public double? MinScore { get; init; }
 
     /// <summary>

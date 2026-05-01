@@ -2,7 +2,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Rag;
+using Dignite.Paperbase.KnowledgeIndex;
 using Microsoft.Extensions.Logging;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.DependencyInjection;

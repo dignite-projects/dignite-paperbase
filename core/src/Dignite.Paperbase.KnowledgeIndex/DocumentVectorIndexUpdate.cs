@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Dignite.Paperbase.Rag;
+namespace Dignite.Paperbase.KnowledgeIndex;
 
 /// <summary>
 /// Input for <see cref="IDocumentKnowledgeIndex.UpsertDocumentAsync"/>.

@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 using Qdrant.Client.Grpc;
 using Volo.Abp.DependencyInjection;
 
-namespace Dignite.Paperbase.Rag.Qdrant;
+namespace Dignite.Paperbase.KnowledgeIndex.Qdrant;
 
 [ExposeServices(typeof(IDocumentKnowledgeIndex))]
 public class QdrantDocumentKnowledgeIndex : IDocumentKnowledgeIndex, ITransientDependency
@@ -15,13 +15,13 @@ public class QdrantDocumentKnowledgeIndex : IDocumentKnowledgeIndex, ITransientD
     private readonly IQdrantClientGateway _gateway;
     private readonly QdrantFilterBuilder _filterBuilder;
     private readonly QdrantPointIdGenerator _pointIdGenerator;
-    private readonly QdrantRagOptions _options;
+    private readonly QdrantKnowledgeIndexOptions _options;
 
     public QdrantDocumentKnowledgeIndex(
         IQdrantClientGateway gateway,
         QdrantFilterBuilder filterBuilder,
         QdrantPointIdGenerator pointIdGenerator,
-        IOptions<QdrantRagOptions> options)
+        IOptions<QdrantKnowledgeIndexOptions> options)
     {
         _gateway = gateway;
         _filterBuilder = filterBuilder;

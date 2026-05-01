@@ -9,8 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Keep the core EF project free of vector database dependencies. RAG storage
-         is owned by provider modules such as Dignite.Paperbase.Rag.Qdrant. -->
+    <!-- Keep the core EF project free of vector database dependencies. Vector storage
+         is owned by provider modules such as Dignite.Paperbase.KnowledgeIndex.Qdrant. -->
     <PackageReference Include="Volo.Abp.EntityFrameworkCore" />
     <ProjectReference Include="..\Dignite.Paperbase.Domain\Dignite.Paperbase.Domain.csproj" />
   </ItemGroup>

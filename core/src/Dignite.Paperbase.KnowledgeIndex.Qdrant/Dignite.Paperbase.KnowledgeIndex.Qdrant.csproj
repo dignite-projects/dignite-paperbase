@@ -5,14 +5,14 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
-    <RootNamespace>Dignite.Paperbase.Rag.Qdrant</RootNamespace>
+    <RootNamespace>Dignite.Paperbase.KnowledgeIndex.Qdrant</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
     <PackageReference Include="Qdrant.Client" />
     <PackageReference Include="Volo.Abp.Core" />
-    <ProjectReference Include="..\Dignite.Paperbase.Rag\Dignite.Paperbase.Rag.csproj" />
+    <ProjectReference Include="..\Dignite.Paperbase.KnowledgeIndex\Dignite.Paperbase.KnowledgeIndex.csproj" />
   </ItemGroup>
 
 </Project>

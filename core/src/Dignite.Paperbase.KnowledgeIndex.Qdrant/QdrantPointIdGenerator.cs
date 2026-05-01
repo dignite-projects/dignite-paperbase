@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Volo.Abp.DependencyInjection;
 
-namespace Dignite.Paperbase.Rag.Qdrant;
+namespace Dignite.Paperbase.KnowledgeIndex.Qdrant;
 
 public class QdrantPointIdGenerator : ITransientDependency
 {

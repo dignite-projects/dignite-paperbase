@@ -8,7 +8,7 @@ using Qdrant.Client;
 using Qdrant.Client.Grpc;
 using Volo.Abp.DependencyInjection;
 
-namespace Dignite.Paperbase.Rag.Qdrant;
+namespace Dignite.Paperbase.KnowledgeIndex.Qdrant;
 
 [ExposeServices(typeof(IQdrantClientGateway))]
 public class QdrantClientGateway : IQdrantClientGateway, ISingletonDependency
@@ -21,7 +21,7 @@ public class QdrantClientGateway : IQdrantClientGateway, ISingletonDependency
     }
 
     public virtual async Task EnsureCollectionAsync(
-        QdrantRagOptions options,
+        QdrantKnowledgeIndexOptions options,
         CancellationToken cancellationToken = default)
     {
         var client = _client.Value;
@@ -45,7 +45,7 @@ public class QdrantClientGateway : IQdrantClientGateway, ISingletonDependency
                 vectorParams.Distance != ParseDistance(options.Distance))
             {
                 throw new InvalidOperationException(
-                    $"Qdrant collection '{options.CollectionName}' vector config does not match QdrantRag options.");
+                    $"Qdrant collection '{options.CollectionName}' vector config does not match QdrantKnowledgeIndex options.");
             }
 
             if (options.EnableHybridSearch)
@@ -258,7 +258,7 @@ public class QdrantClientGateway : IQdrantClientGateway, ISingletonDependency
         return distance.Trim().ToLowerInvariant() switch
         {
             "cosine" => Distance.Cosine,
-            _ => throw new InvalidOperationException("QdrantRag:Distance currently supports only 'Cosine'.")
+            _ => throw new InvalidOperationException("QdrantKnowledgeIndex:Distance currently supports only 'Cosine'.")
         };
     }
 }

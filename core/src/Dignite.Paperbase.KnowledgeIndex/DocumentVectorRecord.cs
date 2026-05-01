@@ -1,6 +1,6 @@
 using System;
 
-namespace Dignite.Paperbase.Rag;
+namespace Dignite.Paperbase.KnowledgeIndex;
 
 /// <summary>
 /// A single chunk record written to (or read from) the vector index.

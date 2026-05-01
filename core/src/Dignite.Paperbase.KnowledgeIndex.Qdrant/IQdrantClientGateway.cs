@@ -3,11 +3,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Qdrant.Client.Grpc;
 
-namespace Dignite.Paperbase.Rag.Qdrant;
+namespace Dignite.Paperbase.KnowledgeIndex.Qdrant;
 
 public interface IQdrantClientGateway
 {
-    Task EnsureCollectionAsync(QdrantRagOptions options, CancellationToken cancellationToken = default);
+    Task EnsureCollectionAsync(QdrantKnowledgeIndexOptions options, CancellationToken cancellationToken = default);
 
     Task UpsertAsync(
         string collectionName,

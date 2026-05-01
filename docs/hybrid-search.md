@@ -38,7 +38,7 @@ The same encoder runs at **index time** (inside `DocumentEmbeddingBackgroundJob`
 Set the following key in `appsettings.json` (or environment variable):
 
 ```json
-"QdrantRag": {
+"QdrantKnowledgeIndex": {
   "EnableHybridSearch": true
 }
 ```
@@ -48,7 +48,7 @@ No code changes are needed. The `QdrantDocumentKnowledgeIndex` picks up the opti
 ### Complete Qdrant section after enabling
 
 ```json
-"QdrantRag": {
+"QdrantKnowledgeIndex": {
   "Endpoint": "http://localhost:6334",
   "ApiKey": "",
   "CollectionName": "paperbase_document_chunks",
@@ -71,4 +71,4 @@ Set `VectorSearchRequest.QueryText = null` before calling `IDocumentKnowledgeInd
 
 ## Fallback for Non-Qdrant Providers
 
-`VectorSearchRequest.QueryText` is a provider-neutral field defined in `Dignite.Paperbase.Rag`. Providers that do not support hybrid search ignore it and perform pure dense-vector search. No configuration change is needed on providers that do not implement `QueryHybridAsync`.
+`VectorSearchRequest.QueryText` is a provider-neutral field defined in `Dignite.Paperbase.KnowledgeIndex`. Providers that do not support hybrid search ignore it and perform pure dense-vector search. No configuration change is needed on providers that do not implement `QueryHybridAsync`.

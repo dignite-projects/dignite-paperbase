@@ -1,7 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents.Events;
-using Dignite.Paperbase.Rag;
+using Dignite.Paperbase.KnowledgeIndex;
 using Microsoft.Extensions.Logging;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.EventBus;

@@ -1,4 +1,4 @@
-namespace Dignite.Paperbase.Rag.Qdrant;
+namespace Dignite.Paperbase.KnowledgeIndex.Qdrant;
 
 public static class QdrantPayloadFields
 {

@@ -3,16 +3,16 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
 using Volo.Abp.DependencyInjection;
 
-namespace Dignite.Paperbase.Rag.Qdrant;
+namespace Dignite.Paperbase.KnowledgeIndex.Qdrant;
 
 public class QdrantCollectionInitializer : ITransientDependency
 {
     private readonly IQdrantClientGateway _gateway;
-    private readonly QdrantRagOptions _options;
+    private readonly QdrantKnowledgeIndexOptions _options;
 
     public QdrantCollectionInitializer(
         IQdrantClientGateway gateway,
-        IOptions<QdrantRagOptions> options)
+        IOptions<QdrantKnowledgeIndexOptions> options)
     {
         _gateway = gateway;
         _options = options.Value;

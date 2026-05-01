@@ -1,5 +1,5 @@
 using Dignite.Paperbase.Abstractions;
-using Dignite.Paperbase.Rag;
+using Dignite.Paperbase.KnowledgeIndex;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.Application;
 using Volo.Abp.BackgroundJobs;
@@ -12,7 +12,7 @@ namespace Dignite.Paperbase;
     typeof(PaperbaseAbstractionsModule),
     typeof(PaperbaseDomainModule),
     typeof(PaperbaseApplicationContractsModule),
-    typeof(PaperbaseRagModule),
+    typeof(PaperbaseKnowledgeIndexModule),
     typeof(AbpDddApplicationModule),
     typeof(AbpBackgroundJobsModule),
     typeof(AbpMapperlyModule)

@@ -5,7 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.Chat.Search;
-using Dignite.Paperbase.Rag;
+using Dignite.Paperbase.KnowledgeIndex;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -49,7 +49,7 @@ public class TestableDocumentTextSearchAdapter : DocumentTextSearchAdapter
         DocumentRerankWorkflow rerankWorkflow,
         ICurrentTenant currentTenant,
         IOptions<PaperbaseAIOptions> aiOptions,
-        IOptions<PaperbaseRagOptions> ragOptions,
+        IOptions<PaperbaseKnowledgeIndexOptions> ragOptions,
         ILogger<DocumentTextSearchAdapter> logger)
         : base(vectorStore, embeddingGenerator, rerankWorkflow, currentTenant, aiOptions, ragOptions, logger)
     {

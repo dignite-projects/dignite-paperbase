@@ -1,6 +1,6 @@
-namespace Dignite.Paperbase.Rag;
+namespace Dignite.Paperbase.KnowledgeIndex;
 
-public class PaperbaseRagOptions
+public class PaperbaseKnowledgeIndexOptions
 {
     /// <summary>
     /// Embedding vector dimension. Must match the dimension used when building the index.

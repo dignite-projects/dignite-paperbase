@@ -1,15 +1,15 @@
-# Adding a RAG Provider
+# Adding a Knowledge Index Provider
 
-Paperbase separates RAG semantics from vector store implementation via two projects:
+Paperbase separates the document knowledge index abstraction from its vector storage implementation via two projects:
 
-- `Dignite.Paperbase.Rag` — provider-neutral contract (tenant isolation, document identity, type filters, score normalization, source citation)
-- `Dignite.Paperbase.Rag.<VendorName>` — a concrete provider implementation
+- `Dignite.Paperbase.KnowledgeIndex` — provider-neutral contract (tenant isolation, document identity, type filters, score normalization, source citation)
+- `Dignite.Paperbase.KnowledgeIndex.<VendorName>` — a concrete provider implementation
 
-The built-in provider is `Dignite.Paperbase.Rag.Qdrant`. To add a second provider, follow the steps below.
+The built-in provider is `Dignite.Paperbase.KnowledgeIndex.Qdrant`. To add a second provider, follow the steps below.
 
 ## Project Structure
 
-Create a single project `Dignite.Paperbase.Rag.<VendorName>` under `core/src/`. Do not add `Domain`, `Domain.Shared`, or `EntityFrameworkCore` sub-projects — the provider owns only its SDK glue, collection startup, payload encoding, point id generation, upsert, vector search, and delete-by-document operations.
+Create a single project `Dignite.Paperbase.KnowledgeIndex.<VendorName>` under `core/src/`. Do not add `Domain`, `Domain.Shared`, or `EntityFrameworkCore` sub-projects — the provider owns only its SDK glue, collection startup, payload encoding, point id generation, upsert, vector search, and delete-by-document operations.
 
 ## Boundaries
 

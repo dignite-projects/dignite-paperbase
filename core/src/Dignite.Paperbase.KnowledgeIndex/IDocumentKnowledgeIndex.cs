@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Dignite.Paperbase.Rag;
+namespace Dignite.Paperbase.KnowledgeIndex;
 
 /// <summary>
 /// Paperbase business-level facade for Qdrant-backed knowledge index operations.

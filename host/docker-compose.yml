@@ -37,8 +37,8 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Default: "Host=postgres;Database=paperbase;Username=paperbase;Password=paperbase_dev_pw"
-      QdrantRag__Endpoint: "http://qdrant:6334"
-      QdrantRag__CollectionName: "paperbase_document_chunks"
+      QdrantKnowledgeIndex__Endpoint: "http://qdrant:6334"
+      QdrantKnowledgeIndex__CollectionName: "paperbase_document_chunks"
       App__SelfUrl: "http://localhost:8080"
       App__ClientUrl: "http://localhost:4200"
       App__CorsOrigins: "http://localhost:4200"

@@ -1,6 +1,6 @@
 using System;
 
-namespace Dignite.Paperbase.Rag;
+namespace Dignite.Paperbase.KnowledgeIndex;
 
 /// <summary>
 /// A single result item returned from vector search.

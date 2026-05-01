@@ -1,6 +1,6 @@
 using System;
 
-namespace Dignite.Paperbase.Rag.Qdrant;
+namespace Dignite.Paperbase.KnowledgeIndex.Qdrant;
 
 internal static class QdrantPayloadEncoder
 {

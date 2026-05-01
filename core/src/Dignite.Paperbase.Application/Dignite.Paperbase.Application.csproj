@@ -22,7 +22,7 @@
     <ProjectReference Include="..\Dignite.Paperbase.Abstractions\Dignite.Paperbase.Abstractions.csproj" />
     <ProjectReference Include="..\Dignite.Paperbase.Application.Contracts\Dignite.Paperbase.Application.Contracts.csproj" />
     <ProjectReference Include="..\Dignite.Paperbase.Domain\Dignite.Paperbase.Domain.csproj" />
-    <ProjectReference Include="..\Dignite.Paperbase.Rag\Dignite.Paperbase.Rag.csproj" />
+    <ProjectReference Include="..\Dignite.Paperbase.KnowledgeIndex\Dignite.Paperbase.KnowledgeIndex.csproj" />
   </ItemGroup>
 
 </Project>

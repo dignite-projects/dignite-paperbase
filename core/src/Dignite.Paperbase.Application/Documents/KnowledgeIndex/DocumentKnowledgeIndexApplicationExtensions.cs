@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Rag;
+using Dignite.Paperbase.KnowledgeIndex;
 using Volo.Abp.MultiTenancy;
 
 namespace Dignite.Paperbase.Documents.KnowledgeIndex;
@@ -9,7 +9,7 @@ namespace Dignite.Paperbase.Documents.KnowledgeIndex;
 /// <summary>
 /// Application-layer convenience extensions for <see cref="IDocumentKnowledgeIndex"/>.
 /// Requires <see cref="ICurrentTenant"/>, so lives in the Application layer rather than
-/// the Rag abstraction layer (which has no MultiTenancy dependency).
+/// the KnowledgeIndex abstraction layer (which has no MultiTenancy dependency).
 /// </summary>
 public static class DocumentKnowledgeIndexApplicationExtensions
 {

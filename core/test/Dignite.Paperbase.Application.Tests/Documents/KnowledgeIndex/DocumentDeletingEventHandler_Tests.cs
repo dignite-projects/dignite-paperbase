@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents.Events;
 using Dignite.Paperbase.Documents.KnowledgeIndex;
-using Dignite.Paperbase.Rag;
+using Dignite.Paperbase.KnowledgeIndex;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;

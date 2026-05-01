@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -13,7 +13,7 @@ using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.Chat.Search;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Permissions;
-using Dignite.Paperbase.Rag;
+using Dignite.Paperbase.KnowledgeIndex;
 using Microsoft.Agents.AI;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.AI;
@@ -46,7 +46,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     private readonly IPromptProvider _promptProvider;
     private readonly PaperbasePostgresChatHistoryProvider _historyProvider;
     private readonly PaperbaseAIOptions _aiOptions;
-    private readonly PaperbaseRagOptions _ragOptions;
+    private readonly PaperbaseKnowledgeIndexOptions _ragOptions;
     private readonly IEnumerable<IDocumentChatToolContributor> _toolContributors;
 
     public DocumentChatAppService(
@@ -57,7 +57,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         IPromptProvider promptProvider,
         PaperbasePostgresChatHistoryProvider historyProvider,
         IOptions<PaperbaseAIOptions> aiOptions,
-        IOptions<PaperbaseRagOptions> ragOptions,
+        IOptions<PaperbaseKnowledgeIndexOptions> ragOptions,
         IEnumerable<IDocumentChatToolContributor> toolContributors)
     {
         _conversationRepository = conversationRepository;

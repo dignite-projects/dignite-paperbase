@@ -1,7 +1,7 @@
-﻿using System;
+using System;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.EntityFrameworkCore;
-using Dignite.Paperbase.Rag;
+using Dignite.Paperbase.KnowledgeIndex;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;

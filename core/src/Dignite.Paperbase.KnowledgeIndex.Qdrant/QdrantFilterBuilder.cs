@@ -5,7 +5,7 @@ using Qdrant.Client.Grpc;
 using Volo.Abp.DependencyInjection;
 using static Qdrant.Client.Grpc.Conditions;
 
-namespace Dignite.Paperbase.Rag.Qdrant;
+namespace Dignite.Paperbase.KnowledgeIndex.Qdrant;
 
 public class QdrantFilterBuilder : ITransientDependency
 {

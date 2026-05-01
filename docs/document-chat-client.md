@@ -57,7 +57,7 @@ curl -X POST https://localhost:44393/api/paperbase/document-chat/conversations \
 | `id` | Use as `conversationId` in subsequent calls |
 | `documentTypeCode` | RAG retrieval is scoped to documents of this type |
 | `documentId` | If set, retrieval is limited to a single document |
-| `topK` / `minScore` | `null` means "use server-side `PaperbaseRagOptions` defaults" |
+| `topK` / `minScore` | `null` means "use server-side `PaperbaseKnowledgeIndexOptions` defaults" |
 
 ---
 

@@ -1,6 +1,6 @@
 # Qdrant Deployment Notes
 
-This repository no longer uses a separate relational RAG database. The open-source host stores document knowledge in Qdrant through `Dignite.Paperbase.Rag.Qdrant`.
+This repository no longer uses a separate relational RAG database. The open-source host stores document knowledge in Qdrant through `Dignite.Paperbase.KnowledgeIndex.Qdrant`.
 
 ## Topology
 
@@ -26,7 +26,7 @@ Relational database:
 Qdrant:
 
 ```json
-"QdrantRag": {
+"QdrantKnowledgeIndex": {
   "Endpoint": "http://qdrant:6334",
   "ApiKey": "",
   "CollectionName": "paperbase_document_chunks",
@@ -40,7 +40,7 @@ See `host/src/appsettings.Qdrant.Sample.json` and `host/docker-compose.yml`.
 
 ## Migration Boundary
 
-Qdrant has no EF Core migration history. On startup, `QdrantRagModule` validates or creates the configured collection and payload indexes.
+Qdrant has no EF Core migration history. On startup, `QdrantKnowledgeIndexModule` validates or creates the configured collection and payload indexes.
 
 When changing embedding dimensions, create a new Qdrant collection or recreate the existing one, then re-run document embedding jobs.
 
