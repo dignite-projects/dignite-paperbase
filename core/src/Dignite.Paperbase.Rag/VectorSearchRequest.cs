@@ -12,7 +12,7 @@ public sealed record VectorSearchRequest
 {
     /// <summary>
     /// Tenant to search within. Must be set by callers.
-    /// In HTTP-context code, use <c>DocumentKnowledgeIndexApplicationExtensions.SearchForCurrentTenantAsync</c>
+    /// In HTTP-context code, use <c>Dignite.Paperbase.Documents.KnowledgeIndex.DocumentKnowledgeIndexApplicationExtensions.SearchForCurrentTenantAsync</c>
     /// (Application layer) to fill it from ABP's ICurrentTenant.
     /// In background jobs or CLI tools, set this field explicitly.
     /// </summary>

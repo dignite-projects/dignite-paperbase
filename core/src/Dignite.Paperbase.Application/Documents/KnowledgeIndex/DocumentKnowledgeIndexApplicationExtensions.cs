@@ -1,9 +1,10 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Paperbase.Rag;
 using Volo.Abp.MultiTenancy;
 
-namespace Dignite.Paperbase.Rag;
+namespace Dignite.Paperbase.Documents.KnowledgeIndex;
 
 /// <summary>
 /// Application-layer convenience extensions for <see cref="IDocumentKnowledgeIndex"/>.
