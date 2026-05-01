@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.AI;
 using Volo.Abp.DependencyInjection;
 
-namespace Dignite.Paperbase.Documents.AI.Workflows;
+namespace Dignite.Paperbase.Documents.Pipelines.Embedding;
 
 /// <summary>
 /// 文档向量化 Workflow：分块 → 批量调用 IEmbeddingGenerator 生成向量。

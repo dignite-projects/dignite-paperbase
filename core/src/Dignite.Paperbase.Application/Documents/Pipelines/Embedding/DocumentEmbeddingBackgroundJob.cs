@@ -2,13 +2,12 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Rag;
 using Microsoft.Extensions.Logging;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.DependencyInjection;
 
-namespace Dignite.Paperbase.Application.Documents.BackgroundJobs;
+namespace Dignite.Paperbase.Documents.Pipelines.Embedding;
 
 [BackgroundJobName("Paperbase.DocumentEmbedding")]
 public class DocumentEmbeddingBackgroundJob

@@ -2,10 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Dignite.Paperbase.Abstractions.Documents;
-using Dignite.Paperbase.Documents.AI.Workflows;
 using Volo.Abp.DependencyInjection;
 
-namespace Dignite.Paperbase.Application.Documents.Classification;
+namespace Dignite.Paperbase.Documents.Pipelines.Classification;
 
 /// <summary>
 /// 关键词匹配分类器：在 AI Provider 失败时作为兜底。

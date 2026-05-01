@@ -1,4 +1,4 @@
-using Dignite.Paperbase.Documents.AI.Workflows;
+using Dignite.Paperbase.Documents.Pipelines.Classification;
 using Shouldly;
 using Xunit;
 

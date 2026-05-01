@@ -3,11 +3,12 @@ using System.IO;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.TextExtraction;
 using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Documents.Pipelines.Classification;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.BlobStoring;
 using Volo.Abp.DependencyInjection;
 
-namespace Dignite.Paperbase.Application.Documents.BackgroundJobs;
+namespace Dignite.Paperbase.Documents.Pipelines.TextExtraction;
 
 [BackgroundJobName("Paperbase.DocumentTextExtraction")]
 public class DocumentTextExtractionBackgroundJob

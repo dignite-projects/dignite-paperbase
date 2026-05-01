@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Volo.Abp.DependencyInjection;
 
-namespace Dignite.Paperbase.Documents.AI.Workflows;
+namespace Dignite.Paperbase.Documents.Pipelines.Classification;
 
 /// <summary>
 /// 文档分类 Workflow（MAF ChatClientAgent + 结构化输出）。

@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.Chat.Search;
-using Dignite.Paperbase.Documents.AI.Workflows;
+using Dignite.Paperbase.Documents.Pipelines.Classification;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 using NSubstitute;

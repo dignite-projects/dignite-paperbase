@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using Dignite.Paperbase.Abstractions.Documents;
-using Dignite.Paperbase.Application.Documents.Classification;
+using Dignite.Paperbase.Documents.Pipelines.Classification;
 using Shouldly;
 using Xunit;
 

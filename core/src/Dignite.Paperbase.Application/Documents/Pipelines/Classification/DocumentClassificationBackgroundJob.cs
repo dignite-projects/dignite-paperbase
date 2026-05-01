@@ -5,17 +5,15 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Ai;
-using Dignite.Paperbase.Application.Documents.Classification;
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Documents.AI;
-using Dignite.Paperbase.Documents.AI.Workflows;
+using Dignite.Paperbase.Documents.Pipelines.Embedding;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.EventBus.Distributed;
 
-namespace Dignite.Paperbase.Application.Documents.BackgroundJobs;
+namespace Dignite.Paperbase.Documents.Pipelines.Classification;
 
 [BackgroundJobName("Paperbase.DocumentClassification")]
 public class DocumentClassificationBackgroundJob

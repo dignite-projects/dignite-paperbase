@@ -1,6 +1,6 @@
 using System.Linq;
 using Dignite.Paperbase.Ai;
-using Dignite.Paperbase.Documents.AI;
+using Dignite.Paperbase.Documents.Pipelines.Embedding;
 using Microsoft.Extensions.Options;
 using Shouldly;
 using Xunit;
