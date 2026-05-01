@@ -7,7 +7,7 @@ using Volo.Abp.DependencyInjection;
 using Volo.Abp.EventBus;
 using Volo.Abp.Uow;
 
-namespace Dignite.Paperbase.Application.Documents.Rag;
+namespace Dignite.Paperbase.Documents.KnowledgeIndex;
 
 public class DocumentDeletingEventHandler :
     ILocalEventHandler<DocumentDeletingEvent>,

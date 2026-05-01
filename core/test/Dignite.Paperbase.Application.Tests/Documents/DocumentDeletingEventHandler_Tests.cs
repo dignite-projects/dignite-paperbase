@@ -1,8 +1,8 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Application.Documents.Rag;
 using Dignite.Paperbase.Documents.Events;
+using Dignite.Paperbase.Documents.KnowledgeIndex;
 using Dignite.Paperbase.Rag;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
