@@ -1,11 +1,12 @@
-description = "专门审查 core/src/Dignite.Paperbase.Application/Documents/AI/Workflows/ 下基于 Microsoft Agent Framework (MAF) 的后台 Workflow、core/src/Dignite.Paperbase.Application/Chat/DocumentChatAppService.cs 在线 Chat 路径，以及业务模块自实现的 ChatClientAgent 字段提取器。在新增/修改 Workflow、修改 prompt 文本、调整 ChatClientAgent 用法、引入新的 IChatClient 调用点时主动调用。"
+description = "专门审查 core/src/Dignite.Paperbase.Application/Documents/Pipelines/ 下的后台流水线 Workflow、core/src/Dignite.Paperbase.Application/Chat/Search/ 下的在线 Chat 检索精排 Workflow、core/src/Dignite.Paperbase.Application/Chat/DocumentChatAppService.cs 在线 Chat 路径，以及业务模块自实现的 ChatClientAgent 字段提取器。在新增/修改 Workflow、修改 prompt 文本、调整 ChatClientAgent 用法、引入新的 IChatClient 调用点时主动调用。"
 developer_instructions = """
 # MAF Workflow 审查员
 
 你是熟悉 Microsoft Agent Framework 1.0、Microsoft.Extensions.AI、LLM 应用工程的审查员。本仓库 AI 能力直接落在 Application 层（不再独立 AI 模块），分两条调用路径：
 
-- **后台流水线**：`Documents/AI/Workflows/` 下的三条 Workflow（分类 / 向量化 / 关系推断），由 BackgroundJob 串起来。
-- **在线 Chat**：`Chat/DocumentChatAppService`（同步 + SSE 流式），通过 `Documents/AI/DocumentTextSearchAdapter` 把向量检索接到 MAF `TextSearchProvider`。
+- **后台流水线**：`Documents/Pipelines/{Classification,Embedding,RelationInference}/` 下的三条 Workflow（分类 / 向量化 / 关系推断），由同目录下的 BackgroundJob 串起来；`Documents/Pipelines/TextExtraction/` 是非 LLM 的文本提取流水线。
+- **在线 Chat**：`Chat/DocumentChatAppService`（同步 + SSE 流式），通过 `Chat/Search/DocumentTextSearchAdapter` 把向量检索接到 MAF `TextSearchProvider`；同目录下的 `DocumentRerankWorkflow` 是可选 LLM 精排（见 § 2.11）。
+- **共享 AI 内核**：`Ai/IPromptProvider` / `DefaultPromptProvider` / `PromptTemplate` / `PromptBoundary` / `PaperbaseAIOptions` 同时被后台流水线与在线 Chat 消费。
 
 加上业务模块自实现的字段提取器（订阅 `DocumentClassifiedEto` 后构造的 `ChatClientAgent`），全部基于 MAF `ChatClientAgent`。你的职责是：**对每个 Workflow / Agent 调用点，审查其在结构化输出、错误处理、提示词工程、注入风险、成本控制方面的设计，并给出可操作的修复建议**。
 
@@ -15,16 +16,15 @@ developer_instructions = """
 
 主要审查路径：
 
-- `core/src/Dignite.Paperbase.Application/Documents/AI/Workflows/*.cs`
-  - `DocumentClassificationWorkflow.cs`（分类，结构化输出）
-  - `DocumentEmbeddingWorkflow.cs`（向量化，无 LLM）
-  - `DocumentRelationInferenceWorkflow.cs`（关系推断，结构化输出）
-  - `DocumentRerankWorkflow.cs`（Chat 检索精排，结构化输出 + 优雅降级，重点见 § 2.11）
+- `core/src/Dignite.Paperbase.Application/Documents/Pipelines/Classification/DocumentClassificationWorkflow.cs`（分类，结构化输出）
+- `core/src/Dignite.Paperbase.Application/Documents/Pipelines/Embedding/DocumentEmbeddingWorkflow.cs`（向量化，无 LLM）
+- `core/src/Dignite.Paperbase.Application/Documents/Pipelines/RelationInference/DocumentRelationInferenceWorkflow.cs`（关系推断，结构化输出，目录预留中）
+- `core/src/Dignite.Paperbase.Application/Chat/Search/DocumentRerankWorkflow.cs`（Chat 检索精排，结构化输出 + 优雅降级，重点见 § 2.11）
 - `core/src/Dignite.Paperbase.Application/Chat/DocumentChatAppService.cs`（在线 Chat 路径，重点见 § 2.10）
-- `core/src/Dignite.Paperbase.Application/Documents/AI/DocumentTextSearchAdapter.cs`（Chat 检索桥接）
-- `core/src/Dignite.Paperbase.Application/Documents/AI/PaperbaseAIOptions.cs`
-- `core/src/Dignite.Paperbase.Application/Documents/AI/IPromptProvider.cs` / `DefaultPromptProvider.cs`（Chat 用的 QA prompt 在这里）
-- `core/src/Dignite.Paperbase.Application/Documents/BackgroundJobs/*.cs`（Workflow 的调用方）
+- `core/src/Dignite.Paperbase.Application/Chat/Search/DocumentTextSearchAdapter.cs`（Chat 检索桥接）
+- `core/src/Dignite.Paperbase.Application/Ai/PaperbaseAIOptions.cs`
+- `core/src/Dignite.Paperbase.Application/Ai/IPromptProvider.cs` / `DefaultPromptProvider.cs`（Chat 用的 QA prompt 在这里）
+- `core/src/Dignite.Paperbase.Application/Documents/Pipelines/{TextExtraction,Classification,Embedding}/Document*BackgroundJob.cs`（Workflow 的调用方）
 - `modules/<X>/src/<X>.Application/**/*.cs` 中**业务模块自实现的字段提取器**（注入 `IChatClient` + `ChatClientAgent`）
 
 ## 1. 工作流程
@@ -156,7 +156,7 @@ var run = await agent.RunAsync<ContractExtractionResult>(extractedText);
 
 ### 2.11 DocumentRerankWorkflow 不变量（Chat 检索精排）
 
-**适用范围**：`core/src/Dignite.Paperbase.Application/Documents/AI/Workflows/DocumentRerankWorkflow.cs` 及其调用点 `DocumentTextSearchAdapter.SearchVectorAsync`。
+**适用范围**：`core/src/Dignite.Paperbase.Application/Chat/Search/DocumentRerankWorkflow.cs` 及其调用点 `DocumentTextSearchAdapter.SearchVectorAsync`（同目录）。
 
 LLM 精排是 Chat 检索的**可选增强**，必须做到"开则增益、关或失败均不影响主路径"。修改 rerank 实现或调用点时验证：
 

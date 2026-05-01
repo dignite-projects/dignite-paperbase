@@ -88,12 +88,13 @@ Dignite.Paperbase.Abstractions（扩展契约层，无其他项目依赖）
 
 ### AI 实现约定
 
-- 后台流水线 AI 功能落在 `Paperbase.Application/Documents/AI/Workflows/`，全部以 MAF `ChatClientAgent` 形式实现：
-  - `DocumentClassificationWorkflow` — 分类
-  - `DocumentEmbeddingWorkflow` — 文本分块 + 向量
-  - `DocumentRelationInferenceWorkflow` — 关系推断
-- 文档问答（Chat）走在线请求路径，由 `Paperbase.Application/Chat/DocumentChatAppService`（命名空间 `Dignite.Paperbase.Chat`）承担，检索通过 `Documents/AI/DocumentTextSearchAdapter` 桥接到 MAF `TextSearchProvider`；**不保留 FullText 降级**——未向量化文档由上游流水线保证最终被向量化
-- BackgroundJob 在 `Paperbase.Application/Documents/BackgroundJobs/`，调用上述 Workflow 编排流水线
+- 后台流水线 AI 功能按业务能力垂直切片到 `Paperbase.Application/Documents/Pipelines/`，每条流水线一个目录，内含 BackgroundJob（编排入口）+ Workflow（LLM 编排）+ 兜底/辅助组件，全部以 MAF `ChatClientAgent` 形式实现：
+  - `Documents/Pipelines/Classification/DocumentClassificationWorkflow` — 分类（同目录还有 `DocumentClassificationBackgroundJob` + `KeywordDocumentClassifier` 兜底）
+  - `Documents/Pipelines/Embedding/DocumentEmbeddingWorkflow` — 文本分块 + 向量（同目录还有 `DocumentEmbeddingBackgroundJob` + `TextChunker`）
+  - `Documents/Pipelines/RelationInference/DocumentRelationInferenceWorkflow` — 关系推断（目录预留中）
+  - `Documents/Pipelines/TextExtraction/DocumentTextExtractionBackgroundJob` — 非 LLM 的文本提取入口
+- 文档问答（Chat）走在线请求路径，由 `Paperbase.Application/Chat/DocumentChatAppService`（命名空间 `Dignite.Paperbase.Chat`）承担，检索通过 `Chat/Search/DocumentTextSearchAdapter` 桥接到 MAF `TextSearchProvider`；同目录下的 `DocumentRerankWorkflow` 是可选 LLM 精排；**不保留 FullText 降级**——未向量化文档由上游流水线保证最终被向量化
+- 共享 AI 内核（prompt 系统 + `PaperbaseAIOptions`）放在 `Paperbase.Application/Ai/`：`IPromptProvider` / `DefaultPromptProvider` / `PromptTemplate` / `PromptBoundary` 同时被后台 Workflow 与 Chat/Search 消费，按"跨消费者就上提"原则升至顶层
 - 业务模块（如 Contracts）字段提取自实现：注入 `IChatClient`，构造领域专属 `ChatClientAgent`，使用 `RunAsync<T>` 结构化输出反序列化到自己的 POCO
 
 ## 处理规则
