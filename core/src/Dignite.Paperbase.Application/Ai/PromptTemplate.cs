@@ -1,4 +1,4 @@
-namespace Dignite.Paperbase.Documents.AI;
+namespace Dignite.Paperbase.Ai;
 
 /// <summary>
 /// Workflow 系统提示词模板，由 <see cref="IPromptProvider"/> 返回。

@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Documents;
+using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.Application.Documents.Classification;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.AI;

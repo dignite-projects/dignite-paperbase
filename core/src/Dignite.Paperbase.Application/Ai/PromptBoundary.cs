@@ -1,4 +1,4 @@
-namespace Dignite.Paperbase.Documents.AI;
+namespace Dignite.Paperbase.Ai;
 
 /// <summary>
 /// 把外部输入（用户问题、PDF 提取文本、候选摘要…）以受约束的 XML 风格分隔符

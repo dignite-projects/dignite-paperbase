@@ -1,4 +1,5 @@
 using System.Linq;
+using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.Documents.AI;
 using Microsoft.Extensions.Options;
 using Shouldly;

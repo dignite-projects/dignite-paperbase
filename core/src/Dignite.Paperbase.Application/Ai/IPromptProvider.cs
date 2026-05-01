@@ -1,4 +1,4 @@
-namespace Dignite.Paperbase.Documents.AI;
+namespace Dignite.Paperbase.Ai;
 
 /// <summary>
 /// 为各 MAF Workflow 提供系统提示词。

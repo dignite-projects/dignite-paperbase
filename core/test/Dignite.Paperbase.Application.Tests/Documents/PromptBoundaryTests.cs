@@ -1,4 +1,4 @@
-using Dignite.Paperbase.Documents.AI;
+using Dignite.Paperbase.Ai;
 using Shouldly;
 using Xunit;
 

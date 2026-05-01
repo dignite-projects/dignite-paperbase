@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Rag;
 using Microsoft.Agents.AI;

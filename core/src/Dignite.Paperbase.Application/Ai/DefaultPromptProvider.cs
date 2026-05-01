@@ -1,6 +1,6 @@
 using Volo.Abp.DependencyInjection;
 
-namespace Dignite.Paperbase.Documents.AI;
+namespace Dignite.Paperbase.Ai;
 
 /// <summary>
 /// 内置 <see cref="IPromptProvider"/> 实现。

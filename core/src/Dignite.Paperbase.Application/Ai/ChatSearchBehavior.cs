@@ -1,4 +1,4 @@
-namespace Dignite.Paperbase.Documents.AI;
+namespace Dignite.Paperbase.Ai;
 
 /// <summary>
 /// Controls when the <c>TextSearchProvider</c> retrieves document context during
