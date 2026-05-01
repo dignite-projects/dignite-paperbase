@@ -308,10 +308,18 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         // Collect AIFunction tools from all contributors registered for this document type.
         var contributorTools = CollectContributorTools(conversation);
 
+        // When contributors are present, the model must be able to decide when to call the RAG
+        // tool (e.g. chain: search_contracts → search_paperbase_documents).  BeforeAIInvoke
+        // would force vector search unconditionally, which wastes tokens for structured queries
+        // and prevents the model from skipping it when the contributor already answered fully.
+        var effectiveBehavior = contributorTools.Count > 0
+            ? ChatSearchBehavior.OnDemandFunctionCalling
+            : _aiOptions.ChatSearchBehavior;
+
         ChatClientAgentOptions agentOptions;
         DocumentSearchCapture capture;
 
-        if (_aiOptions.ChatSearchBehavior == ChatSearchBehavior.OnDemandFunctionCalling)
+        if (effectiveBehavior == ChatSearchBehavior.OnDemandFunctionCalling)
         {
             // OnDemandFunctionCalling: expose both the RAG search function and contributor
             // tools as LLM-callable functions.  The search function accepts an optional
