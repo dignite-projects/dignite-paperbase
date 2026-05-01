@@ -406,7 +406,7 @@ FodyWeavers.xsd
 **/.abpstudio/
 
 # Paperbase-specific
-Dignite.Paperbase/Logs/*
+# (log directories are already covered by [Ll]og/ / [Ll]ogs/ rules above)
 *.db
 *.db-shm
 *.db-wal
@@ -420,11 +420,10 @@ Dignite.Paperbase/Logs/*
 .env.*.local
 
 # Temporary and cache files
-*.tmp
+# (*.tmp, *~ already covered above by Visual Studio template)
 *.temp
 *.swp
 *.swo
-*~
 .~lock.*
 .cache/
 .tmp/
@@ -436,7 +435,7 @@ Dignite.Paperbase/Logs/*
 .obsidian/
 
 # Code coverage and analysis
-.sonarcube/
+.sonarqube/
 .coverage/
 coverage/
 
