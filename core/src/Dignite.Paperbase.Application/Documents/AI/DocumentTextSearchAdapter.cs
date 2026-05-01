@@ -320,11 +320,15 @@ public class DocumentTextSearchAdapter : ITransientDependency
         {
             var sw = Stopwatch.StartNew();
 
-            // Override scope with caller-supplied documentIds when provided.
-            DocumentSearchScope? scope = documentIds?.Length > 0
+            // Model-supplied documentIds narrow a type-scoped conversation to specific
+            // documents (e.g. IDs returned by search_contracts → search_paperbase_documents).
+            // When the conversation is already pinned to a single document
+            // (_baseScope.DocumentId != null), the LLM cannot expand the authorized scope:
+            // ignore documentIds entirely so the search stays within the original boundary.
+            DocumentSearchScope? scope = documentIds?.Length > 0 && _baseScope?.DocumentId == null
                 ? new DocumentSearchScope
                 {
-                    DocumentId = null,          // superseded by DocumentIds
+                    DocumentId = null,
                     DocumentIds = documentIds,
                     DocumentTypeCode = _baseScope?.DocumentTypeCode,
                     TopK = _baseScope?.TopK,

@@ -7,6 +7,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Chat;
 using Dignite.Paperbase.Contracts.Contracts;
+using Dignite.Paperbase.Contracts.Permissions;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.AI;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.Linq;
@@ -23,20 +25,23 @@ public class ContractChatToolContributor : IDocumentChatToolContributor, ITransi
 {
     private readonly IContractRepository _contractRepository;
     private readonly IAsyncQueryableExecuter _asyncExecuter;
+    private readonly IAuthorizationService _authorizationService;
 
     public ContractChatToolContributor(
         IContractRepository contractRepository,
-        IAsyncQueryableExecuter asyncExecuter)
+        IAsyncQueryableExecuter asyncExecuter,
+        IAuthorizationService authorizationService)
     {
         _contractRepository = contractRepository;
         _asyncExecuter = asyncExecuter;
+        _authorizationService = authorizationService;
     }
 
     public virtual string DocumentTypeCode => ContractsDocumentTypes.General;
 
     public virtual IEnumerable<AIFunction> ContributeTools(DocumentChatToolContext ctx)
     {
-        var binding = new ContractSearchBinding(_contractRepository, _asyncExecuter, ctx.TenantId);
+        var binding = new ContractSearchBinding(_contractRepository, _asyncExecuter, ctx.TenantId, _authorizationService);
         yield return AIFunctionFactory.Create(
             binding.SearchAsync,
             name: "search_contracts",
@@ -59,15 +64,18 @@ public class ContractChatToolContributor : IDocumentChatToolContributor, ITransi
         private readonly IContractRepository _repo;
         private readonly IAsyncQueryableExecuter _executer;
         private readonly Guid? _tenantId;
+        private readonly IAuthorizationService _authorizationService;
 
         public ContractSearchBinding(
             IContractRepository repo,
             IAsyncQueryableExecuter executer,
-            Guid? tenantId)
+            Guid? tenantId,
+            IAuthorizationService authorizationService)
         {
             _repo = repo;
             _executer = executer;
             _tenantId = tenantId;
+            _authorizationService = authorizationService;
         }
 
         public async Task<string> SearchAsync(
@@ -89,6 +97,11 @@ public class ContractChatToolContributor : IDocumentChatToolContributor, ITransi
             decimal? amountMax = null,
             CancellationToken cancellationToken = default)
         {
+            // Fail closed: caller must hold the contracts read permission.
+            // A user with only document-chat access must not receive structured
+            // contract data (amounts, party names, dates) through the LLM tool.
+            await _authorizationService.CheckAsync(ContractsPermissions.Contracts.Default);
+
             var queryable = await _repo.GetQueryableAsync();
 
             // Explicit tenant filter — do not rely solely on ABP's ambient data filter,
