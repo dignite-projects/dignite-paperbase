@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Dignite.Paperbase.Rag;
 
-namespace Dignite.Paperbase.Documents.AI;
+namespace Dignite.Paperbase.Chat.Search;
 
 /// <summary>
 /// Optional per-call overrides for <see cref="DocumentTextSearchAdapter"/>. Anything

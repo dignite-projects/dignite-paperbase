@@ -7,7 +7,6 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Ai;
-using Dignite.Paperbase.Documents.AI.Workflows;
 using Dignite.Paperbase.Rag;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
@@ -16,7 +15,7 @@ using Microsoft.Extensions.Options;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.MultiTenancy;
 
-namespace Dignite.Paperbase.Documents.AI;
+namespace Dignite.Paperbase.Chat.Search;
 
 /// <summary>
 /// Bridges <see cref="IDocumentKnowledgeIndex"/> to Microsoft Agent Framework's

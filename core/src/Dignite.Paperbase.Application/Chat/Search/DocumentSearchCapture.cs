@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using Dignite.Paperbase.Rag;
 
-namespace Dignite.Paperbase.Documents.AI;
+namespace Dignite.Paperbase.Chat.Search;
 
 /// <summary>
 /// Holds the <see cref="VectorSearchResult"/> list captured by a

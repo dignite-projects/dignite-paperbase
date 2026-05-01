@@ -1,6 +1,5 @@
 ﻿using System;
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Documents.AI;
 using Dignite.Paperbase.EntityFrameworkCore;
 using Dignite.Paperbase.Rag;
 using Microsoft.Data.Sqlite;
