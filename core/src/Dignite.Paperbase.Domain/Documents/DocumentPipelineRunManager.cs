@@ -96,22 +96,26 @@ public class DocumentPipelineRunManager : DomainService
     }
 
     /// <summary>
-    /// 记录分类结果并完成 Run。
+    /// 记录分类结果并完成 Run（高置信度路径）。
+    /// <see cref="Document.ClassificationReason"/> 在此路径下固定为 null；
+    /// AI 的分类理由仅在低置信度路径（<see cref="CompleteClassificationWithLowConfidenceAsync"/>）写入。
     /// </summary>
     public virtual Task CompleteClassificationAsync(
         Document document,
         DocumentPipelineRun run,
         string typeCode,
-        double confidenceScore,
-        string? reason = null)
+        double confidenceScore)
     {
         EnsureRegisteredTypeCode(typeCode);
-        document.ApplyAutomaticClassificationResult(typeCode, confidenceScore, reason);
+        document.ApplyAutomaticClassificationResult(typeCode, confidenceScore);
         return CompleteAsync(document, run);
     }
 
     /// <summary>
     /// 分类置信度不足：完成 Run 并将文档标记为待人工审核。
+    /// <see cref="Document.ClassificationReason"/> 写入 AI 的分类理由（reason）；
+    /// Run.StatusMessage 保持 null（<see cref="DocumentPipelineRun.MarkSucceeded"/> 不写 StatusMessage），
+    /// 避免与技术错误信息混淆。
     /// 置信度信号由 <see cref="Document.ReviewStatus"/> = PendingReview 表达，不再记录在 Run 上。
     /// </summary>
     public virtual Task CompleteClassificationWithLowConfidenceAsync(

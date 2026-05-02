@@ -123,6 +123,10 @@ public class DocumentClassificationWorkflow : ITransientDependency
             rawConfidence = 0d;
         }
 
+        // Reason 由 BackgroundJob 路由：
+        //   高置信度（>= ConfidenceThreshold）→ CompleteClassificationAsync，ClassificationReason 固定为 null；
+        //   低置信度 / 无法分类       → CompleteClassificationWithLowConfidenceAsync，Reason 写入 Document.ClassificationReason。
+        // Run.StatusMessage 在两条路径下均不写入（MarkSucceeded 不接受 statusMessage），避免与技术错误信息混淆。
         var outcome = new DocumentClassificationOutcome
         {
             TypeCode = typeCode,

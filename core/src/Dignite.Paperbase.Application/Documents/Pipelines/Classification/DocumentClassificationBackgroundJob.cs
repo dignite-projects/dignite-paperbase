@@ -134,8 +134,10 @@ public class DocumentClassificationBackgroundJob
 
         if (typeDef != null && outcome.ConfidenceScore >= typeDef.ConfidenceThreshold)
         {
+            // 高置信度路径：ClassificationReason 由 ApplyAutomaticClassificationResult 固定置 null，
+            // outcome.Reason 仅供低置信度路径使用，此处不传。
             await _pipelineRunManager.CompleteClassificationAsync(
-                document, run, typeDef.TypeCode, outcome.ConfidenceScore, outcome.Reason);
+                document, run, typeDef.TypeCode, outcome.ConfidenceScore);
 
             await _distributedEventBus.PublishAsync(new DocumentClassifiedEto
             {

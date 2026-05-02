@@ -232,18 +232,20 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
     {
         var doc = CreateDocument();
 
-        // 第一次低置信度 → PendingReview
+        // 第一次低置信度 → PendingReview（写入 ClassificationReason）
         var run1 = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
-        await _manager.CompleteClassificationWithLowConfidenceAsync(doc, run1);
+        await _manager.CompleteClassificationWithLowConfidenceAsync(doc, run1, "AI confidence too low");
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
+        doc.ClassificationReason.ShouldBe("AI confidence too low");
 
-        // 重试自动分类成功
+        // 重试自动分类成功 → 高置信度路径必须清空 ClassificationReason
         var run2 = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
         await _manager.CompleteClassificationAsync(doc, run2, "contract.general", 0.95);
 
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.None);
         doc.DocumentTypeCode.ShouldBe("contract.general");
         doc.ClassificationConfidence.ShouldBe(0.95);
+        doc.ClassificationReason.ShouldBeNull(); // 高置信度路径固定清空
     }
 
     // ────────────────────────────────────────────────────────────────────────────

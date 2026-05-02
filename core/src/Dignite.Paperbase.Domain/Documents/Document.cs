@@ -50,7 +50,13 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
     /// </summary>
     public virtual double ClassificationConfidence { get; private set; }
 
-    /// <summary>分类原因说明（低置信度时由 AI 填写；人工确认后清空）</summary>
+    /// <summary>
+    /// AI 对当前分类决策的业务解释（分类理由）。
+    /// 仅在 <see cref="RequestClassificationReview"/> 路径（置信度不足或无法分类）时写入；
+    /// 高置信度 <see cref="ApplyAutomaticClassificationResult"/> 时为 null；
+    /// 人工确认（<see cref="ConfirmClassification"/>）后清空。
+    /// 与 <see cref="DocumentPipelineRun.StatusMessage"/>（流水线技术错误信息）语义不同。
+    /// </summary>
     public virtual string? ClassificationReason { get; private set; }
 
     // --- 聚合内的 PipelineRun 集合 ---
@@ -107,14 +113,14 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
         SourceType = sourceType;
     }
 
+    // 高置信度路径：ClassificationReason 必须为 null，与 RequestClassificationReview 路径区分。
     internal void ApplyAutomaticClassificationResult(
         string documentTypeCode,
-        double classificationConfidence,
-        string? reason = null)
+        double classificationConfidence)
     {
         DocumentTypeCode = Check.NotNullOrWhiteSpace(documentTypeCode, nameof(documentTypeCode));
         ClassificationConfidence = Check.Range(classificationConfidence, nameof(classificationConfidence), 0d, 1d);
-        ClassificationReason = reason;
+        ClassificationReason = null;
         ReviewStatus = DocumentReviewStatus.None;
     }
 
