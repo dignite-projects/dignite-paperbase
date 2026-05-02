@@ -28,15 +28,20 @@ Qdrant:
 ```json
 "QdrantKnowledgeIndex": {
   "Endpoint": "http://qdrant:6334",
-  "ApiKey": "",
-  "CollectionName": "paperbase_document_chunks",
-  "Distance": "Cosine",
-  "VectorDimension": 1536,
-  "EnsureCollectionOnStartup": true
+  "ApiKey": ""
 }
 ```
 
-See `host/src/appsettings.Qdrant.Sample.json` and `host/docker-compose.yml`.
+The remaining Qdrant settings use `QdrantKnowledgeIndexOptions` defaults unless the deployment overrides them:
+
+| Key | Default |
+| --- | --- |
+| `CollectionName` | `paperbase_document_chunks` |
+| `Distance` | `Cosine` |
+| `VectorDimension` | `1536` |
+| `EnsureCollectionOnStartup` | `true` |
+
+See `host/docker-compose.yml` for the containerized development environment.
 
 ## Migration Boundary
 

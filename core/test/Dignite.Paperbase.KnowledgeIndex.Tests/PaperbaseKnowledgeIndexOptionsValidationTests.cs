@@ -1,8 +1,11 @@
+using System.Collections.Generic;
 using Dignite.Paperbase.KnowledgeIndex;
 using Dignite.Paperbase.KnowledgeIndex.Qdrant;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Shouldly;
+using Volo.Abp.Modularity;
 using Xunit;
 
 namespace Dignite.Paperbase.KnowledgeIndex.Qdrant;
@@ -61,5 +64,35 @@ public class PaperbaseKnowledgeIndexOptionsValidationTests
 
         var resolved = sp.GetRequiredService<IOptions<PaperbaseKnowledgeIndexOptions>>().Value;
         resolved.EmbeddingDimension.ShouldBe(new QdrantKnowledgeIndexOptions().VectorDimension);
+    }
+
+    [Fact]
+    public void PaperbaseKnowledgeIndexOptions_Binds_From_Configuration_Section()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["PaperbaseKnowledgeIndex:EmbeddingDimension"] = "3072",
+                ["PaperbaseKnowledgeIndex:DefaultTopK"] = "9",
+                ["PaperbaseKnowledgeIndex:MinScore"] = "0.42",
+                ["QdrantKnowledgeIndex:VectorDimension"] = "3072"
+            })
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddOptions<QdrantKnowledgeIndexOptions>()
+            .BindConfiguration("QdrantKnowledgeIndex");
+
+        var context = new ServiceConfigurationContext(services);
+        new PaperbaseKnowledgeIndexModule().ConfigureServices(context);
+        new QdrantKnowledgeIndexModule().PostConfigureServices(context);
+
+        var sp = services.BuildServiceProvider();
+
+        var resolved = sp.GetRequiredService<IOptions<PaperbaseKnowledgeIndexOptions>>().Value;
+        resolved.EmbeddingDimension.ShouldBe(3072);
+        resolved.DefaultTopK.ShouldBe(9);
+        resolved.MinScore.ShouldBe(0.42);
     }
 }

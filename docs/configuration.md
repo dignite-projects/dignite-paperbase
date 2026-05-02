@@ -67,11 +67,7 @@ Paperbase uses `Microsoft.Extensions.AI` for chat and embeddings. Any OpenAI-com
 ```json
 "QdrantKnowledgeIndex": {
   "Endpoint": "http://localhost:6334",
-  "ApiKey": "",
-  "CollectionName": "paperbase_document_chunks",
-  "Distance": "Cosine",
-  "VectorDimension": 1536,
-  "EnsureCollectionOnStartup": true
+  "ApiKey": ""
 }
 ```
 
@@ -120,7 +116,7 @@ Only the relational application database is configured through connection string
 }
 ```
 
-Qdrant is configured by `QdrantKnowledgeIndex`, not by an EF Core connection string. See `host/src/appsettings.Qdrant.Sample.json` for a deployment-oriented sample.
+Qdrant is configured by `QdrantKnowledgeIndex`, not by an EF Core connection string. See [deployment-mixed-db.md](deployment-mixed-db.md) for a deployment-oriented example.
 
 ## OCR
 
