@@ -1,0 +1,5 @@
+easyocr==1.7.2
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+pdf2image==1.17.0
+python-multipart==0.0.20
