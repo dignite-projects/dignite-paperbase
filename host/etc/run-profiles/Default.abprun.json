@@ -2,7 +2,7 @@
   "applications": {
     "Dignite.Paperbase.Host.Angular": {
       "type": "cli",
-      "workingDirectory": "../../angular",
+      "workingDirectory": "../../../angular/apps/host",
       "startCommand": "./start.ps1",
       "launchUrl": "http://localhost:4200",
       "execution": {
