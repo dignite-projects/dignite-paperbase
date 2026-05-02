@@ -25,11 +25,19 @@ function configureRoutes() {
       layout: eLayoutType.application,
     },
     {
+      path: '/documents',
+      name: '::Menu:DocumentList',
+      iconClass: 'fas fa-list',
+      parentName: '::Menu:Documents',
+      order: 1,
+      layout: eLayoutType.application,
+    },
+    {
       path: '/documents/upload',
       name: '::Menu:UploadDocument',
       iconClass: 'fas fa-upload',
       parentName: '::Menu:Documents',
-      order: 1,
+      order: 2,
       layout: eLayoutType.application,
     },
     {
