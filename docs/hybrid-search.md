@@ -4,6 +4,8 @@ Paperbase supports **hybrid search** for Qdrant: dense-vector recall and full-te
 
 Hybrid search is opt-in and disabled by default. Pure dense-vector search remains the default.
 
+> See also: [`configuration.md`](configuration.md#qdrant-knowledge-index-provider) for the full Qdrant configuration surface and [`knowledge-index-provider.md`](knowledge-index-provider.md) for how non-Qdrant providers fit into this picture.
+
 ## How It Works
 
 When hybrid search is enabled, each call to `IDocumentKnowledgeIndex.SearchAsync` that carries a non-null `VectorSearchRequest.QueryText` executes two prefetch passes in a single Qdrant request:
@@ -71,4 +73,4 @@ Set `VectorSearchRequest.QueryText = null` before calling `IDocumentKnowledgeInd
 
 ## Fallback for Non-Qdrant Providers
 
-`VectorSearchRequest.QueryText` is a provider-neutral field defined in `Dignite.Paperbase.KnowledgeIndex`. Providers that do not support hybrid search ignore it and perform pure dense-vector search. No configuration change is needed on providers that do not implement `QueryHybridAsync`.
+`VectorSearchRequest.QueryText` is a provider-neutral field defined in `Dignite.Paperbase.KnowledgeIndex`. Providers that do not support hybrid search ignore it and perform pure dense-vector search. No configuration change is needed on providers that do not implement `QueryHybridAsync`. See [`knowledge-index-provider.md`](knowledge-index-provider.md) for how to add a new provider.
