@@ -16,10 +16,18 @@ using Volo.Abp.Linq;
 namespace Dignite.Paperbase.Contracts.Chat;
 
 /// <summary>
-/// Contributes a <c>search_contracts</c> AI tool to document chat conversations scoped to
-/// <see cref="ContractsDocumentTypes.General"/>. The tool queries the Contracts relational
-/// store by structured criteria and returns matched document IDs so the model can optionally
-/// chain to the built-in vector search for deeper semantic content retrieval.
+/// Contributes AI tools for document chat conversations scoped to
+/// <see cref="ContractsDocumentTypes.General"/>:
+/// <list type="bullet">
+///   <item><c>search_contracts</c> — query the relational store by structured criteria</item>
+///   <item><c>get_contract_detail</c> — fetch the full extracted field set for a single contract</item>
+///   <item><c>get_contract_aggregate</c> — count + sum aggregate by party / date range / status, the
+///         class of query that pure RAG cannot answer because cosine similarity over chunks
+///         loses arithmetic semantics</item>
+/// </list>
+/// All tools fail closed: the caller must hold <see cref="ContractsPermissions.Contracts.Default"/>
+/// and is restricted to the current tenant via an explicit <c>TenantId</c> predicate (no reliance on
+/// the ambient ABP <c>DataFilter</c>).
 /// </summary>
 public class ContractChatToolContributor : IDocumentChatToolContributor, ITransientDependency
 {
@@ -41,7 +49,12 @@ public class ContractChatToolContributor : IDocumentChatToolContributor, ITransi
 
     public virtual IEnumerable<AIFunction> ContributeTools(DocumentChatToolContext ctx)
     {
-        var binding = new ContractSearchBinding(_contractRepository, _asyncExecuter, ctx.TenantId, _authorizationService);
+        var binding = new ContractToolBindings(
+            _contractRepository,
+            _asyncExecuter,
+            ctx.TenantId,
+            _authorizationService);
+
         yield return AIFunctionFactory.Create(
             binding.SearchAsync,
             name: "search_contracts",
@@ -50,23 +63,44 @@ public class ContractChatToolContributor : IDocumentChatToolContributor, ITransi
                 "date range, or amount range. " +
                 "Returns matched document IDs and contract metadata summaries. " +
                 "Use the returned document IDs to restrict further document content search to the relevant contracts.");
+
+        yield return AIFunctionFactory.Create(
+            binding.GetDetailAsync,
+            name: "get_contract_detail",
+            description:
+                "Fetch the full extracted field set for a single contract by its document ID. " +
+                "Use this after search_contracts narrows the candidate set, when the user asks " +
+                "for fields not included in the search summary (governing law, auto-renewal, " +
+                "termination notice days, effective date, etc.).");
+
+        yield return AIFunctionFactory.Create(
+            binding.GetAggregateAsync,
+            name: "get_contract_aggregate",
+            description:
+                "Aggregate contract counts and total amounts grouped by currency, optionally " +
+                "filtered by party name, signed-date range, or status. " +
+                "Use this for arithmetic questions like \"how many active contracts with party X\" " +
+                "or \"total signed amount in Q1\" — these cannot be answered by vector search " +
+                "over document chunks.");
     }
 
     // ── nested binding ───────────────────────────────────────────────────────
 
     /// <summary>
-    /// Holds the bound context for the <c>search_contracts</c> AIFunction.
+    /// Holds the bound context for the contributed AIFunctions.
     /// Factored into a class so parameter-level <see cref="DescriptionAttribute"/>s are
     /// accessible via reflection (lambda parameters cannot carry attributes in C#).
     /// </summary>
-    private sealed class ContractSearchBinding
+    private sealed class ContractToolBindings
     {
+        private const int MaxResultRows = 20;
+
         private readonly IContractRepository _repo;
         private readonly IAsyncQueryableExecuter _executer;
         private readonly Guid? _tenantId;
         private readonly IAuthorizationService _authorizationService;
 
-        public ContractSearchBinding(
+        public ContractToolBindings(
             IContractRepository repo,
             IAsyncQueryableExecuter executer,
             Guid? tenantId,
@@ -97,18 +131,9 @@ public class ContractChatToolContributor : IDocumentChatToolContributor, ITransi
             decimal? amountMax = null,
             CancellationToken cancellationToken = default)
         {
-            // Fail closed: caller must hold the contracts read permission.
-            // A user with only document-chat access must not receive structured
-            // contract data (amounts, party names, dates) through the LLM tool.
             await _authorizationService.CheckAsync(ContractsPermissions.Contracts.Default);
 
-            var queryable = await _repo.GetQueryableAsync();
-
-            // Explicit tenant filter — do not rely solely on ABP's ambient data filter,
-            // which may be absent on background threads or in non-HTTP contexts.
-            queryable = _tenantId.HasValue
-                ? queryable.Where(c => c.TenantId == _tenantId)
-                : queryable.Where(c => c.TenantId == null);
+            var queryable = await ScopedQueryableAsync();
 
             if (!string.IsNullOrWhiteSpace(contractNumber))
                 queryable = queryable.Where(c =>
@@ -136,7 +161,7 @@ public class ContractChatToolContributor : IDocumentChatToolContributor, ITransi
                 queryable = queryable.Where(c => c.TotalAmount <= amountMax);
 
             var contracts = await _executer.ToListAsync(
-                queryable.OrderByDescending(c => c.CreationTime).Take(20),
+                queryable.OrderByDescending(c => c.CreationTime).Take(MaxResultRows),
                 cancellationToken);
 
             var result = new
@@ -159,6 +184,112 @@ public class ContractChatToolContributor : IDocumentChatToolContributor, ITransi
             };
 
             return JsonSerializer.Serialize(result);
+        }
+
+        public async Task<string> GetDetailAsync(
+            [Description("Document ID returned by search_contracts")]
+            Guid documentId,
+            CancellationToken cancellationToken = default)
+        {
+            await _authorizationService.CheckAsync(ContractsPermissions.Contracts.Default);
+
+            var queryable = await ScopedQueryableAsync();
+            var contract = await _executer.FirstOrDefaultAsync(
+                queryable.Where(c => c.DocumentId == documentId),
+                cancellationToken);
+
+            if (contract == null)
+            {
+                return JsonSerializer.Serialize(new { found = false, documentId });
+            }
+
+            var detail = new
+            {
+                found = true,
+                documentId = contract.DocumentId,
+                title = contract.Title,
+                contractNumber = contract.ContractNumber,
+                partyAName = contract.PartyAName,
+                partyBName = contract.PartyBName,
+                counterpartyName = contract.CounterpartyName,
+                totalAmount = contract.TotalAmount,
+                currency = contract.Currency,
+                signedDate = contract.SignedDate?.ToString("yyyy-MM-dd"),
+                effectiveDate = contract.EffectiveDate?.ToString("yyyy-MM-dd"),
+                expirationDate = contract.ExpirationDate?.ToString("yyyy-MM-dd"),
+                autoRenewal = contract.AutoRenewal,
+                terminationNoticeDays = contract.TerminationNoticeDays,
+                governingLaw = contract.GoverningLaw,
+                status = contract.Status.ToString(),
+                summary = contract.Summary,
+                needsReview = contract.NeedsReview
+            };
+
+            return JsonSerializer.Serialize(detail);
+        }
+
+        public async Task<string> GetAggregateAsync(
+            [Description("Optional party name filter — matches Party A, Party B, or counterparty (partial match)")]
+            string? partyName = null,
+            [Description("Earliest signed date in ISO 8601 format, e.g. 2024-01-01")]
+            DateTime? signedDateFrom = null,
+            [Description("Latest signed date in ISO 8601 format")]
+            DateTime? signedDateTo = null,
+            [Description("Optional contract status filter: Draft, Active, Expired, Terminated, or Archived")]
+            string? status = null,
+            CancellationToken cancellationToken = default)
+        {
+            await _authorizationService.CheckAsync(ContractsPermissions.Contracts.Default);
+
+            var queryable = await ScopedQueryableAsync();
+
+            if (!string.IsNullOrWhiteSpace(partyName))
+                queryable = queryable.Where(c =>
+                    (c.PartyAName != null && c.PartyAName.Contains(partyName)) ||
+                    (c.PartyBName != null && c.PartyBName.Contains(partyName)) ||
+                    (c.CounterpartyName != null && c.CounterpartyName.Contains(partyName)));
+
+            if (signedDateFrom.HasValue)
+                queryable = queryable.Where(c => c.SignedDate >= signedDateFrom);
+            if (signedDateTo.HasValue)
+                queryable = queryable.Where(c => c.SignedDate <= signedDateTo);
+
+            if (!string.IsNullOrWhiteSpace(status)
+                && Enum.TryParse<ContractStatus>(status, ignoreCase: true, out var parsedStatus))
+            {
+                queryable = queryable.Where(c => c.Status == parsedStatus);
+            }
+
+            var grouped = queryable
+                .GroupBy(c => c.Currency)
+                .Select(g => new
+                {
+                    currency = g.Key,
+                    count = g.Count(),
+                    totalAmount = g.Sum(c => c.TotalAmount ?? 0m)
+                });
+
+            var buckets = await _executer.ToListAsync(grouped, cancellationToken);
+
+            var result = new
+            {
+                groupBy = "currency",
+                buckets,
+                grandCount = buckets.Sum(b => b.count)
+            };
+
+            return JsonSerializer.Serialize(result);
+        }
+
+        private async Task<IQueryable<Contract>> ScopedQueryableAsync()
+        {
+            var queryable = await _repo.GetQueryableAsync();
+
+            // Explicit tenant predicate — never rely solely on ABP's ambient DataFilter,
+            // which can be disabled on background threads or non-HTTP code paths.
+            return _tenantId.HasValue
+                ? queryable.Where(c => c.TenantId == _tenantId)
+                : queryable.Where(c => c.TenantId == null);
         }
     }
 }

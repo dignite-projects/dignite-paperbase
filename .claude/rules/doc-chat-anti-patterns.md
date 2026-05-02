@@ -115,3 +115,112 @@ public virtual async Task<ChatTurnResultDto> SendMessageAsync(Guid conversationI
 
 **参照实现**：
 `core/src/Dignite.Paperbase.Application/Documents/Chat/DocumentChatAppService.cs`
+
+---
+
+## 反例 C：业务模块 `IDocumentChatToolContributor` 工具未做 fail-closed 安全门
+
+**规则来源**：Issue #69 验收标准 — "每个 tool 显式断言租户 + 权限"
+
+**背景**：业务模块通过 `IDocumentChatToolContributor` 把 `AIFunction` 挂进 Chat 后，函数体由 LLM 决定何时调用、参数由 LLM 决定如何填。HTTP 边界上的 `[Authorize]` 不再覆盖此调用——AIFunction 在 Chat 转一轮内被反射调用，绕过 controller。安全断言必须落到工具方法体内部。
+
+### ❌ 错误写法 1：依赖 AppService 上的 `[Authorize]` / 不做权限断言
+
+```
+public class InvoiceChatToolContributor : IDocumentChatToolContributor, ITransientDependency
+{
+    public IEnumerable<AIFunction> ContributeTools(DocumentChatToolContext ctx)
+    {
+        // 错误：直接把 AppService 方法包成 AIFunction
+        // IInvoiceAppService 的 [Authorize(InvoicePermissions.Default)] 在反射调用时不生效
+        yield return AIFunctionFactory.Create(_invoiceAppService.GetListAsync,
+            name: "search_invoices", description: "...");
+    }
+}
+```
+
+**危害**：仅持有 Chat 权限的用户通过自然语言（"帮我查张三的发票"）即可拿到本无权访问的发票数据。LLM 是无意识的"权限提升通道"。
+
+### ❌ 错误写法 2：依赖 ABP `DataFilter` 做租户隔离
+
+```
+public async Task<string> SearchAsync(string keyword)
+{
+    await _authService.CheckAsync(InvoicePermissions.Default);
+    var queryable = await _repo.GetQueryableAsync();   // ← ambient filter 自动按 CurrentTenant.Id 过滤
+    return JsonSerializer.Serialize(await _executer.ToListAsync(queryable.Where(...).Take(20)));
+}
+```
+
+**危害**：与反例 B 错误写法 1 同源——任何禁用 `DataFilter` 的代码路径（后台任务、非 HTTP 上下文、单元测试 helper）会让此工具跨租户返回数据。
+
+### ❌ 错误写法 3：结果集无上限
+
+```
+var matches = await _executer.ToListAsync(queryable.Where(c => c.PartyName.Contains(name)));
+return JsonSerializer.Serialize(matches);   // ← 命中 5000 条全返回
+```
+
+**危害**：单次 tool 调用炸 LLM context window；攻击者可通过宽泛 keyword 制造内存压力或费用攻击。
+
+### ❌ 错误写法 4：把用户输入拼进工具描述
+
+```
+yield return AIFunctionFactory.Create(binding.SearchAsync,
+    name: "search_invoices",
+    description: $"Search invoices belonging to user {ctx.UserDisplayName}. ...");
+```
+
+**危害**：description 文本是 LLM 决策上下文的一部分。如果 `UserDisplayName` 来自用户控制的字段（昵称、签名），可被用作 prompt injection 注入向量。description 必须是**编译期常量**或纯静态文本。
+
+### ❌ 错误写法 5：裸跑 raw SQL
+
+```
+public async Task<string> ReportAsync(string whereClause)
+{
+    var sql = $"SELECT * FROM Invoices WHERE {whereClause}";   // ← LLM 拼 SQL
+    return await _dbContext.Database.SqlQueryRaw<...>(sql).ToListAsync();
+}
+```
+
+**危害**：SQL 注入面 + 绕过 ABP 权限/审计/软删除/租户过滤层。即便是 LLM 生成 SQL 看似可控，也在攻击面内（prompt injection 完全可以诱导 LLM 写 `WHERE 1=1` 或 `; DROP TABLE`）。
+
+### ✅ 正确实现要点
+
+```
+public class InvoiceChatToolContributor : IDocumentChatToolContributor, ITransientDependency
+{
+    public IEnumerable<AIFunction> ContributeTools(DocumentChatToolContext ctx)
+    {
+        var binding = new InvoiceToolBindings(_repo, _executer, ctx.TenantId, _authService);
+        yield return AIFunctionFactory.Create(binding.SearchAsync,
+            name: "search_invoices",
+            description: "Search invoices by ...");   // ← 静态常量
+    }
+
+    private sealed class InvoiceToolBindings
+    {
+        private const int MaxResultRows = 20;
+        // 构造函数注入 _tenantId（来自 DocumentChatToolContext.TenantId）
+
+        public async Task<string> SearchAsync(/* [Description] params */)
+        {
+            // 1. 显式权限断言 — fail closed
+            await _authService.CheckAsync(InvoicePermissions.Default);
+
+            // 2. 显式租户谓词 — 不依赖 ambient DataFilter
+            var q = (await _repo.GetQueryableAsync())
+                .Where(i => i.TenantId == _tenantId);
+
+            // 3. 业务过滤 + 强制 Take(N)
+            var rows = await _executer.ToListAsync(
+                q.Where(...).OrderBy(...).Take(MaxResultRows), ct);
+
+            return JsonSerializer.Serialize(new { rows });
+        }
+    }
+}
+```
+
+**参照实现**：
+`modules/contracts/src/Dignite.Paperbase.Contracts.Application/Chat/ContractChatToolContributor.cs`

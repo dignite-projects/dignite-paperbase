@@ -96,6 +96,7 @@ Dignite.Paperbase.Abstractions（扩展契约层，无其他项目依赖）
 - 文档问答（Chat）走在线请求路径，由 `Paperbase.Application/Chat/DocumentChatAppService`（命名空间 `Dignite.Paperbase.Chat`）承担，检索通过 `Chat/Search/DocumentTextSearchAdapter` 桥接到 MAF `TextSearchProvider`；同目录下的 `DocumentRerankWorkflow` 是可选 LLM 精排；**不保留 FullText 降级**——未向量化文档由上游流水线保证最终被向量化
 - 共享 AI 内核（prompt 系统 + `PaperbaseAIOptions`）放在 `Paperbase.Application/Ai/`：`IPromptProvider` / `DefaultPromptProvider` / `PromptTemplate` / `PromptBoundary` 同时被后台 Workflow 与 Chat/Search 消费，按"跨消费者就上提"原则升至顶层
 - 业务模块（如 Contracts）字段提取自实现：注入 `IChatClient`，构造领域专属 `ChatClientAgent`，使用 `RunAsync<T>` 结构化输出反序列化到自己的 POCO
+- 业务模块向 Chat 贡献结构化查询工具：实现 `Dignite.Paperbase.Abstractions.Chat.IDocumentChatToolContributor`（绑定 `DocumentTypeCode` + 返回 `IEnumerable<AIFunction>`）并注册为 `ITransientDependency`；`DocumentChatAppService` 在每轮按会话 scope 收集匹配的 contributor，将其工具与内置 `search_paperbase_documents` 一起挂到 `ChatClientAgent`。每个工具实现必须 fail-closed：显式 `IAuthorizationService.CheckAsync(...)` 权限断言 + 显式 `TenantId` 谓词（不依赖 ambient DataFilter）+ 结果集硬上限（`Take(N)`），不得裸跑 raw SQL；反例见 `.claude/rules/doc-chat-anti-patterns.md` 反例 C，参照实现见 `modules/contracts/src/Dignite.Paperbase.Contracts.Application/Chat/ContractChatToolContributor.cs`
 
 ## 处理规则
 
