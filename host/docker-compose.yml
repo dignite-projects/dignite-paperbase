@@ -1,19 +1,19 @@
 services:
-  postgres:
-    image: postgres:17
-    environment:
-      POSTGRES_DB: paperbase
-      POSTGRES_USER: paperbase
-      POSTGRES_PASSWORD: paperbase_dev_pw
+  redis:
+    image: redis:7-alpine
     ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U paperbase"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+      - "6379:6379"
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    restart: unless-stopped
 
   qdrant:
     image: qdrant/qdrant:v1.15.4
@@ -28,28 +28,5 @@ services:
       timeout: 5s
       retries: 10
 
-  paperbase-api:
-    build:
-      context: ..
-      dockerfile: host/Dockerfile
-    ports:
-      - "8080:80"
-    environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__Default: "Host=postgres;Database=paperbase;Username=paperbase;Password=paperbase_dev_pw"
-      QdrantKnowledgeIndex__Endpoint: "http://qdrant:6334"
-      App__SelfUrl: "http://localhost:8080"
-      App__ClientUrl: "http://localhost:4200"
-      App__CorsOrigins: "http://localhost:4200"
-      App__RedirectAllowedUrls: "http://localhost:4200"
-      AuthServer__Authority: "http://localhost:8080"
-      AuthServer__SwaggerClientId: "Paperbase_Swagger"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      qdrant:
-        condition: service_healthy
-
 volumes:
-  postgres_data:
   qdrant_data:
