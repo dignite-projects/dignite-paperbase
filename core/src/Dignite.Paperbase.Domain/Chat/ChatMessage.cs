@@ -28,9 +28,9 @@ public class ChatMessage : Entity<Guid>
     {
         ConversationId = conversationId;
         Role = role;
-        Content = Check.NotNullOrWhiteSpace(content, nameof(content), maxLength: DocumentChatConsts.MaxMessageLength);
+        Content = Check.NotNullOrWhiteSpace(content, nameof(content), maxLength: ChatConsts.MaxMessageLength);
         if (citationsJson != null)
-            Check.Length(citationsJson, nameof(citationsJson), DocumentChatConsts.MaxCitationsJsonLength);
+            Check.Length(citationsJson, nameof(citationsJson), ChatConsts.MaxCitationsJsonLength);
         CitationsJson = citationsJson;
         ClientTurnId = clientTurnId;
         CreationTime = creationTime;

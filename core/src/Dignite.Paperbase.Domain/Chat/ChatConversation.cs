@@ -37,7 +37,7 @@ public class ChatConversation : FullAuditedAggregateRoot<Guid>, IMultiTenant
             throw new BusinessException(PaperbaseErrorCodes.ChatConversationScopeConflict);
 
         TenantId = tenantId;
-        Title = Check.NotNullOrWhiteSpace(title, nameof(title), maxLength: DocumentChatConsts.MaxTitleLength);
+        Title = Check.NotNullOrWhiteSpace(title, nameof(title), maxLength: ChatConsts.MaxTitleLength);
         DocumentId = documentId;
         DocumentTypeCode = documentTypeCode;
         TopK = topK;
@@ -50,7 +50,7 @@ public class ChatConversation : FullAuditedAggregateRoot<Guid>, IMultiTenant
 
     public virtual void Rename(string title)
     {
-        Title = Check.NotNullOrWhiteSpace(title, nameof(title), maxLength: DocumentChatConsts.MaxTitleLength);
+        Title = Check.NotNullOrWhiteSpace(title, nameof(title), maxLength: ChatConsts.MaxTitleLength);
     }
 
     public virtual ChatMessage AppendUserMessage(IClock clock, Guid messageId, string content, Guid clientTurnId)

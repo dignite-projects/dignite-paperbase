@@ -81,7 +81,7 @@ public class ChatConversationTests
             _ = new ChatConversation(
                 Guid.NewGuid(),
                 tenantId: null,
-                title: new string('x', DocumentChatConsts.MaxTitleLength + 1),
+                title: new string('x', ChatConsts.MaxTitleLength + 1),
                 documentId: null,
                 documentTypeCode: null,
                 topK: null,

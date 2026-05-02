@@ -458,7 +458,7 @@ public class DocumentChat_E2E_Tests
                 {
                     await _appService.SendMessageAsync(conversationId, new SendChatMessageInput
                     {
-                        Message      = new string('x', DocumentChatConsts.MaxMessageLength + 1),
+                        Message      = new string('x', ChatConsts.MaxMessageLength + 1),
                         ClientTurnId = Guid.NewGuid()
                     });
                 }

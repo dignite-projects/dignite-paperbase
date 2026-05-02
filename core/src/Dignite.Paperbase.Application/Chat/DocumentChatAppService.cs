@@ -479,7 +479,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
 
     /// <summary>
     /// Serializes <paramref name="results"/> to JSON for persistence.
-    /// Applies a soft upper-bound (<see cref="DocumentChatConsts.MaxCitationsJsonLength"/>):
+    /// Applies a soft upper-bound (<see cref="ChatConsts.MaxCitationsJsonLength"/>):
     /// if the serialized string is too long, trailing citations are dropped and a warning is logged.
     /// </summary>
     protected virtual string? SerializeCitations(IReadOnlyList<VectorSearchResult>? results)
@@ -490,14 +490,14 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         var dtos = BuildCitationDtos(results);
         var json = JsonSerializer.Serialize(dtos);
 
-        if (json.Length <= DocumentChatConsts.MaxCitationsJsonLength)
+        if (json.Length <= ChatConsts.MaxCitationsJsonLength)
             return json;
 
         Logger.LogWarning(
             "CitationsJson exceeds {Max} chars; truncating from {Count} citations",
-            DocumentChatConsts.MaxCitationsJsonLength, dtos.Count);
+            ChatConsts.MaxCitationsJsonLength, dtos.Count);
 
-        while (dtos.Count > 0 && json.Length > DocumentChatConsts.MaxCitationsJsonLength)
+        while (dtos.Count > 0 && json.Length > ChatConsts.MaxCitationsJsonLength)
         {
             dtos.RemoveAt(dtos.Count - 1);
             json = JsonSerializer.Serialize(dtos);

@@ -79,10 +79,10 @@ public static class PaperbaseDbContextModelCreatingExtensions
 
         builder.Entity<ChatConversation>(b =>
         {
-            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "DocumentChatConversations", PaperbaseDbProperties.DbSchema);
+            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "ChatConversations", PaperbaseDbProperties.DbSchema);
             b.ConfigureByConvention();
 
-            b.Property(x => x.Title).IsRequired().HasMaxLength(DocumentChatConsts.MaxTitleLength);
+            b.Property(x => x.Title).IsRequired().HasMaxLength(ChatConsts.MaxTitleLength);
             b.Property(x => x.DocumentTypeCode).HasMaxLength(DocumentConsts.MaxDocumentTypeCodeLength);
             b.HasMany(x => x.Messages)
                 .WithOne()
@@ -94,10 +94,10 @@ public static class PaperbaseDbContextModelCreatingExtensions
 
         builder.Entity<ChatMessage>(b =>
         {
-            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "DocumentChatMessages", PaperbaseDbProperties.DbSchema);
+            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "ChatMessages", PaperbaseDbProperties.DbSchema);
             b.ConfigureByConvention();
 
-            b.Property(x => x.Content).IsRequired().HasMaxLength(DocumentChatConsts.MaxMessageLength);
+            b.Property(x => x.Content).IsRequired().HasMaxLength(ChatConsts.MaxMessageLength);
             b.Property(x => x.CitationsJson);
             b.Property(x => x.Role).IsRequired();
 
@@ -107,7 +107,7 @@ public static class PaperbaseDbContextModelCreatingExtensions
             // ClientTurnId is null for assistant messages, so a full unique index would conflict.
             b.HasIndex(x => new { x.ConversationId, x.ClientTurnId })
                 .IsUnique()
-                .HasFilter("\"ClientTurnId\" IS NOT NULL");
+                .HasFilter("[ClientTurnId] IS NOT NULL");
         });
 
         // RAG chunk storage is external to the core EF model and is owned by the

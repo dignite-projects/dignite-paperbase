@@ -13,7 +13,7 @@ using Volo.Abp.EntityFrameworkCore;
 namespace Dignite.Paperbase.Host.Migrations
 {
     [DbContext(typeof(PaperbaseHostDbContext))]
-    [Migration("20260502043157_Slice0_Initial")]
+    [Migration("20260502044433_Slice0_Initial")]
     partial class Slice0_Initial
     {
         /// <inheritdoc />
@@ -101,7 +101,7 @@ namespace Dignite.Paperbase.Host.Migrations
 
                     b.HasIndex("TenantId", "CreatorId", "CreationTime");
 
-                    b.ToTable("PaperbaseDocumentChatConversations", (string)null);
+                    b.ToTable("PaperbaseChatConversations", (string)null);
                 });
 
             modelBuilder.Entity("Dignite.Paperbase.Chat.ChatMessage", b =>
@@ -134,11 +134,11 @@ namespace Dignite.Paperbase.Host.Migrations
 
                     b.HasIndex("ConversationId", "ClientTurnId")
                         .IsUnique()
-                        .HasFilter("\"ClientTurnId\" IS NOT NULL");
+                        .HasFilter("[ClientTurnId] IS NOT NULL");
 
                     b.HasIndex("ConversationId", "CreationTime");
 
-                    b.ToTable("PaperbaseDocumentChatMessages", (string)null);
+                    b.ToTable("PaperbaseChatMessages", (string)null);
                 });
 
             modelBuilder.Entity("Dignite.Paperbase.Contracts.Contracts.Contract", b =>

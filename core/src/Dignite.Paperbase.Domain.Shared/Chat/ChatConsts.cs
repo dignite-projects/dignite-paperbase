@@ -1,6 +1,6 @@
 ﻿namespace Dignite.Paperbase.Chat;
 
-public static class DocumentChatConsts
+public static class ChatConsts
 {
     public static int MaxMessageLength { get; set; } = 4000;
     public static int MaxTitleLength { get; set; } = 200;

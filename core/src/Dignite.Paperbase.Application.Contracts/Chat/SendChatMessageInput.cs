@@ -7,7 +7,7 @@ namespace Dignite.Paperbase.Chat;
 public class SendChatMessageInput
 {
     [Required]
-    [DynamicStringLength(typeof(DocumentChatConsts), nameof(DocumentChatConsts.MaxMessageLength))]
+    [DynamicStringLength(typeof(ChatConsts), nameof(ChatConsts.MaxMessageLength))]
     public string Message { get; set; } = default!;
 
     /// <summary>

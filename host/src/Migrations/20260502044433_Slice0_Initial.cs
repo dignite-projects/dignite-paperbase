@@ -508,6 +508,32 @@ namespace Dignite.Paperbase.Host.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "PaperbaseChatConversations",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    Title = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    DocumentId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    DocumentTypeCode = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: true),
+                    TopK = table.Column<int>(type: "int", nullable: true),
+                    MinScore = table.Column<double>(type: "float", nullable: true),
+                    ExtraProperties = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    ConcurrencyStamp = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: false),
+                    CreationTime = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    CreatorId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    LastModificationTime = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    LastModifierId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
+                    DeleterId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    DeletionTime = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PaperbaseChatConversations", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "PaperbaseContracts",
                 columns: table => new
                 {
@@ -542,32 +568,6 @@ namespace Dignite.Paperbase.Host.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_PaperbaseContracts", x => x.Id);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "PaperbaseDocumentChatConversations",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    Title = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    DocumentId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    DocumentTypeCode = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: true),
-                    TopK = table.Column<int>(type: "int", nullable: true),
-                    MinScore = table.Column<double>(type: "float", nullable: true),
-                    ExtraProperties = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    ConcurrencyStamp = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: false),
-                    CreationTime = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    CreatorId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    LastModificationTime = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    LastModifierId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    IsDeleted = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
-                    DeleterId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    DeletionTime = table.Column<DateTime>(type: "datetime2", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_PaperbaseDocumentChatConversations", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -927,7 +927,7 @@ namespace Dignite.Paperbase.Host.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "PaperbaseDocumentChatMessages",
+                name: "PaperbaseChatMessages",
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
@@ -940,11 +940,11 @@ namespace Dignite.Paperbase.Host.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_PaperbaseDocumentChatMessages", x => x.Id);
+                    table.PrimaryKey("PK_PaperbaseChatMessages", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_PaperbaseDocumentChatMessages_PaperbaseDocumentChatConversations_ConversationId",
+                        name: "FK_PaperbaseChatMessages_PaperbaseChatConversations_ConversationId",
                         column: x => x.ConversationId,
-                        principalTable: "PaperbaseDocumentChatConversations",
+                        principalTable: "PaperbaseChatConversations",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
@@ -1299,6 +1299,23 @@ namespace Dignite.Paperbase.Host.Migrations
                 column: "ReferenceId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_PaperbaseChatConversations_TenantId_CreatorId_CreationTime",
+                table: "PaperbaseChatConversations",
+                columns: new[] { "TenantId", "CreatorId", "CreationTime" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PaperbaseChatMessages_ConversationId_ClientTurnId",
+                table: "PaperbaseChatMessages",
+                columns: new[] { "ConversationId", "ClientTurnId" },
+                unique: true,
+                filter: "[ClientTurnId] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PaperbaseChatMessages_ConversationId_CreationTime",
+                table: "PaperbaseChatMessages",
+                columns: new[] { "ConversationId", "CreationTime" });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_PaperbaseContracts_CounterpartyName",
                 table: "PaperbaseContracts",
                 column: "CounterpartyName");
@@ -1318,23 +1335,6 @@ namespace Dignite.Paperbase.Host.Migrations
                 name: "IX_PaperbaseContracts_Status",
                 table: "PaperbaseContracts",
                 column: "Status");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_PaperbaseDocumentChatConversations_TenantId_CreatorId_CreationTime",
-                table: "PaperbaseDocumentChatConversations",
-                columns: new[] { "TenantId", "CreatorId", "CreationTime" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_PaperbaseDocumentChatMessages_ConversationId_ClientTurnId",
-                table: "PaperbaseDocumentChatMessages",
-                columns: new[] { "ConversationId", "ClientTurnId" },
-                unique: true,
-                filter: "\"ClientTurnId\" IS NOT NULL");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_PaperbaseDocumentChatMessages_ConversationId_CreationTime",
-                table: "PaperbaseDocumentChatMessages",
-                columns: new[] { "ConversationId", "CreationTime" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_PaperbaseDocumentPipelineRuns_DocumentId_PipelineCode_AttemptNumber",
@@ -1466,10 +1466,10 @@ namespace Dignite.Paperbase.Host.Migrations
                 name: "OpenIddictTokens");
 
             migrationBuilder.DropTable(
-                name: "PaperbaseContracts");
+                name: "PaperbaseChatMessages");
 
             migrationBuilder.DropTable(
-                name: "PaperbaseDocumentChatMessages");
+                name: "PaperbaseContracts");
 
             migrationBuilder.DropTable(
                 name: "PaperbaseDocumentPipelineRuns");
@@ -1496,7 +1496,7 @@ namespace Dignite.Paperbase.Host.Migrations
                 name: "OpenIddictAuthorizations");
 
             migrationBuilder.DropTable(
-                name: "PaperbaseDocumentChatConversations");
+                name: "PaperbaseChatConversations");
 
             migrationBuilder.DropTable(
                 name: "PaperbaseDocuments");
