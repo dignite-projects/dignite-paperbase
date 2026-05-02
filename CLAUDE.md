@@ -8,7 +8,7 @@
 - **core/** - ABP 应用程序核心，遵循 abp-core.md 规则
 - **modules/** - 可复用业务模块，每个模块遵循 module-template.md 的结构和虚拟方法要求
 - **host/** - 单租户测试主机，仅在此配置中间件（OnApplicationInitialization）
-- **docs/** - 开发者文档（`configuration.md` 等操作文档）和内部设计文档（`design/` 子目录）
+- **docs/** - 面向开发者和使用者的操作/配置/API 文档；设计方案与架构决策走 GitHub Issues，不在 docs/ 下落地
 
 ## 架构设计
 
