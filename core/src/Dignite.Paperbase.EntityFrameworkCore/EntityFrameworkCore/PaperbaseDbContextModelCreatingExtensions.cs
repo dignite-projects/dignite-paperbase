@@ -22,8 +22,8 @@ public static class PaperbaseDbContextModelCreatingExtensions
             b.Property(x => x.DocumentTypeCode).HasMaxLength(DocumentConsts.MaxDocumentTypeCodeLength);
             b.Property(x => x.LifecycleStatus).IsRequired();
             b.Property(x => x.ReviewStatus).IsRequired();
-            b.Property(x => x.ClassificationReason).HasColumnType("text");
-            b.Property(x => x.ExtractedText).HasColumnType("text");
+            b.Property(x => x.ClassificationReason);
+            b.Property(x => x.ExtractedText);
 
             b.OwnsOne(x => x.FileOrigin, fo =>
             {
@@ -98,7 +98,7 @@ public static class PaperbaseDbContextModelCreatingExtensions
             b.ConfigureByConvention();
 
             b.Property(x => x.Content).IsRequired().HasMaxLength(DocumentChatConsts.MaxMessageLength);
-            b.Property(x => x.CitationsJson).HasColumnType("jsonb");
+            b.Property(x => x.CitationsJson);
             b.Property(x => x.Role).IsRequired();
 
             b.HasIndex(x => new { x.ConversationId, x.CreationTime });

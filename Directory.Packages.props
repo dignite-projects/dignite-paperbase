@@ -25,7 +25,7 @@
         <PackageVersion Include="Volo.Abp.Ddd.Application.Contracts" Version="10.2.0" />
         <PackageVersion Include="Volo.Abp.Ddd.Application" Version="10.2.0" />
         <PackageVersion Include="Volo.Abp.EntityFrameworkCore" Version="10.2.0" />
-        <PackageVersion Include="Volo.Abp.EntityFrameworkCore.PostgreSql" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.EntityFrameworkCore.SqlServer" Version="10.2.0" />
         <PackageVersion Include="Volo.Abp.EntityFrameworkCore.Sqlite" Version="10.2.0" />
         <PackageVersion Include="Volo.Abp.BackgroundJobs" Version="10.2.0" />
         <PackageVersion Include="Volo.Abp.BackgroundJobs.EntityFrameworkCore" Version="10.2.0" />
