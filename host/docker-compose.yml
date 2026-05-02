@@ -37,5 +37,15 @@ services:
   #     EASYOCR_USE_GPU: "false"   # set to "true" if GPU is available
   #   restart: unless-stopped
 
+  # paddleocr:
+  #   build:
+  #     context: ./paddleocr-server
+  #   ports:
+  #     - "8866:8866"
+  #   environment:
+  #     PADDLEOCR_USE_GPU: "false"
+  #     PADDLEOCR_MODEL: "PP-OCRv4"
+  #   restart: unless-stopped
+
 volumes:
   qdrant_data:
