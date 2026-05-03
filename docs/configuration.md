@@ -120,7 +120,9 @@ Qdrant is configured by `QdrantKnowledgeIndex`, not by an EF Core connection str
 
 ## OCR
 
-Azure Document Intelligence is configured separately:
+Paperbase ships two OCR providers. Pick one in `PaperbaseHostModule` (see the README *Choosing an OCR Provider* section for the trade-offs) and add the matching configuration block.
+
+### Azure Document Intelligence (default, cloud)
 
 ```json
 "AzureDocumentIntelligence": {
@@ -130,7 +132,25 @@ Azure Document Intelligence is configured separately:
 }
 ```
 
-The module binds this section automatically.
+`PaperbaseAzureDocumentIntelligenceModule` binds this section automatically.
+
+### PaddleOCR (local sidecar)
+
+```json
+"PaddleOcr": {
+  "Endpoint": "http://localhost:8866",
+  "ModelName": "PP-OCRv4",
+  "Languages": [ "ja", "en" ]
+}
+```
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `Endpoint` | `http://localhost:8866` | PaddleOCR sidecar REST endpoint |
+| `ModelName` | `PP-OCRv4` | `PP-OCRv4` (CPU friendly) or `PaddleOCR-VL-1.5` (higher quality, requires GPU) |
+| `Languages` | `["ja", "en"]` | Default recognition languages (BCP 47); overridden by `OcrOptions.LanguageHints` per call |
+
+`PaperbasePaddleOcrModule` binds the `PaddleOcr` section automatically and talks to the sidecar started by `docker compose up paddleocr`.
 
 ## Authentication
 

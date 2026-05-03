@@ -120,7 +120,8 @@ namespace Dignite.Paperbase.Host;
     // Paperbase infrastructure modules
     typeof(PaperbaseTextExtractionModule),
     typeof(PaperbaseTextExtractionElBrunoMarkItDownModule),
-    typeof(PaperbaseAzureDocumentIntelligenceModule),
+    typeof(PaperbaseAzureDocumentIntelligenceModule),  // 默认 OCR Provider（云方案）
+    // typeof(PaperbasePaddleOcrModule),               // 本地方案（需 Docker + GPU），切换时同步在 .csproj 注释 / 启用 ProjectReference
     typeof(QdrantKnowledgeIndexModule),
 
     // Paperbase business modules

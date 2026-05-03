@@ -28,15 +28,6 @@ services:
       timeout: 5s
       retries: 10
 
-  # easyocr:
-  #   build:
-  #     context: ./easyocr-server
-  #   ports:
-  #     - "8884:8884"
-  #   environment:
-  #     EASYOCR_USE_GPU: "false"   # set to "true" if GPU is available
-  #   restart: unless-stopped
-
   # paddleocr:
   #   build:
   #     context: ./paddleocr-server

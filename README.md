@@ -89,6 +89,52 @@ npm install
 npm start
 ```
 
+## Choosing an OCR Provider
+
+Paperbase ships two OCR providers; pick one according to your deployment scenario.
+
+### Cloud option: Azure Document Intelligence (default, recommended for trial)
+
+- **When to use**: quickly trying out Paperbase / no local environment to spin up / data is allowed to leave the network boundary.
+- **Free tier (F0)**: 500 pages/month, resets on the first of each month.
+
+  > ⚠️ **F0 limitations**: each request only processes the **first 2 pages** of the input. This means:
+  > - Uploading a 50-page PDF will only return OCR for the first 2 pages.
+  > - F0 is suitable only for demos and short documents (≤ 2 pages).
+  > - For larger documents or sustained development, switch to the **S0** paid tier (~$1.50 / 1000 pages); no page truncation.
+  > - Only one F0 resource is allowed per subscription per region.
+  > - Throughput is low (about 1–2 TPS); high-frequency calls will be throttled.
+
+- **Setup**:
+  1. Sign up for Azure: https://azure.microsoft.com/free/
+  2. Create an Azure AI Document Intelligence resource (F0 for trial; S0 for serious development).
+  3. Copy the **Endpoint** and **API Key**.
+  4. Add to `host/src/appsettings.Development.json`:
+     ```json
+     "AzureDocumentIntelligence": {
+       "Endpoint": "<your-endpoint>",
+       "ApiKey": "<your-key>"
+     }
+     ```
+  5. `dotnet run` and upload a PDF.
+
+- **Quality**: native Markdown output (titles, tables, lists preserved), strong on Japanese / Chinese / English.
+- **Production**: when F0 is not enough (page quota exhausted or large documents truncated), upgrade to S0 (billed at ~$1.50 / 1000 pages).
+
+### Local option: PaddleOCR
+
+- **When to use**: data must not leave the network / a local GPU is available / fully offline development.
+- **Requirements**: Docker + GPU (NVIDIA recommended).
+- **Setup**:
+  1. `docker compose up paddleocr` to pull the image and start the sidecar.
+  2. Enable `PaperbasePaddleOcrModule` in `host/src/PaperbaseHostModule.cs` (and the corresponding `ProjectReference` in `host/src/Dignite.Paperbase.Host.csproj`); comment out `PaperbaseAzureDocumentIntelligenceModule`.
+  3. Configure the PaddleOcr endpoint in `host/src/appsettings.Development.json`.
+  4. `dotnet run`.
+
+- **Quality**: PP-OCRv4 (default) is CPU-friendly and accurate on most prints. Switch `PaddleOcr:ModelName` to `PaddleOCR-VL-1.5` (requires GPU + ~2 GB model download) for native Markdown output (titles, tables, lists preserved).
+
+> Why only these two? Cloud LLM OCR providers (Gemini / Mistral) and Google Document AI were evaluated and rejected — see issue #79 for the rationale (Japanese-language quality, region access, dependency footprint, free-tier shape).
+
 ## Deploying to Production
 
 ### Generating a Signing Certificate
