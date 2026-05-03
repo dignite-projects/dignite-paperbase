@@ -122,6 +122,8 @@ Qdrant is configured by `QdrantKnowledgeIndex`, not by an EF Core connection str
 
 Paperbase ships two OCR providers. Pick one in `PaperbaseHostModule` (see the README *Choosing an OCR Provider* section for the trade-offs) and add the matching configuration block.
 
+> **Markdown-first contract**: every OCR / text-extraction provider — built-in or third-party — **must** emit Markdown into `TextExtractionResult.Markdown`. Headings, tables and lists are the structural signals that downstream vector chunking and LLM prompts depend on; plain-text fallbacks are a design violation. Even when the source has no structure (e.g. low-quality scans), wrap the output as flat Markdown paragraphs. Nullable plain-text projections happen on the consumer side via `MarkdownStripper.Strip(...)` only when truly needed.
+
 ### PaddleOCR (default, local sidecar)
 
 ```json

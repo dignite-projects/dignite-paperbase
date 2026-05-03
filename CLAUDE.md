@@ -86,6 +86,16 @@ Dignite.Paperbase.Abstractions（扩展契约层，无其他项目依赖）
 
 > **判断依据**：如果一个字段的含义只有在特定业务场景（合同、发票、报销单…）下才成立，它就不属于 `Document`。
 
+### Markdown-first 数据流（强制）
+
+项目定位是 **AI 驱动的企业档案平台**，遇到取舍时优先 AI 友好的设计。Markdown 是 AI pipeline 的**唯一文本载荷**：
+
+- **OCR / 数字版抽取**：`ITextExtractor` / `IMarkdownTextProvider` / `IOcrProvider` 实现方**必须**输出 Markdown（标题、表格、列表是向量化切块和 LLM 理解的关键语义信号）；即使源文件无结构，也以扁平 Markdown 段落输出，**不得**退回 plain text 路径。
+- **持久化**：`Document.Markdown` 是 Document 聚合根上唯一的文本字段，**禁止**在 `Document` 或事件载荷（如 `DocumentClassifiedEto`）上引入并行的 plain-text 字段。
+- **下游消费**：向量化（`TextChunker` 按 Markdown AST 切块 + 注入 header path）、LLM 分类 / QA / Rerank、业务模块字段抽取，统一消费 Markdown。
+- **纯文本投影**：仅在消费侧（如关键字兜底分类器）按需通过 `Dignite.Paperbase.Documents.MarkdownStripper.Strip(...)` 即时计算，**不持久化**也**不在契约上并列暴露**。
+- **Prompt 表达**：`DefaultPromptProvider` 的系统提示词显式告知 LLM"输入是 Markdown"，让模型把结构标记当作语义信号利用，而非字面字符。
+
 ### AI 实现约定
 
 - 后台流水线 AI 功能按业务能力垂直切片到 `Paperbase.Application/Documents/Pipelines/`，每条流水线一个目录，内含 BackgroundJob（编排入口）+ Workflow（LLM 编排）+ 兜底/辅助组件，全部以 MAF `ChatClientAgent` 形式实现：

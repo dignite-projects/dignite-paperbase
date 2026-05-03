@@ -1,6 +1,10 @@
 # Dignite Paperbase
 
-A modular, extensible ABP-based application for paperless workflows.
+A modular, extensible ABP-based application for paperless workflows — built **AI-native** for the LLM era.
+
+## Design Principle: Markdown-first
+
+Paperbase is an AI-driven enterprise document platform. Every text-bearing document — whether a digital PDF, a Word file, or a scanned image — flows through the pipeline as **Markdown**, never plain text. Headings, tables and lists carry semantic structure that downstream consumers (vector chunking, LLM classification / Q&A / rerank, business-module field extraction) all rely on. Plain-text fallback paths are a design violation; nullable-text projections happen on the consumer side via `MarkdownStripper.Strip(...)` only when truly needed (e.g. keyword fallback classifiers). See `CLAUDE.md` → "Markdown-first 数据流" for the full contract.
 
 ## Solution Structure
 
