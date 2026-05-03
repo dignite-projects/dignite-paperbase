@@ -8,6 +8,7 @@ using Dignite.Paperbase.Localization;
 using Dignite.Paperbase.Ocr.AzureDocumentIntelligence;
 using Dignite.Paperbase.KnowledgeIndex.Qdrant;
 using Dignite.Paperbase.TextExtraction;
+using Dignite.Paperbase.TextExtraction.ElBrunoMarkItDown;
 using Microsoft.Extensions.AI;
 using Microsoft.EntityFrameworkCore;
 using OpenAI;
@@ -118,6 +119,7 @@ namespace Dignite.Paperbase.Host;
 
     // Paperbase infrastructure modules
     typeof(PaperbaseTextExtractionModule),
+    typeof(PaperbaseTextExtractionElBrunoMarkItDownModule),
     typeof(PaperbaseAzureDocumentIntelligenceModule),
     typeof(QdrantKnowledgeIndexModule),
 

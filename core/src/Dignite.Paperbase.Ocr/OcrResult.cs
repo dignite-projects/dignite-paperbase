@@ -18,6 +18,9 @@ public class OcrResult
 
     /// <summary>识别的页数。</summary>
     public int PageCount { get; set; }
+
+    /// <summary>结构化 Markdown 输出（可选），未提供时为 null。PaddleOCR-VL / Azure DI 等支持 Markdown 输出的 Provider 可填充。</summary>
+    public string? Markdown { get; set; }
 }
 
 public class OcrBlock

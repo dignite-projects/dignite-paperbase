@@ -5,13 +5,16 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
-    <RootNamespace>Dignite.Paperbase.TextExtraction</RootNamespace>
+    <RootNamespace>Dignite.Paperbase.TextExtraction.ElBrunoMarkItDown</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Volo.Abp.Core" />
-    <ProjectReference Include="..\Dignite.Paperbase.Abstractions\Dignite.Paperbase.Abstractions.csproj" />
-    <ProjectReference Include="..\Dignite.Paperbase.Ocr\Dignite.Paperbase.Ocr.csproj" />
+    <PackageReference Include="ElBruno.MarkItDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dignite.Paperbase.TextExtraction\Dignite.Paperbase.TextExtraction.csproj" />
   </ItemGroup>
 
 </Project>

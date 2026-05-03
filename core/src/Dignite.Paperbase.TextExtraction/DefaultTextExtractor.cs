@@ -1,10 +1,10 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.TextExtraction;
 using Dignite.Paperbase.Ocr;
-using Dignite.Paperbase.TextExtraction.Digital;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -15,18 +15,18 @@ namespace Dignite.Paperbase.TextExtraction;
 public class DefaultTextExtractor : ITextExtractor, ITransientDependency
 {
     private readonly IOcrProvider _ocrProvider;
-    private readonly IDigitalTextExtractorFactory _digitalExtractorFactory;
+    private readonly IMarkdownTextProvider _markdownProvider;
     private readonly PaperbaseOcrOptions _ocrOptions;
 
     public ILogger<DefaultTextExtractor> Logger { get; set; } = NullLogger<DefaultTextExtractor>.Instance;
 
     public DefaultTextExtractor(
         IOcrProvider ocrProvider,
-        IDigitalTextExtractorFactory digitalExtractorFactory,
+        IMarkdownTextProvider markdownProvider,
         IOptions<PaperbaseOcrOptions> ocrOptions)
     {
         _ocrProvider = ocrProvider;
-        _digitalExtractorFactory = digitalExtractorFactory;
+        _markdownProvider = markdownProvider;
         _ocrOptions = ocrOptions.Value;
     }
 
@@ -35,71 +35,49 @@ public class DefaultTextExtractor : ITextExtractor, ITransientDependency
         TextExtractionContext context,
         CancellationToken cancellationToken = default)
     {
-        var path = DispatchPath(context);
-        return path switch
+        if (IsImageFormat(context.FileExtension))
         {
-            ExtractionPath.Digital => await ExtractDigitalAsync(fileStream, context),
-            ExtractionPath.Physical => await ExtractByOcrAsync(fileStream, context),
-            ExtractionPath.Pdf => await ExtractPdfAsync(fileStream, context),
-            _ => await ExtractByOcrAsync(fileStream, context)
-        };
-    }
+            return await ExtractByOcrAsync(fileStream, context);
+        }
 
-    private ExtractionPath DispatchPath(TextExtractionContext ctx)
-    {
-        var ext = (ctx.FileExtension ?? string.Empty).ToLowerInvariant();
-        var ct = (ctx.ContentType ?? string.Empty).ToLowerInvariant();
-
-        if (ext is ".docx" or ".doc" or ".md" or ".txt" or ".csv" or ".rtf")
-            return ExtractionPath.Digital;
-        if (ct.StartsWith("text/"))
-            return ExtractionPath.Digital;
-        if (ext is ".jpg" or ".jpeg" or ".png" or ".tiff" or ".tif" or ".bmp" or ".webp")
-            return ExtractionPath.Physical;
-        if (ext == ".pdf")
-            return ExtractionPath.Pdf;
-
-        return ExtractionPath.Physical;
-    }
-
-    protected virtual async Task<TextExtractionResult> ExtractPdfAsync(
-        Stream fileStream,
-        TextExtractionContext ctx)
-    {
-        byte[] pdfBytes;
+        // 走 Markdown Provider；PDF 文本为空时回退 OCR（扫描件）
+        byte[] buffer;
         using (var ms = new MemoryStream())
         {
-            await fileStream.CopyToAsync(ms);
-            pdfBytes = ms.ToArray();
+            await fileStream.CopyToAsync(ms, cancellationToken);
+            buffer = ms.ToArray();
         }
 
-        try
+        MarkdownExtractionResult md;
+        using (var providerStream = new MemoryStream(buffer))
         {
-            using var pdfStream = new MemoryStream(pdfBytes);
-            return await ExtractDigitalAsync(pdfStream, ctx);
+            md = await _markdownProvider.ExtractAsync(
+                providerStream,
+                new MarkdownExtractionContext
+                {
+                    ContentType = context.ContentType ?? string.Empty,
+                    FileExtension = context.FileExtension ?? string.Empty,
+                    LanguageHints = context.LanguageHints
+                },
+                cancellationToken);
         }
-        catch (NoTextLayerException)
+
+        if (string.IsNullOrWhiteSpace(md.Text) && IsPdfExtension(context.FileExtension))
         {
-            using var ocrStream = new MemoryStream(pdfBytes);
-            return await ExtractByOcrAsync(ocrStream, ctx);
+            Logger.LogDebug("Markdown provider produced no text for PDF; falling back to OCR.");
+            using var ocrStream = new MemoryStream(buffer);
+            return await ExtractByOcrAsync(ocrStream, context);
         }
-    }
 
-    protected virtual async Task<TextExtractionResult> ExtractDigitalAsync(
-        Stream fileStream,
-        TextExtractionContext ctx)
-    {
-        var extractor = _digitalExtractorFactory.GetExtractor(ctx.ContentType ?? string.Empty, ctx.FileExtension ?? string.Empty);
-        var text = await extractor.ExtractAsync(fileStream, ctx.ContentType ?? string.Empty);
-
-        Logger.LogDebug("Digital extraction completed using {Extractor}", extractor.GetType().Name);
+        Logger.LogDebug("Markdown extraction completed using {Provider}", _markdownProvider.GetType().Name);
 
         return new TextExtractionResult
         {
-            ExtractedText = text,
+            ExtractedText = md.Text,
+            Markdown = md.Markdown,
             Confidence = 1.0,
-            DetectedLanguage = null,
-            PageCount = 0,
+            DetectedLanguage = md.DetectedLanguage,
+            PageCount = md.PageCount,
             UsedOcr = false,
         };
     }
@@ -124,12 +102,21 @@ public class DefaultTextExtractor : ITextExtractor, ITransientDependency
         return new TextExtractionResult
         {
             ExtractedText = result.RawText,
+            Markdown = result.Markdown,
             Confidence = result.Confidence,
             DetectedLanguage = result.DetectedLanguage,
             PageCount = result.PageCount,
             UsedOcr = true,
         };
     }
-}
 
-internal enum ExtractionPath { Digital, Physical, Pdf }
+    protected virtual bool IsImageFormat(string? fileExtension)
+    {
+        if (string.IsNullOrWhiteSpace(fileExtension)) return false;
+        var ext = fileExtension.ToLowerInvariant();
+        return ext is ".jpg" or ".jpeg" or ".png" or ".tiff" or ".tif" or ".bmp" or ".webp" or ".gif";
+    }
+
+    protected virtual bool IsPdfExtension(string? fileExtension)
+        => string.Equals(fileExtension, ".pdf", StringComparison.OrdinalIgnoreCase);
+}

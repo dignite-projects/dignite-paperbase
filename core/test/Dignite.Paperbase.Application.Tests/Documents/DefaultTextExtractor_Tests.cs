@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.TextExtraction;
 using Dignite.Paperbase.Ocr;
 using Dignite.Paperbase.TextExtraction;
+using Dignite.Paperbase.TextExtraction.ElBrunoMarkItDown;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Shouldly;
@@ -36,10 +37,11 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
 
         result.ExtractedText.ShouldBe("fake ocr text");
         result.Confidence.ShouldBe(0.95);
+        result.UsedOcr.ShouldBeTrue();
     }
 
     [Fact]
-    public async Task Should_Use_PlainText_For_Txt_Files()
+    public async Task Should_Use_Markdown_Provider_For_Txt_Files()
     {
         var content = "Hello World";
         var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
@@ -51,12 +53,13 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
 
         var result = await _extractor.ExtractAsync(stream, ctx);
 
-        result.ExtractedText.ShouldBe(content);
+        result.ExtractedText.ShouldContain("Hello World");
+        result.UsedOcr.ShouldBeFalse();
         result.Confidence.ShouldBe(1.0);
     }
 
     [Fact]
-    public async Task Should_Use_PlainText_For_Markdown_Files()
+    public async Task Should_Preserve_Markdown_For_Md_Files()
     {
         var content = "# Title\n\nSome content.";
         var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
@@ -68,14 +71,18 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
 
         var result = await _extractor.ExtractAsync(stream, ctx);
 
-        result.ExtractedText.ShouldBe(content);
-        result.Confidence.ShouldBe(1.0);
+        result.UsedOcr.ShouldBeFalse();
+        // Markdown 字段保留了原始结构（含 # 标题），ExtractedText 已剥离标记
+        result.Markdown.ShouldNotBeNullOrEmpty();
+        result.Markdown.ShouldContain("# Title");
+        result.ExtractedText.ShouldContain("Title");
+        result.ExtractedText.ShouldContain("Some content");
     }
 
     [Fact]
     public async Task Should_Fallback_To_Ocr_For_Scanned_Pdf()
     {
-        // 空 PDF（无文字层）→ NoTextLayerException → OCR fallback
+        // 非真实 PDF 字节 → ElBruno 转换失败 → 回退 OCR
         var stream = new MemoryStream(Encoding.UTF8.GetBytes("not a real pdf"));
         var ctx = new TextExtractionContext
         {
@@ -85,11 +92,13 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
 
         var result = await _extractor.ExtractAsync(stream, ctx);
 
-        // Broken PDF triggers NoTextLayerException → OCR path
+        result.UsedOcr.ShouldBeTrue();
         result.ExtractedText.ShouldBe("fake ocr text");
     }
 
-    [DependsOn(typeof(PaperbaseTextExtractionModule))]
+    [DependsOn(
+        typeof(PaperbaseTextExtractionModule),
+        typeof(PaperbaseTextExtractionElBrunoMarkItDownModule))]
     public class TextExtractionTestModule : AbpModule
     {
         public override void ConfigureServices(ServiceConfigurationContext context)

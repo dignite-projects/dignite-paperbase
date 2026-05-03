@@ -12,6 +12,7 @@
     <ProjectReference Include="..\..\src\Dignite.Paperbase.Application\Dignite.Paperbase.Application.csproj" />
     <ProjectReference Include="..\..\src\Dignite.Paperbase.EntityFrameworkCore\Dignite.Paperbase.EntityFrameworkCore.csproj" />
 <ProjectReference Include="..\..\src\Dignite.Paperbase.TextExtraction\Dignite.Paperbase.TextExtraction.csproj" />
+    <ProjectReference Include="..\..\src\Dignite.Paperbase.TextExtraction.ElBrunoMarkItDown\Dignite.Paperbase.TextExtraction.ElBrunoMarkItDown.csproj" />
     <ProjectReference Include="..\Dignite.Paperbase.Domain.Tests\Dignite.Paperbase.Domain.Tests.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Volo.Abp.EntityFrameworkCore.Sqlite" />

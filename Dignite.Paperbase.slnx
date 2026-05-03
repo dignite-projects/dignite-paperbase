@@ -15,6 +15,7 @@
         <Project Path="core/src/Dignite.Paperbase.KnowledgeIndex/Dignite.Paperbase.KnowledgeIndex.csproj" />
         <Project Path="core/src/Dignite.Paperbase.KnowledgeIndex.Qdrant/Dignite.Paperbase.KnowledgeIndex.Qdrant.csproj" />
         <Project Path="core/src/Dignite.Paperbase.TextExtraction/Dignite.Paperbase.TextExtraction.csproj" />
+        <Project Path="core/src/Dignite.Paperbase.TextExtraction.ElBrunoMarkItDown/Dignite.Paperbase.TextExtraction.ElBrunoMarkItDown.csproj" />
     </Folder>
 
     <Folder Name="/core/test/">
