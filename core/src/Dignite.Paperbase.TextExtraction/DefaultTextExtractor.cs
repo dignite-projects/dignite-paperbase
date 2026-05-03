@@ -40,33 +40,29 @@ public class DefaultTextExtractor : ITextExtractor, ITransientDependency
             return await ExtractByOcrAsync(fileStream, context);
         }
 
-        // 走 Markdown Provider；PDF Markdown 为空时回退 OCR（扫描件）
-        byte[] buffer;
-        using (var ms = new MemoryStream())
-        {
-            await fileStream.CopyToAsync(ms, cancellationToken);
-            buffer = ms.ToArray();
-        }
+        // 用单一 MemoryStream 横跨 Markdown Provider + 可能的 OCR 回退两次读取：
+        // 输入流来自 blob 存储可能不可 seek，且 ElBruno 内部 PdfPig/OpenXml 等
+        // 解析器要求 seekable stream，故必须缓冲。
+        // 已知限制：超大文件（GB 级扫描 PDF）会全量驻留内存，需要时改为临时文件路径。
+        using var seekable = new MemoryStream();
+        await fileStream.CopyToAsync(seekable, cancellationToken);
+        seekable.Position = 0;
 
-        MarkdownExtractionResult md;
-        using (var providerStream = new MemoryStream(buffer))
-        {
-            md = await _markdownProvider.ExtractAsync(
-                providerStream,
-                new MarkdownExtractionContext
-                {
-                    ContentType = context.ContentType ?? string.Empty,
-                    FileExtension = context.FileExtension ?? string.Empty,
-                    LanguageHints = context.LanguageHints
-                },
-                cancellationToken);
-        }
+        var md = await _markdownProvider.ExtractAsync(
+            seekable,
+            new MarkdownExtractionContext
+            {
+                ContentType = context.ContentType ?? string.Empty,
+                FileExtension = context.FileExtension ?? string.Empty,
+                LanguageHints = context.LanguageHints
+            },
+            cancellationToken);
 
         if (string.IsNullOrWhiteSpace(md.Markdown) && IsPdfExtension(context.FileExtension))
         {
             Logger.LogDebug("Markdown provider produced no content for PDF; falling back to OCR.");
-            using var ocrStream = new MemoryStream(buffer);
-            return await ExtractByOcrAsync(ocrStream, context);
+            seekable.Position = 0;
+            return await ExtractByOcrAsync(seekable, context);
         }
 
         Logger.LogDebug("Markdown extraction completed using {Provider}", _markdownProvider.GetType().Name);
