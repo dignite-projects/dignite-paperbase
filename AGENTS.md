@@ -16,7 +16,7 @@ This repository contains an ABP-based project. Before making code changes, read 
 - `core/` contains the ABP application core.
 - `modules/` contains reusable business modules.
 - `host/` contains the single-tenant test host and is the place to configure middleware in `OnApplicationInitialization`.
-- `docs/` contains developer-facing documentation (e.g. `configuration.md`) and internal design documents under `docs/design/`.
+- `docs/` contains developer-facing documentation organized by feature (e.g. `text-extraction.md`, `embedding.md`, `document-chat.md`) and internal design documents under `docs/design/`.
 
 ## Project Rules
 

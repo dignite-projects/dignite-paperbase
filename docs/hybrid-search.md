@@ -4,7 +4,7 @@ Paperbase supports **hybrid search** for Qdrant: dense-vector recall and full-te
 
 Hybrid search is opt-in and disabled by default. Pure dense-vector search remains the default.
 
-> See also: [`configuration.md`](configuration.md#qdrant-knowledge-index-provider) for the full Qdrant configuration surface and [`knowledge-index-provider.md`](knowledge-index-provider.md) for how non-Qdrant providers fit into this picture.
+> See also: [`knowledge-index.md`](knowledge-index.md) for the full Qdrant configuration surface and [`knowledge-index-provider.md`](knowledge-index-provider.md) for how non-Qdrant providers fit into this picture.
 
 ## How It Works
 

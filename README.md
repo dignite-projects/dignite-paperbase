@@ -95,109 +95,31 @@ npm start
 
 ## Choosing an OCR Provider
 
-Paperbase ships two OCR providers; pick one according to your deployment scenario.
+Paperbase ships two OCR providers — local **PaddleOCR** (default, CPU, no network) and cloud **Azure Document Intelligence**. PaddleOCR is the zero-config default for development; Azure DI is the recommended production option when data is allowed to leave the network.
 
-### Local option: PaddleOCR (default, recommended for development)
-
-- **When to use**: zero-config local development / data must not leave the network / fully offline.
-- **Requirements**: Docker only — `PP-StructureV3` runs on **CPU** and produces native Markdown out of the box.
-- **Setup**:
-  1. `docker compose up paddleocr` to build the sidecar (first run downloads ~600 MB of model weights, ~30–60 s cold start).
-  2. `dotnet run` — the host module already wires `PaperbasePaddleOcrModule` and binds the `PaddleOcr` section in `appsettings.json` to `http://localhost:8866`.
-  3. Upload a PDF.
-
-- **Quality**: `PP-StructureV3` (default) preserves headings, paragraphs, tables and seal placeholders as Markdown; especially strong on Chinese (OmniDocBench edit distance ≈ 0.21, ~3× better than Docling). For pure line-level OCR with no Markdown structure, set `PaddleOcr:ModelName` to `PP-OCRv4`. For the highest-quality VLM pipeline (requires GPU + ~2 GB model download), set it to `PaddleOCR-VL-1.5`.
-- **Performance**: ~3.7 s/page on CPU (Intel Xeon class), ~2 GB RAM working set.
-
-### Cloud option: Azure Document Intelligence
-
-- **When to use**: production workloads where you want a managed OCR backend / data is allowed to leave the network boundary / you don't want to operate a sidecar.
-- **Free tier (F0)**: 500 pages/month, resets on the first of each month.
-
-  > ⚠️ **F0 limitations**: each request only processes the **first 2 pages** of the input. This means:
-  > - Uploading a 50-page PDF will only return OCR for the first 2 pages.
-  > - F0 is suitable only for demos and short documents (≤ 2 pages).
-  > - For larger documents or sustained development, switch to the **S0** paid tier (~$1.50 / 1000 pages); no page truncation.
-  > - Only one F0 resource is allowed per subscription per region.
-  > - Throughput is low (about 1–2 TPS); high-frequency calls will be throttled.
-
-- **Setup**:
-  1. Sign up for Azure: https://azure.microsoft.com/free/
-  2. Create an Azure AI Document Intelligence resource (F0 for trial; S0 for serious development).
-  3. Copy the **Endpoint** and **API Key**.
-  4. Enable `PaperbaseAzureDocumentIntelligenceModule` in `host/src/PaperbaseHostModule.cs` (and the corresponding `ProjectReference` in `host/src/Dignite.Paperbase.Host.csproj`); comment out `PaperbasePaddleOcrModule`.
-  5. Add to `host/src/appsettings.Development.json`:
-     ```json
-     "AzureDocumentIntelligence": {
-       "Endpoint": "<your-endpoint>",
-       "ApiKey": "<your-key>"
-     }
-     ```
-  6. `dotnet run` and upload a PDF.
-
-- **Quality**: native Markdown output (titles, tables, lists preserved), strong on Japanese / Chinese / English.
-- **Production**: when F0 is not enough (page quota exhausted or large documents truncated), upgrade to S0 (billed at ~$1.50 / 1000 pages).
-
-> Why only these two? Cloud LLM OCR providers (Gemini / Mistral) and Google Document AI were evaluated and rejected — see issue #79 for the rationale (Japanese-language quality, region access, dependency footprint, free-tier shape).
+Full selection guidance, configuration, and resource footprint: see [docs/text-extraction.md](./docs/text-extraction.md).
 
 ## Deploying to Production
 
-### Generating a Signing Certificate
+For database connection strings, OpenIddict signing certificate, string-encryption key, Docker layout and the migration boundary between PostgreSQL and Qdrant, see [docs/deployment.md](./docs/deployment.md). For per-release smoke tests, see [docs/deployment-checklist.md](./docs/deployment-checklist.md).
 
-In the production environment, you need a signing certificate. Generate one with:
+## Documentation
 
-```bash
-dotnet dev-certs https -v -ep openiddict.pfx -p <your-certificate-passphrase>
-```
+Feature docs (start here for any specific topic):
 
-> Replace `<your-certificate-passphrase>` with a strong random password. Save it — you will need it in `appsettings.Production.json`.
+* [Text extraction](./docs/text-extraction.md) — Markdown-first contract, PaddleOCR / Azure DI configuration
+* [Classification](./docs/classification.md) — document-type pipeline and prompt tuning
+* [Embedding](./docs/embedding.md) — Markdown-aware chunking, switching the embedding model
+* [Knowledge index](./docs/knowledge-index.md) — Qdrant schema, payload indexes, retrieval defaults
+* [Hybrid search](./docs/hybrid-search.md) — dense + BM25 RRF fusion on Qdrant
+* [Document chat](./docs/document-chat.md) — feature overview, rerank, tool contributors → [HTTP client guide](./docs/document-chat-client.md)
+* [AI provider](./docs/ai-provider.md) — wiring `IChatClient` and `IEmbeddingGenerator`
+* [Pipeline runs](./docs/pipeline-runs.md) — run history and review-UI payloads
+* [Deployment](./docs/deployment.md) — DB, Qdrant, certificate, Docker
+* [Knowledge-index provider authoring](./docs/knowledge-index-provider.md) — adding a non-Qdrant backend
 
-For more information, refer to: [OpenIddict Certificate Configuration](https://documentation.openiddict.com/configuration/encryption-and-signing-credentials.html#registering-a-certificate-recommended-for-production-ready-scenarios)
+External references:
 
-### Production Configuration
-
-The `appsettings.Production.json` file is git-ignored. Create it manually in the deployment directory alongside `openiddict.pfx`:
-
-```json
-{
-  "ConnectionStrings": {
-    "Default": "<your production database connection string>"
-  },
-  "AuthServer": {
-    "CertificatePassPhrase": "<your-certificate-passphrase>"
-  },
-  "StringEncryption": {
-    "DefaultPassPhrase": "<your encryption key — never change this after data has been written>"
-  }
-}
-```
-
-### Deploy with Docker
-
-Build images locally:
-
-```bash
-cd host/etc/build
-./build-images-locally.ps1
-```
-
-Start with Docker Compose:
-
-```bash
-cd host/etc/docker
-./run-docker.ps1
-```
-
-Stop containers:
-
-```bash
-cd host/etc/docker
-./stop-docker.ps1
-```
-
-## Resources
-
-* [Configuration Guide](./docs/configuration.md)
 * [Angular Application](./host/angular/README.md)
 * [ABP Framework Documentation](https://abp.io/docs/latest)
 * [Application (Single Layer) Startup Template](https://abp.io/docs/latest/solution-templates/application-single-layer)
