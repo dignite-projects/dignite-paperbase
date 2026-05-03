@@ -83,20 +83,17 @@ public class DocumentPipelineRunManager : DomainService
 
     /// <summary>
     /// 记录文本提取结果、回写实际 SourceType 并完成 Run。
+    /// <paramref name="markdown"/> 是流水线唯一的文本载荷（数字版与 OCR 路径都已统一输出 Markdown）；
+    /// 下游需要纯文本时通过 <see cref="MarkdownStripper.Strip"/> 投影。
     /// </summary>
-    /// <param name="markdown">
-    /// Provider 输出的结构化 Markdown（可空）。本期由 ElBruno.MarkItDotNet 数字版路径填充；
-    /// 当前 OCR 路径不填充。Embedding 流水线在切块时优先使用 Markdown，回退 ExtractedText。
-    /// </param>
     public virtual Task CompleteTextExtractionAsync(
         Document document,
         DocumentPipelineRun run,
-        string extractedText,
-        string? markdown = null,
+        string markdown,
         SourceType sourceType = SourceType.Physical)
     {
         document.SetSourceType(sourceType);
-        document.SetExtractedText(extractedText, markdown);
+        document.SetMarkdown(markdown);
         return CompleteAsync(document, run);
     }
 

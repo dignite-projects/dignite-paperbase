@@ -229,7 +229,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
             TenantId = document.TenantId,
             DocumentTypeCode = input.DocumentTypeCode,
             ClassificationConfidence = 1.0,
-            ExtractedText = document.ExtractedText
+            Markdown = document.Markdown
         });
 
         await _backgroundJobManager.EnqueueAsync(

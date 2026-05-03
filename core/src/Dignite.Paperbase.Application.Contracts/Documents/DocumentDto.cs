@@ -17,7 +17,13 @@ public class DocumentDto : EntityDto<Guid>
     public double ClassificationConfidence { get; set; }
     public string? ClassificationReason { get; set; }
     public bool HasEmbedding { get; set; }
-    public string? ExtractedText { get; set; }
+
+    /// <summary>
+    /// 文档结构化 Markdown 内容（文本提取流水线 Run 成功后写入）。
+    /// 前端可直接渲染；需要纯文本时由前端 strip 或后端通过 <c>MarkdownStripper.Strip</c> 投影。
+    /// </summary>
+    public string? Markdown { get; set; }
+
     public DateTime CreationTime { get; set; }
     public IList<DocumentPipelineRunDto> PipelineRuns { get; set; } = new List<DocumentPipelineRunDto>();
 }

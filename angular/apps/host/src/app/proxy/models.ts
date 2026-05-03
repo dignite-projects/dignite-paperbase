@@ -61,7 +61,7 @@ export interface DocumentDto {
   reviewStatus: DocumentReviewStatus;
   classificationConfidence: number;
   hasEmbedding: boolean;
-  extractedText?: string;
+  markdown?: string;
   creationTime: string;
   pipelineRuns: DocumentPipelineRunDto[];
 }

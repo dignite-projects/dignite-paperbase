@@ -54,7 +54,7 @@ public class DocumentTextExtractionBackgroundJob
 
             var actualSourceType = result.UsedOcr ? SourceType.Physical : SourceType.Digital;
             await _pipelineRunManager.CompleteTextExtractionAsync(
-                document, run, result.ExtractedText, result.Markdown, actualSourceType);
+                document, run, result.Markdown, actualSourceType);
             await _documentRepository.UpdateAsync(document);
 
             await _backgroundJobManager.EnqueueAsync(

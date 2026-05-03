@@ -387,7 +387,7 @@ public class DocumentClassificationBackgroundJob_Tests
                 originalFileName: "test.pdf"));
 
         typeof(Document)
-            .GetProperty(nameof(Document.ExtractedText))!
+            .GetProperty(nameof(Document.Markdown))!
             .GetSetMethod(nonPublic: true)!
             .Invoke(doc, [extractedText]);
 

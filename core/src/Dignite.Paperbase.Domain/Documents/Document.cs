@@ -40,12 +40,9 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
     /// </summary>
     public virtual DocumentReviewStatus ReviewStatus { get; private set; }
 
-    /// <summary>提取的文本内容（文本提取流水线 Run 成功后写入，不可变）</summary>
-    public virtual string? ExtractedText { get; private set; }
-
     /// <summary>
-    /// 提取的结构化 Markdown 内容（仅当 Provider 输出 Markdown 时填充，例如 ElBruno.MarkItDotNet）。
-    /// 与 <see cref="ExtractedText"/> 同一次写入、同样不可变；OCR 路径或 Provider 不支持 Markdown 时为 null。
+    /// 提取的结构化 Markdown 内容（文本提取流水线 Run 成功后写入，不可变）。
+    /// 这是 Document 唯一的文本载荷——下游需要纯文本时通过 <see cref="MarkdownStripper.Strip"/> 投影。
     /// </summary>
     public virtual string? Markdown { get; private set; }
 
@@ -107,11 +104,10 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
 
     // --- 写入方法（由 DocumentPipelineRunManager 在流水线完成后调用） ---
 
-    internal void SetExtractedText(string extractedText, string? markdown = null)
+    internal void SetMarkdown(string markdown)
     {
-        if (!string.IsNullOrEmpty(ExtractedText))
-            throw new BusinessException(PaperbaseErrorCodes.ExtractedTextIsImmutable);
-        ExtractedText = extractedText;
+        if (!string.IsNullOrEmpty(Markdown))
+            throw new BusinessException(PaperbaseErrorCodes.MarkdownIsImmutable);
         Markdown = string.IsNullOrEmpty(markdown) ? null : markdown;
     }
 

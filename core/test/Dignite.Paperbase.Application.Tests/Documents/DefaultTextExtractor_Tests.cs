@@ -35,7 +35,8 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
 
         var result = await _extractor.ExtractAsync(stream, ctx);
 
-        result.ExtractedText.ShouldBe("fake ocr text");
+        // OCR Provider 没有 Markdown 输出时，DefaultTextExtractor 把 RawText 当退化 Markdown 透传。
+        result.Markdown.ShouldBe("fake ocr text");
         result.Confidence.ShouldBe(0.95);
         result.UsedOcr.ShouldBeTrue();
     }
@@ -53,7 +54,7 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
 
         var result = await _extractor.ExtractAsync(stream, ctx);
 
-        result.ExtractedText.ShouldContain("Hello World");
+        result.Markdown.ShouldContain("Hello World");
         result.UsedOcr.ShouldBeFalse();
         result.Confidence.ShouldBe(1.0);
     }
@@ -72,11 +73,10 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
         var result = await _extractor.ExtractAsync(stream, ctx);
 
         result.UsedOcr.ShouldBeFalse();
-        // Markdown 字段保留了原始结构（含 # 标题），ExtractedText 已剥离标记
+        // Markdown 字段保留了原始结构（含 # 标题）
         result.Markdown.ShouldNotBeNullOrEmpty();
         result.Markdown.ShouldContain("# Title");
-        result.ExtractedText.ShouldContain("Title");
-        result.ExtractedText.ShouldContain("Some content");
+        result.Markdown.ShouldContain("Some content");
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
         var result = await _extractor.ExtractAsync(stream, ctx);
 
         result.UsedOcr.ShouldBeTrue();
-        result.ExtractedText.ShouldBe("fake ocr text");
+        result.Markdown.ShouldBe("fake ocr text");
     }
 
     [DependsOn(

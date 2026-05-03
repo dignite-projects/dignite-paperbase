@@ -27,7 +27,7 @@ export interface DocumentDto extends EntityDto<string> {
   classificationConfidence?: number;
   classificationReason?: string | null;
   hasEmbedding?: boolean;
-  extractedText?: string | null;
+  markdown?: string | null;
   creationTime?: string;
   pipelineRuns?: DocumentPipelineRunDto[];
 }

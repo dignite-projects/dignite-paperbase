@@ -42,7 +42,8 @@ public class ContractDocumentHandler :
 
         using (_currentTenant.Change(eventData.TenantId))
         {
-            var extraction = await ExtractFieldsAsync(eventData.ExtractedText ?? string.Empty);
+            // 字段抽取直接吃 Markdown：结构信号（标题/表格/列表）有助于 LLM 准确定位金额、日期等字段。
+            var extraction = await ExtractFieldsAsync(eventData.Markdown ?? string.Empty);
             var fields = ExtractedContractFields.FromAgentResult(extraction);
 
             var existing = await _contractRepository.FindByDocumentIdAsync(eventData.DocumentId);

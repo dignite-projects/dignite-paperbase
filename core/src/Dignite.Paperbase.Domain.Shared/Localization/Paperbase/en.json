@@ -23,7 +23,7 @@
     "Document:Detail": "Document Detail",
     "Document:OriginalFile": "Original File",
     "Document:Metadata": "Metadata",
-    "Document:ExtractedText": "OCR Raw Text",
+    "Document:Markdown": "Extracted Markdown",
     "Document:Type": "Document Type",
     "Document:Status": "Status",
     "Document:FileName": "File Name",
@@ -101,7 +101,7 @@
     "Permission:DocumentRelations.ConfirmRelation": "Confirm Document Relation",
 
     "Paperbase:InvalidDocumentTypeCode": "Invalid document type code: '{documentTypeCode}'.",
-    "Paperbase:ExtractedTextIsImmutable": "Extracted text has already been set and cannot be changed.",
+    "Paperbase:MarkdownIsImmutable": "Extracted markdown has already been set and cannot be changed.",
     "Paperbase:DocumentDuplicate": "This file has already been uploaded ({FileName}).",
     "Paperbase:DocumentInRecycleBin": "This file already exists in the recycle bin ({FileName}).",
 

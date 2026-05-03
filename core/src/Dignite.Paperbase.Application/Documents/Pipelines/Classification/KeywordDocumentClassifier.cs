@@ -9,14 +9,15 @@ namespace Dignite.Paperbase.Documents.Pipelines.Classification;
 /// <summary>
 /// 关键词匹配分类器：在 AI Provider 失败时作为兜底。
 /// 候选集由调用方决定（与 LLM 路径保持一致），避免回退路径命中 LLM 看不见的类型。
+/// 调用方负责提供纯文本（Markdown 已 strip）——关键词只匹配字面，结构标记是噪音。
 /// </summary>
 public class KeywordDocumentClassifier : ITransientDependency
 {
     public virtual DocumentClassificationOutcome Classify(
         IReadOnlyList<DocumentTypeDefinition> candidates,
-        string extractedText)
+        string plainText)
     {
-        var text = extractedText ?? string.Empty;
+        var text = plainText ?? string.Empty;
 
         var match = candidates
             .OrderByDescending(t => t.Priority)

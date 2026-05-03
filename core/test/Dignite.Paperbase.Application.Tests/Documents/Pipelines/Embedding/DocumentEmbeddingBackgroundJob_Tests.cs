@@ -58,9 +58,9 @@ public class DocumentEmbeddingBackgroundJob_Tests
     }
 
     [Fact]
-    public async Task Empty_ExtractedText_Skips_Job_Without_Touching_KnowledgeIndex()
+    public async Task Empty_Markdown_Skips_Job_Without_Touching_KnowledgeIndex()
     {
-        // ExtractedText 为 null/whitespace 时整个 job 应静默退出，不创建 PipelineRun，
+        // Markdown 为 null/whitespace 时整个 job 应静默退出，不创建 PipelineRun，
         // 也不能调用向量存储——避免对一个还没有内容的文档清空索引。
         var doc = CreateDocument(extractedText: null);
         SetupDocumentRepository(doc);
@@ -201,7 +201,7 @@ public class DocumentEmbeddingBackgroundJob_Tests
     private void SetupWorkflowChunks(IReadOnlyList<DocumentEmbeddingChunk> chunks)
     {
         _workflow
-            .RunAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .RunAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(chunks);
     }
 
@@ -232,7 +232,7 @@ public class DocumentEmbeddingBackgroundJob_Tests
         if (extractedText != null)
         {
             typeof(Document)
-                .GetProperty(nameof(Document.ExtractedText))!
+                .GetProperty(nameof(Document.Markdown))!
                 .GetSetMethod(nonPublic: true)!
                 .Invoke(doc, [extractedText]);
         }

@@ -17,7 +17,8 @@ public class DocumentClassifiedEto
     public double ClassificationConfidence { get; set; }
 
     /// <summary>
-    /// 文档提取的全文，随事件携带，省去业务模块回查核心仓储。
+    /// 文档提取的结构化 Markdown，随事件携带，省去业务模块回查核心仓储。
+    /// 业务模块可直接喂给 LLM（结构信号有助于字段抽取）；需要纯文本时用 <see cref="Dignite.Paperbase.Documents.MarkdownStripper"/>。
     /// </summary>
-    public string? ExtractedText { get; set; }
+    public string? Markdown { get; set; }
 }

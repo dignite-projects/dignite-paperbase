@@ -33,7 +33,12 @@ public class AzureDocumentIntelligenceOcrProvider : IOcrProvider, ITransientDepe
             binaryData = BinaryData.FromBytes(ms.ToArray());
         }
 
-        var analyzeOptions = new AnalyzeDocumentOptions(_options.ModelId, binaryData);
+        var analyzeOptions = new AnalyzeDocumentOptions(_options.ModelId, binaryData)
+        {
+            // 启用 Markdown 输出（需 api-version 2024-11-30+，SDK 1.0+）。
+            // analyzeResult.Content 直接是带标题/表格/列表的 Markdown。
+            OutputContentFormat = DocumentContentFormat.Markdown
+        };
         var operation = await client.AnalyzeDocumentAsync(WaitUntil.Completed, analyzeOptions);
 
         var analyzeResult = operation.Value;
@@ -60,9 +65,12 @@ public class AzureDocumentIntelligenceOcrProvider : IOcrProvider, ITransientDepe
             }
         }
 
+        var markdown = analyzeResult.Content ?? string.Empty;
+
         return new OcrResult
         {
             RawText = string.Join(Environment.NewLine, blocks.Select(b => b.Text)),
+            Markdown = string.IsNullOrEmpty(markdown) ? null : markdown,
             Blocks = blocks,
             Confidence = blockCount > 0 ? totalConfidence / blockCount : 0,
             DetectedLanguage = analyzeResult.Languages?.FirstOrDefault()?.Locale,

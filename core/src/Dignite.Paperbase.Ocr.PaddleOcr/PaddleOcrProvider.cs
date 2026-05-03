@@ -62,6 +62,7 @@ public class PaddleOcrProvider : IOcrProvider, ITransientDependency
         return new OcrResult
         {
             RawText = result.RawText,
+            Markdown = string.IsNullOrEmpty(result.Markdown) ? null : result.Markdown,
             Blocks = blocks,
             Confidence = blocks.Count > 0 ? blocks.Average(b => b.Confidence) : 0,
             DetectedLanguage = result.DetectedLanguage,
@@ -73,6 +74,10 @@ public class PaddleOcrProvider : IOcrProvider, ITransientDependency
     {
         [JsonPropertyName("raw_text")]
         public string RawText { get; set; } = string.Empty;
+
+        /// <summary>仅 PaddleOCR-VL 模型填充；PP-OCRv4 模式下为 null。</summary>
+        [JsonPropertyName("markdown")]
+        public string? Markdown { get; set; }
 
         [JsonPropertyName("blocks")]
         public List<PaddleOcrBlock> Blocks { get; set; } = [];

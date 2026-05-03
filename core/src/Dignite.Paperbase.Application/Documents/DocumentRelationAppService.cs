@@ -170,7 +170,7 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
             DocumentTypeCode = document?.DocumentTypeCode,
             LifecycleStatus = document?.LifecycleStatus ?? default,
             ReviewStatus = document?.ReviewStatus ?? default,
-            Summary = CreateSummary(document?.ExtractedText),
+            Summary = CreateSummary(document?.Markdown),
             Distance = distance
         };
     }
@@ -188,16 +188,22 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
         };
     }
 
-    private static string? CreateSummary(string? extractedText)
+    private static string? CreateSummary(string? markdown)
     {
-        if (string.IsNullOrWhiteSpace(extractedText))
+        if (string.IsNullOrWhiteSpace(markdown))
         {
             return null;
         }
 
-        var trimmed = extractedText.Trim();
-        return trimmed.Length <= SummaryLength
-            ? trimmed
-            : trimmed[..SummaryLength];
+        // 摘要面向纯文本预览（节点 tooltip / 卡片），剥离 Markdown 标记后再截断。
+        var plainText = MarkdownStripper.Strip(markdown);
+        if (string.IsNullOrEmpty(plainText))
+        {
+            return null;
+        }
+
+        return plainText.Length <= SummaryLength
+            ? plainText
+            : plainText[..SummaryLength];
     }
 }

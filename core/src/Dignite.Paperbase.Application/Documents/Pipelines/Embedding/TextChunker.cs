@@ -28,25 +28,17 @@ public class TextChunker : ITransientDependency
     }
 
     /// <summary>
-    /// 字符级降级路径：当上游没有 Markdown 输出（OCR Provider 当前实现）时使用。
+    /// Markdown-aware 路径。按 Markdown AST 顶层 Block（标题/段落/列表/表格/代码块）切分，
+    /// 并把 header path 注入到每个 chunk 头部；单个 Block 超过 ChunkSize 时回退到字符级二次切分。
+    /// 输入是上游 TextExtraction 的唯一文本载荷——无 Markdown 标记的纯文本会被识别为单段落，
+    /// 走 ChunkMarkdown 路径同样有效。
     /// </summary>
-    public virtual IReadOnlyList<string> Chunk(string text)
-    {
-        return ChunkPlainText(text);
-    }
-
-    /// <summary>
-    /// Markdown-aware 路径。<paramref name="markdown"/> 非空时按 Markdown AST 顶层 Block
-    /// （标题/段落/列表/表格/代码块）切分，并把 header path 注入到每个 chunk 头部；
-    /// 单个 Block 超过 ChunkSize 时回退到字符级二次切分。
-    /// <paramref name="markdown"/> 为空时直接走 <paramref name="fallbackText"/> 的字符级路径。
-    /// </summary>
-    public virtual IReadOnlyList<string> Chunk(string? markdown, string fallbackText)
+    public virtual IReadOnlyList<string> Chunk(string markdown)
     {
         if (string.IsNullOrWhiteSpace(markdown))
-            return ChunkPlainText(fallbackText);
+            return Array.Empty<string>();
 
-        return ChunkMarkdown(markdown!);
+        return ChunkMarkdown(markdown);
     }
 
     protected virtual IReadOnlyList<string> ChunkMarkdown(string markdown)

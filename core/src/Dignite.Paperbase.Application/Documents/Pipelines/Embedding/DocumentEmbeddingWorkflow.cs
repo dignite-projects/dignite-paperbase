@@ -23,12 +23,10 @@ public class DocumentEmbeddingWorkflow : ITransientDependency
     }
 
     public virtual async Task<IReadOnlyList<DocumentEmbeddingChunk>> RunAsync(
-        string extractedText,
-        string? markdown = null,
+        string markdown,
         CancellationToken cancellationToken = default)
     {
-        // markdown 非空 → Markdown-aware 切块；空 → 走字符级降级（OCR 路径当前不输出 Markdown）
-        var chunks = _chunker.Chunk(markdown, extractedText);
+        var chunks = _chunker.Chunk(markdown);
         if (chunks.Count == 0)
             return [];
 

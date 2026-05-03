@@ -253,7 +253,7 @@ public class DocumentRelationAppService_Tests
                 fileSize: 1024,
                 originalFileName: originalFileName));
 
-        SetProperty(document, nameof(Document.ExtractedText), extractedText);
+        SetProperty(document, nameof(Document.Markdown), extractedText);
         SetProperty(document, nameof(Document.DocumentTypeCode), documentTypeCode);
 
         return document;

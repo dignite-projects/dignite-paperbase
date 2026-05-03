@@ -34,7 +34,7 @@ public class DocumentEmbeddingBackgroundJob
     {
         var document = await _documentRepository.GetAsync(args.DocumentId);
 
-        if (string.IsNullOrWhiteSpace(document.ExtractedText))
+        if (string.IsNullOrWhiteSpace(document.Markdown))
             return;
 
         var run = await _pipelineRunManager.StartAsync(document, PaperbasePipelines.Embedding);
@@ -42,7 +42,7 @@ public class DocumentEmbeddingBackgroundJob
 
         try
         {
-            var chunks = await _workflow.RunAsync(document.ExtractedText, document.Markdown);
+            var chunks = await _workflow.RunAsync(document.Markdown);
 
             // UpsertDocumentAsync handles whole-document replace in the knowledge index.
             // TenantId is copied explicitly from Document so the operation is safe in

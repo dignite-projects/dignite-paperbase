@@ -63,11 +63,14 @@ public class DocumentClassificationBackgroundJob
                 .Take(_aiOptions.MaxDocumentTypesInClassificationPrompt)
                 .ToList();
 
+            // LLM 路径直接吃 Markdown（结构信号有助于分类）；
+            // 关键词兜底走纯文本投影（关键词只匹配字面，结构标记是噪音）。
+            var markdown = document.Markdown ?? string.Empty;
+
             DocumentClassificationOutcome outcome;
             try
             {
-                outcome = await _workflow.RunAsync(
-                    candidates, document.ExtractedText ?? string.Empty);
+                outcome = await _workflow.RunAsync(candidates, markdown);
             }
             catch (Exception ex) when (IsTransientProviderError(ex))
             {
@@ -76,7 +79,7 @@ public class DocumentClassificationBackgroundJob
                 Logger.LogWarning(ex,
                     "AI classification provider unavailable for document {DocumentId}; falling back to keyword classifier.",
                     document.Id);
-                outcome = _keywordClassifier.Classify(candidates, document.ExtractedText ?? string.Empty);
+                outcome = _keywordClassifier.Classify(candidates, MarkdownStripper.Strip(markdown));
             }
             catch (Exception ex) when (IsSchemaDeserializationError(ex))
             {
@@ -145,7 +148,7 @@ public class DocumentClassificationBackgroundJob
                 TenantId = document.TenantId,
                 DocumentTypeCode = typeDef.TypeCode,
                 ClassificationConfidence = outcome.ConfidenceScore,
-                ExtractedText = document.ExtractedText
+                Markdown = document.Markdown
             });
 
             await _backgroundJobManager.EnqueueAsync(

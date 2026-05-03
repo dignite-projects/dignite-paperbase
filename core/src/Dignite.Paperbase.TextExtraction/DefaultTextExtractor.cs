@@ -40,7 +40,7 @@ public class DefaultTextExtractor : ITextExtractor, ITransientDependency
             return await ExtractByOcrAsync(fileStream, context);
         }
 
-        // 走 Markdown Provider；PDF 文本为空时回退 OCR（扫描件）
+        // 走 Markdown Provider；PDF Markdown 为空时回退 OCR（扫描件）
         byte[] buffer;
         using (var ms = new MemoryStream())
         {
@@ -62,9 +62,9 @@ public class DefaultTextExtractor : ITextExtractor, ITransientDependency
                 cancellationToken);
         }
 
-        if (string.IsNullOrWhiteSpace(md.Text) && IsPdfExtension(context.FileExtension))
+        if (string.IsNullOrWhiteSpace(md.Markdown) && IsPdfExtension(context.FileExtension))
         {
-            Logger.LogDebug("Markdown provider produced no text for PDF; falling back to OCR.");
+            Logger.LogDebug("Markdown provider produced no content for PDF; falling back to OCR.");
             using var ocrStream = new MemoryStream(buffer);
             return await ExtractByOcrAsync(ocrStream, context);
         }
@@ -73,7 +73,6 @@ public class DefaultTextExtractor : ITextExtractor, ITransientDependency
 
         return new TextExtractionResult
         {
-            ExtractedText = md.Text,
             Markdown = md.Markdown,
             Confidence = 1.0,
             DetectedLanguage = md.DetectedLanguage,
@@ -99,10 +98,16 @@ public class DefaultTextExtractor : ITextExtractor, ITransientDependency
 
         Logger.LogDebug("OCR extraction completed using {Provider}", _ocrProvider.GetType().Name);
 
+        // Provider 没有原生 Markdown 输出（如 PaddleOcr PP-OCRv4 模式）时，
+        // 用 RawText 作为退化 Markdown：无标题/表格/列表的纯段落是合法 Markdown，
+        // 下游 Markdown-aware 切块器按段落工作不会失败。
+        var markdown = !string.IsNullOrEmpty(result.Markdown)
+            ? result.Markdown
+            : (result.RawText ?? string.Empty);
+
         return new TextExtractionResult
         {
-            ExtractedText = result.RawText,
-            Markdown = result.Markdown,
+            Markdown = markdown,
             Confidence = result.Confidence,
             DetectedLanguage = result.DetectedLanguage,
             PageCount = result.PageCount,
