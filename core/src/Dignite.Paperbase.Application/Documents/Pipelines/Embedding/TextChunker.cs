@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using Dignite.Paperbase.Ai;
+using Markdig;
+using Markdig.Syntax;
 using Microsoft.Extensions.Options;
 using Volo.Abp.DependencyInjection;
 
@@ -9,13 +13,120 @@ namespace Dignite.Paperbase.Documents.Pipelines.Embedding;
 public class TextChunker : ITransientDependency
 {
     private readonly PaperbaseAIOptions _options;
+    private static readonly MarkdownPipeline MarkdigPipeline = new MarkdownPipelineBuilder()
+        .UsePipeTables()
+        .UseGridTables()
+        .UseAutoLinks()
+        .UseTaskLists()
+        .UseFootnotes()
+        .UseEmphasisExtras()
+        .Build();
 
     public TextChunker(IOptions<PaperbaseAIOptions> options)
     {
         _options = options.Value;
     }
 
+    /// <summary>
+    /// 字符级降级路径：当上游没有 Markdown 输出（OCR Provider 当前实现）时使用。
+    /// </summary>
     public virtual IReadOnlyList<string> Chunk(string text)
+    {
+        return ChunkPlainText(text);
+    }
+
+    /// <summary>
+    /// Markdown-aware 路径。<paramref name="markdown"/> 非空时按 Markdown AST 顶层 Block
+    /// （标题/段落/列表/表格/代码块）切分，并把 header path 注入到每个 chunk 头部；
+    /// 单个 Block 超过 ChunkSize 时回退到字符级二次切分。
+    /// <paramref name="markdown"/> 为空时直接走 <paramref name="fallbackText"/> 的字符级路径。
+    /// </summary>
+    public virtual IReadOnlyList<string> Chunk(string? markdown, string fallbackText)
+    {
+        if (string.IsNullOrWhiteSpace(markdown))
+            return ChunkPlainText(fallbackText);
+
+        return ChunkMarkdown(markdown!);
+    }
+
+    protected virtual IReadOnlyList<string> ChunkMarkdown(string markdown)
+    {
+        var chunkSize = Math.Max(1, _options.ChunkSize);
+
+        var doc = Markdown.Parse(markdown, MarkdigPipeline);
+        var headerStack = new List<string?>(new string?[6]); // H1..H6
+
+        var results = new List<string>();
+        var buffer = new StringBuilder();
+        string? bufferHeaderPrefix = null;
+
+        void Flush()
+        {
+            if (buffer.Length == 0) return;
+
+            var body = buffer.ToString().TrimEnd();
+            if (body.Length == 0) { buffer.Clear(); return; }
+
+            results.Add(string.IsNullOrEmpty(bufferHeaderPrefix)
+                ? body
+                : bufferHeaderPrefix + "\n\n" + body);
+            buffer.Clear();
+        }
+
+        foreach (var block in doc)
+        {
+            if (block is HeadingBlock heading)
+            {
+                // 标题边界：先冲掉缓冲，再更新 header stack，并把"标题行"作为下一个 chunk 的前缀
+                Flush();
+
+                var level = Math.Clamp(heading.Level, 1, 6);
+                var titleText = ExtractInlineText(heading);
+
+                for (var i = level - 1; i < headerStack.Count; i++)
+                    headerStack[i] = null;
+                headerStack[level - 1] = titleText;
+
+                bufferHeaderPrefix = BuildHeaderPrefix(headerStack);
+
+                // 把标题本身也放进 buffer，让 chunk 文本里能直接看到 "# Title"
+                var headingMarkdown = SliceOriginal(markdown, heading);
+                if (!string.IsNullOrWhiteSpace(headingMarkdown))
+                    buffer.AppendLine(headingMarkdown.TrimEnd()).AppendLine();
+                continue;
+            }
+
+            var blockMarkdown = SliceOriginal(markdown, block).TrimEnd();
+            if (blockMarkdown.Length == 0) continue;
+
+            // 单个 block 自己就超过 chunkSize：先 flush 当前累积，再用字符级算法把这个 block 拆碎，
+            // 每个子 chunk 都带上 header path 前缀。
+            if (blockMarkdown.Length > chunkSize)
+            {
+                Flush();
+
+                foreach (var part in ChunkPlainText(blockMarkdown))
+                {
+                    results.Add(string.IsNullOrEmpty(bufferHeaderPrefix)
+                        ? part
+                        : bufferHeaderPrefix + "\n\n" + part);
+                }
+                continue;
+            }
+
+            // 累积接近 chunkSize 时 flush
+            if (buffer.Length > 0 && buffer.Length + blockMarkdown.Length + 2 > chunkSize)
+                Flush();
+
+            if (buffer.Length > 0) buffer.AppendLine();
+            buffer.AppendLine(blockMarkdown);
+        }
+
+        Flush();
+        return results;
+    }
+
+    protected virtual IReadOnlyList<string> ChunkPlainText(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
             return Array.Empty<string>();
@@ -53,6 +164,43 @@ public class TextChunker : ITransientDependency
         }
 
         return results;
+    }
+
+    protected virtual string SliceOriginal(string markdown, Block block)
+    {
+        var span = block.Span;
+        if (span.IsEmpty || span.Start < 0 || span.End >= markdown.Length || span.Length <= 0)
+            return string.Empty;
+
+        return markdown.Substring(span.Start, span.Length);
+    }
+
+    protected virtual string ExtractInlineText(LeafBlock leaf)
+    {
+        if (leaf.Inline == null) return string.Empty;
+        var sb = new StringBuilder();
+        foreach (var descendant in leaf.Inline.Descendants())
+        {
+            if (descendant is Markdig.Syntax.Inlines.LiteralInline lit)
+                sb.Append(lit.Content.AsSpan());
+            else if (descendant is Markdig.Syntax.Inlines.CodeInline code)
+                sb.Append(code.Content);
+        }
+        return sb.ToString().Trim();
+    }
+
+    protected virtual string? BuildHeaderPrefix(IReadOnlyList<string?> headerStack)
+    {
+        var parts = new List<string>(headerStack.Count);
+        for (var i = 0; i < headerStack.Count; i++)
+        {
+            var h = headerStack[i];
+            if (string.IsNullOrWhiteSpace(h)) continue;
+            parts.Add($"{new string('#', i + 1)} {h}");
+        }
+
+        if (parts.Count == 0) return null;
+        return "> " + string.Join(" > ", parts);
     }
 
     /// <summary>

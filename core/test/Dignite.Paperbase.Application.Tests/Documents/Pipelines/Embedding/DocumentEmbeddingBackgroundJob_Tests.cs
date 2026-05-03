@@ -201,7 +201,7 @@ public class DocumentEmbeddingBackgroundJob_Tests
     private void SetupWorkflowChunks(IReadOnlyList<DocumentEmbeddingChunk> chunks)
     {
         _workflow
-            .RunAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .RunAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(chunks);
     }
 

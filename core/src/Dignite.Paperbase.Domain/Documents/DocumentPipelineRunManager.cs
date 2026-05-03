@@ -84,14 +84,19 @@ public class DocumentPipelineRunManager : DomainService
     /// <summary>
     /// 记录文本提取结果、回写实际 SourceType 并完成 Run。
     /// </summary>
+    /// <param name="markdown">
+    /// Provider 输出的结构化 Markdown（可空）。本期由 ElBruno.MarkItDotNet 数字版路径填充；
+    /// 当前 OCR 路径不填充。Embedding 流水线在切块时优先使用 Markdown，回退 ExtractedText。
+    /// </param>
     public virtual Task CompleteTextExtractionAsync(
         Document document,
         DocumentPipelineRun run,
         string extractedText,
+        string? markdown = null,
         SourceType sourceType = SourceType.Physical)
     {
         document.SetSourceType(sourceType);
-        document.SetExtractedText(extractedText);
+        document.SetExtractedText(extractedText, markdown);
         return CompleteAsync(document, run);
     }
 

@@ -157,4 +157,81 @@ public class TextChunkerTests
         result.Count.ShouldBeGreaterThan(0);
         result.Sum(c => c.Length).ShouldBeGreaterThanOrEqualTo(text.Length);
     }
+
+    // ---- Markdown-aware path（双轨：markdown 非空走结构感知；空走字符级降级） ----
+
+    [Fact]
+    public void Chunk_NullMarkdown_FallsBackToCharacterLevel()
+    {
+        // markdown=null → 与现有字符级行为完全一致
+        var fallback = "第一句话内容。第二句话内容。第三句话内容。";
+        var chunker = BuildChunker(chunkSize: 15, overlap: 0, tolerance: 5);
+
+        var via2Arg = chunker.Chunk(null, fallback);
+        var via1Arg = chunker.Chunk(fallback);
+
+        via2Arg.Count.ShouldBe(via1Arg.Count);
+        for (var i = 0; i < via1Arg.Count; i++)
+            via2Arg[i].ShouldBe(via1Arg[i]);
+    }
+
+    [Fact]
+    public void Chunk_Markdown_RespectsHeadingBoundaries()
+    {
+        var markdown = "# 第一节\n\n第一节正文内容。\n\n# 第二节\n\n第二节正文内容。";
+        var chunker = BuildChunker(chunkSize: 200, overlap: 0, tolerance: 0);
+
+        var result = chunker.Chunk(markdown, markdown);
+
+        // 两个 H1 → 至少两个 chunk，且每个 chunk 都带 header path 前缀
+        result.Count.ShouldBeGreaterThanOrEqualTo(2);
+        result[0].ShouldStartWith("> # ");
+        result[0].ShouldContain("第一节");
+        result[0].ShouldNotContain("第二节");
+        result.Last().ShouldContain("第二节");
+    }
+
+    [Fact]
+    public void Chunk_Markdown_LargeSection_FallsBackToCharacterLevel()
+    {
+        // 单个 H2 段落超过 ChunkSize → 字符级二次切分；每个子 chunk 都保留 header path
+        var longPara = new string('文', 300);
+        var markdown = $"# 标题\n\n## 子标题\n\n{longPara}";
+        var chunker = BuildChunker(chunkSize: 80, overlap: 0, tolerance: 0);
+
+        var result = chunker.Chunk(markdown, markdown);
+
+        result.Count.ShouldBeGreaterThan(1);
+        result.ShouldAllBe(c => c.Contains("> # 标题") || c.Contains("> # 标题 > ## 子标题"));
+    }
+
+    [Fact]
+    public void Chunk_Markdown_FencedCodeBlock_NotMidSliced()
+    {
+        var markdown = "# 代码\n\n```csharp\nvar x = 1;\nvar y = 2;\n```";
+        var chunker = BuildChunker(chunkSize: 500, overlap: 0, tolerance: 0);
+
+        var result = chunker.Chunk(markdown, markdown);
+
+        var combined = string.Join("\n", result);
+        combined.ShouldContain("```csharp");
+        combined.ShouldContain("```");
+        // 围栏开头与结尾都被同一个 chunk 完整保留（chunkSize 足够大）
+        result.Any(c => c.Contains("```csharp") && c.TrimEnd().EndsWith("```")).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Chunk_Markdown_PipeTable_NotMidSliced()
+    {
+        var markdown = "# 报告\n\n| 项 | 值 |\n|---|---|\n| 总计 | 100 |\n| 平均 | 50 |";
+        var chunker = BuildChunker(chunkSize: 500, overlap: 0, tolerance: 0);
+
+        var result = chunker.Chunk(markdown, markdown);
+
+        // 表格作为单个 Block，不被横切：所有表格行落在同一个 chunk
+        var tableChunk = result.FirstOrDefault(c => c.Contains("|---|---|"));
+        tableChunk.ShouldNotBeNull();
+        tableChunk.ShouldContain("总计");
+        tableChunk.ShouldContain("平均");
+    }
 }

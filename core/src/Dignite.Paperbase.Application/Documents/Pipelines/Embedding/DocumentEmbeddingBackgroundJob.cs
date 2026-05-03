@@ -42,7 +42,7 @@ public class DocumentEmbeddingBackgroundJob
 
         try
         {
-            var chunks = await _workflow.RunAsync(document.ExtractedText);
+            var chunks = await _workflow.RunAsync(document.ExtractedText, document.Markdown);
 
             // UpsertDocumentAsync handles whole-document replace in the knowledge index.
             // TenantId is copied explicitly from Document so the operation is safe in
