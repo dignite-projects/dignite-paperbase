@@ -82,7 +82,8 @@
     <ProjectReference Include="..\..\core\src\Dignite.Paperbase.KnowledgeIndex.Qdrant\Dignite.Paperbase.KnowledgeIndex.Qdrant.csproj" />
     <ProjectReference Include="..\..\core\src\Dignite.Paperbase.TextExtraction\Dignite.Paperbase.TextExtraction.csproj" />
     <ProjectReference Include="..\..\core\src\Dignite.Paperbase.TextExtraction.ElBrunoMarkItDown\Dignite.Paperbase.TextExtraction.ElBrunoMarkItDown.csproj" />
-    <ProjectReference Include="..\..\core\src\Dignite.Paperbase.Ocr.AzureDocumentIntelligence\Dignite.Paperbase.Ocr.AzureDocumentIntelligence.csproj" />
+    <ProjectReference Include="..\..\core\src\Dignite.Paperbase.Ocr.PaddleOcr\Dignite.Paperbase.Ocr.PaddleOcr.csproj" />
+    <!-- <ProjectReference Include="..\..\core\src\Dignite.Paperbase.Ocr.AzureDocumentIntelligence\Dignite.Paperbase.Ocr.AzureDocumentIntelligence.csproj" /> -->
     <ProjectReference Include="..\..\modules\contracts\src\Dignite.Paperbase.Contracts.HttpApi\Dignite.Paperbase.Contracts.HttpApi.csproj" />
     <ProjectReference Include="..\..\modules\contracts\src\Dignite.Paperbase.Contracts.Application\Dignite.Paperbase.Contracts.Application.csproj" />
     <ProjectReference Include="..\..\modules\contracts\src\Dignite.Paperbase.Contracts.EntityFrameworkCore\Dignite.Paperbase.Contracts.EntityFrameworkCore.csproj" />

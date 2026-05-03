@@ -1,6 +1,5 @@
-paddlepaddle==2.6.2
-paddleocr==2.10.0
+paddlepaddle>=3.0.0
+paddleocr>=3.0.0
 fastapi==0.115.12
 uvicorn[standard]==0.34.2
-pdf2image==1.17.0
 python-multipart==0.0.20

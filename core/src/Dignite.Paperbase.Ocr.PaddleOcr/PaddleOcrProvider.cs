@@ -75,7 +75,7 @@ public class PaddleOcrProvider : IOcrProvider, ITransientDependency
         [JsonPropertyName("raw_text")]
         public string RawText { get; set; } = string.Empty;
 
-        /// <summary>仅 PaddleOCR-VL 模型填充；PP-OCRv4 模式下为 null。</summary>
+        /// <summary>PP-StructureV3 / PaddleOCR-VL 模型填充；PP-OCRv4 模式下为 null。</summary>
         [JsonPropertyName("markdown")]
         public string? Markdown { get; set; }
 

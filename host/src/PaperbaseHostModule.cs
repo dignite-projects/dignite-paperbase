@@ -5,7 +5,7 @@ using Dignite.Paperbase.EntityFrameworkCore;
 using Dignite.Paperbase.Host.HealthChecks;
 using Dignite.Paperbase.Host.Localization;
 using Dignite.Paperbase.Localization;
-using Dignite.Paperbase.Ocr.AzureDocumentIntelligence;
+using Dignite.Paperbase.Ocr.PaddleOcr;
 using Dignite.Paperbase.KnowledgeIndex.Qdrant;
 using Dignite.Paperbase.TextExtraction;
 using Dignite.Paperbase.TextExtraction.ElBrunoMarkItDown;
@@ -120,8 +120,8 @@ namespace Dignite.Paperbase.Host;
     // Paperbase infrastructure modules
     typeof(PaperbaseTextExtractionModule),
     typeof(PaperbaseTextExtractionElBrunoMarkItDownModule),
-    typeof(PaperbaseAzureDocumentIntelligenceModule),  // 默认 OCR Provider（云方案）
-    // typeof(PaperbasePaddleOcrModule),               // 本地方案（需 Docker + GPU），切换时同步在 .csproj 注释 / 启用 ProjectReference
+    typeof(PaperbasePaddleOcrModule),                  // 默认 OCR Provider（本地 sidecar，PP-StructureV3 走 CPU 即可，输出 Markdown）
+    // typeof(PaperbaseAzureDocumentIntelligenceModule), // 云方案（高精度），切换时同步在 .csproj 注释 / 启用 ProjectReference
     typeof(QdrantKnowledgeIndexModule),
 
     // Paperbase business modules

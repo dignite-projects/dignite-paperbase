@@ -28,15 +28,14 @@ services:
       timeout: 5s
       retries: 10
 
-  # paddleocr:
-  #   build:
-  #     context: ./paddleocr-server
-  #   ports:
-  #     - "8866:8866"
-  #   environment:
-  #     PADDLEOCR_USE_GPU: "false"
-  #     PADDLEOCR_MODEL: "PP-OCRv4"
-  #   restart: unless-stopped
+  paddleocr:
+    build:
+      context: ./paddleocr-server
+    ports:
+      - "8866:8866"
+    environment:
+      PADDLEOCR_USE_GPU: "false"
+    restart: unless-stopped
 
 volumes:
   qdrant_data:

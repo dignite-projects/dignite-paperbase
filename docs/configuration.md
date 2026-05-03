@@ -122,7 +122,27 @@ Qdrant is configured by `QdrantKnowledgeIndex`, not by an EF Core connection str
 
 Paperbase ships two OCR providers. Pick one in `PaperbaseHostModule` (see the README *Choosing an OCR Provider* section for the trade-offs) and add the matching configuration block.
 
-### Azure Document Intelligence (default, cloud)
+### PaddleOCR (default, local sidecar)
+
+```json
+"PaddleOcr": {
+  "Endpoint": "http://localhost:8866",
+  "ModelName": "PP-StructureV3",
+  "Languages": [ "ja", "en" ]
+}
+```
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `Endpoint` | `http://localhost:8866` | PaddleOCR sidecar REST endpoint |
+| `ModelName` | `PP-StructureV3` | One of: `PP-StructureV3` (CPU + native Markdown, default), `PP-OCRv4` (lightest, no Markdown), `PaddleOCR-VL-1.5` (highest quality, requires GPU + ~2 GB model download, native Markdown) |
+| `Languages` | `["ja", "en"]` | Default recognition languages (BCP 47); overridden by `OcrOptions.LanguageHints` per call |
+
+`PaperbasePaddleOcrModule` binds the `PaddleOcr` section automatically and talks to the sidecar started by `docker compose up paddleocr`.
+
+> **Resource notes for PP-StructureV3 (CPU)**: ~3.7 s/page on a modern Intel CPU, ~2 GB RAM working set. First container start downloads ~600 MB of model weights from Baidu BOS / HuggingFace; subsequent starts are fast.
+
+### Azure Document Intelligence (cloud, optional)
 
 ```json
 "AzureDocumentIntelligence": {
@@ -132,25 +152,7 @@ Paperbase ships two OCR providers. Pick one in `PaperbaseHostModule` (see the RE
 }
 ```
 
-`PaperbaseAzureDocumentIntelligenceModule` binds this section automatically.
-
-### PaddleOCR (local sidecar)
-
-```json
-"PaddleOcr": {
-  "Endpoint": "http://localhost:8866",
-  "ModelName": "PP-OCRv4",
-  "Languages": [ "ja", "en" ]
-}
-```
-
-| Key | Default | Description |
-| --- | --- | --- |
-| `Endpoint` | `http://localhost:8866` | PaddleOCR sidecar REST endpoint |
-| `ModelName` | `PP-OCRv4` | `PP-OCRv4` (CPU friendly) or `PaddleOCR-VL-1.5` (higher quality, requires GPU) |
-| `Languages` | `["ja", "en"]` | Default recognition languages (BCP 47); overridden by `OcrOptions.LanguageHints` per call |
-
-`PaperbasePaddleOcrModule` binds the `PaddleOcr` section automatically and talks to the sidecar started by `docker compose up paddleocr`.
+`PaperbaseAzureDocumentIntelligenceModule` binds this section automatically. To enable it, swap the module reference in `PaperbaseHostModule` and re-enable the matching `ProjectReference` in `host/src/Dignite.Paperbase.Host.csproj`.
 
 ## Authentication
 
