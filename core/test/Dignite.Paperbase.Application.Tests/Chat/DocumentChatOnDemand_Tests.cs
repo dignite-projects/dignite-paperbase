@@ -28,7 +28,7 @@ public class DocumentChatOnDemandTestModule : AbpModule
 {
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
-        Configure<PaperbaseAIOptions>(opts =>
+        Configure<PaperbaseAIBehaviorOptions>(opts =>
             opts.ChatSearchBehavior = ChatSearchBehavior.OnDemandFunctionCalling);
     }
 }

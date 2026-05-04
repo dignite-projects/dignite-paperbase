@@ -48,7 +48,7 @@ public class TestableDocumentTextSearchAdapter : DocumentTextSearchAdapter
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
         DocumentRerankWorkflow rerankWorkflow,
         ICurrentTenant currentTenant,
-        IOptions<PaperbaseAIOptions> aiOptions,
+        IOptions<PaperbaseAIBehaviorOptions> aiOptions,
         IOptions<PaperbaseKnowledgeIndexOptions> ragOptions,
         ILogger<DocumentTextSearchAdapter> logger)
         : base(vectorStore, embeddingGenerator, rerankWorkflow, currentTenant, aiOptions, ragOptions, logger)
@@ -87,7 +87,7 @@ public class TestDocumentRerankWorkflow : DocumentRerankWorkflow
     public TestDocumentRerankWorkflow()
         : base(
             Substitute.For<IChatClient>(),
-            Options.Create(new PaperbaseAIOptions()),
+            Options.Create(new PaperbaseAIBehaviorOptions()),
             Substitute.For<IPromptProvider>())
     {
     }
@@ -125,7 +125,7 @@ public class DocumentTextSearchAdapter_Tests
     private readonly IDocumentKnowledgeIndex _vectorStore;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
     private readonly TestDocumentRerankWorkflow _rerankWorkflow;
-    private readonly PaperbaseAIOptions _aiOptions;
+    private readonly PaperbaseAIBehaviorOptions _aiOptions;
 
     public DocumentTextSearchAdapter_Tests()
     {
@@ -133,7 +133,7 @@ public class DocumentTextSearchAdapter_Tests
         _vectorStore = GetRequiredService<IDocumentKnowledgeIndex>();
         _embeddingGenerator = GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
         _rerankWorkflow = GetRequiredService<TestDocumentRerankWorkflow>();
-        _aiOptions = GetRequiredService<IOptions<PaperbaseAIOptions>>().Value;
+        _aiOptions = GetRequiredService<IOptions<PaperbaseAIBehaviorOptions>>().Value;
         _aiOptions.EnableLlmRerank = false;
         _aiOptions.RecallExpandFactor = 4;
 

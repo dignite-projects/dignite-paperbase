@@ -1,4 +1,5 @@
 using Dignite.Paperbase.Abstractions;
+using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.KnowledgeIndex;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.Application;
@@ -22,5 +23,8 @@ public class PaperbaseApplicationModule : AbpModule
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
         context.Services.AddMapperlyObjectMapper<PaperbaseApplicationModule>();
+
+        Configure<PaperbaseAIBehaviorOptions>(
+            context.Services.GetConfiguration().GetSection("PaperbaseAIBehavior"));
     }
 }

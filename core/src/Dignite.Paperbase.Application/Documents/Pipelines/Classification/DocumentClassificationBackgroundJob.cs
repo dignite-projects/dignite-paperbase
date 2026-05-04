@@ -25,7 +25,7 @@ public class DocumentClassificationBackgroundJob
     private readonly KeywordDocumentClassifier _keywordClassifier;
     private readonly IDistributedEventBus _distributedEventBus;
     private readonly DocumentTypeOptions _documentTypeOptions;
-    private readonly PaperbaseAIOptions _aiOptions;
+    private readonly PaperbaseAIBehaviorOptions _aiOptions;
     private readonly IBackgroundJobManager _backgroundJobManager;
 
     public DocumentClassificationBackgroundJob(
@@ -35,7 +35,7 @@ public class DocumentClassificationBackgroundJob
         KeywordDocumentClassifier keywordClassifier,
         IDistributedEventBus distributedEventBus,
         IOptions<DocumentTypeOptions> documentTypeOptions,
-        IOptions<PaperbaseAIOptions> aiOptions,
+        IOptions<PaperbaseAIBehaviorOptions> aiOptions,
         IBackgroundJobManager backgroundJobManager)
     {
         _documentRepository = documentRepository;

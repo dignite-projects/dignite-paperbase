@@ -27,7 +27,7 @@ Two design properties matter:
 ## Configuration
 
 ```json
-"PaperbaseAI": {
+"PaperbaseAIBehavior": {
   "ChunkSize": 800,
   "ChunkOverlap": 100,
   "ChunkBoundaryTolerance": 120

@@ -25,10 +25,10 @@ A user holding only `Paperbase.Documents.Chat` can read but not act. Tool contri
 
 ## Configuration
 
-Chat-related knobs live in the same `PaperbaseAI` block as the rest of the AI settings.
+Chat-related knobs live in `PaperbaseAIBehavior` alongside the other Application-layer behavior settings (see [ai-provider.md](ai-provider.md) for the full split between `PaperbaseAI` provider wiring and `PaperbaseAIBehavior` behavior knobs).
 
 ```json
-"PaperbaseAI": {
+"PaperbaseAIBehavior": {
   "EnableLlmRerank": false,
   "RecallExpandFactor": 4,
   "ChatSearchBehavior": "BeforeAIInvoke",
@@ -43,7 +43,7 @@ Chat-related knobs live in the same `PaperbaseAI` block as the rest of the AI se
 | `ChatSearchBehavior` | `BeforeAIInvoke` | `BeforeAIInvoke` runs retrieval before every model call (citations always populated). `OnDemandFunctionCalling` exposes search as a tool the model decides when to call (saves tokens but the model may produce an answer with no citations — `ChatTurnResultDto.IsDegraded = true` in that case). |
 | `MaxToolCallsPerTurn` | `10` | Hard cap on tool-call rounds within a single turn. Once reached, the next completion request strips tools, forcing the model to produce a final answer rather than looping. `0` means unlimited (not recommended for production). |
 
-For prompt language and JSON-mode behavior, see [ai-provider.md → Cross-cutting LLM behavior](ai-provider.md#cross-cutting-llm-behavior). For retrieval `topK` / `minScore` defaults, see [knowledge-index.md](knowledge-index.md). For BM25-augmented hybrid retrieval, see [hybrid-search.md](hybrid-search.md).
+For prompt language and JSON-mode behavior, see [ai-provider.md → Cross-cutting LLM behavior](ai-provider.md#cross-cutting-llm-behavior-paperbaseaibehavior). For retrieval `topK` / `minScore` defaults, see [knowledge-index.md](knowledge-index.md). For BM25-augmented hybrid retrieval, see [hybrid-search.md](hybrid-search.md).
 
 ## When the answer is degraded
 

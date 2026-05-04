@@ -32,7 +32,7 @@ public class DocumentClassificationJobTestModule : AbpModule
 
         var workflow = Substitute.ForPartsOf<DocumentClassificationWorkflow>(
             Substitute.For<IChatClient>(),
-            Options.Create(new PaperbaseAIOptions()),
+            Options.Create(new PaperbaseAIBehaviorOptions()),
             new DefaultPromptProvider());
         context.Services.AddSingleton(workflow);
 
@@ -46,7 +46,7 @@ public class DocumentClassificationJobTestModule : AbpModule
             });
         });
 
-        context.Services.Configure<PaperbaseAIOptions>(_ => { });
+        context.Services.Configure<PaperbaseAIBehaviorOptions>(_ => { });
     }
 }
 

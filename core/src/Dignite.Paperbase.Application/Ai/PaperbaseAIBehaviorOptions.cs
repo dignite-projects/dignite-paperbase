@@ -1,6 +1,16 @@
 namespace Dignite.Paperbase.Ai;
 
-public class PaperbaseAIOptions
+/// <summary>
+/// Application-layer behavior knobs for AI workflows (Classification / Embedding / Chat / Rerank).
+/// Bound to the <c>PaperbaseAIBehavior</c> configuration section in
+/// <see cref="PaperbaseApplicationModule"/>.
+/// <para>
+/// Provider wiring (endpoint / API key / model ids / prompt-cache middleware) lives in the
+/// separate <c>PaperbaseAI</c> section consumed by the host's <c>ConfigureAI</c> — keep these
+/// two concerns disjoint: this class must not grow connection or credential fields.
+/// </para>
+/// </summary>
+public class PaperbaseAIBehaviorOptions
 {
     /// <summary>
     /// 分类提示词中最多包含的候选类型数量，超出时按 Priority 降序截断。
@@ -53,13 +63,6 @@ public class PaperbaseAIOptions
     /// 关闭时回退到旧的 prompt 内联 schema（适用于不支持 JSON mode 的 Provider）。
     /// </summary>
     public bool UseStrictJsonMode { get; set; } = true;
-
-    /// <summary>
-    /// 启用 <c>UseDistributedCache()</c> 中间件，对相同输入的 LLM 请求直接返回缓存响应，
-    /// 省去重复 token 消耗。使用宿主中已注册的 <c>IDistributedCache</c>（默认内存缓存）。
-    /// 开发/测试环境若需每次强制请求 LLM，可在 appsettings 中将此项设为 false。
-    /// </summary>
-    public bool PromptCachingEnabled { get; set; } = true;
 
     /// <summary>
     /// Controls when the <c>TextSearchProvider</c> fetches document context during a

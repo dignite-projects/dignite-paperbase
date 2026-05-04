@@ -52,7 +52,7 @@ Configure<DocumentTypeOptions>(options =>
 ## Configuration
 
 ```json
-"PaperbaseAI": {
+"PaperbaseAIBehavior": {
   "MaxDocumentTypesInClassificationPrompt": 50,
   "MaxTextLengthPerExtraction": 8000
 }
@@ -63,7 +63,7 @@ Configure<DocumentTypeOptions>(options =>
 | `MaxDocumentTypesInClassificationPrompt` | `50` | When more than this many types are registered, the prompt keeps the top N by `Priority`. Tune this against your LLM's context window — more types means a longer prompt and slower / more expensive calls. |
 | `MaxTextLengthPerExtraction` | `8000` | Markdown longer than this is truncated before being sent. The first N characters usually contain the most discriminative content (title, table-of-contents, opening clauses). Increase if your documents bury the type signal deep, but watch token cost. |
 
-The prompt language follows `PaperbaseAI:DefaultLanguage` (see [ai-provider.md](ai-provider.md#cross-cutting-llm-behavior)).
+The prompt language follows `PaperbaseAIBehavior:DefaultLanguage` (see [ai-provider.md](ai-provider.md#cross-cutting-llm-behavior-paperbaseaibehavior)).
 
 ## Outcomes
 

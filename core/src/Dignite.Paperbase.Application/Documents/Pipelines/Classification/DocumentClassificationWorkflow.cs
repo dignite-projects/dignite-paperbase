@@ -20,14 +20,14 @@ public class DocumentClassificationWorkflow : ITransientDependency
 {
     private readonly IChatClient _chatClient;
     private readonly IPromptProvider _promptProvider;
-    private readonly PaperbaseAIOptions _options;
+    private readonly PaperbaseAIBehaviorOptions _options;
 
     public ILogger<DocumentClassificationWorkflow> Logger { get; set; }
         = NullLogger<DocumentClassificationWorkflow>.Instance;
 
     public DocumentClassificationWorkflow(
         IChatClient chatClient,
-        IOptions<PaperbaseAIOptions> options,
+        IOptions<PaperbaseAIBehaviorOptions> options,
         IPromptProvider promptProvider)
     {
         _chatClient = chatClient;

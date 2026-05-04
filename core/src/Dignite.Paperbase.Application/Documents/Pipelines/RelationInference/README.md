@@ -11,5 +11,5 @@
 - 提示词通过 `Application/Ai/IPromptProvider` 取得（不要直接写常量）
 - LLM 失败兜底策略由 `DocumentRelationInferenceBackgroundJob` 决定（参考
   `Documents/Pipelines/Classification/DocumentClassificationBackgroundJob` 的兜底模式）
-- 配置项加在 `Application/Ai/PaperbaseAIOptions`
+- 配置项加在 `Application/Ai/PaperbaseAIBehaviorOptions`（绑定到 `appsettings.json` 的 `PaperbaseAIBehavior` 节）
 - 接受 `maf-workflow-reviewer` agent 审查（详见 `.claude/agents/maf-workflow-reviewer.md`）

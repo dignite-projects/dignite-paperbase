@@ -16,7 +16,7 @@ public class TextChunkerTests
 {
     private static TextChunker BuildChunker(int chunkSize, int overlap, int tolerance)
     {
-        var options = Options.Create(new PaperbaseAIOptions
+        var options = Options.Create(new PaperbaseAIBehaviorOptions
         {
             ChunkSize = chunkSize,
             ChunkOverlap = overlap,

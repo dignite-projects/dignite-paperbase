@@ -26,7 +26,7 @@ namespace Dignite.Paperbase.Chat;
 /// When the limit is reached, tools are stripped from <see cref="ChatOptions"/> on the
 /// next completion request, which forces the model to produce a final answer rather than
 /// issuing another tool call. The limit is controlled by
-/// <c>PaperbaseAIOptions.MaxToolCallsPerTurn</c>; a value of 0 disables the cap.
+/// <c>PaperbaseAIBehaviorOptions.MaxToolCallsPerTurn</c>; a value of 0 disables the cap.
 /// </para>
 ///
 /// <para>

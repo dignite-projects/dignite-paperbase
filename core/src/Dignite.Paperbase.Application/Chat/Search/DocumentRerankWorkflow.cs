@@ -22,14 +22,14 @@ public class DocumentRerankWorkflow : ITransientDependency
 {
     private readonly IChatClient _chatClient;
     private readonly IPromptProvider _promptProvider;
-    private readonly PaperbaseAIOptions _options;
+    private readonly PaperbaseAIBehaviorOptions _options;
 
     public ILogger<DocumentRerankWorkflow> Logger { get; set; }
         = NullLogger<DocumentRerankWorkflow>.Instance;
 
     public DocumentRerankWorkflow(
         IChatClient chatClient,
-        IOptions<PaperbaseAIOptions> options,
+        IOptions<PaperbaseAIBehaviorOptions> options,
         IPromptProvider promptProvider)
     {
         _chatClient = chatClient;

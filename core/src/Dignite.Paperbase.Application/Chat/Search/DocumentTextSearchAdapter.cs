@@ -44,7 +44,7 @@ public class DocumentTextSearchAdapter : ITransientDependency
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
     private readonly DocumentRerankWorkflow _rerankWorkflow;
     private readonly ICurrentTenant _currentTenant;
-    private readonly PaperbaseAIOptions _aiOptions;
+    private readonly PaperbaseAIBehaviorOptions _aiOptions;
     private readonly PaperbaseKnowledgeIndexOptions _ragOptions;
     private readonly ILogger<DocumentTextSearchAdapter> _logger;
 
@@ -53,7 +53,7 @@ public class DocumentTextSearchAdapter : ITransientDependency
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
         DocumentRerankWorkflow rerankWorkflow,
         ICurrentTenant currentTenant,
-        IOptions<PaperbaseAIOptions> aiOptions,
+        IOptions<PaperbaseAIBehaviorOptions> aiOptions,
         IOptions<PaperbaseKnowledgeIndexOptions> ragOptions,
         ILogger<DocumentTextSearchAdapter> logger)
     {

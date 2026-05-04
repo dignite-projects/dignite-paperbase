@@ -12,7 +12,7 @@ namespace Dignite.Paperbase.Documents.Pipelines.Embedding;
 
 public class TextChunker : ITransientDependency
 {
-    private readonly PaperbaseAIOptions _options;
+    private readonly PaperbaseAIBehaviorOptions _options;
     private static readonly MarkdownPipeline MarkdigPipeline = new MarkdownPipelineBuilder()
         .UsePipeTables()
         .UseGridTables()
@@ -22,7 +22,7 @@ public class TextChunker : ITransientDependency
         .UseEmphasisExtras()
         .Build();
 
-    public TextChunker(IOptions<PaperbaseAIOptions> options)
+    public TextChunker(IOptions<PaperbaseAIBehaviorOptions> options)
     {
         _options = options.Value;
     }

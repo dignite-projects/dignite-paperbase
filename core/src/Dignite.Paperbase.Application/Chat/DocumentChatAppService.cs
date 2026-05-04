@@ -45,7 +45,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     private readonly IChatClient _chatClient;
     private readonly IPromptProvider _promptProvider;
     private readonly PaperbasePostgresChatHistoryProvider _historyProvider;
-    private readonly PaperbaseAIOptions _aiOptions;
+    private readonly PaperbaseAIBehaviorOptions _aiOptions;
     private readonly PaperbaseKnowledgeIndexOptions _ragOptions;
     private readonly IEnumerable<IDocumentChatToolContributor> _toolContributors;
 
@@ -56,7 +56,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         IChatClient chatClient,
         IPromptProvider promptProvider,
         PaperbasePostgresChatHistoryProvider historyProvider,
-        IOptions<PaperbaseAIOptions> aiOptions,
+        IOptions<PaperbaseAIBehaviorOptions> aiOptions,
         IOptions<PaperbaseKnowledgeIndexOptions> ragOptions,
         IEnumerable<IDocumentChatToolContributor> toolContributors)
     {

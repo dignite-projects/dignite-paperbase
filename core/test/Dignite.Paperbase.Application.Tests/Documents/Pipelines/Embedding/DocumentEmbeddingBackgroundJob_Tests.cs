@@ -28,7 +28,7 @@ public class DocumentEmbeddingJobTestModule : AbpModule
         // TextChunker is a real DI-resolved service; replace the workflow itself with a mock
         // so we can return any chunk shape we want without depending on chunker / embedder behavior.
         var workflow = Substitute.ForPartsOf<DocumentEmbeddingWorkflow>(
-            new TextChunker(Options.Create(new PaperbaseAIOptions())),
+            new TextChunker(Options.Create(new PaperbaseAIBehaviorOptions())),
             Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>());
         context.Services.AddSingleton(workflow);
     }

@@ -35,7 +35,7 @@ public class DocumentWorkflowPromptLifetime_Tests
             .Returns(new PromptTemplate("Prompt-A"), new PromptTemplate("Prompt-B"));
 
         var workflow = new DocumentClassificationWorkflow(
-            inner, Options.Create(new PaperbaseAIOptions()), promptProvider);
+            inner, Options.Create(new PaperbaseAIBehaviorOptions()), promptProvider);
 
         var types = new List<DocumentTypeDefinition>
             { new DocumentTypeDefinition("contract.general", "合同") };
@@ -60,7 +60,7 @@ public class DocumentWorkflowPromptLifetime_Tests
             .Returns(new PromptTemplate("Prompt-A"), new PromptTemplate("Prompt-B"));
 
         var workflow = new DocumentClassificationWorkflow(
-            inner, Options.Create(new PaperbaseAIOptions()), promptProvider);
+            inner, Options.Create(new PaperbaseAIBehaviorOptions()), promptProvider);
 
         var types = new List<DocumentTypeDefinition>
             { new DocumentTypeDefinition("contract.general", "合同") };
@@ -86,7 +86,7 @@ public class DocumentWorkflowPromptLifetime_Tests
             .Returns(new PromptTemplate("Prompt-A"), new PromptTemplate("Prompt-B"));
 
         var workflow = new DocumentRerankWorkflow(
-            inner, Options.Create(new PaperbaseAIOptions()), promptProvider);
+            inner, Options.Create(new PaperbaseAIBehaviorOptions()), promptProvider);
 
         var candidates = BuildRerankCandidates();
 
@@ -109,7 +109,7 @@ public class DocumentWorkflowPromptLifetime_Tests
             .Returns(new PromptTemplate("Prompt-A"), new PromptTemplate("Prompt-B"));
 
         var workflow = new DocumentRerankWorkflow(
-            inner, Options.Create(new PaperbaseAIOptions()), promptProvider);
+            inner, Options.Create(new PaperbaseAIBehaviorOptions()), promptProvider);
 
         var candidates = BuildRerankCandidates();
 
