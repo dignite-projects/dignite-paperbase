@@ -1,10 +1,12 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { SafeResourceUrl, DomSanitizer } from '@angular/platform-browser';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { LocalizationPipe } from '@abp/ng.core';
 import { Confirmation, ConfirmationService, ToasterService } from '@abp/ng.theme.shared';
 import { finalize } from 'rxjs';
+import { DocumentService } from '../proxy/document.service';
 import { ChatMessageRole } from '../proxy/documents/chat/chat-message-role.enum';
 import {
   ChatCitationDto,
@@ -13,6 +15,7 @@ import {
   ChatMessageDto,
   CreateChatConversationInput,
 } from '../proxy/documents/chat/models';
+import { DocumentDto } from '../proxy/models';
 import { DocumentChatService } from '../proxy/http-api/documents/document-chat.service';
 
 interface ChatMessageView {
@@ -26,6 +29,18 @@ interface ChatMessageView {
   isError?: boolean;
 }
 
+interface SelectedCitation {
+  messageId: string;
+  citationIndex: number;
+  citation: ChatCitationDto;
+}
+
+interface MarkdownHighlight {
+  before: string;
+  match: string;
+  after: string;
+}
+
 @Component({
   selector: 'app-document-chat',
   templateUrl: './document-chat.component.html',
@@ -34,15 +49,19 @@ interface ChatMessageView {
 })
 export class DocumentChatComponent implements OnInit {
   private readonly chatService = inject(DocumentChatService);
+  private readonly documentService = inject(DocumentService);
   private readonly route = inject(ActivatedRoute);
   private readonly confirmation = inject(ConfirmationService);
   private readonly toaster = inject(ToasterService);
+  private readonly sanitizer = inject(DomSanitizer);
 
   readonly ChatMessageRole = ChatMessageRole;
 
   conversations = signal<ChatConversationListItemDto[]>([]);
   activeConversation = signal<ChatConversationDto | null>(null);
   messages = signal<ChatMessageView[]>([]);
+  sourceDocument = signal<DocumentDto | null>(null);
+  selectedCitation = signal<SelectedCitation | null>(null);
 
   title = signal('');
   documentId = signal('');
@@ -53,9 +72,51 @@ export class DocumentChatComponent implements OnInit {
   isLoadingMessages = signal(false);
   isCreating = signal(false);
   isSending = signal(false);
+  isLoadingSource = signal(false);
+  sourceError = signal<string | null>(null);
 
   activeConversationId = computed(() => this.activeConversation()?.id ?? null);
   canSend = computed(() => !!this.message().trim() && !this.isSending());
+  sourceBlobUrl = computed(() => {
+    const document = this.sourceDocument();
+    if (!document?.id) return null;
+
+    const citation = this.selectedCitation()?.citation;
+    const pageNumber = citation?.pageNumber;
+    const url = this.documentService.getBlobUrl(document.id);
+    return pageNumber ? `${url}#page=${pageNumber}` : url;
+  });
+  sourceBlobSafeUrl = computed<SafeResourceUrl | null>(() => {
+    const url = this.sourceBlobUrl();
+    return url ? this.sanitizer.bypassSecurityTrustResourceUrl(url) : null;
+  });
+  sourceContentType = computed(() => this.sourceDocument()?.fileOrigin?.contentType?.toLowerCase() ?? '');
+  isSourcePdf = computed(() => this.sourceContentType().includes('pdf'));
+  isSourceImage = computed(() => this.sourceContentType().startsWith('image/'));
+  markdownHighlight = computed<MarkdownHighlight>(() => {
+    const markdown = this.sourceDocument()?.markdown ?? '';
+    const snippet = this.selectedCitation()?.citation.snippet?.trim();
+    if (!markdown || !snippet) {
+      return { before: markdown, match: '', after: '' };
+    }
+
+    const index = markdown.indexOf(snippet);
+    if (index < 0) {
+      return { before: markdown, match: '', after: '' };
+    }
+
+    return {
+      before: markdown.slice(0, index),
+      match: markdown.slice(index, index + snippet.length),
+      after: markdown.slice(index + snippet.length),
+    };
+  });
+  snippetMissing = computed(() => {
+    const document = this.sourceDocument();
+    const citation = this.selectedCitation()?.citation;
+    return !!document?.markdown && !!citation?.snippet?.trim() && !this.markdownHighlight().match;
+  });
+  private sourceRequestId = 0;
 
   ngOnInit(): void {
     const query = this.route.snapshot.queryParamMap;
@@ -99,6 +160,15 @@ export class DocumentChatComponent implements OnInit {
     this.chatService.getConversation(conversationId).subscribe({
       next: conversation => {
         this.activeConversation.set(conversation);
+        this.selectedCitation.set(null);
+        this.sourceError.set(null);
+        if (conversation.documentId) {
+          this.loadSourceDocument(conversation.documentId);
+        } else {
+          this.sourceRequestId++;
+          this.isLoadingSource.set(false);
+          this.sourceDocument.set(null);
+        }
         this.chatService
           .getMessageList(conversationId, {
             maxResultCount: 100,
@@ -174,6 +244,29 @@ export class DocumentChatComponent implements OnInit {
     return 'global';
   }
 
+  selectCitation(messageId: string, citationIndex: number, citation: ChatCitationDto): void {
+    this.selectedCitation.set({ messageId, citationIndex, citation });
+
+    if (!citation.documentId) {
+      this.sourceRequestId++;
+      this.isLoadingSource.set(false);
+      this.sourceDocument.set(null);
+      this.sourceError.set('::DocumentChat:SourceMissingDocumentId');
+      return;
+    }
+
+    this.loadSourceDocument(citation.documentId);
+  }
+
+  isSelectedCitation(messageId: string, citationIndex: number): boolean {
+    const selected = this.selectedCitation();
+    return selected?.messageId === messageId && selected.citationIndex === citationIndex;
+  }
+
+  sourceTitle(document: DocumentDto): string {
+    return document.fileOrigin?.originalFileName || document.originalFileBlobName || document.id || 'Source document';
+  }
+
   private openOrCreateScopedConversation(
     documentId: string | null,
     documentTypeCode: string | null,
@@ -208,6 +301,14 @@ export class DocumentChatComponent implements OnInit {
         next: conversation => {
           this.activeConversation.set(conversation);
           this.messages.set([]);
+          this.selectedCitation.set(null);
+          if (conversation.documentId) {
+            this.loadSourceDocument(conversation.documentId);
+          } else {
+            this.sourceRequestId++;
+            this.isLoadingSource.set(false);
+            this.sourceDocument.set(null);
+          }
           this.title.set('');
           if (!input.documentId) this.documentId.set('');
           if (!input.documentTypeCode) this.documentTypeCode.set('');
@@ -303,5 +404,30 @@ export class DocumentChatComponent implements OnInit {
   private emptyToNull(value: string): string | null {
     const trimmed = value.trim();
     return trimmed ? trimmed : null;
+  }
+
+  private loadSourceDocument(documentId: string): void {
+    const requestId = ++this.sourceRequestId;
+    this.isLoadingSource.set(true);
+    this.sourceError.set(null);
+
+    this.documentService
+      .get(documentId)
+      .pipe(finalize(() => {
+        if (requestId === this.sourceRequestId) {
+          this.isLoadingSource.set(false);
+        }
+      }))
+      .subscribe({
+        next: document => {
+          if (requestId !== this.sourceRequestId) return;
+          this.sourceDocument.set(document);
+        },
+        error: () => {
+          if (requestId !== this.sourceRequestId) return;
+          this.sourceDocument.set(null);
+          this.sourceError.set('::DocumentChat:SourceLoadFailed');
+        },
+      });
   }
 }

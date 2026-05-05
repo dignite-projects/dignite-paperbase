@@ -40,6 +40,15 @@
     "DocumentChat:CreateFailed": "创建对话失败。",
     "DocumentChat:SendFailed": "发送消息失败。",
     "DocumentChat:DeleteFailed": "删除对话失败。",
-    "DocumentChat:AreYouSureToDelete": "确定要删除这个对话吗？"
+    "DocumentChat:AreYouSureToDelete": "确定要删除这个对话吗？",
+    "DocumentChat:Source": "来源",
+    "DocumentChat:SelectCitation": "选择一条引用",
+    "DocumentChat:LoadingSource": "正在加载来源...",
+    "DocumentChat:SourceMissingDocumentId": "引用来源缺少文档 ID。",
+    "DocumentChat:SourceLoadFailed": "来源文档加载失败。",
+    "DocumentChat:SnippetNotFound": "来源已加载，但在当前 Markdown 中没有找到引用片段。",
+    "DocumentChat:PreviewUnavailable": "无法预览该来源。",
+    "DocumentChat:OpenSourceFile": "打开来源文件",
+    "DocumentChat:SelectCitationToInspect": "选择一条引用以查看来源。"
   }
 }

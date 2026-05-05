@@ -136,6 +136,8 @@ curl -X POST \
 | `citations[].sourceName` | Human-readable source label for display |
 | `isDegraded` | `true` if retrieval was unavailable and the answer used context-only fallback |
 
+For clickable citation behavior, see [document-chat.md → Citation-to-source navigation](document-chat.md#citation-to-source-navigation).
+
 ---
 
 ## 3. Retry Logic (409 Conflict)

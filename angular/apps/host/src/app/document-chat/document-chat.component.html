@@ -93,6 +93,77 @@
       </div>
     </aside>
 
+    <section class="source-panel border-end" style="min-width: 0; display: grid; grid-template-rows: auto minmax(0, 1fr);">
+      <header class="d-flex justify-content-between gap-3 p-3 border-bottom">
+        <div>
+          <h5 class="mb-1">{{ '::DocumentChat:Source' | abpLocalization }}</h5>
+          @if (sourceDocument(); as document) {
+            <span class="text-muted small text-truncate d-block">{{ sourceTitle(document) }}</span>
+          } @else {
+            <span class="text-muted small">{{ '::DocumentChat:SelectCitation' | abpLocalization }}</span>
+          }
+        </div>
+        @if (selectedCitation()?.citation; as citation) {
+          <span class="badge bg-light text-dark border">
+            @if (citation.pageNumber != null) {
+              p.{{ citation.pageNumber }}
+            } @else if (citation.chunkIndex != null) {
+              chunk #{{ citation.chunkIndex }}
+            } @else {
+              citation
+            }
+          </span>
+        }
+      </header>
+
+      <div class="bg-light overflow-auto" style="min-height: 0;">
+        @if (isLoadingSource()) {
+          <div class="text-center text-muted p-4">
+            <span class="spinner-border spinner-border-sm me-2"></span>
+            {{ '::DocumentChat:LoadingSource' | abpLocalization }}
+          </div>
+        } @else if (sourceError()) {
+          <div class="text-center text-danger p-4">
+            <i class="fas fa-exclamation-circle d-block mb-2"></i>
+            {{ sourceError()! | abpLocalization }}
+          </div>
+        } @else if (sourceDocument(); as document) {
+          @if (isSourcePdf() && selectedCitation()?.citation?.pageNumber != null && sourceBlobSafeUrl()) {
+            <iframe class="w-100 h-100 border-0" style="min-height: 520px;" [src]="sourceBlobSafeUrl()!" [title]="sourceTitle(document)"></iframe>
+          } @else if (document.markdown) {
+            @if (snippetMissing()) {
+              <div class="alert alert-warning py-2 px-3 m-3 small">
+                {{ '::DocumentChat:SnippetNotFound' | abpLocalization }}
+              </div>
+            }
+            <pre class="m-0 p-3 bg-white" style="white-space: pre-wrap; word-break: break-word; font-size: .82rem;"><span>{{ markdownHighlight().before }}</span>@if (markdownHighlight().match) {<mark>{{ markdownHighlight().match }}</mark>}<span>{{ markdownHighlight().after }}</span></pre>
+          } @else if (isSourcePdf() && sourceBlobSafeUrl()) {
+            <iframe class="w-100 h-100 border-0" style="min-height: 520px;" [src]="sourceBlobSafeUrl()!" [title]="sourceTitle(document)"></iframe>
+          } @else if (isSourceImage() && sourceBlobUrl()) {
+            <div class="text-center text-muted p-4">
+              <img [src]="sourceBlobUrl()!" [alt]="sourceTitle(document)" class="img-fluid" style="max-height: 520px; object-fit: contain;" />
+            </div>
+          } @else {
+            <div class="text-center text-muted p-4">
+              <i class="fas fa-file-alt d-block mb-2"></i>
+              <p class="mb-2">{{ '::DocumentChat:PreviewUnavailable' | abpLocalization }}</p>
+              @if (sourceBlobUrl()) {
+                <a [href]="sourceBlobUrl()!" target="_blank" class="btn btn-outline-primary btn-sm">
+                  <i class="fas fa-external-link-alt me-1"></i>
+                  {{ '::DocumentChat:OpenSourceFile' | abpLocalization }}
+                </a>
+              }
+            </div>
+          }
+        } @else {
+          <div class="text-center text-muted p-4">
+            <i class="fas fa-file-alt d-block mb-2"></i>
+            {{ '::DocumentChat:SelectCitationToInspect' | abpLocalization }}
+          </div>
+        }
+      </div>
+    </section>
+
     <main class="chat-panel">
       @if (activeConversation(); as conversation) {
         <header class="chat-header">
@@ -136,13 +207,19 @@
               @if (item.citations.length > 0) {
                 <div class="citations">
                   @for (citation of item.citations; track $index) {
-                    <div class="citation">
+                    <button
+                      type="button"
+                      class="citation btn btn-light btn-sm w-100 text-start border-start border-primary rounded-0 mt-1"
+                      [class.active]="isSelectedCitation(item.id, $index)"
+                      [disabled]="!citation.documentId"
+                      (click)="selectCitation(item.id, $index, citation)"
+                    >
                       <span class="fw-semibold">{{ citation.sourceName }}</span>
                       @if (citation.pageNumber != null) {
                         <span> p.{{ citation.pageNumber }}</span>
                       }
                       <span class="d-block text-muted">{{ citation.snippet }}</span>
-                    </div>
+                    </button>
                   }
                 </div>
               }

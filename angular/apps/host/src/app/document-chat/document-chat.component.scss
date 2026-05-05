@@ -1,7 +1,7 @@
 .document-chat-shell {
   min-height: calc(100vh - 170px);
   display: grid;
-  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  grid-template-columns: minmax(240px, 300px) minmax(320px, 42%) minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -58,6 +58,13 @@
   min-width: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.empty-state,
+.no-active-conversation {
+  color: #6c757d;
+  text-align: center;
+  padding: 2rem 1rem;
 }
 
 .chat-header,
@@ -120,18 +127,11 @@
 }
 
 .citation {
-  border-left: 3px solid #0d6efd;
-  background: #e7f1ff;
-  border-radius: 0 4px 4px 0;
-  padding: 0.25rem 0.5rem;
-  margin-top: 0.25rem;
+  border-left-width: 3px !important;
 }
 
-.empty-state,
-.no-active-conversation {
-  color: #6c757d;
-  text-align: center;
-  padding: 2rem 1rem;
+.citation.active {
+  background: #d6e9ff;
 }
 
 @media (max-width: 991.98px) {
@@ -143,6 +143,12 @@
     border-right: 0;
     border-bottom: 1px solid #dee2e6;
     max-height: 360px;
+  }
+
+  .source-panel {
+    border-right: 0;
+    border-bottom: 1px solid #dee2e6;
+    min-height: 420px;
   }
 
   .composer {

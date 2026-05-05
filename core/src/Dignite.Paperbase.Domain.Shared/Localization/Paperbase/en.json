@@ -135,6 +135,15 @@
     "DocumentChat:CreateFailed": "Failed to create conversation.",
     "DocumentChat:SendFailed": "Failed to send message.",
     "DocumentChat:DeleteFailed": "Failed to delete conversation.",
-    "DocumentChat:AreYouSureToDelete": "Are you sure you want to delete this conversation?"
+    "DocumentChat:AreYouSureToDelete": "Are you sure you want to delete this conversation?",
+    "DocumentChat:Source": "Source",
+    "DocumentChat:SelectCitation": "Select a citation",
+    "DocumentChat:LoadingSource": "Loading source...",
+    "DocumentChat:SourceMissingDocumentId": "Citation source is missing a document id.",
+    "DocumentChat:SourceLoadFailed": "Source document could not be loaded.",
+    "DocumentChat:SnippetNotFound": "Source loaded, but the cited snippet was not found in the current Markdown.",
+    "DocumentChat:PreviewUnavailable": "Preview is unavailable for this source.",
+    "DocumentChat:OpenSourceFile": "Open source file",
+    "DocumentChat:SelectCitationToInspect": "Select a citation to inspect its source."
   }
 }

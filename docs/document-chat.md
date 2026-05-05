@@ -43,6 +43,27 @@ Document chat uses a single MAF tool-calling path: the agent exposes `search_pap
 
 The hard cap on tool-call rounds within a single turn is configured at host wiring time via `PaperbaseAI:MaxToolIterations` (default `10`); see [ai-provider.md → Provider wiring](ai-provider.md#provider-wiring-paperbaseai). For prompt language behavior, see [ai-provider.md → Cross-cutting LLM behavior](ai-provider.md#cross-cutting-llm-behavior-paperbaseaibehavior). For retrieval `topK` / `minScore` defaults, see [knowledge-index.md](knowledge-index.md). For BM25-augmented hybrid retrieval, see [hybrid-search.md](hybrid-search.md).
 
+## Citation-to-source navigation
+
+`ChatCitationDto` is the UI-facing citation contract. The current fields are sufficient for the first clickable citation implementation:
+
+| Field | Navigation meaning |
+| --- | --- |
+| `documentId` | The source document to open. A citation click must navigate to this document even when the active conversation is scoped by `documentTypeCode` and the cited document is not currently displayed. |
+| `pageNumber` | Optional 1-based source page hint. For PDFs, prefer the original file/PDF view when this value exists. If the UI cannot position to the exact page yet, open the document and display the page number as context. |
+| `chunkIndex` | Optional knowledge-index chunk ordinal. It is useful for display/debug context, but it is not a long-term stable anchor after re-embedding. Do not use it as the only Markdown highlight key. |
+| `snippet` | Preferred Markdown fallback for first-version highlighting. Search the current document Markdown for this text and highlight the first matching range when possible. |
+| `sourceName` | Display label only. Do not parse it for routing or positioning. |
+
+Fallback order:
+
+1. If `documentId` is missing or the document cannot be loaded, keep the citation as non-navigable display text.
+2. If `pageNumber` exists and the UI has a PDF/source viewer, open `documentId` in that viewer and position to the page.
+3. Otherwise open `documentId` in the document detail view, expand Markdown when available, and try to locate `snippet`.
+4. If `snippet` cannot be found, show the document without a highlight and keep `chunkIndex` / `pageNumber` visible as citation context.
+
+This deliberately does not introduce a separate `DocumentSourceLocation` DTO, persisted chunk IDs, or stored character offsets. Add those only after a real PDF/Markdown viewer needs exact positioning that cannot be satisfied by `documentId + pageNumber + snippet` fallback.
+
 ## When the answer is degraded
 
 `ChatTurnResultDto.IsDegraded = true` flags answers that ran without retrieval grounding. Two cases produce it:
