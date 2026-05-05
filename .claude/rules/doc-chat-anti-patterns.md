@@ -15,7 +15,9 @@
 
 ```
 // 错误：给字段抽取 agent 挂 TextSearchProvider（RAG 检索）
-var provider = new TextSearchProvider(SomeSearchDelegate, options: ...);
+var provider = new TextSearchProvider(
+    async (query, ct) => /* fetch chunks from your vector store */,
+    options: /* TextSearchProviderOptions */);
 var options = new ChatClientAgentOptions
 {
     AIContextProviders = [provider],          // ← 禁止
