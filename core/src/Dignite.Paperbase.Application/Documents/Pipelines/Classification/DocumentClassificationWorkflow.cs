@@ -77,23 +77,6 @@ public class DocumentClassificationWorkflow : ITransientDependency
                 {{PromptBoundary.WrapDocument(truncatedText)}}
                 """;
 
-        if (!_options.UseStrictJsonMode)
-        {
-            userMessage += """
-
-
-                ## Response Format (JSON only, no explanation)
-                {
-                  "typeCode": "best matching TypeCode, or null if none",
-                  "confidence": <number between 0.0 and 1.0>,
-                  "reason": "one sentence explaining the decision",
-                  "candidates": [
-                    {"typeCode": "TypeCode", "confidence": <number>}
-                  ]
-                }
-                """;
-        }
-
         var template = _promptProvider.GetClassificationPrompt(_options.DefaultLanguage);
         var agent = new ChatClientAgent(
             _chatClient,
@@ -101,10 +84,7 @@ public class DocumentClassificationWorkflow : ITransientDependency
 
         var response = await agent.RunAsync<ClassificationResponse>(
             userMessage,
-            session: null,
-            serializerOptions: null,
-            options: BuildRunOptions(_options.UseStrictJsonMode),
-            cancellationToken);
+            cancellationToken: cancellationToken);
 
         var parsed = response.Result;
 
@@ -151,12 +131,6 @@ public class DocumentClassificationWorkflow : ITransientDependency
 
         return outcome;
     }
-
-    // internal so Application.Tests can assert ResponseFormat without a real LLM.
-    internal static ChatClientAgentRunOptions? BuildRunOptions(bool useStrictJsonMode)
-        => useStrictJsonMode
-            ? new ChatClientAgentRunOptions(new ChatOptions { ResponseFormat = ChatResponseFormat.Json })
-            : null;
 
     // internal so Application.Tests can directly verify the regression-critical
     // out-of-range coercion logic (the surrounding 4-line branch in RunAsync is

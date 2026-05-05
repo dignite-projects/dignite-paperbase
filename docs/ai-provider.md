@@ -62,7 +62,7 @@ The `PaperbaseAI` section becomes irrelevant in that case — drop it from `apps
 | `IEmbeddingGenerator<string, Embedding<float>>` registered via `services.AddEmbeddingGenerator(...)` | The embedding pipeline and hybrid search require it. If your chat provider has no embedding model (e.g. native Anthropic), pair it with a separate embedding provider — the chat and embedding registrations are independent. |
 | `.UseDistributedCache()` on the chat builder when prompt caching is desired | Provider-agnostic; relies only on the host's `IDistributedCache`. |
 
-If the new chat provider does not implement OpenAI's strict JSON mode (most non-OpenAI native APIs do not), set `PaperbaseAIBehavior.UseStrictJsonMode = false` so structured-output calls (Classification, Rerank) fall back to in-prompt JSON-schema text.
+Structured output (Classification, Rerank) is delegated to MAF's `RunAsync<T>` schema-aware path; non-OpenAI providers are handled inside the `IChatClient` adapter and need no extra configuration here.
 
 ### Sketch: Azure OpenAI with Microsoft Entra ID (no API key)
 
@@ -146,19 +146,17 @@ For the full set of `IChatClient`-compatible providers (Anthropic, Microsoft Fou
 
 ## Cross-cutting LLM behavior (`PaperbaseAIBehavior`)
 
-These knobs describe *how Paperbase calls the model* (language hint, JSON-mode strategy). They are bound to `PaperbaseAIBehaviorOptions` and reach every pipeline through `IOptions<>`.
+These knobs describe *how Paperbase calls the model* (language hint, retrieval strategy, etc.). They are bound to `PaperbaseAIBehaviorOptions` and reach every pipeline through `IOptions<>`.
 
 ```json
 "PaperbaseAIBehavior": {
-  "DefaultLanguage": "ja",
-  "UseStrictJsonMode": true
+  "DefaultLanguage": "ja"
 }
 ```
 
 | Key | Default | Description |
 | --- | --- | --- |
 | `DefaultLanguage` | `"ja"` | Language hint appended to every system prompt (Classification, Q&A, Rerank). Match this to your primary user base — Paperbase prompts are written language-agnostic and switch via this hint. |
-| `UseStrictJsonMode` | `true` | Pass `ChatOptions.ResponseFormat = Json` so the SDK enforces the typed schema on structured-output calls (Classification, Rerank). Disable only when targeting a provider that does not implement OpenAI JSON mode — Paperbase falls back to in-prompt JSON-schema text in that case. |
 
 Per-pipeline tuning also lives in `PaperbaseAIBehavior` — see the feature docs for the keys each pipeline reads:
 - Classification truncation and prompt size → [classification.md](classification.md)

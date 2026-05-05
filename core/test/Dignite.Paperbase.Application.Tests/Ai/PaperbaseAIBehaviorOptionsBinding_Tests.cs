@@ -30,7 +30,6 @@ public class PaperbaseAIBehaviorOptionsBindingTestModule : AbpModule
                 ["PaperbaseAIBehavior:EnableLlmRerank"] = "true",
                 ["PaperbaseAIBehavior:RecallExpandFactor"] = "7",
                 ["PaperbaseAIBehavior:MaxToolCallsPerTurn"] = "3",
-                ["PaperbaseAIBehavior:UseStrictJsonMode"] = "false",
                 ["PaperbaseAIBehavior:ChatSearchBehavior"] = "OnDemandFunctionCalling",
             })
             .Build();
@@ -64,7 +63,6 @@ public class PaperbaseAIBehaviorOptionsBinding_Tests
         _options.EnableLlmRerank.ShouldBeTrue();                              // default false
         _options.RecallExpandFactor.ShouldBe(7);                              // default 4
         _options.MaxToolCallsPerTurn.ShouldBe(3);                             // default 10
-        _options.UseStrictJsonMode.ShouldBeFalse();                           // default true
         _options.ChatSearchBehavior.ShouldBe(ChatSearchBehavior.OnDemandFunctionCalling); // default BeforeAIInvoke
     }
 

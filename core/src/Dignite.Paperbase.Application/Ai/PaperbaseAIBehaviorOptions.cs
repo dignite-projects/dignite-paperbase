@@ -58,13 +58,6 @@ public class PaperbaseAIBehaviorOptions
     public int RecallExpandFactor { get; set; } = 4;
 
     /// <summary>
-    /// 启用时向 LLM 传递 <c>ChatOptions.ResponseFormat = Json</c>，
-    /// 由 SDK 注入类型 schema 约束，同时从 prompt 中移除手写的 JSON schema 文本。
-    /// 关闭时回退到旧的 prompt 内联 schema（适用于不支持 JSON mode 的 Provider）。
-    /// </summary>
-    public bool UseStrictJsonMode { get; set; } = true;
-
-    /// <summary>
     /// Controls when the <c>TextSearchProvider</c> fetches document context during a
     /// chat turn. Defaults to <see cref="ChatSearchBehavior.BeforeAIInvoke"/> (retrieval
     /// before every AI invocation; citations always populated).
