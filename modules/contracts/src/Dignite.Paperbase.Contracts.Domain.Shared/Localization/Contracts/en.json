@@ -16,6 +16,10 @@
     "TotalAmount": "Amount",
     "Status": "Status",
     "Confidence": "Confidence",
-    "NeedsReview": "Needs review"
+    "NeedsReview": "Needs review",
+    "ReviewStatus": "Review status",
+    "ContractReviewStatus:Pending": "Pending review",
+    "ContractReviewStatus:Confirmed": "Confirmed",
+    "ContractReviewStatus:Corrected": "Corrected"
   }
 }

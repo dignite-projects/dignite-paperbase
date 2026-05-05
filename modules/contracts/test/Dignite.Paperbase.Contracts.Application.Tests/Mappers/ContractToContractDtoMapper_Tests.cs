@@ -40,6 +40,7 @@ public class ContractToContractDtoMapper_Tests : ContractsApplicationTestBase<Co
         dto.Currency.ShouldBe("JPY");
         dto.Status.ShouldBe(ContractStatus.Draft);
         dto.NeedsReview.ShouldBeFalse();
+        dto.ReviewStatus.ShouldBe(ContractReviewStatus.Confirmed);
     }
 
     private static ExtractedContractFields CreateFields()
@@ -57,7 +58,7 @@ public class ContractToContractDtoMapper_Tests : ContractsApplicationTestBase<Co
             TotalAmount = 1200000m,
             Currency = "JPY",
             ExtractionConfidence = 0.9,
-            NeedsReview = false
+            ReviewStatus = ContractReviewStatus.Confirmed
         };
     }
 }

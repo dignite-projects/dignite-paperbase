@@ -69,7 +69,7 @@ public class EfCoreContractRepository_Tests : ContractsEntityFrameworkCoreTestBa
             TotalAmount = 1200000m,
             Currency = "JPY",
             ExtractionConfidence = 0.9,
-            NeedsReview = false
+            ReviewStatus = ContractReviewStatus.Confirmed
         };
     }
 }

@@ -44,4 +44,6 @@ public class ContractDto : AuditedEntityDto<Guid>
     public double? ExtractionConfidence { get; set; }
 
     public bool NeedsReview { get; set; }
+
+    public ContractReviewStatus ReviewStatus { get; set; }
 }

@@ -3,7 +3,12 @@ import { Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LocalizationPipe } from '@abp/ng.core';
 import { finalize } from 'rxjs';
-import { ContractDto, ContractStatus, ContractsService } from '../services/contracts.service';
+import {
+  ContractDto,
+  ContractReviewStatus,
+  ContractStatus,
+  ContractsService,
+} from '../services/contracts.service';
 
 @Component({
   selector: 'lib-contracts',
@@ -88,20 +93,28 @@ import { ContractDto, ContractStatus, ContractsService } from '../services/contr
             min="0"
           />
         </div>
-        <div class="col-12 col-md-auto">
-          <div class="form-check mb-2">
-            <input
-              id="needsReview"
-              class="form-check-input"
-              type="checkbox"
-              name="needsReview"
-              [(ngModel)]="needsReviewOnly"
-              (change)="load()"
-            />
-            <label class="form-check-label" for="needsReview">
-              {{ '::NeedsReview' | abpLocalization }}
-            </label>
-          </div>
+        <div class="col-12 col-md-2">
+          <label class="form-label" for="reviewStatus">
+            {{ '::ReviewStatus' | abpLocalization }}
+          </label>
+          <select
+            id="reviewStatus"
+            class="form-select"
+            name="reviewStatus"
+            [(ngModel)]="reviewStatusFilter"
+            (change)="load()"
+          >
+            <option [ngValue]="undefined">{{ 'AbpUi::All' | abpLocalization }}</option>
+            <option [ngValue]="ContractReviewStatus.Pending">
+              {{ '::ContractReviewStatus:Pending' | abpLocalization }}
+            </option>
+            <option [ngValue]="ContractReviewStatus.Confirmed">
+              {{ '::ContractReviewStatus:Confirmed' | abpLocalization }}
+            </option>
+            <option [ngValue]="ContractReviewStatus.Corrected">
+              {{ '::ContractReviewStatus:Corrected' | abpLocalization }}
+            </option>
+          </select>
         </div>
         <div class="col-12 col-md-auto">
           <button type="button" class="btn btn-primary" (click)="load()" [disabled]="loading">
@@ -121,12 +134,13 @@ import { ContractDto, ContractStatus, ContractsService } from '../services/contr
               <th>{{ '::ExpirationDate' | abpLocalization }}</th>
               <th class="text-end">{{ '::TotalAmount' | abpLocalization }}</th>
               <th>{{ '::Status' | abpLocalization }}</th>
+              <th>{{ '::ReviewStatus' | abpLocalization }}</th>
               <th class="text-end">{{ '::Confidence' | abpLocalization }}</th>
             </tr>
           </thead>
           <tbody>
             <tr *ngIf="loading">
-              <td colspan="7" class="text-center py-4">
+              <td colspan="8" class="text-center py-4">
                 <span class="spinner-border spinner-border-sm me-2"></span>
                 {{ 'AbpUi::Loading' | abpLocalization }}
               </td>
@@ -147,8 +161,10 @@ import { ContractDto, ContractStatus, ContractsService } from '../services/contr
                 <span class="badge" [ngClass]="statusClass(contract)">
                   {{ statusText(contract.status) }}
                 </span>
-                <span *ngIf="contract.needsReview" class="badge text-bg-warning ms-1">
-                  {{ '::NeedsReview' | abpLocalization }}
+              </td>
+              <td>
+                <span class="badge" [ngClass]="reviewStatusClass(contract.reviewStatus)">
+                  {{ reviewStatusLocalizationKey(contract.reviewStatus) | abpLocalization }}
                 </span>
               </td>
               <td class="text-end">
@@ -156,7 +172,7 @@ import { ContractDto, ContractStatus, ContractsService } from '../services/contr
               </td>
             </tr>
             <tr *ngIf="!loading && contracts.length === 0">
-              <td colspan="7" class="text-center text-muted py-4">
+              <td colspan="8" class="text-center text-muted py-4">
                 {{ 'AbpUi::NoDataAvailable' | abpLocalization }}
               </td>
             </tr>
@@ -167,6 +183,7 @@ import { ContractDto, ContractStatus, ContractsService } from '../services/contr
   `,
 })
 export class ContractsComponent implements OnInit {
+  protected readonly ContractReviewStatus = ContractReviewStatus;
   protected readonly service = inject(ContractsService);
   protected contracts: ContractDto[] = [];
   protected counterpartyKeyword = '';
@@ -174,7 +191,7 @@ export class ContractsComponent implements OnInit {
   protected expirationDateTo = '';
   protected amountMin: number | null = null;
   protected amountMax: number | null = null;
-  protected needsReviewOnly = false;
+  protected reviewStatusFilter: ContractReviewStatus | undefined = undefined;
   protected loading = false;
 
   ngOnInit(): void {
@@ -188,6 +205,7 @@ export class ContractsComponent implements OnInit {
       expirationDateTo: this.expirationDateTo || undefined,
       amountMin: this.amountMin ?? undefined,
       amountMax: this.amountMax ?? undefined,
+      reviewStatus: this.reviewStatusFilter,
     });
     window.open(url, '_blank');
   }
@@ -204,7 +222,7 @@ export class ContractsComponent implements OnInit {
         expirationDateTo: this.expirationDateTo || undefined,
         amountMin: this.amountMin ?? undefined,
         amountMax: this.amountMax ?? undefined,
-        needsReview: this.needsReviewOnly ? true : undefined,
+        reviewStatus: this.reviewStatusFilter,
       })
       .pipe(finalize(() => (this.loading = false)))
       .subscribe(result => {
@@ -216,11 +234,24 @@ export class ContractsComponent implements OnInit {
     return ContractStatus[status] ?? '-';
   }
 
-  protected statusClass(contract: ContractDto): string {
-    if (contract.needsReview) {
-      return 'text-bg-warning';
-    }
+  protected reviewStatusLocalizationKey(status: ContractReviewStatus): string {
+    return `::ContractReviewStatus:${ContractReviewStatus[status] ?? 'Pending'}`;
+  }
 
+  protected statusClass(contract: ContractDto): string {
     return contract.status === ContractStatus.Active ? 'text-bg-success' : 'text-bg-secondary';
+  }
+
+  protected reviewStatusClass(status: ContractReviewStatus): string {
+    switch (status) {
+      case ContractReviewStatus.Pending:
+        return 'text-bg-warning';
+      case ContractReviewStatus.Corrected:
+        return 'text-bg-info';
+      case ContractReviewStatus.Confirmed:
+        return 'text-bg-success';
+      default:
+        return 'text-bg-secondary';
+    }
   }
 }

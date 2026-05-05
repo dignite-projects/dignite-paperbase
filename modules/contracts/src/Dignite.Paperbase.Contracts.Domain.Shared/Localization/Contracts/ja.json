@@ -16,6 +16,10 @@
     "TotalAmount": "金額",
     "Status": "ステータス",
     "Confidence": "信頼度",
-    "NeedsReview": "要確認"
+    "NeedsReview": "要確認",
+    "ReviewStatus": "確認ステータス",
+    "ContractReviewStatus:Pending": "確認待ち",
+    "ContractReviewStatus:Confirmed": "確認済み",
+    "ContractReviewStatus:Corrected": "修正済み"
   }
 }

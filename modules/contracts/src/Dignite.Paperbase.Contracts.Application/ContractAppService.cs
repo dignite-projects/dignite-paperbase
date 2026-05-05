@@ -17,13 +17,16 @@ public class ContractAppService : ContractsAppService, IContractAppService
 {
     private readonly IContractRepository _contractRepository;
     private readonly ContractToContractDtoMapper _mapper;
+    private readonly IContractExtractionCorrectionRecorder _correctionRecorder;
 
     public ContractAppService(
         IContractRepository contractRepository,
-        ContractToContractDtoMapper mapper)
+        ContractToContractDtoMapper mapper,
+        IContractExtractionCorrectionRecorder correctionRecorder)
     {
         _contractRepository = contractRepository;
         _mapper = mapper;
+        _correctionRecorder = correctionRecorder;
     }
 
     public virtual async Task<ContractDto> GetAsync(Guid id)
@@ -53,7 +56,8 @@ public class ContractAppService : ContractsAppService, IContractAppService
     public virtual async Task<ContractDto> UpdateAsync(Guid id, UpdateContractDto input)
     {
         var contract = await _contractRepository.GetAsync(id);
-        contract.UpdateExtractedFields(new ExtractedContractFields
+        var previousFields = CreateFieldsSnapshot(contract);
+        var correctedFields = new ExtractedContractFields
         {
             Title = input.Title,
             ContractNumber = input.ContractNumber,
@@ -65,8 +69,18 @@ public class ContractAppService : ContractsAppService, IContractAppService
             ExpirationDate = input.ExpirationDate,
             TotalAmount = input.TotalAmount,
             Currency = input.Currency,
-            ExtractionConfidence = contract.ExtractionConfidence ?? 1.0,
-            NeedsReview = contract.NeedsReview
+            ExtractionConfidence = 1.0,
+            ReviewStatus = ContractReviewStatus.Corrected
+        };
+
+        contract.CorrectExtractedFields(correctedFields);
+        await _correctionRecorder.RecordAsync(new ContractExtractionCorrectionContext
+        {
+            ContractId = contract.Id,
+            DocumentId = contract.DocumentId,
+            DocumentTypeCode = contract.DocumentTypeCode,
+            PreviousFields = previousFields,
+            CorrectedFields = correctedFields
         });
 
         await _contractRepository.UpdateAsync(contract, autoSave: true);
@@ -116,6 +130,11 @@ public class ContractAppService : ContractsAppService, IContractAppService
             query = query.Where(x => x.NeedsReview == input.NeedsReview.Value);
         }
 
+        if (input.ReviewStatus.HasValue)
+        {
+            query = query.Where(x => x.ReviewStatus == input.ReviewStatus.Value);
+        }
+
         if (input.TotalAmountMin.HasValue)
         {
             query = query.Where(x =>
@@ -131,6 +150,29 @@ public class ContractAppService : ContractsAppService, IContractAppService
         }
 
         return query;
+    }
+
+    protected virtual ExtractedContractFields CreateFieldsSnapshot(Contract contract)
+    {
+        return new ExtractedContractFields
+        {
+            Title = contract.Title,
+            ContractNumber = contract.ContractNumber,
+            PartyAName = contract.PartyAName,
+            PartyBName = contract.PartyBName,
+            CounterpartyName = contract.CounterpartyName,
+            SignedDate = contract.SignedDate,
+            EffectiveDate = contract.EffectiveDate,
+            ExpirationDate = contract.ExpirationDate,
+            TotalAmount = contract.TotalAmount,
+            Currency = contract.Currency,
+            AutoRenewal = contract.AutoRenewal,
+            TerminationNoticeDays = contract.TerminationNoticeDays,
+            GoverningLaw = contract.GoverningLaw,
+            Summary = contract.Summary,
+            ExtractionConfidence = contract.ExtractionConfidence,
+            ReviewStatus = contract.ReviewStatus
+        };
     }
 
     [Authorize(ContractsPermissions.Contracts.Export)]

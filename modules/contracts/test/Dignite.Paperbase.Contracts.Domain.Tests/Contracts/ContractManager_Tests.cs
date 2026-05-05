@@ -38,6 +38,7 @@ public class ContractManager_Tests : ContractsDomainTestBase<ContractsDomainTest
         contract.CounterpartyName.ShouldBe(fields.CounterpartyName);
         contract.TotalAmount.ShouldBe(fields.TotalAmount);
         contract.NeedsReview.ShouldBeFalse();
+        contract.ReviewStatus.ShouldBe(ContractReviewStatus.Confirmed);
     }
 
     [Fact]
@@ -53,7 +54,7 @@ public class ContractManager_Tests : ContractsDomainTestBase<ContractsDomainTest
         updatedFields.Title = "秘密保持契約書";
         updatedFields.CounterpartyName = "株式会社アップデート";
         updatedFields.TotalAmount = 250000m;
-        updatedFields.NeedsReview = true;
+        updatedFields.ReviewStatus = ContractReviewStatus.Pending;
 
         // Act
         contract.UpdateExtractedFields(updatedFields);
@@ -63,12 +64,14 @@ public class ContractManager_Tests : ContractsDomainTestBase<ContractsDomainTest
         contract.CounterpartyName.ShouldBe("株式会社アップデート");
         contract.TotalAmount.ShouldBe(250000m);
         contract.NeedsReview.ShouldBeTrue();
+        contract.ReviewStatus.ShouldBe(ContractReviewStatus.Pending);
 
         // Act
         contract.Confirm();
 
         // Assert
         contract.NeedsReview.ShouldBeFalse();
+        contract.ReviewStatus.ShouldBe(ContractReviewStatus.Confirmed);
         contract.Status.ShouldBe(ContractStatus.Active);
     }
 
@@ -87,6 +90,26 @@ public class ContractManager_Tests : ContractsDomainTestBase<ContractsDomainTest
         contract.RestoreBecauseDocumentRestored();
         contract.Status.ShouldBe(ContractStatus.Draft);
         contract.NeedsReview.ShouldBeTrue();
+        contract.ReviewStatus.ShouldBe(ContractReviewStatus.Pending);
+    }
+
+    [Fact]
+    public void FromAgentResult_Should_Always_Require_Human_Review()
+    {
+        var fields = ExtractedContractFields.FromAgentResult(new ContractExtractionResult
+        {
+            Title = "業務委託契約書",
+            SignedDate = "2026-04-01",
+            ExpirationDate = "2027-03-31",
+            TotalAmount = 1200000m,
+            Currency = "JPY",
+            ExtractionConfidence = 0.82
+        });
+
+        fields.TotalAmount.ShouldBe(1200000m);
+        fields.NeedsReview.ShouldBeTrue();
+        fields.ReviewStatus.ShouldBe(ContractReviewStatus.Pending);
+        fields.ExtractionConfidence.ShouldBe(0.82);
     }
 
     private static ExtractedContractFields CreateFields()
@@ -104,7 +127,7 @@ public class ContractManager_Tests : ContractsDomainTestBase<ContractsDomainTest
             TotalAmount = 1200000m,
             Currency = "JPY",
             ExtractionConfidence = 0.9,
-            NeedsReview = false
+            ReviewStatus = ContractReviewStatus.Confirmed
         };
     }
 }

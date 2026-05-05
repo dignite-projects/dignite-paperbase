@@ -33,9 +33,11 @@ public class ExtractedContractFields
 
     public string? Summary { get; set; }
 
-    public double ExtractionConfidence { get; set; }
+    public double? ExtractionConfidence { get; set; }
 
     public bool NeedsReview { get; set; }
+
+    public ContractReviewStatus ReviewStatus { get; set; }
 
     public static ExtractedContractFields FromAgentResult(ContractExtractionResult result)
     {
@@ -57,14 +59,21 @@ public class ExtractedContractFields
             Summary = result.Summary
         };
 
-        var filledRequired = (fields.Title != null ? 1 : 0)
-            + (fields.SignedDate.HasValue ? 1 : 0)
-            + (fields.ExpirationDate.HasValue ? 1 : 0);
-
-        fields.NeedsReview = filledRequired < 3;
-        fields.ExtractionConfidence = Math.Min(0.95, 0.70 + filledRequired * 0.08);
+        fields.ExtractionConfidence = NormalizeConfidence(result.ExtractionConfidence);
+        fields.ReviewStatus = ContractReviewStatus.Pending;
+        fields.NeedsReview = true;
 
         return fields;
+    }
+
+    private static double? NormalizeConfidence(double? value)
+    {
+        if (!value.HasValue || value.Value < 0 || value.Value > 1)
+        {
+            return null;
+        }
+
+        return value.Value;
     }
 
     private static DateTime? ParseDate(string? value)

@@ -21,6 +21,7 @@ public static class ContractsDbContextModelCreatingExtensions
             b.HasIndex(x => x.ExpirationDate);
             b.HasIndex(x => x.CounterpartyName);
             b.HasIndex(x => x.Status);
+            b.HasIndex(x => x.ReviewStatus);
 
             b.Property(x => x.DocumentTypeCode).HasMaxLength(ContractConsts.MaxDocumentTypeCodeLength).IsRequired();
             b.Property(x => x.Title).HasMaxLength(ContractConsts.MaxTitleLength);

@@ -46,6 +46,8 @@ public class Contract : AuditedAggregateRoot<Guid>, IMultiTenant
 
     public virtual bool NeedsReview { get; private set; }
 
+    public virtual ContractReviewStatus ReviewStatus { get; private set; }
+
     protected Contract()
     {
     }
@@ -83,13 +85,19 @@ public class Contract : AuditedAggregateRoot<Guid>, IMultiTenant
         GoverningLaw = fields.GoverningLaw;
         Summary = fields.Summary;
         ExtractionConfidence = fields.ExtractionConfidence;
-        NeedsReview = fields.NeedsReview;
+        SetReviewStatus(fields.ReviewStatus);
     }
 
     public virtual void Confirm()
     {
-        NeedsReview = false;
+        SetReviewStatus(ContractReviewStatus.Confirmed);
         Status = ContractStatus.Active;
+    }
+
+    public virtual void CorrectExtractedFields(ExtractedContractFields fields)
+    {
+        UpdateExtractedFields(fields);
+        SetReviewStatus(ContractReviewStatus.Corrected);
     }
 
     public virtual void ArchiveBecauseDocumentDeleted()
@@ -105,6 +113,12 @@ public class Contract : AuditedAggregateRoot<Guid>, IMultiTenant
         }
 
         Status = ContractStatus.Draft;
-        NeedsReview = true;
+        SetReviewStatus(ContractReviewStatus.Pending);
+    }
+
+    protected virtual void SetReviewStatus(ContractReviewStatus reviewStatus)
+    {
+        ReviewStatus = reviewStatus;
+        NeedsReview = reviewStatus == ContractReviewStatus.Pending;
     }
 }

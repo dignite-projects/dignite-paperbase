@@ -17,6 +17,8 @@ public class GetContractListInput : PagedAndSortedResultRequestDto
 
     public bool? NeedsReview { get; set; }
 
+    public ContractReviewStatus? ReviewStatus { get; set; }
+
     public decimal? TotalAmountMin { get; set; }
 
     public decimal? TotalAmountMax { get; set; }

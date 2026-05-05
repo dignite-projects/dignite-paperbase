@@ -19,6 +19,7 @@ export interface ContractDto {
   status: ContractStatus;
   extractionConfidence?: number;
   needsReview: boolean;
+  reviewStatus: ContractReviewStatus;
 }
 
 export enum ContractStatus {
@@ -27,6 +28,12 @@ export enum ContractStatus {
   Expired = 2,
   Terminated = 3,
   Archived = 4,
+}
+
+export enum ContractReviewStatus {
+  Pending = 0,
+  Confirmed = 1,
+  Corrected = 2,
 }
 
 export interface GetContractListInput {
@@ -38,6 +45,7 @@ export interface GetContractListInput {
   expirationDateFrom?: string;
   expirationDateTo?: string;
   needsReview?: boolean;
+  reviewStatus?: ContractReviewStatus;
   amountMin?: number;
   amountMax?: number;
 }
@@ -57,11 +65,19 @@ export class ContractsService {
   private readonly env = inject(EnvironmentService);
 
   getList(input: GetContractListInput): Observable<PagedResultDto<ContractDto>> {
+    const params = {
+      ...input,
+      totalAmountMin: input.amountMin,
+      totalAmountMax: input.amountMax,
+      amountMin: undefined,
+      amountMax: undefined,
+    };
+
     return this.restService.request<void, PagedResultDto<ContractDto>>(
       {
         method: 'GET',
         url: '/api/paperbase/contracts',
-        params: input as Record<string, string | number | boolean | undefined>,
+        params: params as Record<string, string | number | boolean | undefined>,
       },
       { apiName: this.apiName }
     );
@@ -92,6 +108,7 @@ export class ContractsService {
     if (input?.counterpartyKeyword) params.set('counterpartyKeyword', input.counterpartyKeyword);
     if (input?.expirationDateFrom) params.set('expirationDateFrom', input.expirationDateFrom);
     if (input?.expirationDateTo) params.set('expirationDateTo', input.expirationDateTo);
+    if (input?.reviewStatus != null) params.set('reviewStatus', String(input.reviewStatus));
     if (input?.amountMin != null) params.set('totalAmountMin', String(input.amountMin));
     if (input?.amountMax != null) params.set('totalAmountMax', String(input.amountMax));
     const qs = params.toString();

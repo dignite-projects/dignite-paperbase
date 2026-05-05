@@ -134,6 +134,7 @@ public class ContractChatToolContributor : IDocumentChatToolContributor, ITransi
             await _authorizationService.CheckAsync(ContractsPermissions.Contracts.Default);
 
             var queryable = await ScopedQueryableAsync();
+            queryable = queryable.Where(c => !c.NeedsReview);
 
             if (!string.IsNullOrWhiteSpace(contractNumber))
                 queryable = queryable.Where(c =>
@@ -222,7 +223,9 @@ public class ContractChatToolContributor : IDocumentChatToolContributor, ITransi
                 governingLaw = contract.GoverningLaw,
                 status = contract.Status.ToString(),
                 summary = contract.Summary,
-                needsReview = contract.NeedsReview
+                needsReview = contract.NeedsReview,
+                reviewStatus = contract.ReviewStatus.ToString(),
+                extractionConfidence = contract.ExtractionConfidence
             };
 
             return JsonSerializer.Serialize(detail);
@@ -242,6 +245,7 @@ public class ContractChatToolContributor : IDocumentChatToolContributor, ITransi
             await _authorizationService.CheckAsync(ContractsPermissions.Contracts.Default);
 
             var queryable = await ScopedQueryableAsync();
+            queryable = queryable.Where(c => !c.NeedsReview);
 
             if (!string.IsNullOrWhiteSpace(partyName))
                 queryable = queryable.Where(c =>

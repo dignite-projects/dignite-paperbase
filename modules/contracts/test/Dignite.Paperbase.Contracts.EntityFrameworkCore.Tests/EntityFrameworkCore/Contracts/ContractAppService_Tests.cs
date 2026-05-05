@@ -149,7 +149,7 @@ public class ContractAppService_Tests : ContractsEntityFrameworkCoreTestBase
     [Fact]
     public async Task Should_Update_Contract_Fields()
     {
-        var contract = await CreateAndSaveAsync("旧公司", 1_000_000m, new DateTime(2027, 3, 31), false);
+        var contract = await CreateAndSaveAsync("旧公司", 1_000_000m, new DateTime(2027, 3, 31), true);
 
         var dto = await _appService.UpdateAsync(contract.Id, new UpdateContractDto
         {
@@ -163,6 +163,9 @@ public class ContractAppService_Tests : ContractsEntityFrameworkCoreTestBase
         dto.CounterpartyName.ShouldBe("新公司");
         dto.TotalAmount.ShouldBe(2_000_000m);
         dto.ExpirationDate.ShouldBe(new DateTime(2028, 12, 31));
+        dto.NeedsReview.ShouldBeFalse();
+        dto.ExtractionConfidence.ShouldBe(1.0);
+        dto.ReviewStatus.ShouldBe(ContractReviewStatus.Corrected);
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -232,7 +235,9 @@ public class ContractAppService_Tests : ContractsEntityFrameworkCoreTestBase
                 TotalAmount = totalAmount,
                 Currency = "CNY",
                 ExtractionConfidence = 0.95,
-                NeedsReview = needsReview
+                ReviewStatus = needsReview
+                    ? ContractReviewStatus.Pending
+                    : ContractReviewStatus.Confirmed
             });
 
         await WithUnitOfWorkAsync(async () =>
