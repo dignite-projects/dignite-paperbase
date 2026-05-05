@@ -44,9 +44,105 @@ A single `PaperbaseAI` block serves all of them. There is no per-pipeline endpoi
 
 ## Trying alternative providers
 
-- **Azure OpenAI**: set `Endpoint` to `https://<resource>.openai.azure.com/openai/deployments/<deployment>/` and use the deployment name as `ChatModelId`.
+- **Azure OpenAI**: set `Endpoint` to `https://<resource>.openai.azure.com/openai/deployments/<deployment>/` and use the deployment name as `ChatModelId`. (API-key auth only — for Microsoft Entra ID see [Going off-protocol](#going-off-protocol-non-openai-providers).)
 - **Ollama (local)**: run `ollama serve`, set `Endpoint` to `http://localhost:11434/v1`, leave `ApiKey` empty, and pick a locally pulled model id.
 - **Any OpenAI-compatible gateway** (OpenRouter, vLLM, LM Studio, etc.) works the same way — only the keys in `PaperbaseAI` need to change.
+
+## Going off-protocol (non-OpenAI providers)
+
+The four `PaperbaseAI` keys above only describe **OpenAI-protocol** providers because `PaperbaseHostModule.ConfigureAI` builds them against `OpenAIClient`. Targeting a provider that speaks a different wire protocol — native Anthropic Claude, native Google Gemini, AWS Bedrock, Microsoft Entra ID-authenticated Azure OpenAI, native Ollama without the `/v1` shim — means **replacing `ConfigureAI` in your host project**. Application code (workflows, Chat, business-module field extractors) consumes the registered `IChatClient` / `IEmbeddingGenerator` and is unchanged.
+
+The `PaperbaseAI` section becomes irrelevant in that case — drop it from `appsettings.json` and read your provider's keys from a configuration shape that matches its credential model (token, region, deployment id, etc.). `PaperbaseAIBehavior` still applies and is provider-agnostic.
+
+### Invariants the new wiring must preserve
+
+| Required | Why |
+| --- | --- |
+| `IChatClient` registered via `services.AddChatClient(...)` with `.UseFunctionInvocation()` | Document Chat tool calling (`IDocumentChatToolContributor`) and any business-module function tools rely on this middleware — without it the LLM's `tool_call` requests are returned to the caller instead of being executed. |
+| `IEmbeddingGenerator<string, Embedding<float>>` registered via `services.AddEmbeddingGenerator(...)` | The embedding pipeline and hybrid search require it. If your chat provider has no embedding model (e.g. native Anthropic), pair it with a separate embedding provider — the chat and embedding registrations are independent. |
+| `.UseDistributedCache()` on the chat builder when prompt caching is desired | Provider-agnostic; relies only on the host's `IDistributedCache`. |
+
+If the new chat provider does not implement OpenAI's strict JSON mode (most non-OpenAI native APIs do not), set `PaperbaseAIBehavior.UseStrictJsonMode = false` so structured-output calls (Classification, Rerank) fall back to in-prompt JSON-schema text.
+
+### Sketch: Azure OpenAI with Microsoft Entra ID (no API key)
+
+Replaces API-key auth with `DefaultAzureCredential`, which is the recommended path for Azure deployments with managed identity / workload identity. Requires `Azure.AI.OpenAI` and `Azure.Identity` package references in the host project:
+
+```csharp
+using Azure.AI.OpenAI;
+using Azure.Identity;
+
+private void ConfigureAI(ServiceConfigurationContext context, IConfiguration configuration)
+{
+    var azureClient = new AzureOpenAIClient(
+        new Uri(configuration["AzureOpenAI:Endpoint"]!),
+        new DefaultAzureCredential());
+
+    var chatBuilder = context.Services
+        .AddChatClient(_ => azureClient
+            .GetChatClient(configuration["AzureOpenAI:ChatDeployment"]!)
+            .AsIChatClient())
+        .UseFunctionInvocation();
+
+    if (configuration.GetValue("AzureOpenAI:PromptCachingEnabled", defaultValue: true))
+        chatBuilder = chatBuilder.UseDistributedCache();
+
+    chatBuilder.UseLogging();
+
+    context.Services
+        .AddEmbeddingGenerator(_ => azureClient
+            .GetEmbeddingClient(configuration["AzureOpenAI:EmbeddingDeployment"]!)
+            .AsIEmbeddingGenerator())
+        .UseLogging();
+}
+```
+
+### Sketch: native Ollama (without the OpenAI `/v1` shim)
+
+Uses `OllamaSharp` directly, which exposes Ollama-only features (native tool format, model warm-up control) the OpenAI `/v1` shim doesn't expose. Requires the `OllamaSharp` package in the host project:
+
+```csharp
+using OllamaSharp;
+
+context.Services
+    .AddChatClient(_ => new OllamaApiClient(
+        new Uri(configuration["Ollama:Endpoint"]!),
+        configuration["Ollama:ChatModelId"]!))
+    .UseFunctionInvocation()
+    .UseDistributedCache()
+    .UseLogging();
+
+context.Services
+    .AddEmbeddingGenerator(_ => new OllamaApiClient(
+        new Uri(configuration["Ollama:Endpoint"]!),
+        configuration["Ollama:EmbeddingModelId"]!))
+    .UseLogging();
+```
+
+### Sketch: chat and embedding from different providers
+
+When the chat provider does not ship an embedding model (typical for native Anthropic), keep two independent registrations — Paperbase resolves them separately and never assumes they share a transport:
+
+```csharp
+// Chat: from your provider's Microsoft.Extensions.AI integration package
+// (or a custom IChatClient implementation)
+context.Services
+    .AddChatClient(sp => /* IChatClient from the chat provider */)
+    .UseFunctionInvocation()
+    .UseDistributedCache()
+    .UseLogging();
+
+// Embedding: keep on OpenAI / Azure OpenAI / Voyage / Ollama / ...
+var openAIClient = new OpenAIClient(
+    new System.ClientModel.ApiKeyCredential(configuration["EmbeddingProvider:ApiKey"]!));
+context.Services
+    .AddEmbeddingGenerator(_ => openAIClient
+        .GetEmbeddingClient(configuration["EmbeddingProvider:ModelId"]!)
+        .AsIEmbeddingGenerator())
+    .UseLogging();
+```
+
+For the full set of `IChatClient`-compatible providers (Anthropic, Microsoft Foundry, GitHub Copilot, A2A, custom, …) and the exact factory calls each one ships, see the [Microsoft.Extensions.AI provider list](https://learn.microsoft.com/agent-framework/agents/providers/).
 
 ## Cross-cutting LLM behavior (`PaperbaseAIBehavior`)
 
