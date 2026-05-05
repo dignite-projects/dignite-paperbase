@@ -128,7 +128,12 @@ public class DocumentChatHistoryProvider_Tests
                 minScore: null);
 
             conversation.AppendUserMessage(_clock, Guid.NewGuid(), "hello", Guid.NewGuid());
-            conversation.AppendAssistantMessage(_clock, Guid.NewGuid(), "hi", citationsJson: null);
+            conversation.AppendAssistantMessage(
+                _clock,
+                Guid.NewGuid(),
+                "hi",
+                citationsJson: null,
+                isDegraded: false);
             await _repository.InsertAsync(conversation, autoSave: true);
 
             return conversation.Id;

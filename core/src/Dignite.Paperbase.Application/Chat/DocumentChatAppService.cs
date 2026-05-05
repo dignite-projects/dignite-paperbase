@@ -175,8 +175,9 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
 
         conversation.AppendUserMessage(Clock, userMessageId, input.Message, input.ClientTurnId);
 
+        var isDegraded = !run.Capture.HasSearches;
         var citationsJson = SerializeCitations(run.Capture.Results);
-        conversation.AppendAssistantMessage(Clock, assistantMessageId, run.Text, citationsJson);
+        conversation.AppendAssistantMessage(Clock, assistantMessageId, run.Text, citationsJson, isDegraded);
 
         // The aggregate is already tracked through the FindByIdWithMessagesAsync load;
         // the ambient unit of work flushes changes on commit. Calling repository.UpdateAsync
@@ -193,7 +194,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             Citations = citations,
             // HasSearches=false means the model never invoked the search tool — answer is
             // ungrounded; the UI should surface this so users know there are no sources.
-            IsDegraded = !run.Capture.HasSearches
+            IsDegraded = isDegraded
         };
     }
 
@@ -216,7 +217,8 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
                 Kind = ChatTurnDeltaKind.Done,
                 UserMessageId = priorResult.UserMessageId,
                 AssistantMessageId = priorResult.AssistantMessageId,
-                Citations = priorResult.Citations
+                Citations = priorResult.Citations,
+                IsDegraded = priorResult.IsDegraded
             };
             yield break;
         }
@@ -422,7 +424,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             AssistantMessageId = assistantMessage?.Id ?? Guid.Empty,
             Answer = assistantMessage?.Content ?? string.Empty,
             Citations = citations,
-            IsDegraded = false
+            IsDegraded = assistantMessage?.IsDegraded ?? false
         };
     }
 
@@ -529,8 +531,9 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             // Stream completed — persist the full turn in one shot.
             var fullText = sb.ToString();
             conversation.AppendUserMessage(Clock, userMessageId, input.Message, input.ClientTurnId);
+            var isDegraded = !setup.Capture.HasSearches;
             var citationsJson = SerializeCitations(setup.Capture.Results);
-            conversation.AppendAssistantMessage(Clock, assistantMessageId, fullText, citationsJson);
+            conversation.AppendAssistantMessage(Clock, assistantMessageId, fullText, citationsJson, isDegraded);
 
             var citations = BuildCitationDtos(setup.Capture.Results);
 
@@ -542,7 +545,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
                 Citations = citations,
                 // HasSearches=false → the model never invoked the search tool; answer is
                 // ungrounded so the UI should surface "no sources" to the user.
-                IsDegraded = !setup.Capture.HasSearches
+                IsDegraded = isDegraded
             }, ct);
 
             writer.Complete();

@@ -64,6 +64,7 @@ public class ChatConversation : FullAuditedAggregateRoot<Guid>, IMultiTenant
             ChatMessageRole.User,
             content,
             citationsJson: null,
+            isDegraded: false,
             clientTurnId,
             clock.Now);
 
@@ -71,7 +72,12 @@ public class ChatConversation : FullAuditedAggregateRoot<Guid>, IMultiTenant
         return message;
     }
 
-    public virtual ChatMessage AppendAssistantMessage(IClock clock, Guid messageId, string content, string? citationsJson)
+    public virtual ChatMessage AppendAssistantMessage(
+        IClock clock,
+        Guid messageId,
+        string content,
+        string? citationsJson,
+        bool isDegraded)
     {
         var message = new ChatMessage(
             messageId,
@@ -79,6 +85,7 @@ public class ChatConversation : FullAuditedAggregateRoot<Guid>, IMultiTenant
             ChatMessageRole.Assistant,
             content,
             citationsJson,
+            isDegraded,
             clientTurnId: null,
             clock.Now);
 

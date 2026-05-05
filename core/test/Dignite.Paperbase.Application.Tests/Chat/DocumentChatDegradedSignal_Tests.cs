@@ -66,7 +66,7 @@ public class DocumentChatDegradedSignal_Tests
         });
 
         // The substituted IChatClient never returns FunctionCallContent, so the search
-        // AIFunction is never invoked → LastResults stays null → IsDegraded.
+        // AIFunction is never invoked → HasSearches stays false → IsDegraded.
         result.IsDegraded.ShouldBeTrue();
     }
 
@@ -91,6 +91,49 @@ public class DocumentChatDegradedSignal_Tests
         // when the model never invokes it, the knowledge index must never be queried.
         await _knowledgeIndex.DidNotReceive().SearchAsync(
             Arg.Any<VectorSearchRequest>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_Replay_Preserves_Degraded_Signal()
+    {
+        var conversationId = await CreateConversationAsync();
+        var clientTurnId = Guid.NewGuid();
+
+        ChatTurnResultDto first = null!;
+        await WithUnitOfWorkAsync(async () =>
+        {
+            using (ChangeUser(OwnerUserId))
+            {
+                first = await _appService.SendMessageAsync(conversationId, new SendChatMessageInput
+                {
+                    Message = "What are the payment terms?",
+                    ClientTurnId = clientTurnId
+                });
+            }
+        });
+
+        ChatTurnResultDto replay = null!;
+        await WithUnitOfWorkAsync(async () =>
+        {
+            using (ChangeUser(OwnerUserId))
+            {
+                replay = await _appService.SendMessageAsync(conversationId, new SendChatMessageInput
+                {
+                    Message = "What are the payment terms?",
+                    ClientTurnId = clientTurnId
+                });
+            }
+        });
+
+        first.IsDegraded.ShouldBeTrue();
+        replay.IsDegraded.ShouldBeTrue();
+        replay.UserMessageId.ShouldBe(first.UserMessageId);
+        replay.AssistantMessageId.ShouldBe(first.AssistantMessageId);
+
+        await _chatClient.Received(1).GetResponseAsync(
+            Arg.Any<IEnumerable<MEAI.ChatMessage>>(),
+            Arg.Any<ChatOptions?>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -137,6 +180,50 @@ public class DocumentChatDegradedSignal_Tests
         await _knowledgeIndex.DidNotReceive().SearchAsync(
             Arg.Any<VectorSearchRequest>(),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SendMessageStreamingAsync_Replay_Preserves_Degraded_Signal()
+    {
+        var conversationId = await CreateConversationAsync();
+        var clientTurnId = Guid.NewGuid();
+
+        ChatTurnDeltaDto? firstDone = null;
+        await WithUnitOfWorkAsync(async () =>
+        {
+            using (ChangeUser(OwnerUserId))
+            {
+                await foreach (var delta in _appService.SendMessageStreamingAsync(
+                    conversationId,
+                    new SendChatMessageInput { Message = "q", ClientTurnId = clientTurnId }))
+                {
+                    if (delta.Kind == ChatTurnDeltaKind.Done)
+                        firstDone = delta;
+                }
+            }
+        });
+
+        ChatTurnDeltaDto? replayDone = null;
+        await WithUnitOfWorkAsync(async () =>
+        {
+            using (ChangeUser(OwnerUserId))
+            {
+                await foreach (var delta in _appService.SendMessageStreamingAsync(
+                    conversationId,
+                    new SendChatMessageInput { Message = "q", ClientTurnId = clientTurnId }))
+                {
+                    if (delta.Kind == ChatTurnDeltaKind.Done)
+                        replayDone = delta;
+                }
+            }
+        });
+
+        firstDone.ShouldNotBeNull();
+        replayDone.ShouldNotBeNull();
+        firstDone!.IsDegraded.ShouldBeTrue();
+        replayDone!.IsDegraded.ShouldBeTrue();
+        replayDone.UserMessageId.ShouldBe(firstDone.UserMessageId);
+        replayDone.AssistantMessageId.ShouldBe(firstDone.AssistantMessageId);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

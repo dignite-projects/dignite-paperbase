@@ -327,6 +327,34 @@ public class DocumentTextSearchAdapter_Tests
     }
 
     [Fact]
+    public async Task SearchFunction_Capture_Deduplicates_Repeated_Chunks()
+    {
+        var docId = Guid.NewGuid();
+        var recordId = Guid.NewGuid();
+        _vectorStore.SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
+            .Returns(
+                new List<VectorSearchResult>
+                {
+                    new() { RecordId = recordId, DocumentId = docId, ChunkIndex = 0, Text = "first hit" }
+                },
+                new List<VectorSearchResult>
+                {
+                    new() { RecordId = recordId, DocumentId = docId, ChunkIndex = 0, Text = "same hit again" },
+                    new() { RecordId = Guid.NewGuid(), DocumentId = docId, ChunkIndex = 1, Text = "new hit" }
+                });
+
+        var capture = new DocumentSearchCapture();
+        var fn = _adapter.CreateSearchFunction(
+            tenantId: null, baseScope: null, capture, "fn", "desc");
+
+        await fn.InvokeAsync(new AIFunctionArguments { ["query"] = "Q1" });
+        await fn.InvokeAsync(new AIFunctionArguments { ["query"] = "Q2" });
+
+        capture.Results.Count.ShouldBe(2);
+        capture.Results.Select(r => r.ChunkIndex).ShouldBe([0, 1]);
+    }
+
+    [Fact]
     public async Task SearchFunction_HasSearches_True_Even_When_Result_Set_Is_Empty()
     {
         // The model invoked search, but no chunks matched. HasSearches must still be true

@@ -99,6 +99,7 @@ public static class PaperbaseDbContextModelCreatingExtensions
 
             b.Property(x => x.Content).IsRequired().HasMaxLength(ChatConsts.MaxMessageLength);
             b.Property(x => x.CitationsJson);
+            b.Property(x => x.IsDegraded).IsRequired();
             b.Property(x => x.Role).IsRequired();
 
             b.HasIndex(x => new { x.ConversationId, x.CreationTime });

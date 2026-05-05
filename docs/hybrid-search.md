@@ -28,7 +28,7 @@ Both candidate lists are fused with **Qdrant RRF** (Reciprocal Rank Fusion). The
 
 The same encoder runs at **index time** (inside `DocumentEmbeddingBackgroundJob`) and at **query time** whenever application code passes `VectorSearchRequest.QueryText`, so term→index mapping is always consistent.
 
-`VectorSearchRequest.QueryText` is a caller-controlled field. The current explicit QA path sets it when building the search request. The MAF document conversation path should set it through `DocumentTextSearchAdapter`, which passes the raw agent search query from `TextSearchProvider` to Paperbase RAG.
+`VectorSearchRequest.QueryText` is a caller-controlled field. The current explicit QA path sets it when building the search request. The MAF document conversation path sets it through `DocumentTextSearchAdapter.CreateSearchFunction(...)`, which passes the raw `search_paperbase_documents` tool query to Paperbase RAG.
 
 ## Prerequisites
 

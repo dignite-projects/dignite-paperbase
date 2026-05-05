@@ -152,11 +152,13 @@ public class ChatConversationTests
         var conv = CreateConversation();
         var clock = CreateClock();
 
-        var msg1 = conv.AppendAssistantMessage(clock, Guid.NewGuid(), "Answer 1", citationsJson: null);
-        var msg2 = conv.AppendAssistantMessage(clock, Guid.NewGuid(), "Answer 2", citationsJson: "[]");
+        var msg1 = conv.AppendAssistantMessage(clock, Guid.NewGuid(), "Answer 1", citationsJson: null, isDegraded: false);
+        var msg2 = conv.AppendAssistantMessage(clock, Guid.NewGuid(), "Answer 2", citationsJson: "[]", isDegraded: true);
 
         msg1.ClientTurnId.ShouldBeNull();
         msg2.ClientTurnId.ShouldBeNull();
+        msg1.IsDegraded.ShouldBeFalse();
+        msg2.IsDegraded.ShouldBeTrue();
         conv.Messages.Count.ShouldBe(2);
     }
 

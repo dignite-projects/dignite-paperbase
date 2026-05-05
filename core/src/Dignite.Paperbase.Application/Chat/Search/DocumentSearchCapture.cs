@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Dignite.Paperbase.KnowledgeIndex;
 
 namespace Dignite.Paperbase.Chat.Search;
@@ -30,7 +31,24 @@ public sealed class DocumentSearchCapture
 
     internal void Set(IReadOnlyList<VectorSearchResult> results)
     {
-        _results.AddRange(results);
         HasSearches = true;
+
+        foreach (var result in results)
+        {
+            if (_results.Any(existing => IsSameChunk(existing, result)))
+                continue;
+
+            _results.Add(result);
+        }
+    }
+
+    private static bool IsSameChunk(VectorSearchResult left, VectorSearchResult right)
+    {
+        if (left.RecordId != default && right.RecordId != default)
+            return left.RecordId == right.RecordId;
+
+        return left.DocumentId == right.DocumentId
+            && left.ChunkIndex == right.ChunkIndex
+            && left.PageNumber == right.PageNumber;
     }
 }
