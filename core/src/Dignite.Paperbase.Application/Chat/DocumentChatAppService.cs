@@ -36,7 +36,9 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     /// </summary>
     protected virtual int MaxHistoryMessages => 50;
 
-    private const int SnippetMaxGraphemes = 200;
+    // internal so Application.Tests can assert against the boundary value without
+    // hard-coding a magic number.
+    internal const int SnippetMaxGraphemes = 200;
 
     private readonly IChatConversationRepository _conversationRepository;
     private readonly IDocumentRepository _documentRepository;
@@ -455,7 +457,10 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         return dtos.Count > 0 ? json : null;
     }
 
-    protected virtual List<ChatCitationDto> BuildCitationDtos(IReadOnlyList<VectorSearchResult>? results)
+    // internal static so Application.Tests can verify the citation field-mapping
+    // + multibyte-safe snippet truncation without standing up the full chat path.
+    // The method is a pure function over its input — no instance state is used.
+    internal static List<ChatCitationDto> BuildCitationDtos(IReadOnlyList<VectorSearchResult>? results)
     {
         if (results == null)
             return new List<ChatCitationDto>();
@@ -556,7 +561,9 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         }
     }
 
-    private static string TruncateByGrapheme(string text, int maxGraphemes)
+    // internal so Application.Tests can directly verify multibyte / emoji safety
+    // without going through BuildCitationDtos.
+    internal static string TruncateByGrapheme(string text, int maxGraphemes)
     {
         if (string.IsNullOrEmpty(text))
             return string.Empty;
