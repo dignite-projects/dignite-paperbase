@@ -10,6 +10,20 @@ using MeAi = Microsoft.Extensions.AI;
 
 namespace Dignite.Paperbase.Chat;
 
+/// <summary>
+/// Loads chat history from PostgreSQL for the document-chat agent path.
+///
+/// <para>
+/// <b>Wiring note</b>: this is a <see cref="ChatHistoryProvider"/> subclass for typing
+/// reasons (so a future MAF release can auto-load via the pipeline if/when our wiring
+/// participates in it), but at the moment <see cref="DocumentChatAppService"/> does NOT
+/// configure it on <c>ChatClientAgentOptions.ChatHistoryProvider</c>. The AppService
+/// instead calls <see cref="GetChatHistoryAsync"/> directly and prepends the result to
+/// the messages it passes to <see cref="Microsoft.Agents.AI.ChatClientAgent.RunAsync(System.Collections.Generic.IEnumerable{Microsoft.Extensions.AI.ChatMessage}, Microsoft.Agents.AI.AgentSession?, Microsoft.Agents.AI.ChatClientAgentRunOptions?, System.Threading.CancellationToken)"/>.
+/// Persistence flows through the <c>ChatConversation</c> DDD aggregate, not this provider —
+/// see the <see cref="StoreChatHistoryAsync"/> contract.
+/// </para>
+/// </summary>
 public class PaperbasePostgresChatHistoryProvider : ChatHistoryProvider, ITransientDependency
 {
     public const string ConversationIdStateKey = "Paperbase.DocumentChat.ConversationId";
@@ -36,6 +50,12 @@ public class PaperbasePostgresChatHistoryProvider : ChatHistoryProvider, ITransi
         return (await LoadChatHistoryAsync(session, cancellationToken)).ToList();
     }
 
+    /// <summary>
+    /// Standard MAF override: returns DB-backed history for the agent pipeline. Unused
+    /// today (see class docstring) but kept correct so that wiring this provider on
+    /// <c>ChatClientAgentOptions.ChatHistoryProvider</c> would Just Work in a future MAF
+    /// version that calls <c>InvokingCoreAsync</c> reliably during <c>RunAsync</c>.
+    /// </summary>
     protected override async ValueTask<IEnumerable<MeAi.ChatMessage>> ProvideChatHistoryAsync(
         InvokingContext context,
         CancellationToken cancellationToken = default)
@@ -46,6 +66,14 @@ public class PaperbasePostgresChatHistoryProvider : ChatHistoryProvider, ITransi
         return await LoadChatHistoryAsync(session, cancellationToken);
     }
 
+    /// <summary>
+    /// Intentionally a no-op: chat message persistence is owned by the
+    /// <c>ChatConversation</c> aggregate root, written via
+    /// <c>ChatConversation.AppendUserMessage</c> / <c>AppendAssistantMessage</c> inside
+    /// <see cref="DocumentChatAppService.SendMessageAsync"/>. This provider only LOADS
+    /// history; writes flow through DDD aggregates so the ABP unit-of-work + concurrency
+    /// stamp + audit semantics are preserved.
+    /// </summary>
     protected override ValueTask StoreChatHistoryAsync(
         InvokedContext context,
         CancellationToken cancellationToken = default)
