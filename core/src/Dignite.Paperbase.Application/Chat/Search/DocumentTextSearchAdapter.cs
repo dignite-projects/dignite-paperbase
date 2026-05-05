@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Ai;
+using Dignite.Paperbase.Abstractions.Chat;
 using Dignite.Paperbase.KnowledgeIndex;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -140,11 +141,14 @@ public class DocumentTextSearchAdapter : ITransientDependency
         Guid? tenantId,
         DocumentSearchScope? baseScope,
         DocumentSearchCapture capture,
+        DocumentChatToolContext toolContext,
+        IDocumentChatToolFactory toolFactory,
         string functionName,
         string functionDescription)
     {
         var binding = new SearchFunctionBinding(this, tenantId, baseScope, capture);
-        return AIFunctionFactory.Create(
+        return toolFactory.Create(
+            toolContext,
             binding.InvokeAsync,
             name: functionName,
             description: functionDescription);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -11,6 +12,7 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Chat;
 using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.Chat.Search;
+using Dignite.Paperbase.Chat.Telemetry;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Permissions;
 using Dignite.Paperbase.KnowledgeIndex;
@@ -49,6 +51,8 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     private readonly PaperbaseAIBehaviorOptions _aiOptions;
     private readonly PaperbaseKnowledgeIndexOptions _ragOptions;
     private readonly IEnumerable<IDocumentChatToolContributor> _toolContributors;
+    private readonly IDocumentChatToolFactory _toolFactory;
+    private readonly DocumentChatTelemetryRecorder _telemetryRecorder;
 
     public DocumentChatAppService(
         IChatConversationRepository conversationRepository,
@@ -59,7 +63,9 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         DocumentChatHistoryProvider historyProvider,
         IOptions<PaperbaseAIBehaviorOptions> aiOptions,
         IOptions<PaperbaseKnowledgeIndexOptions> ragOptions,
-        IEnumerable<IDocumentChatToolContributor> toolContributors)
+        IEnumerable<IDocumentChatToolContributor> toolContributors,
+        IDocumentChatToolFactory toolFactory,
+        DocumentChatTelemetryRecorder telemetryRecorder)
     {
         _conversationRepository = conversationRepository;
         _documentRepository = documentRepository;
@@ -70,6 +76,8 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         _aiOptions = aiOptions.Value;
         _ragOptions = ragOptions.Value;
         _toolContributors = toolContributors;
+        _toolFactory = toolFactory;
+        _telemetryRecorder = telemetryRecorder;
     }
 
     [Authorize(PaperbasePermissions.Documents.Chat.Create)]
@@ -168,7 +176,18 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             return BuildTurnResultFromPersisted(conversation, existingUserMessage);
         }
 
-        var run = await InvokeAgentAsync(conversation, input.Message);
+        var sw = Stopwatch.StartNew();
+        AgentRunOutcome run;
+        try
+        {
+            run = await InvokeAgentAsync(conversation, input.Message);
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            RecordTurnFailure(conversation, input.Message, streaming: false, sw.Elapsed.TotalMilliseconds, ex);
+            throw;
+        }
 
         var userMessageId = GuidGenerator.Create();
         var assistantMessageId = GuidGenerator.Create();
@@ -186,6 +205,16 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         // mismatch surfaces as AbpDbConcurrencyException → 409 (mapping handled by ABP).
 
         var citations = BuildCitationDtos(run.Capture.Results);
+        sw.Stop();
+        RecordTurnSuccess(
+            conversation,
+            input.Message,
+            streaming: false,
+            sw.Elapsed.TotalMilliseconds,
+            isDegraded,
+            citations.Count,
+            run.Usage);
+
         return new ChatTurnResultDto
         {
             UserMessageId = userMessageId,
@@ -319,10 +348,13 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         // Security note: function name and description are static string literals —
         // they MUST NOT contain user input or conversation metadata (prompt-injection risk).
         var capture = new DocumentSearchCapture();
+        var toolContext = CreateToolContext(conversation);
         var searchFn = _textSearchAdapter.CreateSearchFunction(
             conversation.TenantId,
             scope,
             capture,
+            toolContext,
+            _toolFactory,
             functionName: "search_paperbase_documents",
             functionDescription:
                 "Search Paperbase documents within the conversation's scope. " +
@@ -374,19 +406,24 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         if (!_toolContributors.Any())
             return new List<AITool>();
 
-        var ctx = new DocumentChatToolContext
-        {
-            DocumentTypeCode = conversation.DocumentTypeCode,
-            TenantId = conversation.TenantId,
-            ConversationId = conversation.Id
-        };
+        var ctx = CreateToolContext(conversation);
 
         return _toolContributors
             .Where(c => c.DocumentTypeCode == conversation.DocumentTypeCode)
-            .SelectMany(c => c.ContributeTools(ctx))
+            .SelectMany(c => c.ContributeTools(ctx, _toolFactory))
             .Cast<AITool>()
             .ToList();
     }
+
+    protected virtual DocumentChatToolContext CreateToolContext(ChatConversation conversation)
+        => new()
+        {
+            DocumentTypeCode = conversation.DocumentTypeCode,
+            TenantId = conversation.TenantId,
+            ConversationId = conversation.Id,
+            DocumentId = conversation.DocumentId,
+            UserId = CurrentUser.Id
+        };
 
     protected virtual async Task<AgentRunOutcome> InvokeAgentAsync(
         ChatConversation conversation,
@@ -399,7 +436,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             .Concat([new MeAi.ChatMessage(MeAi.ChatRole.User, message)])
             .ToList();
         var response = await setup.Agent.RunAsync(messages, setup.Session, options: null, cancellationToken);
-        return new AgentRunOutcome(response.Text, setup.Capture);
+        return new AgentRunOutcome(response.Text, setup.Capture, response.Usage);
     }
 
     protected virtual ChatTurnResultDto BuildTurnResultFromPersisted(
@@ -490,6 +527,80 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         }).ToList();
     }
 
+    protected virtual void RecordTurnSuccess(
+        ChatConversation conversation,
+        string message,
+        bool streaming,
+        double elapsedMs,
+        bool isDegraded,
+        int citationCount)
+        => RecordTurnSuccess(
+            conversation,
+            message,
+            streaming,
+            elapsedMs,
+            isDegraded,
+            citationCount,
+            usage: null);
+
+    protected virtual void RecordTurnSuccess(
+        ChatConversation conversation,
+        string message,
+        bool streaming,
+        double elapsedMs,
+        bool isDegraded,
+        int citationCount,
+        UsageDetails? usage)
+    {
+        var usageSummary = _telemetryRecorder.SummarizeUsage(usage);
+        _telemetryRecorder.RecordTurn(new DocumentChatTurnAuditEntry
+        {
+            ConversationId = conversation.Id,
+            UserId = CurrentUser.Id,
+            TenantId = conversation.TenantId,
+            DocumentId = conversation.DocumentId,
+            DocumentTypeCode = conversation.DocumentTypeCode,
+            TraceId = Activity.Current?.TraceId.ToString(),
+            Streaming = streaming,
+            UserMessageHash = _telemetryRecorder.HashMessage(message),
+            UserMessageLength = message.Length,
+            CitationCount = citationCount,
+            IsDegraded = isDegraded,
+            TokenUsageAvailable = usageSummary.UsageAvailable,
+            InputTokenCount = usageSummary.InputTokenCount,
+            OutputTokenCount = usageSummary.OutputTokenCount,
+            TotalTokenCount = usageSummary.TotalTokenCount,
+            CachedInputTokenCount = usageSummary.CachedInputTokenCount,
+            ReasoningTokenCount = usageSummary.ReasoningTokenCount,
+            ElapsedMs = elapsedMs,
+            Outcome = DocumentChatTelemetryOutcome.Success
+        });
+    }
+
+    protected virtual void RecordTurnFailure(
+        ChatConversation conversation,
+        string message,
+        bool streaming,
+        double elapsedMs,
+        Exception exception)
+    {
+        _telemetryRecorder.RecordTurn(new DocumentChatTurnAuditEntry
+        {
+            ConversationId = conversation.Id,
+            UserId = CurrentUser.Id,
+            TenantId = conversation.TenantId,
+            DocumentId = conversation.DocumentId,
+            DocumentTypeCode = conversation.DocumentTypeCode,
+            TraceId = Activity.Current?.TraceId.ToString(),
+            Streaming = streaming,
+            UserMessageHash = _telemetryRecorder.HashMessage(message),
+            UserMessageLength = message.Length,
+            ElapsedMs = elapsedMs,
+            Outcome = DocumentChatTelemetryOutcome.Failure,
+            ExceptionType = exception.GetType().FullName
+        });
+    }
+
     /// <summary>
     /// Runs the agent in streaming mode and writes <see cref="ChatTurnDeltaDto"/> events
     /// to <paramref name="writer"/>. Persists the full turn only on successful completion.
@@ -506,6 +617,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         var userMessageId = GuidGenerator.Create();
         var assistantMessageId = GuidGenerator.Create();
         var sb = new StringBuilder();
+        var sw = Stopwatch.StartNew();
 
         try
         {
@@ -536,6 +648,14 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             conversation.AppendAssistantMessage(Clock, assistantMessageId, fullText, citationsJson, isDegraded);
 
             var citations = BuildCitationDtos(setup.Capture.Results);
+            sw.Stop();
+            RecordTurnSuccess(
+                conversation,
+                input.Message,
+                streaming: true,
+                sw.Elapsed.TotalMilliseconds,
+                isDegraded,
+                citations.Count);
 
             await writer.WriteAsync(new ChatTurnDeltaDto
             {
@@ -558,12 +678,26 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             Logger.LogWarning(
                 "doc-chat streaming cancelled: ConversationId={ConversationId}; {Length} chars discarded.",
                 conversation.Id, sb.Length);
+            sw.Stop();
+            RecordTurnFailure(
+                conversation,
+                input.Message,
+                streaming: true,
+                sw.Elapsed.TotalMilliseconds,
+                new OperationCanceledException(ct));
             writer.Complete();
         }
         catch (Exception ex)
         {
             Logger.LogError(ex,
                 "doc-chat streaming error: ConversationId={ConversationId}", conversation.Id);
+            sw.Stop();
+            RecordTurnFailure(
+                conversation,
+                input.Message,
+                streaming: true,
+                sw.Elapsed.TotalMilliseconds,
+                ex);
 
             // Write a safe error event (never expose internal exception details to the client).
             writer.TryWrite(new ChatTurnDeltaDto
@@ -605,5 +739,6 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
 
     protected record AgentRunOutcome(
         string Text,
-        DocumentSearchCapture Capture);
+        DocumentSearchCapture Capture,
+        UsageDetails? Usage);
 }

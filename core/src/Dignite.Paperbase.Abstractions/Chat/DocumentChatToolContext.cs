@@ -16,4 +16,10 @@ public sealed class DocumentChatToolContext
 
     /// <summary>Conversation identifier. Useful for per-turn audit logging inside tools.</summary>
     public Guid ConversationId { get; init; }
+
+    /// <summary>Optional single-document scope of the conversation.</summary>
+    public Guid? DocumentId { get; init; }
+
+    /// <summary>User that initiated the current chat turn.</summary>
+    public Guid? UserId { get; init; }
 }

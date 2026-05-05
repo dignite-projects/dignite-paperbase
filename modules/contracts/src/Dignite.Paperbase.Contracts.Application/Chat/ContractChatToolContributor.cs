@@ -47,7 +47,9 @@ public class ContractChatToolContributor : IDocumentChatToolContributor, ITransi
 
     public virtual string DocumentTypeCode => ContractsDocumentTypes.General;
 
-    public virtual IEnumerable<AIFunction> ContributeTools(DocumentChatToolContext ctx)
+    public virtual IEnumerable<AIFunction> ContributeTools(
+        DocumentChatToolContext ctx,
+        IDocumentChatToolFactory toolFactory)
     {
         var binding = new ContractToolBindings(
             _contractRepository,
@@ -55,7 +57,8 @@ public class ContractChatToolContributor : IDocumentChatToolContributor, ITransi
             ctx.TenantId,
             _authorizationService);
 
-        yield return AIFunctionFactory.Create(
+        yield return toolFactory.Create(
+            ctx,
             binding.SearchAsync,
             name: "search_contracts",
             description:
@@ -64,7 +67,8 @@ public class ContractChatToolContributor : IDocumentChatToolContributor, ITransi
                 "Returns matched document IDs and contract metadata summaries. " +
                 "Use the returned document IDs to restrict further document content search to the relevant contracts.");
 
-        yield return AIFunctionFactory.Create(
+        yield return toolFactory.Create(
+            ctx,
             binding.GetDetailAsync,
             name: "get_contract_detail",
             description:
@@ -73,7 +77,8 @@ public class ContractChatToolContributor : IDocumentChatToolContributor, ITransi
                 "for fields not included in the search summary (governing law, auto-renewal, " +
                 "termination notice days, effective date, etc.).");
 
-        yield return AIFunctionFactory.Create(
+        yield return toolFactory.Create(
+            ctx,
             binding.GetAggregateAsync,
             name: "get_contract_aggregate",
             description:

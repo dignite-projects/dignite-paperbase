@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Paperbase.Abstractions.Chat;
 using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.Chat.Search;
 using Dignite.Paperbase.KnowledgeIndex;
@@ -118,6 +119,7 @@ public class DocumentTextSearchAdapter_Tests
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
     private readonly TestDocumentRerankWorkflow _rerankWorkflow;
     private readonly PaperbaseAIBehaviorOptions _aiOptions;
+    private readonly IDocumentChatToolFactory _toolFactory;
 
     public DocumentTextSearchAdapter_Tests()
     {
@@ -126,11 +128,20 @@ public class DocumentTextSearchAdapter_Tests
         _embeddingGenerator = GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
         _rerankWorkflow = GetRequiredService<TestDocumentRerankWorkflow>();
         _aiOptions = GetRequiredService<IOptions<PaperbaseAIBehaviorOptions>>().Value;
+        _toolFactory = GetRequiredService<IDocumentChatToolFactory>();
         _aiOptions.EnableLlmRerank = false;
         _aiOptions.RecallExpandFactor = 4;
 
         SetupDefaultEmbedding();
     }
+
+    private DocumentChatToolContext ToolContext(Guid? tenantId = null)
+        => new()
+        {
+            ConversationId = Guid.NewGuid(),
+            TenantId = tenantId,
+            DocumentTypeCode = "contract.general"
+        };
 
     // ── SearchVectorAsync core ────────────────────────────────────────────────
 
@@ -286,6 +297,8 @@ public class DocumentTextSearchAdapter_Tests
 
         var fn = _adapter.CreateSearchFunction(
             tenantId: null, baseScope: null, capture,
+            ToolContext(),
+            _toolFactory,
             functionName: "search_paperbase_documents",
             functionDescription: "test");
 
@@ -315,7 +328,7 @@ public class DocumentTextSearchAdapter_Tests
 
         var capture = new DocumentSearchCapture();
         var fn = _adapter.CreateSearchFunction(
-            tenantId: null, baseScope: null, capture, "fn", "desc");
+            tenantId: null, baseScope: null, capture, ToolContext(), _toolFactory, "fn", "desc");
 
         await fn.InvokeAsync(new AIFunctionArguments { ["query"] = "Q1" });
         await fn.InvokeAsync(new AIFunctionArguments { ["query"] = "Q2" });
@@ -345,7 +358,7 @@ public class DocumentTextSearchAdapter_Tests
 
         var capture = new DocumentSearchCapture();
         var fn = _adapter.CreateSearchFunction(
-            tenantId: null, baseScope: null, capture, "fn", "desc");
+            tenantId: null, baseScope: null, capture, ToolContext(), _toolFactory, "fn", "desc");
 
         await fn.InvokeAsync(new AIFunctionArguments { ["query"] = "Q1" });
         await fn.InvokeAsync(new AIFunctionArguments { ["query"] = "Q2" });
@@ -364,7 +377,7 @@ public class DocumentTextSearchAdapter_Tests
 
         var capture = new DocumentSearchCapture();
         var fn = _adapter.CreateSearchFunction(
-            tenantId: null, baseScope: null, capture, "fn", "desc");
+            tenantId: null, baseScope: null, capture, ToolContext(), _toolFactory, "fn", "desc");
 
         await fn.InvokeAsync(new AIFunctionArguments { ["query"] = "Q" });
 
@@ -381,9 +394,9 @@ public class DocumentTextSearchAdapter_Tests
         var captureB = new DocumentSearchCapture();
 
         _adapter.CreateSearchFunction(
-            tenantId: Guid.NewGuid(), baseScope: null, captureA, "fn", "desc");
+            tenantId: Guid.NewGuid(), baseScope: null, captureA, ToolContext(), _toolFactory, "fn", "desc");
         _adapter.CreateSearchFunction(
-            tenantId: Guid.NewGuid(), baseScope: null, captureB, "fn", "desc");
+            tenantId: Guid.NewGuid(), baseScope: null, captureB, ToolContext(), _toolFactory, "fn", "desc");
 
         captureA.ShouldNotBeSameAs(captureB);
         captureA.HasSearches.ShouldBeFalse();
@@ -413,7 +426,7 @@ public class DocumentTextSearchAdapter_Tests
 
         await Task.WhenAll(tenantIds.Select((tid, i) =>
         {
-            var fn = _adapter.CreateSearchFunction(tid, baseScope: null, captures[i], "fn", "desc");
+            var fn = _adapter.CreateSearchFunction(tid, baseScope: null, captures[i], ToolContext(tid), _toolFactory, "fn", "desc");
             return fn.InvokeAsync(new AIFunctionArguments { ["query"] = $"q-{i}" }).AsTask();
         }));
 
@@ -443,6 +456,8 @@ public class DocumentTextSearchAdapter_Tests
                 TopK = 7
             },
             capture,
+            ToolContext(),
+            _toolFactory,
             functionName: "search_paperbase_documents",
             functionDescription: "test");
 

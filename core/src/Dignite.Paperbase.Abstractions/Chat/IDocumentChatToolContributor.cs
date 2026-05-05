@@ -18,11 +18,9 @@ namespace Dignite.Paperbase.Abstractions.Chat;
 ///
 /// <para>
 /// <strong>MCP / cross-process expansion (future, backlog):</strong>
-/// the signature intentionally returns <see cref="AIFunction"/> only — it does not commit
-/// to the function source being C# reflection. A future
-/// <c>McpDocumentChatToolContributor</c> can bridge remote MCP tools to
-/// <see cref="AIFunction"/> via <c>Microsoft.Extensions.AI</c>'s MCP client without any
-/// contract change. Tracking issue: https://github.com/dignite-projects/dignite-paperbase/issues/70
+/// contributors receive an <see cref="IDocumentChatToolFactory"/> so all in-process tools
+/// use the same audit, logging, and metrics behavior. Future cross-process/MCP tools should
+/// either be adapted through this factory or provide equivalent instrumentation at the bridge.
 /// </para>
 /// </summary>
 public interface IDocumentChatToolContributor
@@ -39,5 +37,7 @@ public interface IDocumentChatToolContributor
     /// conversation context. Called once per turn; the result is merged with the built-in
     /// <c>search_paperbase_documents</c> RAG tool.
     /// </summary>
-    IEnumerable<AIFunction> ContributeTools(DocumentChatToolContext ctx);
+    IEnumerable<AIFunction> ContributeTools(
+        DocumentChatToolContext ctx,
+        IDocumentChatToolFactory toolFactory);
 }

@@ -18,6 +18,7 @@
     <PackageReference Include="Markdig" />
     <PackageReference Include="Volo.Abp.BackgroundJobs" />
     <PackageReference Include="Volo.Abp.BlobStoring" />
+    <PackageReference Include="Volo.Abp.Auditing" />
     <PackageReference Include="Volo.Abp.Ddd.Application" />
     <PackageReference Include="Volo.Abp.Mapperly" />
     <ProjectReference Include="..\Dignite.Paperbase.Abstractions\Dignite.Paperbase.Abstractions.csproj" />

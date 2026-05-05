@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Paperbase.Chat.Telemetry;
 using Dignite.Paperbase.KnowledgeIndex;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,6 +14,7 @@ using NSubstitute;
 using Shouldly;
 using Volo.Abp.Modularity;
 using Volo.Abp.Security.Claims;
+using Volo.Abp.Auditing;
 using Xunit;
 using MEAI = Microsoft.Extensions.AI;
 
@@ -50,6 +52,7 @@ public class DocumentChatToolInvocation_Tests
     private readonly IDocumentKnowledgeIndex _knowledgeIndex;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
     private readonly ICurrentPrincipalAccessor _principalAccessor;
+    private readonly IAuditingManager _auditingManager;
 
     private static readonly Guid OwnerUserId = Guid.Parse("00000000-0000-0000-0000-000000000001");
 
@@ -61,6 +64,7 @@ public class DocumentChatToolInvocation_Tests
         _knowledgeIndex = GetRequiredService<IDocumentKnowledgeIndex>();
         _embeddingGenerator = GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
         _principalAccessor = GetRequiredService<ICurrentPrincipalAccessor>();
+        _auditingManager = GetRequiredService<IAuditingManager>();
 
         SetupDefaultEmbedding();
     }
@@ -130,6 +134,61 @@ public class DocumentChatToolInvocation_Tests
         assistant.CitationsJson.ShouldContain(docId.ToString());
     }
 
+    [Fact]
+    public async Task SendMessageAsync_Records_Tool_Call_In_Abp_AuditLog_Scope()
+    {
+        _knowledgeIndex.SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new List<VectorSearchResult>
+            {
+                new()
+                {
+                    RecordId = Guid.NewGuid(),
+                    DocumentId = Guid.NewGuid(),
+                    ChunkIndex = 0,
+                    Text = "Audited context."
+                }
+            });
+
+        var conversationId = await CreateConversationAsync();
+
+        using var auditScope = _auditingManager.BeginScope();
+        await WithUnitOfWorkAsync(async () =>
+        {
+            using (ChangeUser(OwnerUserId))
+            {
+                await _appService.SendMessageAsync(conversationId, new SendChatMessageInput
+                {
+                    Message = "Audit the tool call",
+                    ClientTurnId = Guid.NewGuid()
+                });
+            }
+        });
+
+        var currentAuditScope = _auditingManager.Current;
+        currentAuditScope.ShouldNotBeNull();
+        var auditLog = currentAuditScope.Log;
+        auditLog.ExtraProperties.ShouldContainKey(DocumentChatTelemetryRecorder.AuditToolCallsPropertyName);
+        auditLog.ExtraProperties.ShouldContainKey(DocumentChatTelemetryRecorder.AuditTurnPropertyName);
+
+        var toolCalls = auditLog.ExtraProperties[DocumentChatTelemetryRecorder.AuditToolCallsPropertyName]
+            .ShouldBeOfType<List<DocumentChatToolAuditEntry>>();
+        toolCalls.Count.ShouldBe(1);
+        toolCalls[0].ToolName.ShouldBe("search_paperbase_documents");
+        toolCalls[0].Outcome.ShouldBe(DocumentChatTelemetryOutcome.Success);
+        toolCalls[0].ArgumentsSummary.ShouldContainKey("query");
+
+        var turn = auditLog.ExtraProperties[DocumentChatTelemetryRecorder.AuditTurnPropertyName]
+            .ShouldBeOfType<DocumentChatTurnAuditEntry>();
+        turn.ConversationId.ShouldBe(conversationId);
+        turn.UserMessageHash.ShouldNotBeNullOrWhiteSpace();
+        turn.CitationCount.ShouldBe(1);
+        turn.TokenUsageAvailable.ShouldBeTrue();
+        turn.InputTokenCount.ShouldBe(11);
+        turn.OutputTokenCount.ShouldBe(7);
+        turn.TotalTokenCount.ShouldBe(18);
+        turn.Outcome.ShouldBe(DocumentChatTelemetryOutcome.Success);
+    }
+
     private async Task<Guid> CreateConversationAsync(int? topK = null)
     {
         return await WithUnitOfWorkAsync(async () =>
@@ -191,7 +250,15 @@ public sealed class ScriptedToolCallingChatClient : IChatClient
         }
 
         return Task.FromResult(new ChatResponse(
-            new MEAI.ChatMessage(ChatRole.Assistant, "Payment is due within 30 days. [chunk 0]")));
+            new MEAI.ChatMessage(ChatRole.Assistant, "Payment is due within 30 days. [chunk 0]"))
+        {
+            Usage = new UsageDetails
+            {
+                InputTokenCount = 11,
+                OutputTokenCount = 7,
+                TotalTokenCount = 18
+            }
+        });
     }
 
     public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
