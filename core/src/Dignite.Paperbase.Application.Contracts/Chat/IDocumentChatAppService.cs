@@ -29,7 +29,7 @@ public interface IDocumentChatAppService : IApplicationService
     /// </summary>
     /// <remarks>
     /// This method is intentionally excluded from the standard ABP auto-API controller.
-    /// Use the dedicated SSE endpoint in the host project instead.
+    /// Use the dedicated SSE endpoint in the HttpApi controller instead.
     /// </remarks>
     [RemoteService(false)]
     IAsyncEnumerable<ChatTurnDeltaDto> SendMessageStreamingAsync(
