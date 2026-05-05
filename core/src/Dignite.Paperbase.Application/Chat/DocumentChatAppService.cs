@@ -32,8 +32,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
 {
     /// <summary>
     /// Tail window of messages the repository returns when loading a conversation.
-    /// Bounds the database read; the agent's prompt payload is bounded separately by
-    /// <c>TextSearchProviderOptions.RecentMessageMemoryLimit</c>.
+    /// Bounds the database read.
     /// </summary>
     protected virtual int MaxHistoryMessages => 50;
 
@@ -190,7 +189,8 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             AssistantMessageId = assistantMessageId,
             Answer = run.Text,
             Citations = citations,
-            // null LastResults means the model did not invoke the search tool (OnDemand mode).
+            // null LastResults means the model never invoked the search tool — answer is
+            // ungrounded; the UI should surface this so users know there are no sources.
             IsDegraded = run.Capture.LastResults == null
         };
     }
@@ -306,76 +306,39 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         var template = _promptProvider.GetQaPrompt(_aiOptions.DefaultLanguage);
         var instructions = template.SystemInstructions + " " + PromptBoundary.BoundaryRule;
 
-        // Collect AIFunction tools from all contributors registered for this document type.
-        var contributorTools = CollectContributorTools(conversation);
+        // Single MAF tool-calling path: expose the RAG search function plus any business-module
+        // contributor tools, and let the model decide when (and with what query / documentIds)
+        // to invoke them. The previous always-inject mode produced "guaranteed" citations that
+        // the model often did not actually use; under tool calling, citations populate only when
+        // the model genuinely needed the context — the honest signal.
+        //
+        // Security note: function name and description are static string literals —
+        // they MUST NOT contain user input or conversation metadata (prompt-injection risk).
+        var capture = new DocumentSearchCapture();
+        var searchFn = _textSearchAdapter.CreateSearchFunction(
+            conversation.TenantId,
+            scope,
+            capture,
+            functionName: "search_paperbase_documents",
+            functionDescription:
+                "Search Paperbase documents within the conversation's scope. " +
+                "Returns relevant text chunks with source citations. " +
+                "Pass documentIds to restrict the search to specific documents " +
+                "whose IDs were returned by another tool.");
 
-        // When contributors are present, the model must be able to decide when to call the RAG
-        // tool (e.g. chain: search_contracts → search_paperbase_documents).  BeforeAIInvoke
-        // would force vector search unconditionally, which wastes tokens for structured queries
-        // and prevents the model from skipping it when the contributor already answered fully.
-        var effectiveBehavior = contributorTools.Count > 0
-            ? ChatSearchBehavior.OnDemandFunctionCalling
-            : _aiOptions.ChatSearchBehavior;
+        var tools = new List<AITool> { searchFn };
+        tools.AddRange(CollectContributorTools(conversation));
 
-        ChatClientAgentOptions agentOptions;
-        DocumentSearchCapture capture;
-
-        if (effectiveBehavior == ChatSearchBehavior.OnDemandFunctionCalling)
+        var agentOptions = new ChatClientAgentOptions
         {
-            // OnDemandFunctionCalling: expose both the RAG search function and contributor
-            // tools as LLM-callable functions.  The search function accepts an optional
-            // documentIds parameter so the LLM can do a focused RAG pass on document IDs
-            // returned by contributor tools (e.g. search_contracts → search_paperbase_documents).
-            //
-            // Security note: function name and description are static string literals —
-            // they MUST NOT contain user input or conversation metadata (prompt-injection risk).
-            capture = new DocumentSearchCapture();
-            var searchFn = _textSearchAdapter.CreateSearchFunction(
-                conversation.TenantId,
-                scope,
-                capture,
-                functionName: "search_paperbase_documents",
-                functionDescription:
-                    "Search Paperbase documents within the conversation's scope. " +
-                    "Returns relevant text chunks with source citations. " +
-                    "Pass documentIds to restrict the search to specific documents " +
-                    "whose IDs were returned by another tool.");
-
-            var allTools = new List<AITool> { searchFn };
-            allTools.AddRange(contributorTools);
-
-            agentOptions = new ChatClientAgentOptions
+            ChatOptions = new ChatOptions
             {
-                ChatOptions = new ChatOptions
-                {
-                    Instructions = instructions,
-                    Tools = allTools
-                },
-                ChatHistoryProvider = _historyProvider
-            };
-        }
-        else
-        {
-            // BeforeAIInvoke: TextSearchProvider injects RAG context automatically before
-            // each AI invocation; citations are always populated.  Contributor tools (if any)
-            // are still exposed as LLM-callable functions so iterative tool calling works.
-            var (provider, providerCapture) = _textSearchAdapter.CreateForTenant(
-                conversation.TenantId,
-                providerOptions: BuildChatSearchProviderOptions(),
-                scope: scope);
-            capture = providerCapture;
-
-            agentOptions = new ChatClientAgentOptions
-            {
-                ChatOptions = new ChatOptions
-                {
-                    Instructions = instructions,
-                    Tools = contributorTools.Count > 0 ? contributorTools : null
-                },
-                ChatHistoryProvider = _historyProvider,
-                AIContextProviders = new List<AIContextProvider> { provider }
-            };
-        }
+                Instructions = instructions,
+                Tools = tools,
+                ToolMode = ChatToolMode.Auto
+            },
+            ChatHistoryProvider = _historyProvider
+        };
 
         var agent = new ChatClientAgent(_chatClient, agentOptions);
         var session = await agent.CreateSessionAsync(cancellationToken);
@@ -409,15 +372,6 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             .Cast<AITool>()
             .ToList();
     }
-
-    /// <summary>
-    /// Returns <see cref="TextSearchProviderOptions"/> for the <c>BeforeAIInvoke</c> path.
-    /// Returns <see langword="null"/> so the adapter applies its own defaults
-    /// (<c>RecentMessageMemoryLimit = 5</c>, <c>BeforeAIInvoke</c> search time).
-    /// Override in a subclass to customize retrieval behaviour without touching
-    /// <see cref="PrepareAgentSetupAsync"/>.
-    /// </summary>
-    protected virtual TextSearchProviderOptions? BuildChatSearchProviderOptions() => null;
 
     protected virtual async Task<AgentRunOutcome> InvokeAgentAsync(
         ChatConversation conversation,
@@ -570,7 +524,8 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
                 UserMessageId = userMessageId,
                 AssistantMessageId = assistantMessageId,
                 Citations = citations,
-                // null LastResults → model did not invoke the search tool (OnDemand mode).
+                // null LastResults → the model never invoked the search tool; answer is
+                // ungrounded so the UI should surface "no sources" to the user.
                 IsDegraded = setup.Capture.LastResults == null
             }, ct);
 

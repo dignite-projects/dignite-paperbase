@@ -4,48 +4,26 @@ using System.Runtime.CompilerServices;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.KnowledgeIndex;
 using Microsoft.Extensions.AI;
 using NSubstitute;
 using Shouldly;
-using Volo.Abp.Modularity;
 using Volo.Abp.Security.Claims;
 using Xunit;
 using MEAI = Microsoft.Extensions.AI;
 
 namespace Dignite.Paperbase.Chat;
 
-// ── Test module ───────────────────────────────────────────────────────────────
-
 /// <summary>
-/// Extends <see cref="DocumentChatAppServiceTestModule"/> with
-/// <c>ChatSearchBehavior.OnDemandFunctionCalling</c> so that all services within
-/// this test scope use the on-demand retrieval mode.
+/// Behavioral tests for the "model declines to invoke the search tool" branch of
+/// the single MAF tool-calling chat path. When the substituted <see cref="IChatClient"/>
+/// returns a plain text answer (no <c>FunctionCallContent</c>), the search AIFunction is
+/// never invoked, the knowledge index is never queried, and
+/// <see cref="ChatTurnResultDto.IsDegraded"/> must be <c>true</c> — the honest signal
+/// that the answer was not grounded in retrieved sources.
 /// </summary>
-[DependsOn(typeof(DocumentChatAppServiceTestModule))]
-public class DocumentChatOnDemandTestModule : AbpModule
-{
-    public override void ConfigureServices(ServiceConfigurationContext context)
-    {
-        Configure<PaperbaseAIBehaviorOptions>(opts =>
-            opts.ChatSearchBehavior = ChatSearchBehavior.OnDemandFunctionCalling);
-    }
-}
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
-/// <summary>
-/// Behavioral tests for <see cref="ChatSearchBehavior.OnDemandFunctionCalling"/> mode.
-/// Exercises: search is skipped when the model does not invoke the retrieval tool
-/// (IsDegraded=true), the knowledge index is not called, and both sync and streaming
-/// paths report degraded state correctly.
-///
-/// Companion tests for <see cref="ChatSearchBehavior.BeforeAIInvoke"/> (default) are
-/// in <see cref="DocumentChatStreaming_Tests"/> and <see cref="DocumentChatAppService_Tests"/>.
-/// </summary>
-public class DocumentChatOnDemand_Tests
-    : PaperbaseApplicationTestBase<DocumentChatOnDemandTestModule>
+public class DocumentChatDegradedSignal_Tests
+    : PaperbaseApplicationTestBase<DocumentChatAppServiceTestModule>
 {
     private readonly IDocumentChatAppService _appService;
     private readonly IChatClient _chatClient;
@@ -55,7 +33,7 @@ public class DocumentChatOnDemand_Tests
 
     private static readonly Guid OwnerUserId = Guid.Parse("00000000-0000-0000-0000-000000000001");
 
-    public DocumentChatOnDemand_Tests()
+    public DocumentChatDegradedSignal_Tests()
     {
         _appService         = GetRequiredService<IDocumentChatAppService>();
         _chatClient         = GetRequiredService<IChatClient>();
@@ -68,8 +46,6 @@ public class DocumentChatOnDemand_Tests
         SetupDefaultSyncChatClient();
         SetupDefaultStreamingChatClient();
     }
-
-    // ── 1. Sync path: IsDegraded=true when model does not invoke search tool ──
 
     [Fact]
     public async Task SendMessageAsync_IsDegraded_True_When_Model_Does_Not_Call_Search_Tool()
@@ -89,15 +65,13 @@ public class DocumentChatOnDemand_Tests
             }
         });
 
-        // The substituted IChatClient never invokes function tools, so the search
-        // delegate is never triggered in OnDemand mode → LastResults == null → IsDegraded.
+        // The substituted IChatClient never returns FunctionCallContent, so the search
+        // AIFunction is never invoked → LastResults stays null → IsDegraded.
         result.IsDegraded.ShouldBeTrue();
     }
 
-    // ── 2. Sync path: knowledge index is never called in OnDemand mode ────────
-
     [Fact]
-    public async Task SendMessageAsync_KnowledgeIndex_Not_Called_In_OnDemand_Mode()
+    public async Task SendMessageAsync_KnowledgeIndex_Not_Called_When_Model_Does_Not_Call_Search_Tool()
     {
         var conversationId = await CreateConversationAsync();
 
@@ -113,15 +87,12 @@ public class DocumentChatOnDemand_Tests
             }
         });
 
-        // In OnDemandFunctionCalling mode the search delegate is exposed as a tool,
-        // not called eagerly; since the substitute never calls the tool, SearchAsync
-        // must never have been invoked.
+        // The search AIFunction is the only path to IDocumentKnowledgeIndex.SearchAsync;
+        // when the model never invokes it, the knowledge index must never be queried.
         await _knowledgeIndex.DidNotReceive().SearchAsync(
             Arg.Any<VectorSearchRequest>(),
             Arg.Any<CancellationToken>());
     }
-
-    // ── 3. Streaming path: Done.IsDegraded=true when model does not call tool ─
 
     [Fact]
     public async Task SendMessageStreamingAsync_IsDegraded_True_When_Model_Does_Not_Call_Search_Tool()
@@ -147,10 +118,8 @@ public class DocumentChatOnDemand_Tests
         done!.IsDegraded.ShouldBeTrue();
     }
 
-    // ── 4. Streaming path: knowledge index not called in OnDemand mode ────────
-
     [Fact]
-    public async Task SendMessageStreamingAsync_KnowledgeIndex_Not_Called_In_OnDemand_Mode()
+    public async Task SendMessageStreamingAsync_KnowledgeIndex_Not_Called_When_Model_Does_Not_Call_Search_Tool()
     {
         var conversationId = await CreateConversationAsync();
 
@@ -182,7 +151,7 @@ public class DocumentChatOnDemand_Tests
             {
                 var dto = await _appService.CreateConversationAsync(new CreateChatConversationInput
                 {
-                    Title            = "OnDemand Test",
+                    Title            = "Degraded-Signal Test",
                     DocumentTypeCode = "contract.general"
                 });
                 return dto.Id;

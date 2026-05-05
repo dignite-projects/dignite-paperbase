@@ -30,8 +30,7 @@ Chat-related knobs live in `PaperbaseAIBehavior` alongside the other Application
 ```json
 "PaperbaseAIBehavior": {
   "EnableLlmRerank": false,
-  "RecallExpandFactor": 4,
-  "ChatSearchBehavior": "BeforeAIInvoke"
+  "RecallExpandFactor": 4
 }
 ```
 
@@ -39,7 +38,8 @@ Chat-related knobs live in `PaperbaseAIBehavior` alongside the other Application
 | --- | --- | --- |
 | `EnableLlmRerank` | `false` | When enabled, document chat retrieves an expanded candidate set, asks the chat model to rerank chunks by question relevance, and injects only the final `TopK` into the answer prompt. Off by default to conserve tokens; enable when retrieval quality is the bottleneck (often in mixed-language corpora). |
 | `RecallExpandFactor` | `4` | Multiplier applied to the conversation's `topK` (or `PaperbaseKnowledgeIndex:DefaultTopK`) before LLM rerank. With the defaults `topK=5` × `4` = 20 candidates rescored. |
-| `ChatSearchBehavior` | `BeforeAIInvoke` | `BeforeAIInvoke` runs retrieval before every model call (citations always populated). `OnDemandFunctionCalling` exposes search as a tool the model decides when to call (saves tokens but the model may produce an answer with no citations — `ChatTurnResultDto.IsDegraded = true` in that case). |
+
+Document chat uses a single MAF tool-calling path: the agent exposes `search_paperbase_documents` (RAG) plus any business-module contributor tools, with `ChatToolMode.Auto` so the model picks when (and with what query / `documentIds`) to invoke them. There is no operator switch for "always retrieve before answering" — see *When the answer is degraded* below for the honest-signal contract that replaced it.
 
 The hard cap on tool-call rounds within a single turn is configured at host wiring time via `PaperbaseAI:MaxToolIterations` (default `10`); see [ai-provider.md → Provider wiring](ai-provider.md#provider-wiring-paperbaseai). For prompt language behavior, see [ai-provider.md → Cross-cutting LLM behavior](ai-provider.md#cross-cutting-llm-behavior-paperbaseaibehavior). For retrieval `topK` / `minScore` defaults, see [knowledge-index.md](knowledge-index.md). For BM25-augmented hybrid retrieval, see [hybrid-search.md](hybrid-search.md).
 
@@ -50,7 +50,7 @@ The hard cap on tool-call rounds within a single turn is configured at host wiri
 | Cause | What happened | What to do |
 |---|---|---|
 | Knowledge index unavailable | `IDocumentKnowledgeIndex.SearchAsync` threw — Qdrant down, network fault, etc. | Treat as a transient infrastructure incident. The model still produced an answer using only conversation history. |
-| `OnDemandFunctionCalling` mode + model declined to search | The chat behavior was set to "let the model decide" and the model answered without calling the search tool. | Either accept it (the model judged search unnecessary) or switch to `BeforeAIInvoke` if your team prefers always-grounded answers. |
+| Model declined to invoke `search_paperbase_documents` | The model judged the question answerable without retrieval (greetings, follow-up clarifications, contributor-tool answers that don't need RAG). | Accept it: citations reflect what the model *actually used*; an empty list with `IsDegraded = true` is the honest signal. If a class of questions is consistently answered without search where you want it grounded, tighten the QA system prompt in `DefaultPromptProvider` rather than forcing pre-injection. |
 
 `isDegraded` is surfaced to the API client so UIs can show a "no sources used" banner.
 
