@@ -42,7 +42,7 @@ Paperbase 采用**三层分离**的模块化架构：
   - 通过 `IDistributedEventBus` 订阅 `DocumentClassifiedEto` 事件
   - **使用 MAF `ChatClientAgent` + 结构化输出**自实现领域专属的字段提取（不再有通用的 `IFieldExtractor` 抽象）
   - 持久化自己的领域聚合根，提供业务 API 和 UI
-  - 在自己的聚合根上维护业务查询字段，**不得回写到 Document 聚合根**
+  - 在自己的聚合根上维护业务查询字段，**不得回写到 Document 聚合根**（判断依据：如果一个字段的含义只有在特定业务场景下才成立，它就不属于 `Document`）
 - **非耦合实现**：业务模块之间无依赖；业务模块与核心通过事件解耦通信
 
 ### 第三层：Host（宿主应用）
@@ -78,14 +78,6 @@ Dignite.Paperbase.Abstractions（扩展契约层，无其他项目依赖）
 - **业务模块间无耦合**：每个业务模块独立开发、独立测试、可独立卸载
 - **编排在 Application**：BackgroundJob、Workflow、PipelineRun 生命周期、Document 读写均在 Paperbase.Application
 
-### Document 聚合根边界（强制）
-
-`Document` 是**纯基础设施聚合根**，职责限于：文件存储、生命周期状态机、流水线 Run 记录、文本提取结果、AI 分类结果、向量化状态。
-
-**禁止**在 `Document` 上添加任何来自业务模块的字段，例如合同金额、到期日、对方名称、发票号等。这类字段属于业务模块自己的聚合根，由业务模块在收到 `DocumentClassifiedEto` 后自行持久化和查询。
-
-> **判断依据**：如果一个字段的含义只有在特定业务场景（合同、发票、报销单…）下才成立，它就不属于 `Document`。
-
 ### Markdown-first 数据流（强制）
 
 项目定位是 **AI 驱动的企业档案平台**，遇到取舍时优先 AI 友好的设计。Markdown 是 AI pipeline 的**唯一文本载荷**：
@@ -98,15 +90,9 @@ Dignite.Paperbase.Abstractions（扩展契约层，无其他项目依赖）
 
 ### AI 实现约定
 
-- 后台流水线 AI 功能按业务能力垂直切片到 `Paperbase.Application/Documents/Pipelines/`，每条流水线一个目录，内含 BackgroundJob（编排入口）+ Workflow（LLM 编排）+ 兜底/辅助组件，全部以 MAF `ChatClientAgent` 形式实现：
-  - `Documents/Pipelines/Classification/DocumentClassificationWorkflow` — 分类（同目录还有 `DocumentClassificationBackgroundJob` + `KeywordDocumentClassifier` 兜底）
-  - `Documents/Pipelines/Embedding/DocumentEmbeddingWorkflow` — 文本分块 + 向量（同目录还有 `DocumentEmbeddingBackgroundJob` + `TextChunker`）
-  - `Documents/Pipelines/RelationInference/DocumentRelationInferenceWorkflow` — 关系推断（目录预留中）
-  - `Documents/Pipelines/TextExtraction/DocumentTextExtractionBackgroundJob` — 非 LLM 的文本提取入口
-- 文档问答（Chat）走在线请求路径，由 `Paperbase.Application/Chat/DocumentChatAppService`（命名空间 `Dignite.Paperbase.Chat`）承担，检索通过 `Chat/Search/DocumentTextSearchAdapter.CreateSearchFunction(...)` 包装成 MAF `AIFunction` 挂到 `ChatClientAgent`，由模型按 `ChatToolMode.Auto` 自决何时调用；同目录下的 `DocumentRerankWorkflow` 是可选 LLM 精排；模型未调用 search 工具时 `ChatTurnResultDto.IsDegraded = true` 是诚实信号（不做强制注入兜底）；**不保留 FullText 降级**——未向量化文档由上游流水线保证最终被向量化
-- 共享 AI 内核（prompt 系统 + `PaperbaseAIBehaviorOptions`）放在 `Paperbase.Application/Ai/`：`IPromptProvider` / `DefaultPromptProvider` / `PromptTemplate` / `PromptBoundary` 同时被后台 Workflow 与 Chat/Search 消费，按"跨消费者就上提"原则升至顶层。AI 配置分两节：`PaperbaseAI`（host 装配 `IChatClient` 用，含凭据）与 `PaperbaseAIBehavior`（绑到 `PaperbaseAIBehaviorOptions`，Application 层行为参数），两节职责正交不可合并。
-- 业务模块（如 Contracts）字段提取自实现：注入 `IChatClient`，构造领域专属 `ChatClientAgent`，使用 `RunAsync<T>` 结构化输出反序列化到自己的 POCO
-- 业务模块向 Chat 贡献结构化查询工具：实现 `Dignite.Paperbase.Abstractions.Chat.IDocumentChatToolContributor`（绑定 `DocumentTypeCode` + 返回 `IEnumerable<AIFunction>`）并注册为 `ITransientDependency`；`DocumentChatAppService` 在每轮按会话 scope 收集匹配的 contributor，将其工具与内置 `search_paperbase_documents` 一起挂到 `ChatClientAgent`。每个工具实现必须 fail-closed：显式 `IAuthorizationService.CheckAsync(...)` 权限断言 + 显式 `TenantId` 谓词（不依赖 ambient DataFilter）+ 结果集硬上限（`Take(N)`），不得裸跑 raw SQL；反例见 `.claude/rules/doc-chat-anti-patterns.md` 反例 C，参照实现见 `modules/contracts/src/Dignite.Paperbase.Contracts.Application/Chat/ContractChatToolContributor.cs`
+- **Chat 路径的诚实信号**：`DocumentChatAppService` 走在线请求，检索通过 MAF `AIFunction`（`search_paperbase_documents`）由模型 `ChatToolMode.Auto` 自决调用；模型未调用 search 工具时 `ChatTurnResultDto.IsDegraded = true` 是**诚实信号**，不做强制注入兜底；**不保留 FullText 降级**——未向量化文档由上游流水线保证最终被向量化。
+- **AI 配置两节正交**：`PaperbaseAI`（host 装配 `IChatClient`，含凭据）与 `PaperbaseAIBehavior`（Application 层行为参数）**职责正交不可合并**——前者是 provider wiring，后者是行为参数，混合会让 host 看到不该看的行为开关、Application 看到不该看的凭据。
+- **业务模块向 Chat 贡献工具必须 fail-closed**：实现 `IDocumentChatToolContributor`（注册为 `ITransientDependency`）；每个工具体内**显式** `IAuthorizationService.CheckAsync(...)` + **显式** `TenantId` 谓词（不依赖 ambient `DataFilter`）+ 结果集硬上限（`Take(N)`），不得裸跑 raw SQL。反例见 `.claude/rules/doc-chat-anti-patterns.md` 反例 C，参照 `modules/contracts/src/Dignite.Paperbase.Contracts.Application/Chat/ContractChatToolContributor.cs`。
 
 ## 处理规则
 
