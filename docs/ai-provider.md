@@ -17,7 +17,8 @@ The split keeps credentials (`ApiKey`) out of any `IOptions<>` flowing into busi
   "ApiKey": "YOUR_API_KEY",
   "ChatModelId": "gpt-4o-mini",
   "EmbeddingModelId": "text-embedding-3-small",
-  "PromptCachingEnabled": true
+  "PromptCachingEnabled": true,
+  "MaxToolIterations": 10
 }
 ```
 
@@ -28,6 +29,7 @@ The split keeps credentials (`ApiKey`) out of any `IOptions<>` flowing into busi
 | `ChatModelId` | Model used for classification, document chat answers, optional rerank, and any business-module field extractor |
 | `EmbeddingModelId` | Model used to vectorize document chunks |
 | `PromptCachingEnabled` | Wraps the chat client with `UseDistributedCache()` so repeated calls with identical inputs reuse the cached response. Uses the host's registered `IDistributedCache` (in-memory by default). Disable in development if you need every call to hit the model. |
+| `MaxToolIterations` | Hard cap on tool-call rounds within a single chat turn, applied at host wiring time as `FunctionInvokingChatClient.MaximumIterationsPerRequest`. Once reached, MEAI stops sending tools to the model so it must produce a final answer rather than looping. Default `10`; raise for chains that legitimately need more tool round-trips. |
 
 The two model ids are independent — pair a small embedding model with a strong chat model freely. When changing the embedding model dimension, follow the steps in [Embedding pipeline → Switching the embedding model](embedding.md#switching-the-embedding-model).
 
