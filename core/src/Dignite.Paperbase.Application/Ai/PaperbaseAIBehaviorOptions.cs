@@ -58,13 +58,6 @@ public class PaperbaseAIBehaviorOptions
     public int RecallExpandFactor { get; set; } = 4;
 
     /// <summary>
-    /// 启用时向 LLM 传递 <c>ChatOptions.ResponseFormat = Json</c>，
-    /// 由 SDK 注入类型 schema 约束，同时从 prompt 中移除手写的 JSON schema 文本。
-    /// 关闭时回退到旧的 prompt 内联 schema（适用于不支持 JSON mode 的 Provider）。
-    /// </summary>
-    public bool UseStrictJsonMode { get; set; } = true;
-
-    /// <summary>
     /// Controls when the <c>TextSearchProvider</c> fetches document context during a
     /// chat turn. Defaults to <see cref="ChatSearchBehavior.BeforeAIInvoke"/> (retrieval
     /// before every AI invocation; citations always populated).
@@ -76,12 +69,4 @@ public class PaperbaseAIBehaviorOptions
     /// </para>
     /// </summary>
     public ChatSearchBehavior ChatSearchBehavior { get; set; } = ChatSearchBehavior.BeforeAIInvoke;
-
-    /// <summary>
-    /// Maximum number of tool-call rounds the LLM may execute within a single chat turn.
-    /// Once this limit is reached <c>MaxToolCallsChatClient</c> strips tools from the next
-    /// completion request, forcing the model to produce a final answer rather than looping
-    /// indefinitely.  A value of 0 means unlimited (not recommended for production).
-    /// </summary>
-    public int MaxToolCallsPerTurn { get; set; } = 10;
 }

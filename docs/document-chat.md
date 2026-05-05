@@ -31,8 +31,7 @@ Chat-related knobs live in `PaperbaseAIBehavior` alongside the other Application
 "PaperbaseAIBehavior": {
   "EnableLlmRerank": false,
   "RecallExpandFactor": 4,
-  "ChatSearchBehavior": "BeforeAIInvoke",
-  "MaxToolCallsPerTurn": 10
+  "ChatSearchBehavior": "BeforeAIInvoke"
 }
 ```
 
@@ -41,9 +40,8 @@ Chat-related knobs live in `PaperbaseAIBehavior` alongside the other Application
 | `EnableLlmRerank` | `false` | When enabled, document chat retrieves an expanded candidate set, asks the chat model to rerank chunks by question relevance, and injects only the final `TopK` into the answer prompt. Off by default to conserve tokens; enable when retrieval quality is the bottleneck (often in mixed-language corpora). |
 | `RecallExpandFactor` | `4` | Multiplier applied to the conversation's `topK` (or `PaperbaseKnowledgeIndex:DefaultTopK`) before LLM rerank. With the defaults `topK=5` × `4` = 20 candidates rescored. |
 | `ChatSearchBehavior` | `BeforeAIInvoke` | `BeforeAIInvoke` runs retrieval before every model call (citations always populated). `OnDemandFunctionCalling` exposes search as a tool the model decides when to call (saves tokens but the model may produce an answer with no citations — `ChatTurnResultDto.IsDegraded = true` in that case). |
-| `MaxToolCallsPerTurn` | `10` | Hard cap on tool-call rounds within a single turn. Once reached, the next completion request strips tools, forcing the model to produce a final answer rather than looping. `0` means unlimited (not recommended for production). |
 
-For prompt language and JSON-mode behavior, see [ai-provider.md → Cross-cutting LLM behavior](ai-provider.md#cross-cutting-llm-behavior-paperbaseaibehavior). For retrieval `topK` / `minScore` defaults, see [knowledge-index.md](knowledge-index.md). For BM25-augmented hybrid retrieval, see [hybrid-search.md](hybrid-search.md).
+The hard cap on tool-call rounds within a single turn is configured at host wiring time via `PaperbaseAI:MaxToolIterations` (default `10`); see [ai-provider.md → Provider wiring](ai-provider.md#provider-wiring-paperbaseai). For prompt language behavior, see [ai-provider.md → Cross-cutting LLM behavior](ai-provider.md#cross-cutting-llm-behavior-paperbaseaibehavior). For retrieval `topK` / `minScore` defaults, see [knowledge-index.md](knowledge-index.md). For BM25-augmented hybrid retrieval, see [hybrid-search.md](hybrid-search.md).
 
 ## When the answer is degraded
 

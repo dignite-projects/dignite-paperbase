@@ -79,10 +79,7 @@ public class DocumentRerankWorkflow : ITransientDependency
         {
             var response = await agent.RunAsync<RerankResponse>(
                 sb.ToString(),
-                session: null,
-                serializerOptions: null,
-                options: BuildRunOptions(_options.UseStrictJsonMode),
-                cancellationToken);
+                cancellationToken: cancellationToken);
 
             return SelectTopK(candidates, response.Result?.Items, topK);
         }
@@ -127,11 +124,6 @@ public class DocumentRerankWorkflow : ITransientDependency
             .Select(t => new RerankedChunk(t.Candidate, t.Score, t.Index))
             .ToList();
     }
-
-    internal static ChatClientAgentRunOptions? BuildRunOptions(bool useStrictJsonMode)
-        => useStrictJsonMode
-            ? new ChatClientAgentRunOptions(new ChatOptions { ResponseFormat = ChatResponseFormat.Json })
-            : null;
 
     internal static double ClampScore(double value)
     {
