@@ -175,7 +175,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
 
         conversation.AppendUserMessage(Clock, userMessageId, input.Message, input.ClientTurnId);
 
-        var citationsJson = SerializeCitations(run.Capture.LastResults);
+        var citationsJson = SerializeCitations(run.Capture.Results);
         conversation.AppendAssistantMessage(Clock, assistantMessageId, run.Text, citationsJson);
 
         // The aggregate is already tracked through the FindByIdWithMessagesAsync load;
@@ -184,16 +184,16 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         // ConcurrencyStamp original values. ABP's UoW commits via SaveChanges; concurrency
         // mismatch surfaces as AbpDbConcurrencyException → 409 (mapping handled by ABP).
 
-        var citations = BuildCitationDtos(run.Capture.LastResults);
+        var citations = BuildCitationDtos(run.Capture.Results);
         return new ChatTurnResultDto
         {
             UserMessageId = userMessageId,
             AssistantMessageId = assistantMessageId,
             Answer = run.Text,
             Citations = citations,
-            // null LastResults means the model never invoked the search tool — answer is
+            // HasSearches=false means the model never invoked the search tool — answer is
             // ungrounded; the UI should surface this so users know there are no sources.
-            IsDegraded = run.Capture.LastResults == null
+            IsDegraded = !run.Capture.HasSearches
         };
     }
 
@@ -331,15 +331,32 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         var tools = new List<AITool> { searchFn };
         tools.AddRange(CollectContributorTools(conversation));
 
+        // Idiomatic MAF wiring:
+        // - UseProvidedChatClientAsIs = true: PaperbaseHostModule.ConfigureAI already
+        //   wraps IChatClient with .UseFunctionInvocation(); skipping the agent's default
+        //   wrapping prevents a redundant FunctionInvokingChatClient layer and ensures the
+        //   host's MaxToolIterations cap is the only one in effect.
+        // - ChatHistoryProvider is intentionally NOT configured on the agent. Empirically,
+        //   MAF v1.2.0 does not auto-call ProvideChatHistoryAsync during RunAsync against
+        //   our wiring (verified by the multi-turn count test capturing 1/3/5 messages),
+        //   so the configured-but-inert provider was a latent footgun: if a future MAF
+        //   version starts honoring the config it would double-prepend on top of the
+        //   manual fetch in InvokeAgentAsync. We use PaperbasePostgresChatHistoryProvider
+        //   as a plain loader service via its public GetChatHistoryAsync; persistence is
+        //   owned by the ChatConversation aggregate (DDD).
+        // - Instructions live inside ChatOptions because ChatClientAgentOptions does not
+        //   expose a top-level Instructions property in v1.2.0 (only the convenience
+        //   ChatClientAgent(client, instructions: "...") constructor does); the docs'
+        //   "instructions" prose refers to that constructor path.
         var agentOptions = new ChatClientAgentOptions
         {
+            UseProvidedChatClientAsIs = true,
             ChatOptions = new ChatOptions
             {
                 Instructions = instructions,
                 Tools = tools,
                 ToolMode = ChatToolMode.Auto
-            },
-            ChatHistoryProvider = _historyProvider
+            }
         };
 
         var agent = new ChatClientAgent(_chatClient, agentOptions);
@@ -518,10 +535,10 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             // Stream completed — persist the full turn in one shot.
             var fullText = sb.ToString();
             conversation.AppendUserMessage(Clock, userMessageId, input.Message, input.ClientTurnId);
-            var citationsJson = SerializeCitations(setup.Capture.LastResults);
+            var citationsJson = SerializeCitations(setup.Capture.Results);
             conversation.AppendAssistantMessage(Clock, assistantMessageId, fullText, citationsJson);
 
-            var citations = BuildCitationDtos(setup.Capture.LastResults);
+            var citations = BuildCitationDtos(setup.Capture.Results);
 
             await writer.WriteAsync(new ChatTurnDeltaDto
             {
@@ -529,9 +546,9 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
                 UserMessageId = userMessageId,
                 AssistantMessageId = assistantMessageId,
                 Citations = citations,
-                // null LastResults → the model never invoked the search tool; answer is
+                // HasSearches=false → the model never invoked the search tool; answer is
                 // ungrounded so the UI should surface "no sources" to the user.
-                IsDegraded = setup.Capture.LastResults == null
+                IsDegraded = !setup.Capture.HasSearches
             }, ct);
 
             writer.Complete();
