@@ -4,20 +4,33 @@ using Dignite.Paperbase.KnowledgeIndex;
 namespace Dignite.Paperbase.Chat.Search;
 
 /// <summary>
-/// Holds the <see cref="VectorSearchResult"/> list captured by a
-/// <see cref="DocumentTextSearchAdapter"/> search invocation during one agent turn.
-/// Created fresh per turn and bound by closure into the search AIFunction — never
-/// shared between concurrent requests.
+/// Accumulates <see cref="VectorSearchResult"/>s captured by every invocation of the
+/// search AIFunction during one agent turn. Created fresh per turn and bound by
+/// closure into the search AIFunction — never shared between concurrent requests.
 /// </summary>
 public sealed class DocumentSearchCapture
 {
-    /// <summary>
-    /// The vector search results from the most recent invocation of the
-    /// search AIFunction. Null until the model invokes the search tool — when the
-    /// model declines to search, this stays null and <c>ChatTurnResultDto.IsDegraded</c>
-    /// surfaces the honest "no sources used" signal to the caller.
-    /// </summary>
-    public IReadOnlyList<VectorSearchResult>? LastResults { get; private set; }
+    private readonly List<VectorSearchResult> _results = new();
 
-    internal void Set(IReadOnlyList<VectorSearchResult> results) => LastResults = results;
+    /// <summary>
+    /// All vector search results captured during this turn, accumulated across every
+    /// invocation of the search AIFunction. The model may call search more than once
+    /// per turn (e.g. to chain a structured-tool result into a focused RAG pass), and
+    /// citations must reflect the union of those calls — not just the last one.
+    /// </summary>
+    public IReadOnlyList<VectorSearchResult> Results => _results;
+
+    /// <summary>
+    /// <c>true</c> after the search AIFunction is invoked at least once, even if that
+    /// invocation returned no hits. Distinguishes "model declined to search" (false →
+    /// <c>ChatTurnResultDto.IsDegraded = true</c>; answer ungrounded) from "model
+    /// searched but found nothing" (true → IsDegraded = false; honest empty citations).
+    /// </summary>
+    public bool HasSearches { get; private set; }
+
+    internal void Set(IReadOnlyList<VectorSearchResult> results)
+    {
+        _results.AddRange(results);
+        HasSearches = true;
+    }
 }

@@ -270,7 +270,7 @@ public class DocumentTextSearchAdapter_Tests
     // ── CreateSearchFunction (AIFunction binding) ─────────────────────────────
 
     [Fact]
-    public async Task SearchFunction_Capture_Reflects_Last_Search_Results()
+    public async Task SearchFunction_Capture_Records_Search_Results()
     {
         var documentId = Guid.NewGuid();
         var fakeResults = new List<VectorSearchResult>
@@ -281,7 +281,8 @@ public class DocumentTextSearchAdapter_Tests
             .Returns(fakeResults);
 
         var capture = new DocumentSearchCapture();
-        capture.LastResults.ShouldBeNull();
+        capture.HasSearches.ShouldBeFalse();
+        capture.Results.ShouldBeEmpty();
 
         var fn = _adapter.CreateSearchFunction(
             tenantId: null, baseScope: null, capture,
@@ -290,9 +291,57 @@ public class DocumentTextSearchAdapter_Tests
 
         await fn.InvokeAsync(new AIFunctionArguments { ["query"] = "Q" });
 
-        capture.LastResults.ShouldNotBeNull();
-        capture.LastResults!.Count.ShouldBe(1);
-        capture.LastResults[0].DocumentId.ShouldBe(documentId);
+        capture.HasSearches.ShouldBeTrue();
+        capture.Results.Count.ShouldBe(1);
+        capture.Results[0].DocumentId.ShouldBe(documentId);
+    }
+
+    [Fact]
+    public async Task SearchFunction_Capture_Accumulates_Across_Multiple_Invocations()
+    {
+        // Multi-search-per-turn safety: when the model calls search twice in one turn
+        // (e.g. chaining a structured-tool result into a focused RAG pass), citations
+        // must be the union of both invocations, not just the last.
+        _vectorStore.SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
+            .Returns(
+                new List<VectorSearchResult>
+                {
+                    new() { RecordId = Guid.NewGuid(), DocumentId = Guid.NewGuid(), ChunkIndex = 0, Text = "first call" }
+                },
+                new List<VectorSearchResult>
+                {
+                    new() { RecordId = Guid.NewGuid(), DocumentId = Guid.NewGuid(), ChunkIndex = 1, Text = "second call" }
+                });
+
+        var capture = new DocumentSearchCapture();
+        var fn = _adapter.CreateSearchFunction(
+            tenantId: null, baseScope: null, capture, "fn", "desc");
+
+        await fn.InvokeAsync(new AIFunctionArguments { ["query"] = "Q1" });
+        await fn.InvokeAsync(new AIFunctionArguments { ["query"] = "Q2" });
+
+        capture.HasSearches.ShouldBeTrue();
+        capture.Results.Count.ShouldBe(2);
+        capture.Results.Select(r => r.Text).ShouldContain("first call");
+        capture.Results.Select(r => r.Text).ShouldContain("second call");
+    }
+
+    [Fact]
+    public async Task SearchFunction_HasSearches_True_Even_When_Result_Set_Is_Empty()
+    {
+        // The model invoked search, but no chunks matched. HasSearches must still be true
+        // so IsDegraded reads false — "honest empty" rather than "model never tried".
+        _vectorStore.SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new List<VectorSearchResult>());
+
+        var capture = new DocumentSearchCapture();
+        var fn = _adapter.CreateSearchFunction(
+            tenantId: null, baseScope: null, capture, "fn", "desc");
+
+        await fn.InvokeAsync(new AIFunctionArguments { ["query"] = "Q" });
+
+        capture.HasSearches.ShouldBeTrue();
+        capture.Results.ShouldBeEmpty();
     }
 
     [Fact]
@@ -309,8 +358,8 @@ public class DocumentTextSearchAdapter_Tests
             tenantId: Guid.NewGuid(), baseScope: null, captureB, "fn", "desc");
 
         captureA.ShouldNotBeSameAs(captureB);
-        captureA.LastResults.ShouldBeNull();
-        captureB.LastResults.ShouldBeNull();
+        captureA.HasSearches.ShouldBeFalse();
+        captureB.HasSearches.ShouldBeFalse();
     }
 
     [Fact]
@@ -342,8 +391,9 @@ public class DocumentTextSearchAdapter_Tests
 
         for (var i = 0; i < count; i++)
         {
-            captures[i].LastResults.ShouldNotBeNull();
-            captures[i].LastResults![0].DocumentId.ShouldBe(tenantIds[i]);
+            captures[i].HasSearches.ShouldBeTrue();
+            captures[i].Results.Count.ShouldBe(1);
+            captures[i].Results[0].DocumentId.ShouldBe(tenantIds[i]);
         }
     }
 
