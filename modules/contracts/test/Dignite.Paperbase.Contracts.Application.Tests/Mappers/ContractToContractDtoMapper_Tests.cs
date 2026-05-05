@@ -39,13 +39,14 @@ public class ContractToContractDtoMapper_Tests : ContractsApplicationTestBase<Co
         dto.TotalAmount.ShouldBe(1200000m);
         dto.Currency.ShouldBe("JPY");
         dto.Status.ShouldBe(ContractStatus.Draft);
-        dto.NeedsReview.ShouldBeFalse();
-        dto.ReviewStatus.ShouldBe(ContractReviewStatus.Confirmed);
+        // Fresh AI extraction always lands as pending review.
+        dto.NeedsReview.ShouldBeTrue();
+        dto.ReviewStatus.ShouldBe(ContractReviewStatus.Pending);
     }
 
-    private static ExtractedContractFields CreateFields()
+    private static ContractFields CreateFields()
     {
-        return new ExtractedContractFields
+        return new ContractFields
         {
             Title = "業務委託契約書",
             ContractNumber = "CNT-2026-001",
@@ -57,8 +58,7 @@ public class ContractToContractDtoMapper_Tests : ContractsApplicationTestBase<Co
             ExpirationDate = new DateTime(2027, 3, 31),
             TotalAmount = 1200000m,
             Currency = "JPY",
-            ExtractionConfidence = 0.9,
-            ReviewStatus = ContractReviewStatus.Confirmed
+            ExtractionConfidence = 0.9
         };
     }
 }

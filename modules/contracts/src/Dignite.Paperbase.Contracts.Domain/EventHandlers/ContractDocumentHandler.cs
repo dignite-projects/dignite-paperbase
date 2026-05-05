@@ -50,7 +50,7 @@ public class ContractDocumentHandler :
             var extraction = await ExtractFieldsAsync(
                 eventData.Markdown ?? string.Empty,
                 eventData.DocumentTypeCode);
-            var fields = ExtractedContractFields.FromAgentResult(extraction);
+            var fields = extraction.ToContractFields();
 
             var existing = await _contractRepository.FindByDocumentIdAsync(eventData.DocumentId);
 

@@ -54,9 +54,9 @@ public class EfCoreContractRepository_Tests : ContractsEntityFrameworkCoreTestBa
         found.ShouldBeNull();
     }
 
-    private static ExtractedContractFields CreateFields()
+    private static ContractFields CreateFields()
     {
-        return new ExtractedContractFields
+        return new ContractFields
         {
             Title = "業務委託契約書",
             ContractNumber = "CNT-2026-001",
@@ -68,8 +68,7 @@ public class EfCoreContractRepository_Tests : ContractsEntityFrameworkCoreTestBa
             ExpirationDate = new DateTime(2027, 3, 31),
             TotalAmount = 1200000m,
             Currency = "JPY",
-            ExtractionConfidence = 0.9,
-            ReviewStatus = ContractReviewStatus.Confirmed
+            ExtractionConfidence = 0.9
         };
     }
 }

@@ -16,10 +16,31 @@ export interface ContractDto {
   expirationDate?: string;
   totalAmount?: number;
   currency?: string;
+  autoRenewal?: boolean;
+  terminationNoticeDays?: number;
+  governingLaw?: string;
+  summary?: string;
   status: ContractStatus;
   extractionConfidence?: number;
   needsReview: boolean;
   reviewStatus: ContractReviewStatus;
+}
+
+export interface UpdateContractDto {
+  title?: string | null;
+  contractNumber?: string | null;
+  partyAName?: string | null;
+  partyBName?: string | null;
+  counterpartyName?: string | null;
+  signedDate?: string | null;
+  effectiveDate?: string | null;
+  expirationDate?: string | null;
+  totalAmount?: number | null;
+  currency?: string | null;
+  autoRenewal?: boolean | null;
+  terminationNoticeDays?: number | null;
+  governingLaw?: string | null;
+  summary?: string | null;
 }
 
 export enum ContractStatus {
@@ -88,6 +109,17 @@ export class ContractsService {
       {
         method: 'GET',
         url: `/api/paperbase/contracts/${id}`,
+      },
+      { apiName: this.apiName }
+    );
+  }
+
+  update(id: string, input: UpdateContractDto): Observable<ContractDto> {
+    return this.restService.request<UpdateContractDto, ContractDto>(
+      {
+        method: 'PUT',
+        url: `/api/paperbase/contracts/${id}`,
+        body: input,
       },
       { apiName: this.apiName }
     );

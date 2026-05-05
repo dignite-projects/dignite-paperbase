@@ -1,0 +1,253 @@
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center mb-3 gap-2">
+    <button class="btn btn-outline-secondary btn-sm" (click)="back()">
+      <i class="fa fa-arrow-left me-1"></i>
+      {{ '::Back' | abpLocalization }}
+    </button>
+    <h1 class="h4 mb-0 ms-2">{{ '::Contract:Detail' | abpLocalization }}</h1>
+
+    @if (contract(); as c) {
+      <span [ngClass]="reviewStatusBadgeClass(c.reviewStatus)" class="ms-auto">
+        {{ reviewStatusLabel(c.reviewStatus) | abpLocalization }}
+      </span>
+      <span class="badge text-bg-secondary">{{ statusLabel(c.status) }}</span>
+    }
+  </div>
+
+  @if (loading()) {
+    <div class="text-center py-5">
+      <span class="spinner-border text-primary"></span>
+    </div>
+  }
+
+  @if (contract(); as c) {
+    @if (c.needsReview) {
+      <div class="alert alert-warning d-flex align-items-center mb-3" role="alert">
+        <i class="fa fa-exclamation-triangle me-2"></i>
+        <span>{{ '::Contract:NeedsReviewMessage' | abpLocalization }}</span>
+      </div>
+    }
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <dl class="row mb-0 small">
+          <dt class="col-sm-3 text-muted">{{ '::Contract:DocumentId' | abpLocalization }}</dt>
+          <dd class="col-sm-9">
+            <a [routerLink]="['/documents', c.documentId]">{{ c.documentId }}</a>
+          </dd>
+
+          <dt class="col-sm-3 text-muted">{{ '::Contract:DocumentType' | abpLocalization }}</dt>
+          <dd class="col-sm-9">
+            <span class="badge bg-info text-dark">{{ c.documentTypeCode }}</span>
+          </dd>
+
+          <dt class="col-sm-3 text-muted">{{ '::Contract:ExtractionConfidence' | abpLocalization }}</dt>
+          <dd class="col-sm-9">
+            @if (c.extractionConfidence != null) {
+              {{ c.extractionConfidence | percent: '1.0-0' }}
+            } @else {
+              —
+            }
+          </dd>
+        </dl>
+      </div>
+    </div>
+
+    <form (ngSubmit)="save()">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header">
+          <h6 class="mb-0">{{ '::Contract:Fields' | abpLocalization }}</h6>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">{{ '::Title' | abpLocalization }}</label>
+              <input
+                class="form-control"
+                type="text"
+                name="title"
+                [ngModel]="form().title"
+                (ngModelChange)="patch('title', $event)"
+                maxlength="256"
+              />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">{{ '::ContractNumber' | abpLocalization }}</label>
+              <input
+                class="form-control"
+                type="text"
+                name="contractNumber"
+                [ngModel]="form().contractNumber"
+                (ngModelChange)="patch('contractNumber', $event)"
+                maxlength="64"
+              />
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">{{ '::PartyAName' | abpLocalization }}</label>
+              <input
+                class="form-control"
+                type="text"
+                name="partyAName"
+                [ngModel]="form().partyAName"
+                (ngModelChange)="patch('partyAName', $event)"
+                maxlength="256"
+              />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">{{ '::PartyBName' | abpLocalization }}</label>
+              <input
+                class="form-control"
+                type="text"
+                name="partyBName"
+                [ngModel]="form().partyBName"
+                (ngModelChange)="patch('partyBName', $event)"
+                maxlength="256"
+              />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">{{ '::CounterpartyName' | abpLocalization }}</label>
+              <input
+                class="form-control"
+                type="text"
+                name="counterpartyName"
+                [ngModel]="form().counterpartyName"
+                (ngModelChange)="patch('counterpartyName', $event)"
+                maxlength="256"
+              />
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">{{ '::SignedDate' | abpLocalization }}</label>
+              <input
+                class="form-control"
+                type="date"
+                name="signedDate"
+                [ngModel]="form().signedDate"
+                (ngModelChange)="patch('signedDate', $event)"
+              />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">{{ '::EffectiveDate' | abpLocalization }}</label>
+              <input
+                class="form-control"
+                type="date"
+                name="effectiveDate"
+                [ngModel]="form().effectiveDate"
+                (ngModelChange)="patch('effectiveDate', $event)"
+              />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">{{ '::ExpirationDate' | abpLocalization }}</label>
+              <input
+                class="form-control"
+                type="date"
+                name="expirationDate"
+                [ngModel]="form().expirationDate"
+                (ngModelChange)="patch('expirationDate', $event)"
+              />
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">{{ '::TotalAmount' | abpLocalization }}</label>
+              <input
+                class="form-control"
+                type="number"
+                name="totalAmount"
+                [ngModel]="form().totalAmount"
+                (ngModelChange)="patch('totalAmount', $event)"
+                step="0.01"
+                min="0"
+              />
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">{{ '::Currency' | abpLocalization }}</label>
+              <input
+                class="form-control"
+                type="text"
+                name="currency"
+                [ngModel]="form().currency"
+                (ngModelChange)="patch('currency', $event)"
+                maxlength="8"
+              />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">{{ '::AutoRenewal' | abpLocalization }}</label>
+              <select
+                class="form-select"
+                name="autoRenewal"
+                [ngModel]="form().autoRenewal"
+                (ngModelChange)="patch('autoRenewal', $event)"
+              >
+                <option [ngValue]="null">—</option>
+                <option [ngValue]="true">{{ 'AbpUi::Yes' | abpLocalization }}</option>
+                <option [ngValue]="false">{{ 'AbpUi::No' | abpLocalization }}</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">{{ '::TerminationNoticeDays' | abpLocalization }}</label>
+              <input
+                class="form-control"
+                type="number"
+                name="terminationNoticeDays"
+                [ngModel]="form().terminationNoticeDays"
+                (ngModelChange)="patch('terminationNoticeDays', $event)"
+                min="0"
+              />
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label">{{ '::GoverningLaw' | abpLocalization }}</label>
+              <input
+                class="form-control"
+                type="text"
+                name="governingLaw"
+                [ngModel]="form().governingLaw"
+                (ngModelChange)="patch('governingLaw', $event)"
+                maxlength="128"
+              />
+            </div>
+            <div class="col-md-12">
+              <label class="form-label">{{ '::Summary' | abpLocalization }}</label>
+              <textarea
+                class="form-control"
+                rows="3"
+                name="summary"
+                [ngModel]="form().summary"
+                (ngModelChange)="patch('summary', $event)"
+                maxlength="2000"
+              ></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer d-flex gap-2 justify-content-end">
+          @if (canConfirm()) {
+            <button
+              type="button"
+              class="btn btn-outline-success"
+              (click)="confirm()"
+              [disabled]="confirming() || saving()"
+            >
+              @if (confirming()) {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+              }
+              <i class="fa fa-check me-1"></i>
+              {{ '::Contract:ConfirmExtraction' | abpLocalization }}
+            </button>
+          }
+          <button
+            type="submit"
+            class="btn btn-primary"
+            [disabled]="saving() || confirming()"
+          >
+            @if (saving()) {
+              <span class="spinner-border spinner-border-sm me-1"></span>
+            }
+            <i class="fa fa-save me-1"></i>
+            {{ 'AbpUi::Save' | abpLocalization }}
+          </button>
+        </div>
+      </div>
+    </form>
+  }
+</div>

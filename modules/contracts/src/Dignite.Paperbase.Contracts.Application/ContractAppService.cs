@@ -56,24 +56,18 @@ public class ContractAppService : ContractsAppService, IContractAppService
     public virtual async Task<ContractDto> UpdateAsync(Guid id, UpdateContractDto input)
     {
         var contract = await _contractRepository.GetAsync(id);
-        var previousFields = CreateFieldsSnapshot(contract);
-        var correctedFields = new ExtractedContractFields
-        {
-            Title = input.Title,
-            ContractNumber = input.ContractNumber,
-            PartyAName = input.PartyAName,
-            PartyBName = input.PartyBName,
-            CounterpartyName = input.CounterpartyName,
-            SignedDate = input.SignedDate,
-            EffectiveDate = input.EffectiveDate,
-            ExpirationDate = input.ExpirationDate,
-            TotalAmount = input.TotalAmount,
-            Currency = input.Currency,
-            ExtractionConfidence = 1.0,
-            ReviewStatus = ContractReviewStatus.Corrected
-        };
+        var previousFields = SnapshotFields(contract);
+        var correctedFields = ToContractFields(input);
 
-        contract.CorrectExtractedFields(correctedFields);
+        // Aggregate decides whether anything actually changed. No-op submissions
+        // (form save with identical values) leave ReviewStatus / ExtractionConfidence
+        // alone and skip both the correction-record few-shot feed and the DB write.
+        var changed = contract.CorrectFields(correctedFields);
+        if (!changed)
+        {
+            return _mapper.Map(contract);
+        }
+
         await _correctionRecorder.RecordAsync(new ContractExtractionCorrectionContext
         {
             ContractId = contract.Id,
@@ -152,9 +146,9 @@ public class ContractAppService : ContractsAppService, IContractAppService
         return query;
     }
 
-    protected virtual ExtractedContractFields CreateFieldsSnapshot(Contract contract)
+    protected virtual ContractFields SnapshotFields(Contract contract)
     {
-        return new ExtractedContractFields
+        return new ContractFields
         {
             Title = contract.Title,
             ContractNumber = contract.ContractNumber,
@@ -170,8 +164,28 @@ public class ContractAppService : ContractsAppService, IContractAppService
             TerminationNoticeDays = contract.TerminationNoticeDays,
             GoverningLaw = contract.GoverningLaw,
             Summary = contract.Summary,
-            ExtractionConfidence = contract.ExtractionConfidence,
-            ReviewStatus = contract.ReviewStatus
+            ExtractionConfidence = contract.ExtractionConfidence
+        };
+    }
+
+    protected virtual ContractFields ToContractFields(UpdateContractDto input)
+    {
+        return new ContractFields
+        {
+            Title = input.Title,
+            ContractNumber = input.ContractNumber,
+            PartyAName = input.PartyAName,
+            PartyBName = input.PartyBName,
+            CounterpartyName = input.CounterpartyName,
+            SignedDate = input.SignedDate,
+            EffectiveDate = input.EffectiveDate,
+            ExpirationDate = input.ExpirationDate,
+            TotalAmount = input.TotalAmount,
+            Currency = input.Currency,
+            AutoRenewal = input.AutoRenewal,
+            TerminationNoticeDays = input.TerminationNoticeDays,
+            GoverningLaw = input.GoverningLaw,
+            Summary = input.Summary
         };
     }
 

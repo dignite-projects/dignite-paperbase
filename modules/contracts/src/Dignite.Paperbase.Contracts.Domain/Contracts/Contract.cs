@@ -57,7 +57,7 @@ public class Contract : AuditedAggregateRoot<Guid>, IMultiTenant
         Guid? tenantId,
         Guid documentId,
         string documentTypeCode,
-        ExtractedContractFields fields)
+        ContractFields fields)
         : base(id)
     {
         TenantId = tenantId;
@@ -68,24 +68,15 @@ public class Contract : AuditedAggregateRoot<Guid>, IMultiTenant
         UpdateExtractedFields(fields);
     }
 
-    public virtual void UpdateExtractedFields(ExtractedContractFields fields)
+    /// <summary>
+    /// Replaces typed values from a fresh AI extraction. Always flips review state to
+    /// <see cref="ContractReviewStatus.Pending"/> — a new extraction must be re-reviewed.
+    /// </summary>
+    public virtual void UpdateExtractedFields(ContractFields fields)
     {
-        Title = fields.Title;
-        ContractNumber = fields.ContractNumber;
-        PartyAName = fields.PartyAName;
-        PartyBName = fields.PartyBName;
-        CounterpartyName = fields.CounterpartyName;
-        SignedDate = fields.SignedDate;
-        EffectiveDate = fields.EffectiveDate;
-        ExpirationDate = fields.ExpirationDate;
-        TotalAmount = fields.TotalAmount;
-        Currency = fields.Currency;
-        AutoRenewal = fields.AutoRenewal;
-        TerminationNoticeDays = fields.TerminationNoticeDays;
-        GoverningLaw = fields.GoverningLaw;
-        Summary = fields.Summary;
+        ApplyFields(fields);
         ExtractionConfidence = fields.ExtractionConfidence;
-        SetReviewStatus(fields.ReviewStatus);
+        SetReviewStatus(ContractReviewStatus.Pending);
     }
 
     public virtual void Confirm()
@@ -94,10 +85,40 @@ public class Contract : AuditedAggregateRoot<Guid>, IMultiTenant
         Status = ContractStatus.Active;
     }
 
-    public virtual void CorrectExtractedFields(ExtractedContractFields fields)
+    /// <summary>
+    /// Diffs <paramref name="fields"/> against current values. If anything changed,
+    /// the corresponding typed properties are updated and the aggregate is flipped to
+    /// <see cref="ContractReviewStatus.Corrected"/> with <c>ExtractionConfidence = 1.0</c>.
+    /// If nothing changed, this is a no-op and review state is preserved.
+    /// </summary>
+    /// <returns><c>true</c> when at least one field changed; otherwise <c>false</c>.</returns>
+    public virtual bool CorrectFields(ContractFields fields)
     {
-        UpdateExtractedFields(fields);
+        var changed = false;
+
+        if (Title != fields.Title) { Title = fields.Title; changed = true; }
+        if (ContractNumber != fields.ContractNumber) { ContractNumber = fields.ContractNumber; changed = true; }
+        if (PartyAName != fields.PartyAName) { PartyAName = fields.PartyAName; changed = true; }
+        if (PartyBName != fields.PartyBName) { PartyBName = fields.PartyBName; changed = true; }
+        if (CounterpartyName != fields.CounterpartyName) { CounterpartyName = fields.CounterpartyName; changed = true; }
+        if (SignedDate != fields.SignedDate) { SignedDate = fields.SignedDate; changed = true; }
+        if (EffectiveDate != fields.EffectiveDate) { EffectiveDate = fields.EffectiveDate; changed = true; }
+        if (ExpirationDate != fields.ExpirationDate) { ExpirationDate = fields.ExpirationDate; changed = true; }
+        if (TotalAmount != fields.TotalAmount) { TotalAmount = fields.TotalAmount; changed = true; }
+        if (Currency != fields.Currency) { Currency = fields.Currency; changed = true; }
+        if (AutoRenewal != fields.AutoRenewal) { AutoRenewal = fields.AutoRenewal; changed = true; }
+        if (TerminationNoticeDays != fields.TerminationNoticeDays) { TerminationNoticeDays = fields.TerminationNoticeDays; changed = true; }
+        if (GoverningLaw != fields.GoverningLaw) { GoverningLaw = fields.GoverningLaw; changed = true; }
+        if (Summary != fields.Summary) { Summary = fields.Summary; changed = true; }
+
+        if (!changed)
+        {
+            return false;
+        }
+
+        ExtractionConfidence = 1.0;
         SetReviewStatus(ContractReviewStatus.Corrected);
+        return true;
     }
 
     public virtual void ArchiveBecauseDocumentDeleted()
@@ -114,6 +135,24 @@ public class Contract : AuditedAggregateRoot<Guid>, IMultiTenant
 
         Status = ContractStatus.Draft;
         SetReviewStatus(ContractReviewStatus.Pending);
+    }
+
+    protected virtual void ApplyFields(ContractFields fields)
+    {
+        Title = fields.Title;
+        ContractNumber = fields.ContractNumber;
+        PartyAName = fields.PartyAName;
+        PartyBName = fields.PartyBName;
+        CounterpartyName = fields.CounterpartyName;
+        SignedDate = fields.SignedDate;
+        EffectiveDate = fields.EffectiveDate;
+        ExpirationDate = fields.ExpirationDate;
+        TotalAmount = fields.TotalAmount;
+        Currency = fields.Currency;
+        AutoRenewal = fields.AutoRenewal;
+        TerminationNoticeDays = fields.TerminationNoticeDays;
+        GoverningLaw = fields.GoverningLaw;
+        Summary = fields.Summary;
     }
 
     protected virtual void SetReviewStatus(ContractReviewStatus reviewStatus)

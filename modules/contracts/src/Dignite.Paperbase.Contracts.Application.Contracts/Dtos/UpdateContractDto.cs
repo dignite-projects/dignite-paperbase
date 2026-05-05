@@ -31,4 +31,14 @@ public class UpdateContractDto
 
     [DynamicStringLength(typeof(ContractConsts), nameof(ContractConsts.MaxCurrencyLength))]
     public string? Currency { get; set; }
+
+    public bool? AutoRenewal { get; set; }
+
+    public int? TerminationNoticeDays { get; set; }
+
+    [DynamicStringLength(typeof(ContractConsts), nameof(ContractConsts.MaxGoverningLawLength))]
+    public string? GoverningLaw { get; set; }
+
+    [DynamicStringLength(typeof(ContractConsts), nameof(ContractConsts.MaxSummaryLength))]
+    public string? Summary { get; set; }
 }

@@ -4,6 +4,8 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Contracts.Contracts;
 using Dignite.Paperbase.Contracts.Dtos;
 using Shouldly;
+using Volo.Abp.Domain.Entities;
+using Volo.Abp.MultiTenancy;
 using Xunit;
 
 namespace Dignite.Paperbase.Contracts.EntityFrameworkCore.Contracts;
@@ -28,7 +30,7 @@ public class ContractAppService_Tests : ContractsEntityFrameworkCoreTestBase
     [Fact]
     public async Task Should_Get_Contract_By_Id()
     {
-        var contract = await CreateAndSaveAsync("甲公司", 1_000_000m, new DateTime(2027, 3, 31), false);
+        var contract = await CreateAndSaveAsync("甲公司", 1_000_000m, new DateTime(2027, 3, 31), needsReview: true);
 
         var dto = await _appService.GetAsync(contract.Id);
 
@@ -151,21 +153,52 @@ public class ContractAppService_Tests : ContractsEntityFrameworkCoreTestBase
     {
         var contract = await CreateAndSaveAsync("旧公司", 1_000_000m, new DateTime(2027, 3, 31), true);
 
-        var dto = await _appService.UpdateAsync(contract.Id, new UpdateContractDto
-        {
-            Title = "更新后标题",
-            CounterpartyName = "新公司",
-            TotalAmount = 2_000_000m,
-            ExpirationDate = new DateTime(2028, 12, 31)
-        });
+        // PUT semantics: full snapshot of all editable fields. Build by reading current state,
+        // then changing only the fields the user is correcting — same pattern the detail form uses.
+        var before = await _appService.GetAsync(contract.Id);
+        var snapshot = ToFullSnapshot(before);
+        snapshot.Title = "更新后标题";
+        snapshot.CounterpartyName = "新公司";
+        snapshot.TotalAmount = 2_000_000m;
+        snapshot.ExpirationDate = new DateTime(2028, 12, 31);
 
+        var dto = await _appService.UpdateAsync(contract.Id, snapshot);
+
+        // Changed fields take new values.
         dto.Title.ShouldBe("更新后标题");
         dto.CounterpartyName.ShouldBe("新公司");
         dto.TotalAmount.ShouldBe(2_000_000m);
         dto.ExpirationDate.ShouldBe(new DateTime(2028, 12, 31));
+
+        // Fields NOT in the user's correction must be preserved (full-snapshot semantics
+        // round-trips the unchanged values rather than nulling them out).
+        dto.PartyAName.ShouldBe(before.PartyAName);
+        dto.PartyBName.ShouldBe(before.PartyBName);
+        dto.ContractNumber.ShouldBe(before.ContractNumber);
+        dto.SignedDate.ShouldBe(before.SignedDate);
+        dto.EffectiveDate.ShouldBe(before.EffectiveDate);
+        dto.Currency.ShouldBe(before.Currency);
+
         dto.NeedsReview.ShouldBeFalse();
         dto.ExtractionConfidence.ShouldBe(1.0);
         dto.ReviewStatus.ShouldBe(ContractReviewStatus.Corrected);
+    }
+
+    [Fact]
+    public async Task Should_NoOp_When_Update_Submits_Identical_Values()
+    {
+        // Pending review (NeedsReview = true) so Corrected would be observable if we wrongly flipped it.
+        var contract = await CreateAndSaveAsync("待审核公司", 1_500_000m, new DateTime(2027, 6, 30), needsReview: true);
+
+        var before = await _appService.GetAsync(contract.Id);
+        before.NeedsReview.ShouldBeTrue();
+        before.ReviewStatus.ShouldBe(ContractReviewStatus.Pending);
+
+        var dto = await _appService.UpdateAsync(contract.Id, ToFullSnapshot(before));
+
+        dto.NeedsReview.ShouldBeTrue();
+        dto.ReviewStatus.ShouldBe(ContractReviewStatus.Pending);
+        dto.ExtractionConfidence.ShouldBe(before.ExtractionConfidence);
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -175,7 +208,7 @@ public class ContractAppService_Tests : ContractsEntityFrameworkCoreTestBase
     [Fact]
     public async Task Should_Confirm_Contract_Changes_Status_To_Active()
     {
-        var contract = await CreateAndSaveAsync("待确认公司", 1_000_000m, new DateTime(2027, 3, 31), false);
+        var contract = await CreateAndSaveAsync("待确认公司", 1_000_000m, new DateTime(2027, 3, 31), needsReview: true);
 
         var before = await _appService.GetAsync(contract.Id);
         before.Status.ShouldBe(ContractStatus.Draft);
@@ -184,6 +217,45 @@ public class ContractAppService_Tests : ContractsEntityFrameworkCoreTestBase
 
         var after = await _appService.GetAsync(contract.Id);
         after.Status.ShouldBe(ContractStatus.Active);
+    }
+
+    [Fact]
+    public async Task Should_Confirm_Sets_NeedsReview_False_And_ReviewStatus_Confirmed()
+    {
+        var contract = await CreateAndSaveAsync("待确认公司2", 500_000m, new DateTime(2027, 3, 31), needsReview: true);
+
+        var before = await _appService.GetAsync(contract.Id);
+        before.NeedsReview.ShouldBeTrue();
+        before.ReviewStatus.ShouldBe(ContractReviewStatus.Pending);
+
+        await _appService.ConfirmAsync(contract.Id);
+
+        var after = await _appService.GetAsync(contract.Id);
+        after.NeedsReview.ShouldBeFalse();
+        after.ReviewStatus.ShouldBe(ContractReviewStatus.Confirmed);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Cross-tenant isolation
+    // ────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Should_Hide_Contract_From_Other_Tenants()
+    {
+        var tenantA = Guid.NewGuid();
+        var currentTenant = GetRequiredService<ICurrentTenant>();
+
+        Contract contract;
+        using (currentTenant.Change(tenantA))
+        {
+            contract = await CreateAndSaveAsync("跨租户公司", 1_000_000m, new DateTime(2027, 3, 31), false);
+        }
+
+        // Outside the Change scope, current tenant is host (null) — cannot see tenantA's contract.
+        await Should.ThrowAsync<EntityNotFoundException>(async () =>
+        {
+            await _appService.GetAsync(contract.Id);
+        });
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -212,6 +284,27 @@ public class ContractAppService_Tests : ContractsEntityFrameworkCoreTestBase
     // Helper
     // ────────────────────────────────────────────────────────────────────────────
 
+    private static UpdateContractDto ToFullSnapshot(ContractDto dto)
+    {
+        return new UpdateContractDto
+        {
+            Title = dto.Title,
+            ContractNumber = dto.ContractNumber,
+            PartyAName = dto.PartyAName,
+            PartyBName = dto.PartyBName,
+            CounterpartyName = dto.CounterpartyName,
+            SignedDate = dto.SignedDate,
+            EffectiveDate = dto.EffectiveDate,
+            ExpirationDate = dto.ExpirationDate,
+            TotalAmount = dto.TotalAmount,
+            Currency = dto.Currency,
+            AutoRenewal = dto.AutoRenewal,
+            TerminationNoticeDays = dto.TerminationNoticeDays,
+            GoverningLaw = dto.GoverningLaw,
+            Summary = dto.Summary
+        };
+    }
+
     private async Task<Contract> CreateAndSaveAsync(
         string counterpartyName,
         decimal totalAmount,
@@ -219,10 +312,13 @@ public class ContractAppService_Tests : ContractsEntityFrameworkCoreTestBase
         bool needsReview,
         Guid? documentId = null)
     {
+        // Fresh AI extraction always lands as Pending+Draft. Tests that want a pre-confirmed
+        // contract (needsReview: false) drive the aggregate through Confirm() so the helper
+        // mirrors a real-world transition rather than fabricating an impossible state.
         var contract = await _contractManager.CreateAsync(
             documentId ?? Guid.NewGuid(),
             ContractsDocumentTypes.General,
-            new ExtractedContractFields
+            new ContractFields
             {
                 Title = $"{counterpartyName}的合同",
                 ContractNumber = $"CNT-{Guid.NewGuid():N}".Substring(0, 16),
@@ -234,11 +330,13 @@ public class ContractAppService_Tests : ContractsEntityFrameworkCoreTestBase
                 ExpirationDate = expirationDate,
                 TotalAmount = totalAmount,
                 Currency = "CNY",
-                ExtractionConfidence = 0.95,
-                ReviewStatus = needsReview
-                    ? ContractReviewStatus.Pending
-                    : ContractReviewStatus.Confirmed
+                ExtractionConfidence = 0.95
             });
+
+        if (!needsReview)
+        {
+            contract.Confirm();
+        }
 
         await WithUnitOfWorkAsync(async () =>
         {

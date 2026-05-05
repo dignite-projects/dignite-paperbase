@@ -37,8 +37,9 @@ public class ContractManager_Tests : ContractsDomainTestBase<ContractsDomainTest
         contract.Title.ShouldBe(fields.Title);
         contract.CounterpartyName.ShouldBe(fields.CounterpartyName);
         contract.TotalAmount.ShouldBe(fields.TotalAmount);
-        contract.NeedsReview.ShouldBeFalse();
-        contract.ReviewStatus.ShouldBe(ContractReviewStatus.Confirmed);
+        // Fresh AI extraction always lands as pending review.
+        contract.NeedsReview.ShouldBeTrue();
+        contract.ReviewStatus.ShouldBe(ContractReviewStatus.Pending);
     }
 
     [Fact]
@@ -54,9 +55,8 @@ public class ContractManager_Tests : ContractsDomainTestBase<ContractsDomainTest
         updatedFields.Title = "秘密保持契約書";
         updatedFields.CounterpartyName = "株式会社アップデート";
         updatedFields.TotalAmount = 250000m;
-        updatedFields.ReviewStatus = ContractReviewStatus.Pending;
 
-        // Act
+        // Act — re-extraction always flips to Pending regardless of prior review state.
         contract.UpdateExtractedFields(updatedFields);
 
         // Assert
@@ -94,9 +94,9 @@ public class ContractManager_Tests : ContractsDomainTestBase<ContractsDomainTest
     }
 
     [Fact]
-    public void FromAgentResult_Should_Always_Require_Human_Review()
+    public void ToContractFields_Should_Parse_Dates_And_Normalize_Confidence()
     {
-        var fields = ExtractedContractFields.FromAgentResult(new ContractExtractionResult
+        var fields = new ContractExtractionResult
         {
             Title = "業務委託契約書",
             SignedDate = "2026-04-01",
@@ -104,17 +104,35 @@ public class ContractManager_Tests : ContractsDomainTestBase<ContractsDomainTest
             TotalAmount = 1200000m,
             Currency = "JPY",
             ExtractionConfidence = 0.82
-        });
+        }.ToContractFields();
 
+        fields.Title.ShouldBe("業務委託契約書");
+        fields.SignedDate.ShouldBe(new DateTime(2026, 4, 1));
+        fields.ExpirationDate.ShouldBe(new DateTime(2027, 3, 31));
         fields.TotalAmount.ShouldBe(1200000m);
-        fields.NeedsReview.ShouldBeTrue();
-        fields.ReviewStatus.ShouldBe(ContractReviewStatus.Pending);
         fields.ExtractionConfidence.ShouldBe(0.82);
     }
 
-    private static ExtractedContractFields CreateFields()
+    [Fact]
+    public void ToContractFields_Should_Drop_OutOfRange_Confidence()
     {
-        return new ExtractedContractFields
+        new ContractExtractionResult { ExtractionConfidence = -0.1 }.ToContractFields()
+            .ExtractionConfidence.ShouldBeNull();
+        new ContractExtractionResult { ExtractionConfidence = 1.1 }.ToContractFields()
+            .ExtractionConfidence.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ToContractFields_Should_Default_Empty_Currency_To_JPY()
+    {
+        new ContractExtractionResult { Currency = "" }.ToContractFields().Currency.ShouldBe("JPY");
+        new ContractExtractionResult { Currency = null }.ToContractFields().Currency.ShouldBe("JPY");
+        new ContractExtractionResult { Currency = "USD" }.ToContractFields().Currency.ShouldBe("USD");
+    }
+
+    private static ContractFields CreateFields()
+    {
+        return new ContractFields
         {
             Title = "業務委託契約書",
             ContractNumber = "CNT-2026-001",
@@ -126,8 +144,7 @@ public class ContractManager_Tests : ContractsDomainTestBase<ContractsDomainTest
             ExpirationDate = new DateTime(2027, 3, 31),
             TotalAmount = 1200000m,
             Currency = "JPY",
-            ExtractionConfidence = 0.9,
-            ReviewStatus = ContractReviewStatus.Confirmed
+            ExtractionConfidence = 0.9
         };
     }
 }

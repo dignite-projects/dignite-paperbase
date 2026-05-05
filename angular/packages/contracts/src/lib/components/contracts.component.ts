@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { LocalizationPipe } from '@abp/ng.core';
 import { finalize } from 'rxjs';
 import {
@@ -12,7 +13,13 @@ import {
 
 @Component({
   selector: 'lib-contracts',
-  imports: [CommonModule, FormsModule, LocalizationPipe],
+  imports: [CommonModule, FormsModule, RouterModule, LocalizationPipe],
+  styles: [
+    `
+      .contract-row { cursor: pointer; }
+      .contract-row:hover { background-color: var(--bs-table-hover-bg, rgba(0, 0, 0, 0.04)); }
+    `,
+  ],
   template: `
     <div class="container-fluid py-3">
       <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
@@ -145,7 +152,14 @@ import {
                 {{ 'AbpUi::Loading' | abpLocalization }}
               </td>
             </tr>
-            <tr *ngFor="let contract of contracts">
+            <tr
+              *ngFor="let contract of contracts"
+              class="contract-row"
+              role="button"
+              tabindex="0"
+              (click)="open(contract)"
+              (keydown.enter)="open(contract)"
+            >
               <td>
                 <div class="fw-semibold">{{ contract.title || '-' }}</div>
                 <div class="text-muted small">{{ contract.contractNumber || contract.documentId }}</div>
@@ -185,6 +199,8 @@ import {
 export class ContractsComponent implements OnInit {
   protected readonly ContractReviewStatus = ContractReviewStatus;
   protected readonly service = inject(ContractsService);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   protected contracts: ContractDto[] = [];
   protected counterpartyKeyword = '';
   protected expirationDateFrom = '';
@@ -253,5 +269,9 @@ export class ContractsComponent implements OnInit {
       default:
         return 'text-bg-secondary';
     }
+  }
+
+  protected open(contract: ContractDto): void {
+    this.router.navigate([contract.id], { relativeTo: this.route });
   }
 }

@@ -10,7 +10,7 @@ public class ContractExtractionCorrectionContext
 
     public string DocumentTypeCode { get; set; } = default!;
 
-    public ExtractedContractFields PreviousFields { get; set; } = default!;
+    public ContractFields PreviousFields { get; set; } = default!;
 
-    public ExtractedContractFields CorrectedFields { get; set; } = default!;
+    public ContractFields CorrectedFields { get; set; } = default!;
 }

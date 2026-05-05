@@ -22,7 +22,7 @@ public class ContractManager : DomainService
     public virtual Task<Contract> CreateAsync(
         Guid documentId,
         string documentTypeCode,
-        ExtractedContractFields fields)
+        ContractFields fields)
     {
         return Task.FromResult(new Contract(
             _guidGenerator.Create(),
