@@ -400,7 +400,9 @@ public class PaperbaseHostModule : AbpModule
             .AddChatClient(_ => openAIClient
                 .GetChatClient(configuration["PaperbaseAI:ChatModelId"]!)
                 .AsIChatClient())
-            .UseFunctionInvocation();
+            .UseFunctionInvocation(configure: invoker =>
+                invoker.MaximumIterationsPerRequest =
+                    configuration.GetValue("PaperbaseAI:MaxToolIterations", 10));
 
         if (configuration.GetValue("PaperbaseAI:PromptCachingEnabled", defaultValue: true))
             chatBuilder = chatBuilder.UseDistributedCache();

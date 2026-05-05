@@ -377,12 +377,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             };
         }
 
-        // Wrap the shared IChatClient with a per-turn counter.  A new instance is created
-        // each call so concurrent turns never share tool-call state.
-        var limitedClient = new MaxToolCallsChatClient(
-            _chatClient, _aiOptions.MaxToolCallsPerTurn, Logger);
-
-        var agent = new ChatClientAgent(limitedClient, agentOptions);
+        var agent = new ChatClientAgent(_chatClient, agentOptions);
         var session = await agent.CreateSessionAsync(cancellationToken);
         session.StateBag.SetValue(
             PaperbasePostgresChatHistoryProvider.ConversationIdStateKey,

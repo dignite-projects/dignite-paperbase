@@ -29,7 +29,6 @@ public class PaperbaseAIBehaviorOptionsBindingTestModule : AbpModule
                 ["PaperbaseAIBehavior:DefaultLanguage"] = "en",
                 ["PaperbaseAIBehavior:EnableLlmRerank"] = "true",
                 ["PaperbaseAIBehavior:RecallExpandFactor"] = "7",
-                ["PaperbaseAIBehavior:MaxToolCallsPerTurn"] = "3",
                 ["PaperbaseAIBehavior:ChatSearchBehavior"] = "OnDemandFunctionCalling",
             })
             .Build();
@@ -62,7 +61,6 @@ public class PaperbaseAIBehaviorOptionsBinding_Tests
         _options.DefaultLanguage.ShouldBe("en");                             // default "ja"
         _options.EnableLlmRerank.ShouldBeTrue();                              // default false
         _options.RecallExpandFactor.ShouldBe(7);                              // default 4
-        _options.MaxToolCallsPerTurn.ShouldBe(3);                             // default 10
         _options.ChatSearchBehavior.ShouldBe(ChatSearchBehavior.OnDemandFunctionCalling); // default BeforeAIInvoke
     }
 
