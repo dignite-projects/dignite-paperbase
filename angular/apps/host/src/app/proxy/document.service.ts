@@ -42,6 +42,16 @@ export class DocumentService {
       { apiName: this.apiName }
     );
 
+  retryPipeline = (id: string, pipelineCode: string): Observable<void> =>
+    this.rest.request<{ pipelineCode: string }, void>(
+      {
+        method: 'POST',
+        url: `${this.basePath}/${id}/retry-pipeline`,
+        body: { pipelineCode },
+      },
+      { apiName: this.apiName }
+    );
+
   upload = (file: File): Observable<DocumentDto> => {
     const formData = new FormData();
     formData.append('File', file, file.name);

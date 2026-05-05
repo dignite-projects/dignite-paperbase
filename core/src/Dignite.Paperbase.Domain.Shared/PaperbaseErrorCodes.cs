@@ -11,4 +11,8 @@ public static class PaperbaseErrorCodes
     public const string DocumentInRecycleBin = "Paperbase:DocumentInRecycleBin";
     public const string DuplicateClientTurnId = "Paperbase:DuplicateClientTurnId";
     public const string ChatConversationScopeConflict = "Paperbase:ChatConversationScopeConflict";
+    public const string PipelineNotRetryable = "Paperbase:PipelineNotRetryable";
+    public const string PipelineRetryInProgress = "Paperbase:PipelineRetryInProgress";
+    public const string PipelineNeverRan = "Paperbase:PipelineNeverRan";
+    public const string UnknownPipelineCode = "Paperbase:UnknownPipelineCode";
 }

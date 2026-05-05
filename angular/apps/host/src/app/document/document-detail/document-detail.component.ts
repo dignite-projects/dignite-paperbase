@@ -9,6 +9,7 @@ import {
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { LocalizationPipe } from '@abp/ng.core';
+import { ToasterService } from '@abp/ng.theme.shared';
 import { interval, Subscription, switchMap, startWith } from 'rxjs';
 import { DocumentService } from '../../proxy/document.service';
 import {
@@ -39,12 +40,14 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly documentService = inject(DocumentService);
+  private readonly toaster = inject(ToasterService);
 
   document = signal<DocumentDto | null>(null);
   isLoading = signal(true);
   isTextExpanded = signal(false);
   imageError = signal(false);
   activeTab = signal<'info' | 'relations'>('info');
+  retryingPipeline = signal<string | null>(null);
 
   readonly DocumentLifecycleStatus = DocumentLifecycleStatus;
   readonly DocumentReviewStatus = DocumentReviewStatus;
@@ -221,6 +224,29 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
 
   isRunInProgress(status: PipelineRunStatus | undefined): boolean {
     return status === PipelineRunStatus.Pending || status === PipelineRunStatus.Running;
+  }
+
+  isRetryable(run: DocumentPipelineRunDto | null | undefined): boolean {
+    return !!run && run.status === PipelineRunStatus.Failed;
+  }
+
+  retryPipeline(pipelineCode: string): void {
+    if (this.retryingPipeline() !== null) return;
+
+    this.retryingPipeline.set(pipelineCode);
+    this.documentService.retryPipeline(this.documentId, pipelineCode).subscribe({
+      next: () => {
+        this.retryingPipeline.set(null);
+        this.toaster.success('::Document:Pipeline:RetryQueued', '::Success');
+        if (!this.pollSubscription) {
+          this.startPolling();
+        }
+      },
+      error: () => {
+        this.retryingPipeline.set(null);
+        this.toaster.error('::Document:Pipeline:RetryFailed', '::Error');
+      },
+    });
   }
 
   getElapsedMs(run: DocumentPipelineRunDto): number | null {

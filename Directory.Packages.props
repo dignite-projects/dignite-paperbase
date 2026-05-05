@@ -31,6 +31,7 @@
         <PackageVersion Include="Volo.Abp.BackgroundJobs.EntityFrameworkCore" Version="10.2.0" />
         <PackageVersion Include="Volo.Abp.BlobStoring" Version="10.2.0" />
         <PackageVersion Include="Volo.Abp.BlobStoring.Database.EntityFrameworkCore" Version="10.2.0" />
+        <PackageVersion Include="Volo.Abp.Auditing" Version="10.2.0" />
         <PackageVersion Include="Volo.Abp.AuditLogging.EntityFrameworkCore" Version="10.2.0" />
         <PackageVersion Include="Volo.Abp.AspNetCore.Mvc" Version="10.2.0" />
         <PackageVersion Include="Volo.Abp.AspNetCore.Serilog" Version="10.2.0" />

@@ -22,6 +22,9 @@ public class PaperbasePermissionDefinitionProvider : PermissionDefinitionProvide
         chat.AddChild(PaperbasePermissions.Documents.Chat.SendMessage, L("Permission:Documents.Chat.SendMessage"));
         chat.AddChild(PaperbasePermissions.Documents.Chat.Delete, L("Permission:Documents.Chat.Delete"));
 
+        var pipelines = documents.AddChild(PaperbasePermissions.Documents.Pipelines.Default, L("Permission:Documents.Pipelines"));
+        pipelines.AddChild(PaperbasePermissions.Documents.Pipelines.Retry, L("Permission:Documents.Pipelines.Retry"));
+
         var relations = group.AddPermission(PaperbasePermissions.DocumentRelations.Default, L("Permission:DocumentRelations"));
         relations.AddChild(PaperbasePermissions.DocumentRelations.Create, L("Permission:DocumentRelations.Create"));
         relations.AddChild(PaperbasePermissions.DocumentRelations.Delete, L("Permission:DocumentRelations.Delete"));

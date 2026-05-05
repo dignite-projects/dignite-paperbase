@@ -66,4 +66,10 @@ public class DocumentController : PaperbaseController, IDocumentAppService
     {
         return _documentAppService.ConfirmClassificationAsync(id, input);
     }
+
+    [HttpPost("{id}/retry-pipeline")]
+    public virtual Task RetryPipelineAsync(Guid id, [FromBody] RetryPipelineInput input)
+    {
+        return _documentAppService.RetryPipelineAsync(id, input);
+    }
 }

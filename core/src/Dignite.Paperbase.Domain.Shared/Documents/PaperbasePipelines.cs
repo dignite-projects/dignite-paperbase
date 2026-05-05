@@ -24,4 +24,17 @@ public static class PaperbasePipelines
         TextExtraction,
         Classification
     };
+
+    /// <summary>
+    /// 用户可手动重试的流水线集合。
+    /// Embedding 虽然不计入 <see cref="KeyPipelines"/>（不影响生命周期派生），
+    /// 但用户可在它失败时主动重跑——所以这里包含全部三条核心流水线。
+    /// 业务模块自定义的流水线不通过此 API 暴露重试。
+    /// </summary>
+    public static readonly IReadOnlyCollection<string> RetryablePipelines = new[]
+    {
+        TextExtraction,
+        Classification,
+        Embedding
+    };
 }

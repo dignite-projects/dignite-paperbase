@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Documents;
+using Dignite.Paperbase.Documents.Pipelines.Classification;
 using Dignite.Paperbase.Documents.Pipelines.Embedding;
 using Dignite.Paperbase.Documents.Pipelines.TextExtraction;
 using Dignite.Paperbase.Permissions;
@@ -213,6 +214,60 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         var bytes = Encoding.UTF8.GetBytes(csv);
 
         return new RemoteStreamContent(new MemoryStream(bytes), "documents.csv", "text/csv");
+    }
+
+    [Authorize(PaperbasePermissions.Documents.Pipelines.Retry)]
+    public virtual async Task RetryPipelineAsync(Guid id, RetryPipelineInput input)
+    {
+        if (!PaperbasePipelines.RetryablePipelines.Contains(input.PipelineCode))
+        {
+            throw new BusinessException(PaperbaseErrorCodes.UnknownPipelineCode)
+                .WithData("PipelineCode", input.PipelineCode);
+        }
+
+        var document = await _documentRepository.GetAsync(id);
+
+        var latestRun = document.GetLatestRun(input.PipelineCode);
+        if (latestRun == null)
+        {
+            throw new BusinessException(PaperbaseErrorCodes.PipelineNeverRan)
+                .WithData("PipelineCode", input.PipelineCode);
+        }
+
+        switch (latestRun.Status)
+        {
+            case PipelineRunStatus.Pending:
+            case PipelineRunStatus.Running:
+                throw new BusinessException(PaperbaseErrorCodes.PipelineRetryInProgress)
+                    .WithData("PipelineCode", input.PipelineCode);
+            case PipelineRunStatus.Succeeded:
+            case PipelineRunStatus.Skipped:
+                throw new BusinessException(PaperbaseErrorCodes.PipelineNotRetryable)
+                    .WithData("PipelineCode", input.PipelineCode)
+                    .WithData("Status", latestRun.Status.ToString());
+        }
+
+        await EnqueuePipelineJobAsync(document.Id, input.PipelineCode);
+    }
+
+    /// <summary>
+    /// 按 PipelineCode 入队对应 BackgroundJob。
+    /// 不在 AppService 里调用 <see cref="DocumentPipelineRunManager.StartAsync"/>——
+    /// 新 Run 由 BackgroundJob 自身按"原始链路一致"的方式创建，避免出现两条 Pending Run。
+    /// </summary>
+    protected virtual Task EnqueuePipelineJobAsync(Guid documentId, string pipelineCode)
+    {
+        return pipelineCode switch
+        {
+            PaperbasePipelines.TextExtraction => _backgroundJobManager.EnqueueAsync(
+                new DocumentTextExtractionJobArgs { DocumentId = documentId }),
+            PaperbasePipelines.Classification => _backgroundJobManager.EnqueueAsync(
+                new DocumentClassificationJobArgs { DocumentId = documentId }),
+            PaperbasePipelines.Embedding => _backgroundJobManager.EnqueueAsync(
+                new DocumentEmbeddingJobArgs { DocumentId = documentId }),
+            _ => throw new BusinessException(PaperbaseErrorCodes.UnknownPipelineCode)
+                .WithData("PipelineCode", pipelineCode)
+        };
     }
 
     [Authorize(PaperbasePermissions.Documents.ConfirmClassification)]

@@ -24,6 +24,12 @@ public class PaperbasePermissions
             public const string SendMessage = Default + ".SendMessage";
             public const string Delete = Default + ".Delete";
         }
+
+        public static class Pipelines
+        {
+            public const string Default = Documents.Default + ".Pipelines";
+            public const string Retry = Default + ".Retry";
+        }
     }
 
     public static class DocumentRelations

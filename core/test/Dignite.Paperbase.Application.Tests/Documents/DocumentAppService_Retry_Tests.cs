@@ -1,0 +1,244 @@
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Dignite.Paperbase.Documents.Pipelines.Classification;
+using Dignite.Paperbase.Documents.Pipelines.Embedding;
+using Dignite.Paperbase.Documents.Pipelines.TextExtraction;
+using Microsoft.Extensions.DependencyInjection;
+using NSubstitute;
+using Shouldly;
+using Volo.Abp;
+using Volo.Abp.BackgroundJobs;
+using Volo.Abp.BlobStoring;
+using Volo.Abp.EventBus.Distributed;
+using Volo.Abp.EventBus.Local;
+using Volo.Abp.Modularity;
+using Xunit;
+
+namespace Dignite.Paperbase.Documents;
+
+[DependsOn(typeof(PaperbaseApplicationTestModule))]
+public class DocumentAppServiceRetryTestModule : AbpModule
+{
+    public override void ConfigureServices(ServiceConfigurationContext context)
+    {
+        context.Services.AddSingleton(Substitute.For<IDocumentRepository>());
+        context.Services.AddSingleton(Substitute.For<IDocumentRelationRepository>());
+        context.Services.AddSingleton(Substitute.For<IBlobContainer<PaperbaseDocumentContainer>>());
+        context.Services.AddSingleton(Substitute.For<IBackgroundJobManager>());
+        context.Services.AddSingleton(Substitute.For<IDistributedEventBus>());
+        context.Services.AddSingleton(Substitute.For<ILocalEventBus>());
+    }
+}
+
+/// <summary>
+/// Issue #94 守护：<see cref="DocumentAppService.RetryPipelineAsync"/> 必须按
+/// "仅 Failed 可重试 / Pending 与 Running 视为并发护栏 / Succeeded 与 Skipped 拒绝 /
+/// 未知 PipelineCode 拒绝"的规则放行，并把对应 BackgroundJob 入队（而非在 AppService
+/// 内部直接驱动 Run 状态）。
+/// </summary>
+public class DocumentAppService_Retry_Tests
+    : PaperbaseApplicationTestBase<DocumentAppServiceRetryTestModule>
+{
+    private readonly IDocumentAppService _appService;
+    private readonly IDocumentRepository _documentRepository;
+    private readonly IBackgroundJobManager _backgroundJobManager;
+    private readonly DocumentPipelineRunManager _pipelineRunManager;
+
+    public DocumentAppService_Retry_Tests()
+    {
+        _appService = GetRequiredService<IDocumentAppService>();
+        _documentRepository = GetRequiredService<IDocumentRepository>();
+        _backgroundJobManager = GetRequiredService<IBackgroundJobManager>();
+        _pipelineRunManager = GetRequiredService<DocumentPipelineRunManager>();
+    }
+
+    [Fact]
+    public async Task RetryPipelineAsync_Enqueues_TextExtraction_Job_When_Failed()
+    {
+        var doc = CreateDocument();
+        var run = await _pipelineRunManager.StartAsync(doc, PaperbasePipelines.TextExtraction);
+        await _pipelineRunManager.FailAsync(doc, run, errorMessage: "OCR engine timeout");
+        StubGet(doc);
+
+        await _appService.RetryPipelineAsync(
+            doc.Id,
+            new RetryPipelineInput { PipelineCode = PaperbasePipelines.TextExtraction });
+
+        await _backgroundJobManager.Received(1).EnqueueAsync(
+            Arg.Is<DocumentTextExtractionJobArgs>(a => a.DocumentId == doc.Id),
+            Arg.Any<BackgroundJobPriority>(),
+            Arg.Any<TimeSpan?>());
+    }
+
+    [Fact]
+    public async Task RetryPipelineAsync_Enqueues_Classification_Job_When_Failed()
+    {
+        var doc = CreateDocument();
+        var run = await _pipelineRunManager.StartAsync(doc, PaperbasePipelines.Classification);
+        await _pipelineRunManager.FailAsync(doc, run, errorMessage: "LLM unavailable");
+        StubGet(doc);
+
+        await _appService.RetryPipelineAsync(
+            doc.Id,
+            new RetryPipelineInput { PipelineCode = PaperbasePipelines.Classification });
+
+        await _backgroundJobManager.Received(1).EnqueueAsync(
+            Arg.Is<DocumentClassificationJobArgs>(a => a.DocumentId == doc.Id),
+            Arg.Any<BackgroundJobPriority>(),
+            Arg.Any<TimeSpan?>());
+    }
+
+    [Fact]
+    public async Task RetryPipelineAsync_Enqueues_Embedding_Job_When_Failed()
+    {
+        var doc = CreateDocument();
+        var run = await _pipelineRunManager.StartAsync(doc, PaperbasePipelines.Embedding);
+        await _pipelineRunManager.FailAsync(doc, run, errorMessage: "vector store down");
+        StubGet(doc);
+
+        await _appService.RetryPipelineAsync(
+            doc.Id,
+            new RetryPipelineInput { PipelineCode = PaperbasePipelines.Embedding });
+
+        await _backgroundJobManager.Received(1).EnqueueAsync(
+            Arg.Is<DocumentEmbeddingJobArgs>(a => a.DocumentId == doc.Id),
+            Arg.Any<BackgroundJobPriority>(),
+            Arg.Any<TimeSpan?>());
+    }
+
+    [Fact]
+    public async Task RetryPipelineAsync_Throws_When_Latest_Run_Is_Succeeded()
+    {
+        var doc = CreateDocument();
+        var run = await _pipelineRunManager.StartAsync(doc, PaperbasePipelines.TextExtraction);
+        await _pipelineRunManager.CompleteAsync(doc, run);
+        StubGet(doc);
+
+        var ex = await Should.ThrowAsync<BusinessException>(async () =>
+            await _appService.RetryPipelineAsync(
+                doc.Id,
+                new RetryPipelineInput { PipelineCode = PaperbasePipelines.TextExtraction }));
+
+        ex.Code.ShouldBe(PaperbaseErrorCodes.PipelineNotRetryable);
+        await _backgroundJobManager.DidNotReceive().EnqueueAsync(
+            Arg.Any<DocumentTextExtractionJobArgs>(),
+            Arg.Any<BackgroundJobPriority>(),
+            Arg.Any<TimeSpan?>());
+    }
+
+    [Fact]
+    public async Task RetryPipelineAsync_Throws_When_Latest_Run_Is_Skipped()
+    {
+        var doc = CreateDocument();
+        var run = await _pipelineRunManager.StartAsync(doc, PaperbasePipelines.Embedding);
+        await _pipelineRunManager.SkipAsync(doc, run, reason: "document too short");
+        StubGet(doc);
+
+        var ex = await Should.ThrowAsync<BusinessException>(async () =>
+            await _appService.RetryPipelineAsync(
+                doc.Id,
+                new RetryPipelineInput { PipelineCode = PaperbasePipelines.Embedding }));
+
+        ex.Code.ShouldBe(PaperbaseErrorCodes.PipelineNotRetryable);
+    }
+
+    [Fact]
+    public async Task RetryPipelineAsync_Throws_When_Latest_Run_Is_Running()
+    {
+        var doc = CreateDocument();
+        // StartAsync leaves the run in Running state (it calls MarkRunning internally).
+        await _pipelineRunManager.StartAsync(doc, PaperbasePipelines.Classification);
+        StubGet(doc);
+
+        var ex = await Should.ThrowAsync<BusinessException>(async () =>
+            await _appService.RetryPipelineAsync(
+                doc.Id,
+                new RetryPipelineInput { PipelineCode = PaperbasePipelines.Classification }));
+
+        ex.Code.ShouldBe(PaperbaseErrorCodes.PipelineRetryInProgress);
+        await _backgroundJobManager.DidNotReceive().EnqueueAsync(
+            Arg.Any<DocumentClassificationJobArgs>(),
+            Arg.Any<BackgroundJobPriority>(),
+            Arg.Any<TimeSpan?>());
+    }
+
+    [Fact]
+    public async Task RetryPipelineAsync_Throws_When_Pipeline_Never_Ran()
+    {
+        var doc = CreateDocument();
+        StubGet(doc);
+
+        var ex = await Should.ThrowAsync<BusinessException>(async () =>
+            await _appService.RetryPipelineAsync(
+                doc.Id,
+                new RetryPipelineInput { PipelineCode = PaperbasePipelines.TextExtraction }));
+
+        ex.Code.ShouldBe(PaperbaseErrorCodes.PipelineNeverRan);
+    }
+
+    [Fact]
+    public async Task RetryPipelineAsync_Throws_For_Unknown_PipelineCode()
+    {
+        var doc = CreateDocument();
+        StubGet(doc);
+
+        var ex = await Should.ThrowAsync<BusinessException>(async () =>
+            await _appService.RetryPipelineAsync(
+                doc.Id,
+                new RetryPipelineInput { PipelineCode = "contracts.field-extraction" }));
+
+        ex.Code.ShouldBe(PaperbaseErrorCodes.UnknownPipelineCode);
+        // 未知 PipelineCode 必须在读 Document 之前就被拒绝——
+        // 否则给业务模块一个旁路调度核心 Job 的口子。
+        await _documentRepository.DidNotReceive().GetAsync(
+            Arg.Any<Guid>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RetryPipelineAsync_Allows_Second_Retry_After_Second_Failure()
+    {
+        var doc = CreateDocument();
+
+        // Attempt 1 — fail
+        var run1 = await _pipelineRunManager.StartAsync(doc, PaperbasePipelines.TextExtraction);
+        await _pipelineRunManager.FailAsync(doc, run1, errorMessage: "timeout");
+
+        // Attempt 2 — also fail (simulate the BackgroundJob outcome)
+        var run2 = await _pipelineRunManager.StartAsync(doc, PaperbasePipelines.TextExtraction);
+        await _pipelineRunManager.FailAsync(doc, run2, errorMessage: "timeout again");
+        run2.AttemptNumber.ShouldBe(2);
+
+        StubGet(doc);
+
+        await _appService.RetryPipelineAsync(
+            doc.Id,
+            new RetryPipelineInput { PipelineCode = PaperbasePipelines.TextExtraction });
+
+        await _backgroundJobManager.Received(1).EnqueueAsync(
+            Arg.Is<DocumentTextExtractionJobArgs>(a => a.DocumentId == doc.Id),
+            Arg.Any<BackgroundJobPriority>(),
+            Arg.Any<TimeSpan?>());
+    }
+
+    private void StubGet(Document doc)
+    {
+        _documentRepository.GetAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(doc);
+    }
+
+    private static Document CreateDocument()
+    {
+        return new Document(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            $"blobs/{Guid.NewGuid():N}.pdf",
+            SourceType.Digital,
+            new FileOrigin(
+                uploadedByUserName: "test-user",
+                contentType: "application/pdf",
+                contentHash: $"{Guid.NewGuid():N}{Guid.NewGuid():N}",
+                fileSize: 1024,
+                originalFileName: "test.pdf"));
+    }
+}
