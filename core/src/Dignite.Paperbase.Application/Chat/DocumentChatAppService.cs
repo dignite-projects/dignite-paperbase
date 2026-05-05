@@ -45,7 +45,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     private readonly DocumentTextSearchAdapter _textSearchAdapter;
     private readonly IChatClient _chatClient;
     private readonly IPromptProvider _promptProvider;
-    private readonly DocumentChatHistoryLoader _historyLoader;
+    private readonly DocumentChatHistoryProvider _historyProvider;
     private readonly PaperbaseAIBehaviorOptions _aiOptions;
     private readonly PaperbaseKnowledgeIndexOptions _ragOptions;
     private readonly IEnumerable<IDocumentChatToolContributor> _toolContributors;
@@ -56,7 +56,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         DocumentTextSearchAdapter textSearchAdapter,
         IChatClient chatClient,
         IPromptProvider promptProvider,
-        DocumentChatHistoryLoader historyLoader,
+        DocumentChatHistoryProvider historyProvider,
         IOptions<PaperbaseAIBehaviorOptions> aiOptions,
         IOptions<PaperbaseKnowledgeIndexOptions> ragOptions,
         IEnumerable<IDocumentChatToolContributor> toolContributors)
@@ -66,7 +66,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         _textSearchAdapter = textSearchAdapter;
         _chatClient = chatClient;
         _promptProvider = promptProvider;
-        _historyLoader = historyLoader;
+        _historyProvider = historyProvider;
         _aiOptions = aiOptions.Value;
         _ragOptions = ragOptions.Value;
         _toolContributors = toolContributors;
@@ -339,7 +339,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         // - No ChatHistoryProvider on agent options: verified empirically that MAF v1.2.0
         //   does not auto-call ProvideChatHistoryAsync during RunAsync against our wiring
         //   (multi-turn count test captures 1/3/5 messages, no duplication). History is
-        //   loaded directly via DocumentChatHistoryLoader and prepended in InvokeAgentAsync /
+        //   loaded directly via DocumentChatHistoryProvider and prepended in InvokeAgentAsync /
         //   FillStreamingChannelAsync; persistence is owned by the ChatConversation aggregate.
         // - Instructions live inside ChatOptions because ChatClientAgentOptions does not
         //   expose a top-level Instructions property in v1.2.0 (only the convenience
@@ -392,7 +392,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         CancellationToken cancellationToken = default)
     {
         var setup = await PrepareAgentSetupAsync(conversation, cancellationToken);
-        var history = await _historyLoader.LoadAsync(conversation.Id, cancellationToken);
+        var history = await _historyProvider.GetHistoryAsync(conversation.Id, cancellationToken);
         var messages = history
             .Concat([new MeAi.ChatMessage(MeAi.ChatRole.User, message)])
             .ToList();
@@ -508,7 +508,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         try
         {
             var setup = await PrepareAgentSetupAsync(conversation, ct);
-            var history = await _historyLoader.LoadAsync(conversation.Id, ct);
+            var history = await _historyProvider.GetHistoryAsync(conversation.Id, ct);
             var messages = history
                 .Concat([new MeAi.ChatMessage(MeAi.ChatRole.User, input.Message)])
                 .ToList();

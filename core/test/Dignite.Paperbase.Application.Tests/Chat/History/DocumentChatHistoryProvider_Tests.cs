@@ -12,14 +12,14 @@ using MeAi = Microsoft.Extensions.AI;
 
 namespace Dignite.Paperbase.Chat;
 
-public class DocumentChatHistoryLoader_Tests
+public class DocumentChatHistoryProvider_Tests
     : PaperbaseApplicationTestBase<DocumentChatAppServiceTestModule>
 {
     private readonly IChatConversationRepository _repository;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly Volo.Abp.Timing.IClock _clock;
 
-    public DocumentChatHistoryLoader_Tests()
+    public DocumentChatHistoryProvider_Tests()
     {
         _repository = GetRequiredService<IChatConversationRepository>();
         _scopeFactory = GetRequiredService<IServiceScopeFactory>();
@@ -30,9 +30,9 @@ public class DocumentChatHistoryLoader_Tests
     public async Task Should_Load_History_From_Conversation_Repository()
     {
         var conversationId = await CreateConversationWithMessagesAsync();
-        var loader = new DocumentChatHistoryLoader(_scopeFactory);
+        var provider = new DocumentChatHistoryProvider(_scopeFactory);
 
-        var messages = (await loader.LoadAsync(conversationId)).ToList();
+        var messages = (await provider.GetHistoryAsync(conversationId)).ToList();
 
         messages.Count.ShouldBe(2);
         messages[0].Role.ShouldBe(ChatRole.User);
@@ -44,12 +44,12 @@ public class DocumentChatHistoryLoader_Tests
     [Fact]
     public async Task Should_Return_Empty_When_Conversation_Missing()
     {
-        // Conversation id never inserted — loader treats this as "no prior history"
+        // Conversation id never inserted — provider treats this as "no prior history"
         // rather than throwing, so the chat AppService can start a fresh turn cleanly
         // even if the conversation has been deleted between authorization and load.
-        var loader = new DocumentChatHistoryLoader(_scopeFactory);
+        var provider = new DocumentChatHistoryProvider(_scopeFactory);
 
-        var messages = await loader.LoadAsync(Guid.NewGuid());
+        var messages = await provider.GetHistoryAsync(Guid.NewGuid());
 
         messages.ShouldBeEmpty();
     }
@@ -57,7 +57,7 @@ public class DocumentChatHistoryLoader_Tests
     [Fact]
     public async Task Should_Use_Fresh_DI_Scope_Per_Call()
     {
-        // The loader is invoked from possibly background / non-HTTP contexts where the
+        // The provider is invoked from possibly background / non-HTTP contexts where the
         // ambient scope may be missing or stale; each call must create its own scope so
         // the IChatConversationRepository resolution is always valid.
         var conversationId = Guid.NewGuid();
@@ -86,10 +86,10 @@ public class DocumentChatHistoryLoader_Tests
         var scopeFactory = Substitute.For<IServiceScopeFactory>();
         scopeFactory.CreateScope().Returns(scope);
 
-        var loader = new DocumentChatHistoryLoader(scopeFactory);
+        var provider = new DocumentChatHistoryProvider(scopeFactory);
 
-        await loader.LoadAsync(conversationId);
-        await loader.LoadAsync(conversationId);
+        await provider.GetHistoryAsync(conversationId);
+        await provider.GetHistoryAsync(conversationId);
 
         scopeFactory.Received(2).CreateScope();
     }
@@ -101,9 +101,9 @@ public class DocumentChatHistoryLoader_Tests
         // passes the lot to RunAsync; ordering must be ascending by creation time so the
         // LLM sees the conversation as it actually unfolded.
         var conversationId = await CreateConversationWithMessagesAsync();
-        var loader = new DocumentChatHistoryLoader(_scopeFactory);
+        var provider = new DocumentChatHistoryProvider(_scopeFactory);
 
-        var messages = (await loader.LoadAsync(conversationId)).ToList();
+        var messages = (await provider.GetHistoryAsync(conversationId)).ToList();
 
         for (var i = 1; i < messages.Count; i++)
         {
