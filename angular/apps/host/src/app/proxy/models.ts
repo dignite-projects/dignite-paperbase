@@ -18,6 +18,14 @@ export enum SourceType {
   Digital = 1,
 }
 
+export enum PipelineRunStatus {
+  Pending = 10,
+  Running = 20,
+  Succeeded = 30,
+  Failed = 90,
+  Skipped = 95,
+}
+
 export interface FileOriginDto {
   uploadedAt: string;
   uploadedByUserId: string;
@@ -34,7 +42,7 @@ export interface DocumentPipelineRunDto {
   documentId: string;
   pipelineCode: string;
   attemptNumber: number;
-  status: string;
+  status: PipelineRunStatus;
   startedAt: string;
   completedAt?: string;
   statusMessage?: string;

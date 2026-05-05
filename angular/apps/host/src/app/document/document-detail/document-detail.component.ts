@@ -11,8 +11,23 @@ import { CommonModule } from '@angular/common';
 import { LocalizationPipe } from '@abp/ng.core';
 import { interval, Subscription, switchMap, startWith } from 'rxjs';
 import { DocumentService } from '../../proxy/document.service';
-import { DocumentDto, DocumentLifecycleStatus, DocumentReviewStatus } from '../../proxy/models';
+import {
+  DocumentDto,
+  DocumentLifecycleStatus,
+  DocumentPipelineRunDto,
+  DocumentReviewStatus,
+  PipelineRunStatus,
+} from '../../proxy/models';
 import { DocumentRelationsComponent } from '../document-relations/document-relations.component';
+
+interface PipelineRow {
+  pipelineCode: string;
+  labelKey: string;
+  isKnown: boolean;
+  run: DocumentPipelineRunDto | null;
+}
+
+const KNOWN_PIPELINE_CODES = ['text-extraction', 'classification', 'embedding'] as const;
 
 @Component({
   selector: 'app-document-detail',
@@ -33,6 +48,37 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
 
   readonly DocumentLifecycleStatus = DocumentLifecycleStatus;
   readonly DocumentReviewStatus = DocumentReviewStatus;
+  readonly PipelineRunStatus = PipelineRunStatus;
+
+  pipelineRows = computed<PipelineRow[]>(() => {
+    const doc = this.document();
+    if (!doc) return [];
+
+    const allRuns = doc.pipelineRuns ?? [];
+    const known: PipelineRow[] = KNOWN_PIPELINE_CODES.map(code => ({
+      pipelineCode: code,
+      labelKey: `::Document:Pipeline:${code}`,
+      isKnown: true,
+      run: this.pickLatestRun(allRuns, code),
+    }));
+
+    const unknownCodes = Array.from(
+      new Set(
+        allRuns
+          .map(r => r.pipelineCode)
+          .filter(code => !!code && !KNOWN_PIPELINE_CODES.includes(code as typeof KNOWN_PIPELINE_CODES[number]))
+      )
+    );
+
+    const unknown: PipelineRow[] = unknownCodes.map(code => ({
+      pipelineCode: code,
+      labelKey: code,
+      isKnown: false,
+      run: this.pickLatestRun(allRuns, code),
+    }));
+
+    return [...known, ...unknown];
+  });
 
   needsReview = computed(() =>
     this.document()?.reviewStatus === DocumentReviewStatus.PendingReview
@@ -75,8 +121,14 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
           this.isLoading.set(false);
           this.document.set(doc);
 
-          if (doc.lifecycleStatus === DocumentLifecycleStatus.Ready ||
-              doc.lifecycleStatus === DocumentLifecycleStatus.Failed) {
+          const lifecycleSettled =
+            doc.lifecycleStatus === DocumentLifecycleStatus.Ready ||
+            doc.lifecycleStatus === DocumentLifecycleStatus.Failed;
+          const anyRunPending = (doc.pipelineRuns ?? []).some(r =>
+            r.status === PipelineRunStatus.Pending || r.status === PipelineRunStatus.Running
+          );
+
+          if (lifecycleSettled && !anyRunPending) {
             this.stopPolling();
           }
         },
@@ -143,5 +195,57 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
       case DocumentLifecycleStatus.Failed:     return '::Document:Status:Failed';
       default:                                 return '::Document:Status:Unknown';
     }
+  }
+
+  getRunStatusBadgeClass(status: PipelineRunStatus | undefined): string {
+    switch (status) {
+      case PipelineRunStatus.Pending:   return 'badge bg-secondary';
+      case PipelineRunStatus.Running:   return 'badge bg-warning text-dark';
+      case PipelineRunStatus.Succeeded: return 'badge bg-success';
+      case PipelineRunStatus.Failed:    return 'badge bg-danger';
+      case PipelineRunStatus.Skipped:   return 'badge bg-light text-dark border';
+      default:                          return 'badge bg-light text-muted border';
+    }
+  }
+
+  getRunStatusLabel(status: PipelineRunStatus | undefined): string {
+    switch (status) {
+      case PipelineRunStatus.Pending:   return '::Document:Pipeline:Status:Pending';
+      case PipelineRunStatus.Running:   return '::Document:Pipeline:Status:Running';
+      case PipelineRunStatus.Succeeded: return '::Document:Pipeline:Status:Succeeded';
+      case PipelineRunStatus.Failed:    return '::Document:Pipeline:Status:Failed';
+      case PipelineRunStatus.Skipped:   return '::Document:Pipeline:Status:Skipped';
+      default:                          return '::Document:Pipeline:Status:NotStarted';
+    }
+  }
+
+  isRunInProgress(status: PipelineRunStatus | undefined): boolean {
+    return status === PipelineRunStatus.Pending || status === PipelineRunStatus.Running;
+  }
+
+  getElapsedMs(run: DocumentPipelineRunDto): number | null {
+    if (!run.startedAt) return null;
+    const start = new Date(run.startedAt).getTime();
+    if (Number.isNaN(start)) return null;
+    const end = run.completedAt ? new Date(run.completedAt).getTime() : Date.now();
+    if (Number.isNaN(end) || end < start) return null;
+    return end - start;
+  }
+
+  formatElapsed(run: DocumentPipelineRunDto): string {
+    const ms = this.getElapsedMs(run);
+    if (ms == null) return '';
+    if (ms < 1000) return `${ms} ms`;
+    const seconds = ms / 1000;
+    if (seconds < 60) return `${seconds.toFixed(1)} s`;
+    const minutes = Math.floor(seconds / 60);
+    const remSeconds = Math.round(seconds - minutes * 60);
+    return `${minutes}m ${remSeconds}s`;
+  }
+
+  protected pickLatestRun(runs: DocumentPipelineRunDto[], pipelineCode: string): DocumentPipelineRunDto | null {
+    const matches = runs.filter(r => r.pipelineCode === pipelineCode);
+    if (matches.length === 0) return null;
+    return matches.reduce((prev, curr) => (curr.attemptNumber > prev.attemptNumber ? curr : prev));
   }
 }

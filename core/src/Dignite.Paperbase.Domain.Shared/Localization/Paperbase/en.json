@@ -56,6 +56,18 @@
     "Document:Status:Failed": "Failed",
     "Document:Status:Unknown": "Unknown",
 
+    "Document:Pipelines": "Pipeline Runs",
+    "Document:Pipeline:text-extraction": "Text Extraction",
+    "Document:Pipeline:classification": "Classification",
+    "Document:Pipeline:embedding": "Embedding",
+    "Document:Pipeline:Attempt": "Attempt",
+    "Document:Pipeline:Status:Pending": "Pending",
+    "Document:Pipeline:Status:Running": "Running",
+    "Document:Pipeline:Status:Succeeded": "Succeeded",
+    "Document:Pipeline:Status:Failed": "Failed",
+    "Document:Pipeline:Status:Skipped": "Skipped",
+    "Document:Pipeline:Status:NotStarted": "Not Started",
+
     "Document:BulkUpload": "Bulk Upload",
     "Document:BulkUploadResults": "Upload Results",
     "Document:BulkUploadFailed": "Bulk upload failed.",
