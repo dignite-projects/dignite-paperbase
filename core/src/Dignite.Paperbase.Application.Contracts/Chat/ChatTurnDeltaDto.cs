@@ -31,9 +31,8 @@ public class ChatTurnDeltaDto
     public Guid? AssistantMessageId { get; set; }
 
     /// <summary>
-    /// True when the model did not invoke the document-search tool (OnDemandFunctionCalling
-    /// mode only). The UI should display a "no citations" notice to the user.
-    /// Always false in BeforeAIInvoke mode.
+    /// True when the model did not invoke the document-search tool, so the answer is
+    /// ungrounded. The UI should display a "no sources used" notice to the user.
     /// </summary>
     public bool IsDegraded { get; set; }
 

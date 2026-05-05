@@ -56,17 +56,4 @@ public class PaperbaseAIBehaviorOptions
     /// 实际召回数 = 文档聊天 TopK × 此值。
     /// </summary>
     public int RecallExpandFactor { get; set; } = 4;
-
-    /// <summary>
-    /// Controls when the <c>TextSearchProvider</c> fetches document context during a
-    /// chat turn. Defaults to <see cref="ChatSearchBehavior.BeforeAIInvoke"/> (retrieval
-    /// before every AI invocation; citations always populated).
-    /// <para>
-    /// Switch to <see cref="ChatSearchBehavior.OnDemandFunctionCalling"/> to let the
-    /// model decide when to search. This saves tokens but may yield an empty citation
-    /// list when the model declines to call the tool
-    /// (<c>ChatTurnResultDto.IsDegraded = true</c> in that case).
-    /// </para>
-    /// </summary>
-    public ChatSearchBehavior ChatSearchBehavior { get; set; } = ChatSearchBehavior.BeforeAIInvoke;
 }

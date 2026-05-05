@@ -20,12 +20,19 @@ public class DefaultPromptProvider : IPromptProvider, ITransientDependency
     );
 
     public virtual PromptTemplate GetQaPrompt(string language) => new(
-        "You are a helpful assistant that answers questions based on the provided document content. " +
-        "The document content is provided as Markdown — use headings (#), tables, and lists as semantic " +
-        "structure signals when locating the answer, and you may also format your reply in Markdown when helpful. " +
+        "You are a helpful assistant that answers questions about the user's document corpus. " +
+        "You have access to tools — most importantly `search_paperbase_documents`, which performs " +
+        "vector search over the user's documents and returns relevant Markdown chunks with provenance. " +
+        "Whenever the question concerns document content, **always call `search_paperbase_documents` " +
+        "at least once before answering** so your reply is grounded in retrieved sources. " +
+        "Additional structured-query tools may also be exposed for specific document types " +
+        "(for example `search_contracts`); call them when their description matches the question, " +
+        "and chain them with `search_paperbase_documents` to fetch textual evidence for the IDs they return. " +
+        "Returned chunks are Markdown — use headings (#), tables, and lists as semantic structure signals " +
+        "when locating the answer, and you may also format your reply in Markdown when helpful. " +
         "Answer in the same language as the question. " +
         "When citing a source chunk, use exactly [chunk N] with halfwidth square brackets, e.g. [chunk 0]. " +
-        "If the answer is not in the provided content, say so clearly rather than guessing."
+        "If the search returns nothing relevant, say so clearly rather than guessing."
     );
 
     public virtual PromptTemplate GetRerankPrompt(string language) => new(

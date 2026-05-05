@@ -227,33 +227,7 @@ public class DocumentChatStreaming_Tests
         });
     }
 
-    // ── 7. IsDegraded = false in default BeforeAIInvoke mode (streaming) ──────
-
-    [Fact]
-    public async Task IsDegraded_Is_False_In_Default_BeforeAIInvoke_Mode()
-    {
-        var conversationId = await CreateConversationAsync();
-
-        ChatTurnDeltaDto? done = null;
-        await WithUnitOfWorkAsync(async () =>
-        {
-            using (ChangeUser(OwnerUserId))
-            {
-                await foreach (var delta in _appService.SendMessageStreamingAsync(
-                    conversationId,
-                    new SendChatMessageInput { Message = "q", ClientTurnId = Guid.NewGuid() }))
-                {
-                    if (delta.Kind == ChatTurnDeltaKind.Done)
-                        done = delta;
-                }
-            }
-        });
-
-        done.ShouldNotBeNull();
-        done!.IsDegraded.ShouldBeFalse();
-    }
-
-    // ── 8. Cancellation: no persistence when token is pre-cancelled ───────────
+    // ── 7. Cancellation: no persistence when token is pre-cancelled ───────────
 
     [Fact]
     public async Task Should_Not_Persist_On_Cancellation()
