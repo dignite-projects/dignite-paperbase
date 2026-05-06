@@ -42,6 +42,16 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     // hard-coding a magic number.
     internal const int SnippetMaxGraphemes = 200;
 
+    // Citations are persisted as a string column (ChatMessage.CitationsJson) and
+    // shipped to the Angular client verbatim inside ChatMessageDto. The client reads
+    // camelCase keys, so we must serialize with camelCase. PropertyNameCaseInsensitive
+    // keeps deserialization compatible with rows written before this fix.
+    internal static readonly JsonSerializerOptions CitationJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
+
     private readonly IChatConversationRepository _conversationRepository;
     private readonly IDocumentRepository _documentRepository;
     private readonly DocumentTextSearchAdapter _textSearchAdapter;
@@ -469,7 +479,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     {
         try
         {
-            return JsonSerializer.Deserialize<List<ChatCitationDto>>(citationsJson);
+            return JsonSerializer.Deserialize<List<ChatCitationDto>>(citationsJson, CitationJsonOptions);
         }
         catch (JsonException ex)
         {
@@ -489,7 +499,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             return null;
 
         var dtos = BuildCitationDtos(results);
-        var json = JsonSerializer.Serialize(dtos);
+        var json = JsonSerializer.Serialize(dtos, CitationJsonOptions);
 
         if (json.Length <= ChatConsts.MaxCitationsJsonLength)
             return json;
@@ -501,7 +511,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         while (dtos.Count > 0 && json.Length > ChatConsts.MaxCitationsJsonLength)
         {
             dtos.RemoveAt(dtos.Count - 1);
-            json = JsonSerializer.Serialize(dtos);
+            json = JsonSerializer.Serialize(dtos, CitationJsonOptions);
         }
 
         return dtos.Count > 0 ? json : null;

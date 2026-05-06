@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text.Json;
 using Dignite.Paperbase.KnowledgeIndex;
 using Shouldly;
 using Xunit;
@@ -120,5 +121,55 @@ public class DocumentChatAppServiceCitations_Tests
         var truncated = DocumentChatAppService.TruncateByGrapheme(text, 5);
         new StringInfo(truncated).LengthInTextElements.ShouldBe(5);
         truncated.ShouldBe("abc🚀d");
+    }
+
+    [Fact]
+    public void CitationJsonOptions_Serializes_With_CamelCase_Property_Names()
+    {
+        // The Angular client reads ChatMessageDto.citationsJson as a raw string and
+        // parses it with default JS conventions (camelCase). If the persisted JSON
+        // were PascalCase, citation.documentId / pageNumber / chunkIndex / snippet /
+        // sourceName would all be undefined on the client.
+        var dto = new ChatCitationDto
+        {
+            DocumentId = Guid.NewGuid(),
+            PageNumber = 4,
+            ChunkIndex = 12,
+            Snippet = "snippet text",
+            SourceName = "Document X"
+        };
+
+        var json = JsonSerializer.Serialize(dto, DocumentChatAppService.CitationJsonOptions);
+
+        // The wire format must be camelCase — the client depends on it.
+        json.ShouldContain("\"documentId\"", Case.Sensitive);
+        json.ShouldContain("\"pageNumber\"", Case.Sensitive);
+        json.ShouldContain("\"chunkIndex\"", Case.Sensitive);
+        json.ShouldContain("\"snippet\"", Case.Sensitive);
+        json.ShouldContain("\"sourceName\"", Case.Sensitive);
+        json.ShouldNotContain("\"DocumentId\"", Case.Sensitive);
+        json.ShouldNotContain("\"PageNumber\"", Case.Sensitive);
+    }
+
+    [Fact]
+    public void CitationJsonOptions_Deserializes_Old_PascalCase_Rows()
+    {
+        // PropertyNameCaseInsensitive=true keeps deserialization compatible with rows
+        // written before the camelCase fix landed. Without this, every assistant
+        // message persisted under the old code path would silently drop its citation
+        // metadata after upgrade.
+        var legacyJson = """
+            [{"DocumentId":"11111111-1111-1111-1111-111111111111","PageNumber":7,"ChunkIndex":3,"Snippet":"old","SourceName":"Doc"}]
+            """;
+
+        var citations = JsonSerializer.Deserialize<List<ChatCitationDto>>(legacyJson, DocumentChatAppService.CitationJsonOptions);
+
+        citations.ShouldNotBeNull();
+        citations!.Count.ShouldBe(1);
+        citations[0].DocumentId.ShouldBe(Guid.Parse("11111111-1111-1111-1111-111111111111"));
+        citations[0].PageNumber.ShouldBe(7);
+        citations[0].ChunkIndex.ShouldBe(3);
+        citations[0].Snippet.ShouldBe("old");
+        citations[0].SourceName.ShouldBe("Doc");
     }
 }
