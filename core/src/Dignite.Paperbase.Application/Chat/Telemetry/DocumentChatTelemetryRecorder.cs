@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics.Metrics;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using Dignite.Paperbase.Abstractions.Chat;
 using Microsoft.Extensions.Logging;
 using Volo.Abp.Auditing;
@@ -48,7 +47,6 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
     public const string AuditTurnPropertyName = "DocumentChat.Turn";
     public const string MeterName = "Dignite.Paperbase.DocumentChat";
 
-    private const int MaxAuditCommentLength = 2048;
     private static readonly Meter Meter = new(MeterName);
 
     private static readonly Counter<long> DegradedTurns = Meter.CreateCounter<long>(
@@ -166,7 +164,6 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
         }
 
         entries.Add(entry);
-        AddAuditComment(scope, "document-chat-tool", entry);
     }
 
     private void AddTurnToAuditLog(DocumentChatTurnAuditEntry entry)
@@ -178,18 +175,6 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
         }
 
         scope.Log.ExtraProperties[AuditTurnPropertyName] = entry;
-        AddAuditComment(scope, "document-chat-turn", entry);
-    }
-
-    private static void AddAuditComment(IAuditLogScope scope, string eventName, object entry)
-    {
-        var json = JsonSerializer.Serialize(entry);
-        if (json.Length > MaxAuditCommentLength)
-        {
-            json = json[..MaxAuditCommentLength] + "...";
-        }
-
-        scope.Log.Comments.Add($"{eventName}: {json}");
     }
 
     private static KeyValuePair<string, object?>[] CreateToolTags(DocumentChatToolAuditEntry entry)
