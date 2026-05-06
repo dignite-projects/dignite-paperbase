@@ -12,9 +12,7 @@ import { provideLogo, withEnvironmentOptions } from "@abp/ng.theme.shared";
 import { ApplicationConfig } from '@angular/core';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
-import { DOCUMENT_TYPE_HANDLER } from '@dignite/paperbase';
 import { provideChat, provideDocuments } from '@dignite/paperbase/config';
-import { CONTRACTS_DOCUMENT_TYPE_HANDLER } from '@dignite/paperbase.contracts';
 import { provideContracts } from '@dignite/paperbase.contracts/config';
 import { environment } from '../environments/environment';
 import { APP_ROUTES } from './app.routes';
@@ -45,12 +43,5 @@ export const appConfig: ApplicationConfig = {
     provideChat(),
     provideDocuments(),
     provideContracts(),
-    // Each business module exports its DOCUMENT_TYPE_HANDLER value (the cross-link
-    // metadata that lights up the "Open in module" button on document-detail). Host
-    // wires it into the multi-token here — provideContracts() can't do it inside
-    // contracts/config because cross-package source-level imports of the token from
-    // @dignite/paperbase trip an ng-packagr / Angular partial-compilation edge case.
-    // For each new business module (invoices, receipts, ...): add a similar line.
-    { provide: DOCUMENT_TYPE_HANDLER, multi: true, useValue: CONTRACTS_DOCUMENT_TYPE_HANDLER },
   ]
 };

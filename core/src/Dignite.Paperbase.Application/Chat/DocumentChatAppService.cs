@@ -128,6 +128,10 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         var queryable = await _conversationRepository.GetQueryableAsync();
         var ownerId = CurrentUser.Id;
         queryable = queryable.Where(c => c.CreatorId == ownerId);
+        if (input.DocumentId.HasValue)
+        {
+            queryable = queryable.Where(c => c.DocumentId == input.DocumentId.Value);
+        }
 
         var totalCount = await AsyncExecuter.LongCountAsync(queryable);
         var page = await AsyncExecuter.ToListAsync(

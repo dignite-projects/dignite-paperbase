@@ -7,6 +7,6 @@ export const CHAT_ROUTES: Routes = [
     path: '',
     canActivate: [authGuard, permissionGuard],
     data: { requiredPolicy: PAPERBASE_PERMISSIONS.Documents.Chat.Default },
-    loadComponent: () => import('./chat.component').then(c => c.ChatComponent),
+    loadComponent: () => import('./chat-panel.component').then(c => c.ChatPanelComponent),
   },
 ];

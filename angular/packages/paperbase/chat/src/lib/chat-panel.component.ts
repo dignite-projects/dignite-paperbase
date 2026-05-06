@@ -3,15 +3,18 @@ import {
   AfterViewChecked,
   Component,
   ElementRef,
+  OnChanges,
   OnInit,
+  SimpleChanges,
   computed,
   inject,
+  input,
   signal,
   viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { SafeHtml, DomSanitizer } from '@angular/platform-browser';
-import { ActivatedRoute, RouterModule } from '@angular/router';
+import { RouterModule } from '@angular/router';
 import { LocalizationPipe, LocalizationService } from '@abp/ng.core';
 import { Confirmation, ConfirmationService, ToasterService } from '@abp/ng.theme.shared';
 import { finalize } from 'rxjs';
@@ -45,20 +48,29 @@ interface SelectedCitation {
   citation: ChatCitationDto;
 }
 
+export type ChatPanelMode = 'full' | 'panel';
+
 @Component({
-  selector: 'lib-chat',
-  templateUrl: './chat.component.html',
-  styleUrls: ['./chat.component.scss'],
+  selector: 'lib-chat-panel',
+  templateUrl: './chat-panel.component.html',
+  styleUrls: ['./chat-panel.component.scss'],
   imports: [CommonModule, FormsModule, RouterModule, LocalizationPipe],
 })
-export class ChatComponent implements OnInit, AfterViewChecked {
+export class ChatPanelComponent implements OnInit, OnChanges, AfterViewChecked {
   private readonly chatService = inject(DocumentChatService);
   private readonly documentService = inject(DocumentService);
-  private readonly route = inject(ActivatedRoute);
   private readonly confirmation = inject(ConfirmationService);
   private readonly toaster = inject(ToasterService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly localization = inject(LocalizationService);
+
+  readonly mode = input<ChatPanelMode>('full');
+  // In `panel` mode the panel auto-scopes new conversations to this `documentId`
+  // and filters the conversation list to it. In `full` mode `/chat` should pass
+  // nothing — independent Chat starts unscoped and the user's question (and
+  // backend tools) decide which documents are involved.
+  readonly documentId = input<string | undefined>(undefined);
+  readonly documentTypeCode = input<string | undefined>(undefined);
 
   readonly ChatMessageRole = ChatMessageRole;
 
@@ -69,8 +81,6 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   selectedCitation = signal<SelectedCitation | null>(null);
 
   title = signal('');
-  documentId = signal('');
-  documentTypeCode = signal('');
   message = signal('');
 
   isLoadingConversations = signal(false);
@@ -79,6 +89,18 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   isSending = signal(false);
   isLoadingSource = signal(false);
   sourceError = signal<string | null>(null);
+
+  isPanelMode = computed(() => this.mode() === 'panel');
+  // Panel-mode shows only conversations scoped to the current document; in full
+  // mode the user sees everything (including unscoped + per-doc-type chats).
+  visibleConversations = computed<ChatConversationListItemDto[]>(() => {
+    if (this.isPanelMode()) {
+      const docId = this.documentId();
+      if (!docId) return [];
+      return this.conversations().filter(c => c.documentId === docId);
+    }
+    return this.conversations();
+  });
 
   activeConversationId = computed(() => this.activeConversation()?.id ?? null);
   canSend = computed(() => !!this.message().trim() && !this.isSending());
@@ -104,20 +126,19 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   private sourceRequestId = 0;
 
   ngOnInit(): void {
-    const query = this.route.snapshot.queryParamMap;
-    const documentId = query.get('documentId');
-    const documentTypeCode = query.get('documentTypeCode');
-    const title = query.get('title');
+    this.loadConversations(() => this.maybeOpenScopedConversation());
+  }
 
-    if (documentId) this.documentId.set(documentId);
-    if (documentTypeCode) this.documentTypeCode.set(documentTypeCode);
-    if (title) this.title.set(title);
-
-    this.loadConversations(() => {
-      if (documentId || documentTypeCode) {
-        this.openOrCreateScopedConversation(documentId, documentTypeCode, title);
-      }
-    });
+  ngOnChanges(changes: SimpleChanges): void {
+    // In panel mode, the host (document-detail) owns the documentId and may swap
+    // it without re-creating the component (e.g. user navigates to a sibling
+    // document). Reload + re-scope when the input changes after init.
+    if (changes['documentId'] && !changes['documentId'].firstChange && this.isPanelMode()) {
+      this.activeConversation.set(null);
+      this.messages.set([]);
+      this.selectedCitation.set(null);
+      this.loadConversations(() => this.maybeOpenScopedConversation());
+    }
   }
 
   ngAfterViewChecked(): void {
@@ -128,6 +149,7 @@ export class ChatComponent implements OnInit, AfterViewChecked {
     this.isLoadingConversations.set(true);
     this.chatService
       .getConversationList({
+        documentId: this.isPanelMode() ? this.documentId() ?? null : null,
         maxResultCount: 50,
         skipCount: 0,
         sorting: 'CreationTime DESC',
@@ -151,7 +173,7 @@ export class ChatComponent implements OnInit, AfterViewChecked {
         this.activeConversation.set(conversation);
         this.selectedCitation.set(null);
         this.sourceError.set(null);
-        if (conversation.documentId) {
+        if (!this.isPanelMode() && conversation.documentId) {
           this.loadSourceDocument(conversation.documentId);
         } else {
           this.sourceRequestId++;
@@ -180,8 +202,10 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   createConversation(): void {
     this.createAndOpen({
       title: this.emptyToNull(this.title()),
-      documentId: this.emptyToNull(this.documentId()),
-      documentTypeCode: this.emptyToNull(this.documentTypeCode()),
+      // Panel mode auto-scopes to the document the host page is showing.
+      // Full mode (`/chat`) starts unscoped — backend tools decide retrieval.
+      documentId: this.isPanelMode() ? this.documentId() ?? null : null,
+      documentTypeCode: this.isPanelMode() ? this.documentTypeCode() ?? null : null,
     });
   }
 
@@ -213,7 +237,13 @@ export class ChatComponent implements OnInit, AfterViewChecked {
 
     const active = this.activeConversation();
     if (!active?.id) {
-      this.createAndOpen({}, created => this.sendToConversation(created, text));
+      this.createAndOpen(
+        {
+          documentId: this.isPanelMode() ? this.documentId() ?? null : null,
+          documentTypeCode: this.isPanelMode() ? this.documentTypeCode() ?? null : null,
+        },
+        created => this.sendToConversation(created, text)
+      );
       return;
     }
 
@@ -241,6 +271,13 @@ export class ChatComponent implements OnInit, AfterViewChecked {
   selectCitation(messageId: string, citationIndex: number, citation: ChatCitationDto): void {
     this.selectedCitation.set({ messageId, citationIndex, citation });
 
+    if (this.isPanelMode()) {
+      // Panel mode is embedded inside the source document detail page; the
+      // citation already points back to that document, so the duplicate
+      // source-pane preview is suppressed — selection is purely visual.
+      return;
+    }
+
     if (!citation.documentId) {
       this.sourceRequestId++;
       this.isLoadingSource.set(false);
@@ -265,25 +302,20 @@ export class ChatComponent implements OnInit, AfterViewChecked {
     return document.fileOrigin?.originalFileName || document.originalFileBlobName || document.id || 'Source document';
   }
 
-  private openOrCreateScopedConversation(
-    documentId: string | null,
-    documentTypeCode: string | null,
-    title: string | null
-  ): void {
-    const existing = this.conversations().find(c =>
-      (documentId && c.documentId === documentId) ||
-      (!documentId && documentTypeCode && c.documentTypeCode === documentTypeCode)
-    );
+  private maybeOpenScopedConversation(): void {
+    if (!this.isPanelMode()) return;
+    const documentId = this.documentId();
+    if (!documentId) return;
 
+    const existing = this.conversations().find(c => c.documentId === documentId);
     if (existing?.id) {
       this.selectConversation(existing.id);
       return;
     }
 
     this.createAndOpen({
-      title: title || null,
       documentId,
-      documentTypeCode,
+      documentTypeCode: this.documentTypeCode() ?? null,
     });
   }
 
@@ -300,7 +332,7 @@ export class ChatComponent implements OnInit, AfterViewChecked {
           this.activeConversation.set(conversation);
           this.messages.set([]);
           this.selectedCitation.set(null);
-          if (conversation.documentId) {
+          if (!this.isPanelMode() && conversation.documentId) {
             this.loadSourceDocument(conversation.documentId);
           } else {
             this.sourceRequestId++;
@@ -308,8 +340,6 @@ export class ChatComponent implements OnInit, AfterViewChecked {
             this.sourceDocument.set(null);
           }
           this.title.set('');
-          if (!input.documentId) this.documentId.set('');
-          if (!input.documentTypeCode) this.documentTypeCode.set('');
           this.loadConversations();
           afterCreate?.(conversation);
         },

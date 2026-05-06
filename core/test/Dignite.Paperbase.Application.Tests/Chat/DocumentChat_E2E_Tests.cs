@@ -4,6 +4,7 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.EntityFrameworkCore;
 using Dignite.Paperbase.KnowledgeIndex;
 using Microsoft.Extensions.AI;
@@ -35,6 +36,7 @@ public class DocumentChat_E2E_Tests
 {
     private readonly IDocumentChatAppService _appService;
     private readonly IChatConversationRepository _conversationRepository;
+    private readonly IDocumentRepository _documentRepository;
     private readonly IChatClient _chatClient;
     private readonly IDocumentKnowledgeIndex _knowledgeIndex;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
@@ -49,6 +51,7 @@ public class DocumentChat_E2E_Tests
     {
         _appService             = GetRequiredService<IDocumentChatAppService>();
         _conversationRepository = GetRequiredService<IChatConversationRepository>();
+        _documentRepository     = GetRequiredService<IDocumentRepository>();
         _chatClient             = GetRequiredService<IChatClient>();
         _knowledgeIndex         = GetRequiredService<IDocumentKnowledgeIndex>();
         _embeddingGenerator     = GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
@@ -276,6 +279,33 @@ public class DocumentChat_E2E_Tests
         });
     }
 
+    [Fact]
+    public async Task Should_Filter_Conversation_List_By_DocumentId()
+    {
+        var documentId = Guid.Parse("10000000-0000-0000-0000-000000000001");
+        var otherDocumentId = Guid.Parse("10000000-0000-0000-0000-000000000002");
+        var scopedConversationId = await CreateDocumentScopedConversationAsync(documentId, "Scoped");
+        var otherDocumentConversationId = await CreateDocumentScopedConversationAsync(otherDocumentId, "Other doc");
+        var unscopedConversationId = await CreateConversationAsync();
+
+        await WithUnitOfWorkAsync(async () =>
+        {
+            using (ChangeUser(OwnerUserId))
+            {
+                var list = await _appService.GetConversationListAsync(new GetChatConversationListInput
+                {
+                    DocumentId = documentId,
+                    MaxResultCount = 50
+                });
+
+                list.TotalCount.ShouldBe(1);
+                list.Items.Select(c => c.Id).ShouldContain(scopedConversationId);
+                list.Items.Select(c => c.Id).ShouldNotContain(otherDocumentConversationId);
+                list.Items.Select(c => c.Id).ShouldNotContain(unscopedConversationId);
+            }
+        });
+    }
+
     // ── 4. Multi-turn history depth: 5 turns accumulate in the LLM payload ────
     // (Search-scope propagation moved to DocumentTextSearchAdapter_Tests — under
     //  the single MAF tool-calling path the substituted IChatClient does not
@@ -470,6 +500,39 @@ public class DocumentChat_E2E_Tests
                 return dto.Id;
             }
         });
+    }
+
+    private async Task<Guid> CreateDocumentScopedConversationAsync(Guid documentId, string title)
+    {
+        _documentRepository.GetAsync(documentId).Returns(CreateDocument(documentId));
+
+        return await WithUnitOfWorkAsync(async () =>
+        {
+            using (ChangeUser(OwnerUserId))
+            {
+                var dto = await _appService.CreateConversationAsync(new CreateChatConversationInput
+                {
+                    Title = title,
+                    DocumentId = documentId
+                });
+                return dto.Id;
+            }
+        });
+    }
+
+    private static Document CreateDocument(Guid id)
+    {
+        return new Document(
+            id,
+            tenantId: null,
+            originalFileBlobName: $"test/{id:D}",
+            sourceType: SourceType.Digital,
+            fileOrigin: new FileOrigin(
+                uploadedByUserName: "test",
+                contentType: "application/pdf",
+                contentHash: new string('a', 64),
+                fileSize: 1,
+                originalFileName: $"{id:D}.pdf"));
     }
 
     private IDisposable ChangeUser(Guid userId)

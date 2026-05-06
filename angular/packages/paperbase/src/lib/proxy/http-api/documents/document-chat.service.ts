@@ -40,7 +40,7 @@ export class DocumentChatService {
     this.restService.request<any, PagedResultDto<ChatConversationListItemDto>>({
       method: 'GET',
       url: '/api/paperbase/document-chat/conversations',
-      params: { sorting: input.sorting, skipCount: input.skipCount, maxResultCount: input.maxResultCount },
+      params: { documentId: input.documentId, sorting: input.sorting, skipCount: input.skipCount, maxResultCount: input.maxResultCount },
     },
     { apiName: this.apiName,...config });
 

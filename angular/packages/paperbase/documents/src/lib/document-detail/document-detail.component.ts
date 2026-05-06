@@ -8,11 +8,10 @@ import {
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { CommonModule } from '@angular/common';
-import { LocalizationPipe, PermissionService } from '@abp/ng.core';
+import { LocalizationPipe } from '@abp/ng.core';
 import { ToasterService } from '@abp/ng.theme.shared';
 import { interval, Subscription, switchMap, startWith } from 'rxjs';
 import {
-  DOCUMENT_TYPE_HANDLER,
   DocumentDto,
   DocumentLifecycleStatus,
   DocumentPipelineRunDto,
@@ -20,6 +19,7 @@ import {
   DocumentService,
   PipelineRunStatus,
 } from '@dignite/paperbase';
+import { ChatPanelComponent } from '@dignite/paperbase/chat';
 import { DocumentRelationsComponent } from '../document-relations/document-relations.component';
 
 interface PipelineRow {
@@ -35,15 +35,13 @@ const KNOWN_PIPELINE_CODES = ['text-extraction', 'classification', 'embedding'] 
   selector: 'lib-document-detail',
   templateUrl: './document-detail.component.html',
   styleUrls: ['./document-detail.component.scss'],
-  imports: [CommonModule, RouterModule, LocalizationPipe, DocumentRelationsComponent],
+  imports: [CommonModule, RouterModule, LocalizationPipe, ChatPanelComponent, DocumentRelationsComponent],
 })
 export class DocumentDetailComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly documentService = inject(DocumentService);
   private readonly toaster = inject(ToasterService);
-  private readonly permissionService = inject(PermissionService);
-  private readonly typeHandlers = inject(DOCUMENT_TYPE_HANDLER, { optional: true }) ?? [];
 
   document = signal<DocumentDto | null>(null);
   isLoading = signal(true);
@@ -84,22 +82,6 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
     }));
 
     return [...known, ...unknown];
-  });
-
-  // Matches the document's documentTypeCode against any registered DOCUMENT_TYPE_HANDLER
-  // AND filters out handlers whose permissionPolicy the current user lacks. When a
-  // business module (Contracts, Invoices, ...) registers a handler via host wiring,
-  // the "Open in module" button becomes visible iff the document type matches AND the
-  // user can actually use the destination route — avoids ghost buttons that lead to 403.
-  matchingTypeHandler = computed(() => {
-    const code = this.document()?.documentTypeCode;
-    if (!code) return null;
-    const match = this.typeHandlers.find(h => code.startsWith(h.documentTypeCodePrefix));
-    if (!match) return null;
-    if (match.permissionPolicy && !this.permissionService.getGrantedPolicy(match.permissionPolicy)) {
-      return null;
-    }
-    return match;
   });
 
   needsReview = computed(() =>
@@ -184,26 +166,6 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
 
   goBack(): void {
     this.router.navigate(['/documents']);
-  }
-
-  openChat(): void {
-    const doc = this.document();
-    if (!doc?.id) return;
-
-    this.router.navigate(['/chat'], {
-      queryParams: {
-        documentId: doc.id,
-        documentTypeCode: doc.documentTypeCode || null,
-        title: doc.fileOrigin?.originalFileName || doc.originalFileBlobName,
-      },
-    });
-  }
-
-  openInModule(): void {
-    const handler = this.matchingTypeHandler();
-    const doc = this.document();
-    if (!handler || !doc) return;
-    this.router.navigate(handler.buildRoute(doc.id) as unknown[]);
   }
 
   getStatusBadgeClass(status: DocumentLifecycleStatus): string {

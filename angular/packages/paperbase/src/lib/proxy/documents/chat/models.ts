@@ -51,6 +51,7 @@ export interface CreateChatConversationInput {
 }
 
 export interface GetChatConversationListInput extends PagedAndSortedResultRequestDto {
+  documentId?: string | null;
 }
 
 export interface GetChatMessageListInput extends PagedAndSortedResultRequestDto {

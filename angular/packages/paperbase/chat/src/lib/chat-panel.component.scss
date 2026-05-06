@@ -1,8 +1,33 @@
+.chat-panel-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.chat-panel-root.is-full-mode {
+  min-height: calc(100vh - 100px);
+}
+
+.chat-panel-root.is-panel-mode .chat-shell {
+  grid-template-columns: minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .chat-shell {
   min-height: calc(100vh - 170px);
   display: grid;
   grid-template-columns: minmax(240px, 300px) minmax(320px, 42%) minmax(0, 1fr);
   overflow: hidden;
+}
+
+.chat-panel-root.is-panel-mode .chat-shell {
+  min-height: 0;
+}
+
+.chat-header--panel {
+  padding: 0.75rem 1rem;
 }
 
 .conversation-list {

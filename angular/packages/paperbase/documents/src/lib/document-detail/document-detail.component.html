@@ -16,21 +16,6 @@
         }
         {{ getStatusLabel(document()!.lifecycleStatus) | abpLocalization }}
       </span>
-      @if (matchingTypeHandler(); as handler) {
-        <button class="btn btn-outline-primary btn-sm ms-auto" (click)="openInModule()">
-          <i class="me-1" [class]="handler.iconClass"></i>
-          {{ handler.labelKey | abpLocalization }}
-        </button>
-        <button class="btn btn-primary btn-sm" (click)="openChat()">
-          <i class="fas fa-comments me-1"></i>
-          {{ '::DocumentChat:OpenChat' | abpLocalization }}
-        </button>
-      } @else {
-        <button class="btn btn-primary btn-sm ms-auto" (click)="openChat()">
-          <i class="fas fa-comments me-1"></i>
-          {{ '::DocumentChat:OpenChat' | abpLocalization }}
-        </button>
-      }
     }
   </div>
 
@@ -52,7 +37,7 @@
 
     <div class="row g-3">
       <!-- LEFT: Original file preview -->
-      <div class="col-lg-5">
+      <div class="col-lg-4">
         <div class="card shadow-sm h-100">
           <div class="card-header">
             <h6 class="mb-0">
@@ -94,8 +79,8 @@
         </div>
       </div>
 
-      <!-- RIGHT: Tabbed panel -->
-      <div class="col-lg-7 d-flex flex-column">
+      <!-- MIDDLE: Tabbed panel -->
+      <div class="col-lg-4 d-flex flex-column">
 
         <!-- Nav tabs -->
         <ul class="nav nav-tabs mb-3">
@@ -275,6 +260,19 @@
           <lib-document-relations [documentId]="document()!.id" />
         }
 
+      </div>
+
+      <!-- RIGHT: Document-scoped Chat panel -->
+      <div class="col-lg-4 d-flex flex-column">
+        <div class="card shadow-sm flex-fill">
+          <div class="card-body p-0 d-flex flex-column">
+            <lib-chat-panel
+              mode="panel"
+              [documentId]="document()!.id"
+              [documentTypeCode]="document()!.documentTypeCode || undefined"
+            />
+          </div>
+        </div>
       </div>
     </div>
   }
