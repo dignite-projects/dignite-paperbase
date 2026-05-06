@@ -59,10 +59,14 @@ Fallback order:
 
 1. If `documentId` is missing or the document cannot be loaded, keep the citation as non-navigable display text.
 2. If `pageNumber` exists and the UI has a PDF/source viewer, open `documentId` in that viewer and position to the page.
-3. Otherwise open `documentId` in the document detail view, expand Markdown when available, and try to locate `snippet`.
+3. Otherwise open `documentId` in the document detail view, show the persisted Markdown source as-is (no client-side rendering — the Markdown source IS the AI's view of the document, surfacing it raw is intentional), and try to locate `snippet`.
 4. If `snippet` cannot be found, show the document without a highlight and keep `chunkIndex` / `pageNumber` visible as citation context.
 
 This deliberately does not introduce a separate `DocumentSourceLocation` DTO, persisted chunk IDs, or stored character offsets. Add those only after a real PDF/Markdown viewer needs exact positioning that cannot be satisfied by `documentId + pageNumber + snippet` fallback.
+
+**PDF page navigation is browser-dependent.** The Angular client appends `#page=N` to the blob URL and renders it in a sandboxed `<iframe>`, which works in Chromium-based browsers and Firefox (PDF.js honors the `Open Parameters` fragment). Safari and embedded WebViews may ignore the fragment and open the document on page 1; in that case the badge `p.{n}` next to the source pane keeps the page hint visible to the user. Document this when shipping to clients with strict browser requirements.
+
+**Snippet match is whole-document `indexOf`.** The first occurrence of the snippet in the persisted Markdown is highlighted. Re-extracting the document with a different OCR run can shift the persisted Markdown enough that the snippet no longer matches; the UI surfaces this as a visible warning without breaking the chat.
 
 ## When the answer is degraded
 

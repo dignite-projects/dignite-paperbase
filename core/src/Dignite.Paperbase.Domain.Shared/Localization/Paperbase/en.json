@@ -152,8 +152,10 @@
     "DocumentChat:SourceMissingDocumentId": "Citation source is missing a document id.",
     "DocumentChat:SourceLoadFailed": "Source document could not be loaded.",
     "DocumentChat:SnippetNotFound": "Source loaded, but the cited snippet was not found in the current Markdown.",
-    "DocumentChat:PreviewUnavailable": "Preview is unavailable for this source.",
+    "DocumentChat:SourcePreviewUnavailable": "Preview is unavailable for this source.",
     "DocumentChat:OpenSourceFile": "Open source file",
-    "DocumentChat:SelectCitationToInspect": "Select a citation to inspect its source."
+    "DocumentChat:SelectCitationToInspect": "Select a citation to inspect its source.",
+    "DocumentChat:Scope:Document": "doc:{0}",
+    "DocumentChat:Scope:Global": "global"
   }
 }

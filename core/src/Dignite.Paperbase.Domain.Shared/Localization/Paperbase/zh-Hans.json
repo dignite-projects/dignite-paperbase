@@ -26,6 +26,17 @@
     "Permission:Documents.Chat.Delete": "删除对话",
     "Permission:Documents.Pipelines": "文档流水线",
     "Permission:Documents.Pipelines.Retry": "重试失败的流水线",
+    "Document:Pipelines": "流水线运行",
+    "Document:Pipeline:text-extraction": "文本提取",
+    "Document:Pipeline:classification": "分类",
+    "Document:Pipeline:embedding": "向量化",
+    "Document:Pipeline:Attempt": "尝试",
+    "Document:Pipeline:Status:Pending": "待执行",
+    "Document:Pipeline:Status:Running": "执行中",
+    "Document:Pipeline:Status:Succeeded": "已成功",
+    "Document:Pipeline:Status:Failed": "已失败",
+    "Document:Pipeline:Status:Skipped": "已跳过",
+    "Document:Pipeline:Status:NotStarted": "未开始",
     "Document:Pipeline:Retry": "重试",
     "Document:Pipeline:Retrying": "正在重试...",
     "Document:Pipeline:RetryQueued": "重试已入队，状态将很快刷新。",
@@ -57,8 +68,10 @@
     "DocumentChat:SourceMissingDocumentId": "引用来源缺少文档 ID。",
     "DocumentChat:SourceLoadFailed": "来源文档加载失败。",
     "DocumentChat:SnippetNotFound": "来源已加载，但在当前 Markdown 中没有找到引用片段。",
-    "DocumentChat:PreviewUnavailable": "无法预览该来源。",
+    "DocumentChat:SourcePreviewUnavailable": "无法预览该来源。",
     "DocumentChat:OpenSourceFile": "打开来源文件",
-    "DocumentChat:SelectCitationToInspect": "选择一条引用以查看来源。"
+    "DocumentChat:SelectCitationToInspect": "选择一条引用以查看来源。",
+    "DocumentChat:Scope:Document": "文档:{0}",
+    "DocumentChat:Scope:Global": "全局"
   }
 }

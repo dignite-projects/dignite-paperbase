@@ -129,16 +129,16 @@
           </div>
         } @else if (sourceDocument(); as document) {
           @if (isSourcePdf() && selectedCitation()?.citation?.pageNumber != null && sourceBlobSafeUrl()) {
-            <iframe class="w-100 h-100 border-0" style="min-height: 520px;" [src]="sourceBlobSafeUrl()!" [title]="sourceTitle(document)"></iframe>
+            <iframe class="w-100 h-100 border-0" style="min-height: 520px;" sandbox="allow-same-origin" [src]="sourceBlobSafeUrl()!" [title]="sourceTitle(document)"></iframe>
           } @else if (document.markdown) {
             @if (snippetMissing()) {
               <div class="alert alert-warning py-2 px-3 m-3 small">
                 {{ '::DocumentChat:SnippetNotFound' | abpLocalization }}
               </div>
             }
-            <pre class="m-0 p-3 bg-white" style="white-space: pre-wrap; word-break: break-word; font-size: .82rem;"><span>{{ markdownHighlight().before }}</span>@if (markdownHighlight().match) {<mark>{{ markdownHighlight().match }}</mark>}<span>{{ markdownHighlight().after }}</span></pre>
+            <div #markdownContainer class="chat-source-markdown" [innerHTML]="markdownHtml()"></div>
           } @else if (isSourcePdf() && sourceBlobSafeUrl()) {
-            <iframe class="w-100 h-100 border-0" style="min-height: 520px;" [src]="sourceBlobSafeUrl()!" [title]="sourceTitle(document)"></iframe>
+            <iframe class="w-100 h-100 border-0" style="min-height: 520px;" sandbox="allow-same-origin" [src]="sourceBlobSafeUrl()!" [title]="sourceTitle(document)"></iframe>
           } @else if (isSourceImage() && sourceBlobUrl()) {
             <div class="text-center text-muted p-4">
               <img [src]="sourceBlobUrl()!" [alt]="sourceTitle(document)" class="img-fluid" style="max-height: 520px; object-fit: contain;" />
@@ -146,7 +146,7 @@
           } @else {
             <div class="text-center text-muted p-4">
               <i class="fas fa-file-alt d-block mb-2"></i>
-              <p class="mb-2">{{ '::DocumentChat:PreviewUnavailable' | abpLocalization }}</p>
+              <p class="mb-2">{{ '::DocumentChat:SourcePreviewUnavailable' | abpLocalization }}</p>
               @if (sourceBlobUrl()) {
                 <a [href]="sourceBlobUrl()!" target="_blank" class="btn btn-outline-primary btn-sm">
                   <i class="fas fa-external-link-alt me-1"></i>
@@ -212,6 +212,7 @@
                       class="citation btn btn-light btn-sm w-100 text-start border-start border-primary rounded-0 mt-1"
                       [class.active]="isSelectedCitation(item.id, $index)"
                       [disabled]="!citation.documentId"
+                      [attr.data-citation-key]="citationKey(item.id, $index)"
                       (click)="selectCitation(item.id, $index, citation)"
                     >
                       <span class="fw-semibold">{{ citation.sourceName }}</span>

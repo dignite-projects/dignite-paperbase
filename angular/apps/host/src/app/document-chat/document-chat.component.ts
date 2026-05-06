@@ -1,11 +1,21 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import {
+  AfterViewChecked,
+  Component,
+  ElementRef,
+  OnInit,
+  computed,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { SafeResourceUrl, DomSanitizer } from '@angular/platform-browser';
+import { SafeHtml, SafeResourceUrl, DomSanitizer } from '@angular/platform-browser';
 import { ActivatedRoute, RouterModule } from '@angular/router';
-import { LocalizationPipe } from '@abp/ng.core';
+import { LocalizationPipe, LocalizationService } from '@abp/ng.core';
 import { Confirmation, ConfirmationService, ToasterService } from '@abp/ng.theme.shared';
 import { finalize } from 'rxjs';
+import { marked } from 'marked';
 import { DocumentService } from '../proxy/document.service';
 import { ChatMessageRole } from '../proxy/documents/chat/chat-message-role.enum';
 import {
@@ -35,25 +45,20 @@ interface SelectedCitation {
   citation: ChatCitationDto;
 }
 
-interface MarkdownHighlight {
-  before: string;
-  match: string;
-  after: string;
-}
-
 @Component({
   selector: 'app-document-chat',
   templateUrl: './document-chat.component.html',
   styleUrls: ['./document-chat.component.scss'],
   imports: [CommonModule, FormsModule, RouterModule, LocalizationPipe],
 })
-export class DocumentChatComponent implements OnInit {
+export class DocumentChatComponent implements OnInit, AfterViewChecked {
   private readonly chatService = inject(DocumentChatService);
   private readonly documentService = inject(DocumentService);
   private readonly route = inject(ActivatedRoute);
   private readonly confirmation = inject(ConfirmationService);
   private readonly toaster = inject(ToasterService);
   private readonly sanitizer = inject(DomSanitizer);
+  private readonly localization = inject(LocalizationService);
 
   readonly ChatMessageRole = ChatMessageRole;
 
@@ -93,29 +98,25 @@ export class DocumentChatComponent implements OnInit {
   sourceContentType = computed(() => this.sourceDocument()?.fileOrigin?.contentType?.toLowerCase() ?? '');
   isSourcePdf = computed(() => this.sourceContentType().includes('pdf'));
   isSourceImage = computed(() => this.sourceContentType().startsWith('image/'));
-  markdownHighlight = computed<MarkdownHighlight>(() => {
-    const markdown = this.sourceDocument()?.markdown ?? '';
-    const snippet = this.selectedCitation()?.citation.snippet?.trim();
-    if (!markdown || !snippet) {
-      return { before: markdown, match: '', after: '' };
-    }
-
-    const index = markdown.indexOf(snippet);
-    if (index < 0) {
-      return { before: markdown, match: '', after: '' };
-    }
-
-    return {
-      before: markdown.slice(0, index),
-      match: markdown.slice(index, index + snippet.length),
-      after: markdown.slice(index + snippet.length),
-    };
+  // Markdown is rendered (rather than displayed as `<pre>` text) because the project
+  // is AI-first and the persisted Markdown is the single canonical text artifact —
+  // headings/lists/tables carry semantic structure that helps the user scan.
+  // marked is configured with `mangle:false` and `headerIds:false` to keep output
+  // deterministic and free of injected anchor IDs.
+  markdownHtml = computed<SafeHtml | null>(() => {
+    const markdown = this.sourceDocument()?.markdown;
+    if (!markdown) return null;
+    const html = marked.parse(markdown, { async: false, gfm: true }) as string;
+    return this.sanitizer.bypassSecurityTrustHtml(html);
   });
-  snippetMissing = computed(() => {
-    const document = this.sourceDocument();
-    const citation = this.selectedCitation()?.citation;
-    return !!document?.markdown && !!citation?.snippet?.trim() && !this.markdownHighlight().match;
-  });
+  // The snippet may not exist in the rendered DOM (LLM rephrased the chunk, OCR
+  // changed between embedding and view). The signal is recomputed every time the
+  // citation changes; the actual `<mark>` wrapping happens after view-check via
+  // tryHighlightSnippet().
+  snippetMissing = signal(false);
+  private readonly markdownContainer = viewChild<ElementRef<HTMLElement>>('markdownContainer');
+  private lastHighlightedSnippet: string | null = null;
+  private lastHighlightedDocumentId: string | null = null;
   private sourceRequestId = 0;
 
   ngOnInit(): void {
@@ -133,6 +134,10 @@ export class DocumentChatComponent implements OnInit {
         this.openOrCreateScopedConversation(documentId, documentTypeCode, title);
       }
     });
+  }
+
+  ngAfterViewChecked(): void {
+    this.tryHighlightSnippet();
   }
 
   loadConversations(afterLoad?: () => void): void {
@@ -240,8 +245,13 @@ export class DocumentChatComponent implements OnInit {
 
   sourceLabel(conversation: ChatConversationDto | ChatConversationListItemDto): string {
     if (conversation.documentTypeCode) return conversation.documentTypeCode;
-    if (conversation.documentId) return `doc:${conversation.documentId.slice(0, 8)}`;
-    return 'global';
+    if (conversation.documentId) {
+      return this.localization.instant({
+        key: '::DocumentChat:Scope:Document',
+        defaultValue: `doc:${conversation.documentId.slice(0, 8)}`,
+      }, conversation.documentId.slice(0, 8));
+    }
+    return this.localization.instant({ key: '::DocumentChat:Scope:Global', defaultValue: 'global' });
   }
 
   selectCitation(messageId: string, citationIndex: number, citation: ChatCitationDto): void {
@@ -261,6 +271,10 @@ export class DocumentChatComponent implements OnInit {
   isSelectedCitation(messageId: string, citationIndex: number): boolean {
     const selected = this.selectedCitation();
     return selected?.messageId === messageId && selected.citationIndex === citationIndex;
+  }
+
+  citationKey(messageId: string, citationIndex: number): string {
+    return `${messageId}::${citationIndex}`;
   }
 
   sourceTitle(document: DocumentDto): string {
@@ -404,6 +418,117 @@ export class DocumentChatComponent implements OnInit {
   private emptyToNull(value: string): string | null {
     const trimmed = value.trim();
     return trimmed ? trimmed : null;
+  }
+
+  /**
+   * Wraps the first occurrence of the selected citation's snippet inside the
+   * rendered Markdown container in a `<mark>` tag. Runs after every view-check
+   * because the markdown HTML and the selected citation can update independently.
+   *
+   * Trade-offs:
+   *  - First-occurrence only. If the snippet appears in multiple chunks, the UI
+   *    cannot disambiguate without persisted chunk offsets (intentionally not
+   *    introduced — see docs/document-chat.md citation-to-source navigation).
+   *  - Snippet must match raw Markdown text from the rendered DOM. The chunker
+   *    typically preserves whitespace/punctuation, so direct substring search
+   *    works in practice. Falls back to `snippetMissing=true` (warning banner)
+   *    when no match is found.
+   */
+  private tryHighlightSnippet(): void {
+    const container = this.markdownContainer()?.nativeElement;
+    if (!container) {
+      this.lastHighlightedSnippet = null;
+      this.lastHighlightedDocumentId = null;
+      return;
+    }
+
+    const document = this.sourceDocument();
+    const snippet = this.selectedCitation()?.citation.snippet?.trim();
+    const documentId = document?.id ?? null;
+
+    if (!snippet || !document?.markdown) {
+      if (this.lastHighlightedSnippet) {
+        this.removeExistingHighlight(container);
+        this.lastHighlightedSnippet = null;
+        this.lastHighlightedDocumentId = null;
+      }
+      this.snippetMissing.set(false);
+      return;
+    }
+
+    if (snippet === this.lastHighlightedSnippet && documentId === this.lastHighlightedDocumentId) {
+      return;
+    }
+
+    this.removeExistingHighlight(container);
+
+    const matched = this.wrapFirstOccurrence(container, snippet);
+    this.snippetMissing.set(!matched);
+    this.lastHighlightedSnippet = snippet;
+    this.lastHighlightedDocumentId = documentId;
+
+    if (matched) {
+      const mark = container.querySelector('mark.chat-citation-mark') as HTMLElement | null;
+      mark?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }
+
+  private removeExistingHighlight(container: HTMLElement): void {
+    const marks = container.querySelectorAll('mark.chat-citation-mark');
+    marks.forEach(mark => {
+      const parent = mark.parentNode;
+      if (!parent) return;
+      while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+      parent.removeChild(mark);
+      parent.normalize();
+    });
+  }
+
+  private wrapFirstOccurrence(container: HTMLElement, snippet: string): boolean {
+    const walker = (container.ownerDocument ?? document).createTreeWalker(
+      container,
+      NodeFilter.SHOW_TEXT
+    );
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      const text = node.nodeValue ?? '';
+      const idx = text.indexOf(snippet);
+      if (idx < 0) continue;
+
+      const range = (container.ownerDocument ?? document).createRange();
+      range.setStart(node, idx);
+      range.setEnd(node, idx + snippet.length);
+      const mark = (container.ownerDocument ?? document).createElement('mark');
+      mark.className = 'chat-citation-mark';
+      mark.setAttribute('role', 'button');
+      mark.setAttribute('tabindex', '0');
+      mark.title = '跳到引用';
+      // Bidirectional navigation: clicking the source-pane highlight scrolls the
+      // matching chat-citation button into view. The citation is already selected
+      // (that is what created the highlight), so we only need the scroll.
+      const handler = () => this.scrollSelectedCitationIntoView();
+      mark.addEventListener('click', handler);
+      mark.addEventListener('keydown', (event: Event) => {
+        const keyEvent = event as KeyboardEvent;
+        if (keyEvent.key === 'Enter' || keyEvent.key === ' ') {
+          event.preventDefault();
+          handler();
+        }
+      });
+      range.surroundContents(mark);
+      return true;
+    }
+    return false;
+  }
+
+  private scrollSelectedCitationIntoView(): void {
+    const selected = this.selectedCitation();
+    if (!selected) return;
+    const key = this.citationKey(selected.messageId, selected.citationIndex);
+    const button = document.querySelector(
+      `button.citation[data-citation-key="${CSS.escape(key)}"]`
+    ) as HTMLElement | null;
+    button?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }
 
   private loadSourceDocument(documentId: string): void {

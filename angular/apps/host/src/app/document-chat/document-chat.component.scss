@@ -134,6 +134,85 @@
   background: #d6e9ff;
 }
 
+// Rendered Markdown source view inside the source pane.
+// `marked` produces standard HTML; the styles here keep it scannable inside the
+// fixed-width pane without pulling in a global typography reset.
+.chat-source-markdown {
+  padding: 1rem;
+  background: #fff;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  word-break: break-word;
+
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    margin: 0.6em 0 0.3em;
+  }
+
+  h1 { font-size: 1.2rem; }
+  h2 { font-size: 1.1rem; }
+  h3 { font-size: 1rem; }
+  h4, h5, h6 { font-size: 0.95rem; }
+
+  p { margin: 0 0 0.6em; }
+
+  ul, ol { padding-left: 1.4em; margin-bottom: 0.6em; }
+  li { margin-bottom: 0.2em; }
+
+  code {
+    background: #f1f3f5;
+    padding: 0.05em 0.3em;
+    border-radius: 3px;
+    font-size: 0.85em;
+  }
+
+  pre {
+    background: #f1f3f5;
+    padding: 0.6em 0.8em;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 0.78rem;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.4em 0 0.8em;
+    font-size: 0.8rem;
+  }
+
+  th, td {
+    border: 1px solid #dee2e6;
+    padding: 0.3em 0.5em;
+    vertical-align: top;
+  }
+
+  th { background: #f8f9fa; }
+
+  blockquote {
+    border-left: 3px solid #dee2e6;
+    padding-left: 0.8em;
+    color: #6c757d;
+    margin: 0.4em 0;
+  }
+
+  // Snippet highlight injected by tryHighlightSnippet().
+  // role="button" + cursor:pointer signals that clicking it scrolls the chat pane
+  // back to the citation that selected this snippet (bidirectional navigation).
+  mark.chat-citation-mark {
+    background: #fff3bf;
+    padding: 0 1px;
+    border-radius: 2px;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      background: #ffe066;
+      outline: 1px solid #fab005;
+    }
+  }
+}
+
 @media (max-width: 991.98px) {
   .document-chat-shell {
     grid-template-columns: 1fr;
