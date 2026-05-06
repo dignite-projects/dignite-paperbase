@@ -1,10 +1,13 @@
-import { RouterOutletComponent } from '@abp/ng.core';
+import { authGuard, permissionGuard, RouterOutletComponent } from '@abp/ng.core';
 import { Routes } from '@angular/router';
+import { CONTRACTS_PERMISSIONS } from './permissions';
 
 export const CONTRACTS_ROUTES: Routes = [
   {
     path: '',
     component: RouterOutletComponent,
+    canActivate: [authGuard, permissionGuard],
+    data: { requiredPolicy: CONTRACTS_PERMISSIONS.Contracts.Default },
     children: [
       {
         path: '',

@@ -16,6 +16,8 @@
     "useDefineForClassFields": false,
     "paths": {
       "@dignite/paperbase": ["packages/paperbase/src/public-api.ts"],
+      "@dignite/paperbase/chat": ["packages/paperbase/chat/src/public-api.ts"],
+      "@dignite/paperbase/documents": ["packages/paperbase/documents/src/public-api.ts"],
       "@dignite/paperbase/config": ["packages/paperbase/config/src/public-api.ts"],
       "@dignite/paperbase.contracts": ["packages/contracts/src/public-api.ts"],
       "@dignite/paperbase.contracts/config": ["packages/contracts/config/src/public-api.ts"]

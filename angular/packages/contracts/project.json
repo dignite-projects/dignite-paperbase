@@ -4,6 +4,7 @@
   "projectType": "library",
   "sourceRoot": "packages/contracts/src",
   "prefix": "lib",
+  "tags": ["scope:lib", "type:business-module"],
   "targets": {
     "build": {
       "executor": "@angular/build:ng-packagr",

@@ -1,1 +1,2 @@
-export * from './route.provider';
+export * from './chat.provider';
+export * from './documents.provider';

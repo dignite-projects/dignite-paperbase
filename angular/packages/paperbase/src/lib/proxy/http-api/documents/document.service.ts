@@ -1,74 +1,87 @@
-import { RestService, Rest } from '@abp/ng.core';
-import type { PagedResultDto } from '@abp/ng.core';
 import { Injectable, inject } from '@angular/core';
-import type { DocumentDto, GetDocumentListInput, UploadDocumentInput } from '../../documents/models';
+import { EnvironmentService, RestService } from '@abp/ng.core';
+import type { PagedResultDto } from '@abp/ng.core';
+import { Observable } from 'rxjs';
+import type { DocumentDto, GetDocumentListInput } from '../../documents/models';
 
-@Injectable({
-  providedIn: 'root',
-})
+@Injectable({ providedIn: 'root' })
 export class DocumentService {
-  private restService = inject(RestService);
-  apiName = 'Default';
-  
+  private readonly rest = inject(RestService);
+  private readonly env = inject(EnvironmentService);
+  private readonly apiName = 'Default';
+  private readonly basePath = '/api/paperbase/documents';
 
-  confirmClassification = (id: string, documentTypeCode: string, config?: Partial<Rest.Config>) =>
-    this.restService.request<any, DocumentDto>({
-      method: 'POST',
-      url: `/api/paperbase/documents/${id}/confirm-classification`,
-      body: documentTypeCode,
-    },
-    { apiName: this.apiName,...config });
-  
+  get = (id: string): Observable<DocumentDto> =>
+    this.rest.request<void, DocumentDto>(
+      { method: 'GET', url: `${this.basePath}/${id}` },
+      { apiName: this.apiName }
+    );
 
-  delete = (id: string, config?: Partial<Rest.Config>) =>
-    this.restService.request<any, void>({
-      method: 'DELETE',
-      url: `/api/paperbase/documents/${id}`,
-    },
-    { apiName: this.apiName,...config });
-  
+  getList = (input: GetDocumentListInput): Observable<PagedResultDto<DocumentDto>> =>
+    this.rest.request<void, PagedResultDto<DocumentDto>>(
+      {
+        method: 'GET',
+        url: this.basePath,
+        params: {
+          maxResultCount: input.maxResultCount ?? 10,
+          skipCount: input.skipCount ?? 0,
+          sorting: input.sorting,
+          lifecycleStatus: input.lifecycleStatus ?? undefined,
+          documentTypeCode: input.documentTypeCode ?? undefined,
+          reviewStatus: input.reviewStatus ?? undefined,
+        },
+      },
+      { apiName: this.apiName }
+    );
 
-  export = (input: GetDocumentListInput, config?: Partial<Rest.Config>) =>
-    this.restService.request<any, Blob>({
-      method: 'GET',
-      responseType: 'blob',
-      url: '/api/paperbase/documents/export',
-      params: { lifecycleStatus: input.lifecycleStatus, documentTypeCode: input.documentTypeCode, reviewStatus: input.reviewStatus, sorting: input.sorting, skipCount: input.skipCount, maxResultCount: input.maxResultCount },
-    },
-    { apiName: this.apiName,...config });
-  
+  confirmClassification = (id: string, documentTypeCode: string): Observable<DocumentDto> =>
+    this.rest.request<{ documentTypeCode: string }, DocumentDto>(
+      {
+        method: 'POST',
+        url: `${this.basePath}/${id}/confirm-classification`,
+        body: { documentTypeCode },
+      },
+      { apiName: this.apiName }
+    );
 
-  get = (id: string, config?: Partial<Rest.Config>) =>
-    this.restService.request<any, DocumentDto>({
-      method: 'GET',
-      url: `/api/paperbase/documents/${id}`,
-    },
-    { apiName: this.apiName,...config });
-  
+  retryPipeline = (id: string, pipelineCode: string): Observable<void> =>
+    this.rest.request<{ pipelineCode: string }, void>(
+      {
+        method: 'POST',
+        url: `${this.basePath}/${id}/retry-pipeline`,
+        body: { pipelineCode },
+      },
+      { apiName: this.apiName }
+    );
 
-  getBlob = (id: string, config?: Partial<Rest.Config>) =>
-    this.restService.request<any, Blob>({
-      method: 'GET',
-      responseType: 'blob',
-      url: `/api/paperbase/documents/${id}/blob`,
-    },
-    { apiName: this.apiName,...config });
-  
+  upload = (file: File): Observable<DocumentDto> => {
+    const formData = new FormData();
+    formData.append('File', file, file.name);
+    return this.rest.request<FormData, DocumentDto>(
+      {
+        method: 'POST',
+        url: `${this.basePath}/upload`,
+        body: formData,
+      },
+      { apiName: this.apiName }
+    );
+  };
 
-  getList = (input: GetDocumentListInput, config?: Partial<Rest.Config>) =>
-    this.restService.request<any, PagedResultDto<DocumentDto>>({
-      method: 'GET',
-      url: '/api/paperbase/documents',
-      params: { lifecycleStatus: input.lifecycleStatus, documentTypeCode: input.documentTypeCode, reviewStatus: input.reviewStatus, sorting: input.sorting, skipCount: input.skipCount, maxResultCount: input.maxResultCount },
-    },
-    { apiName: this.apiName,...config });
-  
+  delete = (id: string): Observable<void> =>
+    this.rest.request<void, void>(
+      { method: 'DELETE', url: `${this.basePath}/${id}` },
+      { apiName: this.apiName }
+    );
 
-  upload = (input: UploadDocumentInput, config?: Partial<Rest.Config>) =>
-    this.restService.request<any, DocumentDto>({
-      method: 'POST',
-      url: '/api/paperbase/documents/upload',
-      body: input.file,
-    },
-    { apiName: this.apiName,...config });
+  getBlobUrl = (id: string): string =>
+    `${this.env.getApiUrl(this.apiName)}${this.basePath}/${id}/blob`;
+
+  getExportUrl = (input: GetDocumentListInput): string => {
+    const params = new URLSearchParams();
+    if (input.lifecycleStatus != null) params.set('lifecycleStatus', String(input.lifecycleStatus));
+    if (input.documentTypeCode) params.set('documentTypeCode', input.documentTypeCode);
+    if (input.reviewStatus != null) params.set('reviewStatus', String(input.reviewStatus));
+    const qs = params.toString();
+    return `${this.env.getApiUrl(this.apiName)}${this.basePath}/export${qs ? '?' + qs : ''}`;
+  };
 }

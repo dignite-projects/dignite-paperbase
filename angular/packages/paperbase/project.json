@@ -4,6 +4,7 @@
   "projectType": "library",
   "sourceRoot": "packages/paperbase/src",
   "prefix": "lib",
+  "tags": ["scope:lib", "type:feature-shell"],
   "targets": {
     "build": {
       "executor": "@angular/build:ng-packagr",

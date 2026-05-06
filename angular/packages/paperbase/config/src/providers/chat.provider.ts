@@ -5,19 +5,19 @@ import {
   makeEnvironmentProviders,
   provideAppInitializer,
 } from '@angular/core';
-import { CONTRACTS_PERMISSIONS } from '@dignite/paperbase.contracts';
+import { PAPERBASE_PERMISSIONS } from '@dignite/paperbase';
 
-export function provideContracts(): EnvironmentProviders {
+export function provideChat(): EnvironmentProviders {
   return makeEnvironmentProviders([
     provideAppInitializer(() => {
       const routes = inject(RoutesService);
       routes.add([
         {
-          path: '/contracts',
-          name: '::Menu:Contracts',
-          iconClass: 'fas fa-file-contract',
-          requiredPolicy: CONTRACTS_PERMISSIONS.Contracts.Default,
-          order: 4,
+          path: '/chat',
+          name: '::Menu:DocumentChat',
+          iconClass: 'fas fa-comments',
+          requiredPolicy: PAPERBASE_PERMISSIONS.Documents.Chat.Default,
+          order: 3,
           layout: eLayoutType.application,
         },
       ]);

@@ -1,4 +1,3 @@
-import { authGuard, permissionGuard } from '@abp/ng.core';
 import { Routes } from '@angular/router';
 
 export const APP_ROUTES: Routes = [
@@ -21,12 +20,14 @@ export const APP_ROUTES: Routes = [
   },
   {
     path: 'documents',
-    loadChildren: () => import('./document/document.routes').then(r => r.DOCUMENT_ROUTES),
+    loadChildren: () => import('@dignite/paperbase/documents').then(m => m.DOCUMENTS_ROUTES),
   },
   {
     path: 'chat',
-    canActivate: [authGuard, permissionGuard],
-    data: { requiredPolicy: 'Paperbase.Documents.Chat' },
-    loadComponent: () => import('./chat/chat.component').then(c => c.ChatComponent),
+    loadChildren: () => import('@dignite/paperbase/chat').then(m => m.CHAT_ROUTES),
+  },
+  {
+    path: 'contracts',
+    loadChildren: () => import('@dignite/paperbase.contracts').then(m => m.CONTRACTS_ROUTES),
   },
 ];

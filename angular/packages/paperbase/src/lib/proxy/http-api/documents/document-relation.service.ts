@@ -1,54 +1,54 @@
-import { RestService, Rest } from '@abp/ng.core';
 import { Injectable, inject } from '@angular/core';
-import type { CreateDocumentRelationInput, DocumentRelationDto, DocumentRelationGraphDto, GetDocumentRelationGraphInput } from '../../documents/models';
+import { RestService } from '@abp/ng.core';
+import { Observable } from 'rxjs';
+import type {
+  CreateDocumentRelationInput,
+  DocumentRelationDto,
+  DocumentRelationGraphDto,
+  GetDocumentRelationGraphInput,
+} from '../../documents/models';
 
-@Injectable({
-  providedIn: 'root',
-})
+@Injectable({ providedIn: 'root' })
 export class DocumentRelationService {
-  private restService = inject(RestService);
-  apiName = 'Default';
-  
+  private readonly rest = inject(RestService);
+  private readonly apiName = 'Default';
+  private readonly basePath = '/api/paperbase/document-relations';
 
-  confirm = (id: string, config?: Partial<Rest.Config>) =>
-    this.restService.request<any, DocumentRelationDto>({
-      method: 'POST',
-      url: `/api/paperbase/document-relations/${id}/confirm`,
-    },
-    { apiName: this.apiName,...config });
-  
+  getList = (documentId: string): Observable<DocumentRelationDto[]> =>
+    this.rest.request<void, DocumentRelationDto[]>(
+      { method: 'GET', url: this.basePath, params: { documentId } },
+      { apiName: this.apiName }
+    );
 
-  create = (input: CreateDocumentRelationInput, config?: Partial<Rest.Config>) =>
-    this.restService.request<any, DocumentRelationDto>({
-      method: 'POST',
-      url: '/api/paperbase/document-relations',
-      body: input,
-    },
-    { apiName: this.apiName,...config });
-  
+  create = (input: CreateDocumentRelationInput): Observable<DocumentRelationDto> =>
+    this.rest.request<CreateDocumentRelationInput, DocumentRelationDto>(
+      { method: 'POST', url: this.basePath, body: input },
+      { apiName: this.apiName }
+    );
 
-  delete = (id: string, config?: Partial<Rest.Config>) =>
-    this.restService.request<any, void>({
-      method: 'DELETE',
-      url: `/api/paperbase/document-relations/${id}`,
-    },
-    { apiName: this.apiName,...config });
-  
+  confirm = (id: string): Observable<DocumentRelationDto> =>
+    this.rest.request<void, DocumentRelationDto>(
+      { method: 'POST', url: `${this.basePath}/${id}/confirm` },
+      { apiName: this.apiName }
+    );
 
-  getGraph = (input: GetDocumentRelationGraphInput, config?: Partial<Rest.Config>) =>
-    this.restService.request<any, DocumentRelationGraphDto>({
-      method: 'GET',
-      url: '/api/paperbase/document-relations/graph',
-      params: { rootDocumentId: input.rootDocumentId, depth: input.depth, includeAiSuggested: input.includeAiSuggested },
-    },
-    { apiName: this.apiName,...config });
-  
+  delete = (id: string): Observable<void> =>
+    this.rest.request<void, void>(
+      { method: 'DELETE', url: `${this.basePath}/${id}` },
+      { apiName: this.apiName }
+    );
 
-  getList = (documentId: string, config?: Partial<Rest.Config>) =>
-    this.restService.request<any, DocumentRelationDto[]>({
-      method: 'GET',
-      url: '/api/paperbase/document-relations',
-      params: { documentId },
-    },
-    { apiName: this.apiName,...config });
+  getGraph = (input: GetDocumentRelationGraphInput): Observable<DocumentRelationGraphDto> =>
+    this.rest.request<void, DocumentRelationGraphDto>(
+      {
+        method: 'GET',
+        url: `${this.basePath}/graph`,
+        params: {
+          rootDocumentId: input.rootDocumentId,
+          depth: input.depth,
+          includeAiSuggested: input.includeAiSuggested,
+        },
+      },
+      { apiName: this.apiName }
+    );
 }

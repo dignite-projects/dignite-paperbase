@@ -4,6 +4,7 @@
   "projectType": "application",
   "sourceRoot": "apps/host/src",
   "prefix": "app",
+  "tags": ["scope:host"],
   "targets": {
     "build": {
       "executor": "@angular/build:application",
