@@ -12,34 +12,52 @@ using Volo.Abp.DependencyInjection;
 
 namespace Dignite.Paperbase.Chat.Telemetry;
 
+/// <summary>
+/// Project-specific telemetry layer on top of the standard signals already emitted by
+/// <c>Microsoft.Extensions.AI</c>'s <c>OpenTelemetryChatClient</c> /
+/// <c>FunctionInvokingChatClient</c> when the host wires <c>.UseOpenTelemetry()</c>.
+/// <para>
+/// Standard signals (do NOT duplicate here):
+/// <list type="bullet">
+///   <item><c>gen_ai.client.operation.duration</c> — turn latency (s) histogram</item>
+///   <item><c>gen_ai.client.token.usage</c> — input/output tokens histogram</item>
+///   <item><c>gen_ai.client.operation.time_to_first_chunk</c> — streaming TTFB histogram</item>
+///   <item>Activity span <c>"chat {model}"</c> — turn span with <c>gen_ai.*</c> tags</item>
+///   <item>Activity span <c>"execute_tool {tool_name}"</c> — per-tool span</item>
+/// </list>
+/// </para>
+/// <para>
+/// What this recorder adds beyond the OTel standard:
+/// <list type="bullet">
+///   <item><c>paperbase.document_chat.turn.degraded</c> — counter for the project's
+///     "honest signal" (CLAUDE.md): turns where the model declined to invoke search
+///     OR retrieval threw and the turn fell back to context-only.</item>
+///   <item><c>paperbase.document_chat.tool.result.size</c> — histogram of result
+///     payload size (bytes), useful for spotting pathological tool outputs that
+///     blow up LLM context.</item>
+///   <item>Business-domain audit entries on <see cref="IAuditingManager"/>:
+///     tenant/user/conversation/document/document-type — these are not in OTel scope
+///     and link to the OTel trace via <c>Activity.Current?.TraceId</c>.</item>
+/// </list>
+/// </para>
+/// </summary>
 // Singleton lifetime matches the static Meter / instruments below — `System.Diagnostics.Metrics`
 // recommends one shared Meter per process, and per-scope construction would only churn allocations.
 public class DocumentChatTelemetryRecorder : ISingletonDependency
 {
     public const string AuditToolCallsPropertyName = "DocumentChat.ToolCalls";
     public const string AuditTurnPropertyName = "DocumentChat.Turn";
+    public const string MeterName = "Dignite.Paperbase.DocumentChat";
 
     private const int MaxAuditCommentLength = 2048;
-    private static readonly Meter Meter = new("Dignite.Paperbase.DocumentChat");
+    private static readonly Meter Meter = new(MeterName);
 
-    private static readonly Counter<long> ToolCalls = Meter.CreateCounter<long>(
-        "paperbase.document_chat.tool.calls");
-    private static readonly Histogram<double> ToolDuration = Meter.CreateHistogram<double>(
-        "paperbase.document_chat.tool.duration", unit: "ms");
-    private static readonly Histogram<long> ToolResultSize = Meter.CreateHistogram<long>(
-        "paperbase.document_chat.tool.result.size", unit: "By");
-    private static readonly Counter<long> Turns = Meter.CreateCounter<long>(
-        "paperbase.document_chat.turns");
     private static readonly Counter<long> DegradedTurns = Meter.CreateCounter<long>(
-        "paperbase.document_chat.turn.degraded");
-    private static readonly Histogram<double> TurnDuration = Meter.CreateHistogram<double>(
-        "paperbase.document_chat.turn.duration", unit: "ms");
-    private static readonly Counter<long> InputTokens = Meter.CreateCounter<long>(
-        "paperbase.document_chat.tokens.input");
-    private static readonly Counter<long> OutputTokens = Meter.CreateCounter<long>(
-        "paperbase.document_chat.tokens.output");
-    private static readonly Counter<long> TotalTokens = Meter.CreateCounter<long>(
-        "paperbase.document_chat.tokens.total");
+        "paperbase.document_chat.turn.degraded",
+        description: "Number of chat turns that ran without retrieval grounding (model declined to invoke search OR retrieval failed).");
+    private static readonly Histogram<long> ToolResultSize = Meter.CreateHistogram<long>(
+        "paperbase.document_chat.tool.result.size", unit: "By",
+        description: "Size of tool-call result payloads in bytes.");
 
     private readonly IAuditingManager _auditingManager;
     private readonly ILogger<DocumentChatTelemetryRecorder> _logger;
@@ -56,12 +74,12 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
     {
         AddToolCallToAuditLog(entry);
 
-        var tags = CreateToolTags(entry);
-        ToolCalls.Add(1, tags);
-        ToolDuration.Record(entry.ElapsedMs, tags);
+        // Per-tool count + duration are emitted by Microsoft.Extensions.AI's
+        // FunctionInvocationProcessor as `execute_tool {tool_name}` Activity spans
+        // (see OTel GenAI semantic conventions). Don't duplicate here.
         if (entry.ResultSizeBytes.HasValue)
         {
-            ToolResultSize.Record(entry.ResultSizeBytes.Value, tags);
+            ToolResultSize.Record(entry.ResultSizeBytes.Value, CreateToolTags(entry));
         }
 
         if (entry.Outcome == DocumentChatTelemetryOutcome.Success)
@@ -92,27 +110,14 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
     {
         AddTurnToAuditLog(entry);
 
-        var tags = CreateTurnTags(entry);
-        Turns.Add(1, tags);
-        TurnDuration.Record(entry.ElapsedMs, tags);
-        // IsDegraded is the project's "honest signal" (CLAUDE.md) — count it as a
-        // first-class metric so cost-governance dashboards can alarm on classes of
-        // questions answered without retrieval.
+        // Turn count + duration + token usage are emitted by
+        // Microsoft.Extensions.AI's OpenTelemetryChatClient as standard
+        // gen_ai.* signals — don't duplicate here.
+        // IsDegraded is the project's "honest signal" (CLAUDE.md) and has no
+        // OTel-standard equivalent, so we count it explicitly.
         if (entry.IsDegraded)
         {
-            DegradedTurns.Add(1, tags);
-        }
-        if (entry.InputTokenCount.HasValue)
-        {
-            InputTokens.Add(entry.InputTokenCount.Value, tags);
-        }
-        if (entry.OutputTokenCount.HasValue)
-        {
-            OutputTokens.Add(entry.OutputTokenCount.Value, tags);
-        }
-        if (entry.TotalTokenCount.HasValue)
-        {
-            TotalTokens.Add(entry.TotalTokenCount.Value, tags);
+            DegradedTurns.Add(1, CreateTurnTags(entry));
         }
 
         if (entry.Outcome == DocumentChatTelemetryOutcome.Success)

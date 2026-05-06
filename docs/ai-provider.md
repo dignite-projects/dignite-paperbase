@@ -164,3 +164,30 @@ Per-pipeline tuning also lives in `PaperbaseAIBehavior` — see the feature docs
 - Classification truncation and prompt size → [classification.md](classification.md)
 - Chunking → [embedding.md](embedding.md)
 - Chat retrieval, rerank, tool-calling → [document-chat.md](document-chat.md)
+
+## OpenTelemetry signals
+
+`PaperbaseHostModule.ConfigureAI` wires `Microsoft.Extensions.AI`'s
+`UseOpenTelemetry()` decorator into both the chat-client pipeline
+(`UseFunctionInvocation` → `UseOpenTelemetry` → `UseLogging`) and the
+embedding-generator pipeline. To collect these signals, register an OTel
+exporter in your host and add the M.E.AI source name plus the
+project-specific meter name:
+
+```csharp
+context.Services.AddOpenTelemetry()
+    .WithTracing(b => b.AddSource("Experimental.Microsoft.Extensions.AI"))
+    .WithMetrics(b => b
+        .AddMeter("Experimental.Microsoft.Extensions.AI")     // gen_ai.* signals
+        .AddMeter("Dignite.Paperbase.DocumentChat"));          // project-specific
+```
+
+| Source / Meter | Emitted by | What it covers |
+| --- | --- | --- |
+| `Experimental.Microsoft.Extensions.AI` (Activity + Meter) | `OpenTelemetryChatClient` | OTel GenAI semantic conventions: `chat {model}` / `execute_tool {name}` spans, `gen_ai.client.operation.duration` (s), `gen_ai.client.token.usage`, streaming `time_to_first_chunk` / `time_per_output_chunk` |
+| `Dignite.Paperbase.DocumentChat` (Meter) | `DocumentChatTelemetryRecorder` | Project-specific deltas only: `paperbase.document_chat.turn.degraded` counter (the "honest signal" — model declined to invoke search OR retrieval failed) and `paperbase.document_chat.tool.result.size` histogram. **Does not duplicate** the gen_ai.* signals above. |
+
+Business-domain audit (tenant / user / conversation / document) goes to
+`AbpAuditLogs.Comments` + `ExtraProperties` (`DocumentChatTelemetryRecorder`
+calls `IAuditingManager.Current`); the audit row links to the OTel trace
+through `Activity.Current.TraceId`.
