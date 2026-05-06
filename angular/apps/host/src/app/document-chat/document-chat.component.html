@@ -105,9 +105,7 @@
         </div>
         @if (selectedCitation()?.citation; as citation) {
           <span class="badge bg-light text-dark border">
-            @if (citation.pageNumber != null) {
-              p.{{ citation.pageNumber }}
-            } @else if (citation.chunkIndex != null) {
+            @if (citation.chunkIndex != null) {
               chunk #{{ citation.chunkIndex }}
             } @else {
               citation
@@ -128,31 +126,17 @@
             {{ sourceError()! | abpLocalization }}
           </div>
         } @else if (sourceDocument(); as document) {
-          @if (isSourcePdf() && selectedCitation()?.citation?.pageNumber != null && sourceBlobSafeUrl()) {
-            <iframe class="w-100 h-100 border-0" style="min-height: 520px;" sandbox="allow-same-origin" [src]="sourceBlobSafeUrl()!" [title]="sourceTitle(document)"></iframe>
-          } @else if (document.markdown) {
+          @if (document.markdown) {
             @if (snippetMissing()) {
               <div class="alert alert-warning py-2 px-3 m-3 small">
                 {{ '::DocumentChat:SnippetNotFound' | abpLocalization }}
               </div>
             }
             <div #markdownContainer class="chat-source-markdown" [innerHTML]="markdownHtml()"></div>
-          } @else if (isSourcePdf() && sourceBlobSafeUrl()) {
-            <iframe class="w-100 h-100 border-0" style="min-height: 520px;" sandbox="allow-same-origin" [src]="sourceBlobSafeUrl()!" [title]="sourceTitle(document)"></iframe>
-          } @else if (isSourceImage() && sourceBlobUrl()) {
-            <div class="text-center text-muted p-4">
-              <img [src]="sourceBlobUrl()!" [alt]="sourceTitle(document)" class="img-fluid" style="max-height: 520px; object-fit: contain;" />
-            </div>
           } @else {
             <div class="text-center text-muted p-4">
               <i class="fas fa-file-alt d-block mb-2"></i>
               <p class="mb-2">{{ '::DocumentChat:SourcePreviewUnavailable' | abpLocalization }}</p>
-              @if (sourceBlobUrl()) {
-                <a [href]="sourceBlobUrl()!" target="_blank" class="btn btn-outline-primary btn-sm">
-                  <i class="fas fa-external-link-alt me-1"></i>
-                  {{ '::DocumentChat:OpenSourceFile' | abpLocalization }}
-                </a>
-              }
             </div>
           }
         } @else {
@@ -216,9 +200,6 @@
                       (click)="selectCitation(item.id, $index, citation)"
                     >
                       <span class="fw-semibold">{{ citation.sourceName }}</span>
-                      @if (citation.pageNumber != null) {
-                        <span> p.{{ citation.pageNumber }}</span>
-                      }
                       <span class="d-block text-muted">{{ citation.snippet }}</span>
                     </button>
                   }

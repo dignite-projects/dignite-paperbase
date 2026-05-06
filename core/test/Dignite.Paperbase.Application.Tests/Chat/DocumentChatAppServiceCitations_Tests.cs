@@ -53,7 +53,7 @@ public class DocumentChatAppServiceCitations_Tests
     }
 
     [Fact]
-    public void BuildCitationDtos_Source_Name_Uses_Page_Format_When_Page_Present()
+    public void BuildCitationDtos_Source_Name_Uses_Chunk_Format_When_Page_Present()
     {
         var docId = Guid.NewGuid();
         var dto = DocumentChatAppService.BuildCitationDtos(new List<VectorSearchResult>
@@ -61,7 +61,7 @@ public class DocumentChatAppServiceCitations_Tests
             new() { RecordId = Guid.NewGuid(), DocumentId = docId, ChunkIndex = 5, PageNumber = 12, Text = "..." }
         }).Single();
 
-        dto.SourceName.ShouldBe($"Document {docId} (page 12)");
+        dto.SourceName.ShouldBe($"Document {docId} (chunk #5)");
     }
 
     [Fact]

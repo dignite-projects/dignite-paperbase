@@ -216,14 +216,15 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
 
         var citations = BuildCitationDtos(run.Capture.Results);
         sw.Stop();
+        // Token counts are emitted by Microsoft.Extensions.AI's gen_ai.client.token.usage
+        // histogram (see DocumentChatTelemetryRecorder XML doc); no need to re-record.
         RecordTurnSuccess(
             conversation,
             input.Message,
             streaming: false,
             sw.Elapsed.TotalMilliseconds,
             isDegraded,
-            citations.Count,
-            run.Usage);
+            citations.Count);
 
         return new ChatTurnResultDto
         {
@@ -446,7 +447,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             .Concat([new MeAi.ChatMessage(MeAi.ChatRole.User, message)])
             .ToList();
         var response = await setup.Agent.RunAsync(messages, setup.Session, options: null, cancellationToken);
-        return new AgentRunOutcome(response.Text, setup.Capture, response.Usage);
+        return new AgentRunOutcome(response.Text, setup.Capture);
     }
 
     protected virtual ChatTurnResultDto BuildTurnResultFromPersisted(
@@ -531,9 +532,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             PageNumber = r.PageNumber,
             ChunkIndex = r.ChunkIndex,
             Snippet = TruncateByGrapheme(r.Text, SnippetMaxGraphemes),
-            SourceName = r.PageNumber.HasValue
-                ? $"Document {r.DocumentId} (page {r.PageNumber})"
-                : $"Document {r.DocumentId} (chunk #{r.ChunkIndex})"
+            SourceName = $"Document {r.DocumentId} (chunk #{r.ChunkIndex})"
         }).ToList();
     }
 
@@ -544,25 +543,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         double elapsedMs,
         bool isDegraded,
         int citationCount)
-        => RecordTurnSuccess(
-            conversation,
-            message,
-            streaming,
-            elapsedMs,
-            isDegraded,
-            citationCount,
-            usage: null);
-
-    protected virtual void RecordTurnSuccess(
-        ChatConversation conversation,
-        string message,
-        bool streaming,
-        double elapsedMs,
-        bool isDegraded,
-        int citationCount,
-        UsageDetails? usage)
     {
-        var usageSummary = _telemetryRecorder.SummarizeUsage(usage);
         _telemetryRecorder.RecordTurn(new DocumentChatTurnAuditEntry
         {
             ConversationId = conversation.Id,
@@ -576,12 +557,6 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             UserMessageLength = message.Length,
             CitationCount = citationCount,
             IsDegraded = isDegraded,
-            TokenUsageAvailable = usageSummary.UsageAvailable,
-            InputTokenCount = usageSummary.InputTokenCount,
-            OutputTokenCount = usageSummary.OutputTokenCount,
-            TotalTokenCount = usageSummary.TotalTokenCount,
-            CachedInputTokenCount = usageSummary.CachedInputTokenCount,
-            ReasoningTokenCount = usageSummary.ReasoningTokenCount,
             ElapsedMs = elapsedMs,
             Outcome = DocumentChatTelemetryOutcome.Success
         });
@@ -751,6 +726,5 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
 
     protected record AgentRunOutcome(
         string Text,
-        DocumentSearchCapture Capture,
-        UsageDetails? Usage);
+        DocumentSearchCapture Capture);
 }

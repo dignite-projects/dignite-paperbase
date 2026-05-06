@@ -7,7 +7,7 @@ This page covers the chat as a *feature* — what it does, how to tune it, and w
 ## What it can do
 
 - **Conversation-scoped retrieval.** A conversation can be unscoped (search across all the user's documents), scoped to a `documentTypeCode` (e.g. only contracts), or scoped to a single `documentId`.
-- **Citations.** Every answer carries the chunk(s) that grounded it. The agent prompt enforces `[chunk N]` citations and the result is post-processed into a structured `citations` array (page number, chunk index, snippet, source name).
+- **Citations.** Every answer carries the chunk(s) that grounded it. The agent prompt enforces `[chunk N]` citations and the result is post-processed into a structured `citations` array (document id, chunk index, snippet, source name).
 - **Tool calling.** Business modules contribute structured query tools through `IDocumentChatToolContributor`. Example: a `ContractChatToolContributor` can let the model call `search_contracts` to filter by counterparty or amount, alongside the built-in `search_paperbase_documents` semantic-search tool. Each tool runs **fail-closed**: explicit permission check + explicit tenant predicate + result-row cap inside the tool body. See [`.claude/rules/doc-chat-anti-patterns.md`](../.claude/rules/doc-chat-anti-patterns.md) for the contract.
 - **Idempotent turns.** The client generates a `clientTurnId` per turn; replays with the same id never re-invoke the model.
 - **Optional LLM rerank.** Off by default. When enabled, retrieval recall is expanded `RecallExpandFactor`× and the chat model rescues the most relevant `TopK` before the answer prompt.
@@ -45,26 +45,23 @@ The hard cap on tool-call rounds within a single turn is configured at host wiri
 
 ## Citation-to-source navigation
 
-`ChatCitationDto` is the UI-facing citation contract. The current fields are sufficient for the first clickable citation implementation:
+`ChatCitationDto` is the UI-facing citation contract. Citation navigation is Markdown-only: every source document type is handled through the extracted `Document.Markdown`, not through a PDF/image/original-file viewer.
 
 | Field | Navigation meaning |
 | --- | --- |
 | `documentId` | The source document to open. A citation click must navigate to this document even when the active conversation is scoped by `documentTypeCode` and the cited document is not currently displayed. |
-| `pageNumber` | Optional 1-based source page hint. For PDFs, prefer the original file/PDF view when this value exists. If the UI cannot position to the exact page yet, open the document and display the page number as context. |
-| `chunkIndex` | Optional knowledge-index chunk ordinal. It is useful for display/debug context, but it is not a long-term stable anchor after re-embedding. Do not use it as the only Markdown highlight key. |
-| `snippet` | Preferred Markdown fallback for first-version highlighting. Search the current document Markdown for this text and highlight the first matching range when possible. |
+| `snippet` | Primary Markdown positioning key. Search the current document Markdown for this text and highlight the first matching range when possible. |
+| `chunkIndex` | Optional knowledge-index chunk ordinal for display/debug context only. It is not a stable Markdown anchor after re-embedding and must not drive positioning by itself. |
 | `sourceName` | Display label only. Do not parse it for routing or positioning. |
 
 Fallback order:
 
 1. If `documentId` is missing or the document cannot be loaded, keep the citation as non-navigable display text.
-2. If `pageNumber` exists and the UI has a PDF/source viewer, open `documentId` in that viewer and position to the page.
-3. Otherwise open `documentId` in the document detail view, show the persisted Markdown source as-is (no client-side rendering — the Markdown source IS the AI's view of the document, surfacing it raw is intentional), and try to locate `snippet`.
-4. If `snippet` cannot be found, show the document without a highlight and keep `chunkIndex` / `pageNumber` visible as citation context.
+2. Open `documentId` in the chat source pane and render the persisted Markdown.
+3. Try to locate `snippet` in the current Markdown and highlight the first matching range.
+4. If `snippet` cannot be found, show the Markdown without a highlight and keep `chunkIndex` visible as citation context.
 
-This deliberately does not introduce a separate `DocumentSourceLocation` DTO, persisted chunk IDs, or stored character offsets. Add those only after a real PDF/Markdown viewer needs exact positioning that cannot be satisfied by `documentId + pageNumber + snippet` fallback.
-
-**PDF page navigation is browser-dependent.** The Angular client appends `#page=N` to the blob URL and renders it in a sandboxed `<iframe>`, which works in Chromium-based browsers and Firefox (PDF.js honors the `Open Parameters` fragment). Safari and embedded WebViews may ignore the fragment and open the document on page 1; in that case the badge `p.{n}` next to the source pane keeps the page hint visible to the user. Document this when shipping to clients with strict browser requirements.
+This deliberately does not introduce a separate `DocumentSourceLocation` DTO, PDF page navigation, persisted chunk IDs, or stored character offsets. Add exact offsets only after snippet matching proves insufficient in real use.
 
 **Snippet match is whole-document `indexOf`.** The first occurrence of the snippet in the persisted Markdown is highlighted. Re-extracting the document with a different OCR run can shift the persisted Markdown enough that the snippet no longer matches; the UI surfaces this as a visible warning without breaking the chat.
 

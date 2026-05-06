@@ -5,7 +5,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Dignite.Paperbase.Abstractions.Chat;
-using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Volo.Abp.Auditing;
 using Volo.Abp.DependencyInjection;
@@ -151,19 +150,6 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
-    public virtual DocumentChatTokenUsageSummary SummarizeUsage(UsageDetails? usage)
-        => usage == null
-            ? new DocumentChatTokenUsageSummary { UsageAvailable = false }
-            : new DocumentChatTokenUsageSummary
-            {
-                UsageAvailable = true,
-                InputTokenCount = usage.InputTokenCount,
-                OutputTokenCount = usage.OutputTokenCount,
-                TotalTokenCount = usage.TotalTokenCount,
-                CachedInputTokenCount = usage.CachedInputTokenCount,
-                ReasoningTokenCount = usage.ReasoningTokenCount
-            };
-
     private void AddToolCallToAuditLog(DocumentChatToolAuditEntry entry)
     {
         var scope = _auditingManager.Current;
@@ -246,6 +232,11 @@ public sealed class DocumentChatToolAuditEntry
     public string? ExceptionType { get; init; }
 }
 
+// Token usage (input/output/cached/reasoning) is a Microsoft.Extensions.AI signal:
+// when the host wires `OpenTelemetryChatClient` (see PaperbaseHostModule.ConfigureAI),
+// the gen_ai.client.token.usage histogram emits each turn's token counts. Audit
+// rows correlate with that telemetry through TraceId; carrying the raw counts on
+// the audit entry as well would only re-emit the same data.
 public sealed class DocumentChatTurnAuditEntry
 {
     public required Guid ConversationId { get; init; }
@@ -259,23 +250,7 @@ public sealed class DocumentChatTurnAuditEntry
     public required int UserMessageLength { get; init; }
     public int CitationCount { get; init; }
     public bool IsDegraded { get; init; }
-    public bool TokenUsageAvailable { get; init; }
-    public long? InputTokenCount { get; init; }
-    public long? OutputTokenCount { get; init; }
-    public long? TotalTokenCount { get; init; }
-    public long? CachedInputTokenCount { get; init; }
-    public long? ReasoningTokenCount { get; init; }
     public required double ElapsedMs { get; init; }
     public required DocumentChatTelemetryOutcome Outcome { get; init; }
     public string? ExceptionType { get; init; }
-}
-
-public sealed class DocumentChatTokenUsageSummary
-{
-    public required bool UsageAvailable { get; init; }
-    public long? InputTokenCount { get; init; }
-    public long? OutputTokenCount { get; init; }
-    public long? TotalTokenCount { get; init; }
-    public long? CachedInputTokenCount { get; init; }
-    public long? ReasoningTokenCount { get; init; }
 }

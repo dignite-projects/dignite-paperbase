@@ -10,7 +10,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { SafeHtml, SafeResourceUrl, DomSanitizer } from '@angular/platform-browser';
+import { SafeHtml, DomSanitizer } from '@angular/platform-browser';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { LocalizationPipe, LocalizationService } from '@abp/ng.core';
 import { Confirmation, ConfirmationService, ToasterService } from '@abp/ng.theme.shared';
@@ -82,22 +82,6 @@ export class DocumentChatComponent implements OnInit, AfterViewChecked {
 
   activeConversationId = computed(() => this.activeConversation()?.id ?? null);
   canSend = computed(() => !!this.message().trim() && !this.isSending());
-  sourceBlobUrl = computed(() => {
-    const document = this.sourceDocument();
-    if (!document?.id) return null;
-
-    const citation = this.selectedCitation()?.citation;
-    const pageNumber = citation?.pageNumber;
-    const url = this.documentService.getBlobUrl(document.id);
-    return pageNumber ? `${url}#page=${pageNumber}` : url;
-  });
-  sourceBlobSafeUrl = computed<SafeResourceUrl | null>(() => {
-    const url = this.sourceBlobUrl();
-    return url ? this.sanitizer.bypassSecurityTrustResourceUrl(url) : null;
-  });
-  sourceContentType = computed(() => this.sourceDocument()?.fileOrigin?.contentType?.toLowerCase() ?? '');
-  isSourcePdf = computed(() => this.sourceContentType().includes('pdf'));
-  isSourceImage = computed(() => this.sourceContentType().startsWith('image/'));
   // Markdown is rendered (rather than displayed as `<pre>` text) because the project
   // is AI-first and the persisted Markdown is the single canonical text artifact —
   // headings/lists/tables carry semantic structure that helps the user scan.

@@ -182,15 +182,17 @@ public class DocumentChatToolInvocation_Tests
         var auditJson = System.Text.Json.JsonSerializer.Serialize(toolCalls);
         auditJson.ShouldNotContain("payment terms");
 
+        // Token counts are not on the audit entry — they are emitted by Microsoft.Extensions.AI's
+        // gen_ai.client.token.usage histogram (see PaperbaseHostModule.ConfigureAI's
+        // chatBuilder.UseOpenTelemetry()). The audit entry carries only business-domain
+        // fields (tenant/user/conversation/document) plus the project-specific IsDegraded /
+        // CitationCount.
         var turn = auditLog.ExtraProperties[DocumentChatTelemetryRecorder.AuditTurnPropertyName]
             .ShouldBeOfType<DocumentChatTurnAuditEntry>();
         turn.ConversationId.ShouldBe(conversationId);
         turn.UserMessageHash.ShouldNotBeNullOrWhiteSpace();
         turn.CitationCount.ShouldBe(1);
-        turn.TokenUsageAvailable.ShouldBeTrue();
-        turn.InputTokenCount.ShouldBe(11);
-        turn.OutputTokenCount.ShouldBe(7);
-        turn.TotalTokenCount.ShouldBe(18);
+        turn.IsDegraded.ShouldBeFalse();
         turn.Outcome.ShouldBe(DocumentChatTelemetryOutcome.Success);
     }
 

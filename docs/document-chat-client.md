@@ -118,10 +118,10 @@ curl -X POST \
   "citations": [
     {
       "documentId": "d9e8f7a6-...",
-      "pageNumber": 4,
+      "pageNumber": null,
       "chunkIndex": 12,
       "snippet": "…payment shall be made within thirty (30) calendar days…",
-      "sourceName": "Document d9e8f7a6-... (page 4)"
+      "sourceName": "Document d9e8f7a6-... (chunk #12)"
     }
   ],
   "isDegraded": false
@@ -132,6 +132,7 @@ curl -X POST \
 |---|---|
 | `answer` | The model's response for this turn |
 | `citations` | RAG retrieval results that grounded the answer; empty if none |
+| `citations[].chunkIndex` | Knowledge-index chunk ordinal for display/debug context |
 | `citations[].snippet` | Truncated text chunk (≤ 200 graphemes) |
 | `citations[].sourceName` | Human-readable source label for display |
 | `isDegraded` | `true` if retrieval was unavailable and the answer used context-only fallback |
