@@ -65,6 +65,18 @@ This deliberately does not introduce a separate `DocumentSourceLocation` DTO, PD
 
 **Snippet match is whole-document `indexOf`.** The first occurrence of the snippet in the persisted Markdown is highlighted. Re-extracting the document with a different OCR run can shift the persisted Markdown enough that the snippet no longer matches; the UI surfaces this as a visible warning without breaking the chat.
 
+### Developer notes
+
+The source pane is intentionally AI-first. It must render the same Markdown artifact that retrieval, embedding, reranking, and citation snippets are based on. Do not add a parallel PDF/image/original-file source pane for citation navigation.
+
+The original file is still available through the document detail experience, but that is an auxiliary inspection action. A chat citation click must stay on the Markdown source path: load `documentId`, render `Document.Markdown`, then try to highlight `snippet`.
+
+`pageNumber` is not part of the navigation contract. The DTO may still carry it for backward compatibility or future metadata, but new UI and server code must not branch to a PDF viewer, append `#page=N`, or introduce `preferredView: 'pdf' | 'markdown'` based on it.
+
+`chunkIndex` is not a durable anchor. Re-extraction, re-chunking, embedding option changes, or model changes can shift chunk ordinals. Use it in labels, diagnostics, and logs only; never make it the sole positioning key.
+
+Do not add `preferredView` to server DTOs. There is only one citation source view today: Markdown. If exact positioning becomes necessary later, prefer adding Markdown offsets or persisted source ranges after measuring snippet-match failures in production data.
+
 ## When the answer is degraded
 
 `ChatTurnResultDto.IsDegraded = true` flags answers that ran without retrieval grounding. Two cases produce it:

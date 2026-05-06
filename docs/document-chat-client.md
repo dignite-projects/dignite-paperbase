@@ -132,12 +132,14 @@ curl -X POST \
 |---|---|
 | `answer` | The model's response for this turn |
 | `citations` | RAG retrieval results that grounded the answer; empty if none |
+| `citations[].documentId` | Source document to load before showing the Markdown source pane |
+| `citations[].pageNumber` | Compatibility/metadata field only. Do not use it to choose a PDF viewer or drive citation navigation |
 | `citations[].chunkIndex` | Knowledge-index chunk ordinal for display/debug context |
-| `citations[].snippet` | Truncated text chunk (≤ 200 graphemes) |
+| `citations[].snippet` | Truncated text chunk (≤ 200 graphemes). This is the primary client-side highlight key |
 | `citations[].sourceName` | Human-readable source label for display |
 | `isDegraded` | `true` if retrieval was unavailable and the answer used context-only fallback |
 
-For clickable citation behavior, see [document-chat.md → Citation-to-source navigation](document-chat.md#citation-to-source-navigation).
+For clickable citation behavior, see [document-chat.md → Citation-to-source navigation](document-chat.md#citation-to-source-navigation). In short: open `documentId`, render `Document.Markdown`, highlight `snippet` when possible, and treat `chunkIndex` as context only.
 
 ---
 
