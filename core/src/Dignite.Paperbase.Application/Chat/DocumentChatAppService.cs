@@ -680,11 +680,13 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
 
             writer.Complete();
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (ct.IsCancellationRequested)
         {
             // Client disconnected or request timed out. Partial text is discarded — we do
             // not persist an incomplete assistant turn to avoid confusing the idempotency
-            // key logic on the next retry.
+            // key logic on the next retry. Pass the caught exception (may be
+            // OperationCanceledException, TaskCanceledException, or a wrapped timeout) so
+            // the audit entry's ExceptionType reflects the real cause.
             Logger.LogWarning(
                 "doc-chat streaming cancelled: ConversationId={ConversationId}; {Length} chars discarded.",
                 conversation.Id, sb.Length);
@@ -694,7 +696,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
                 input.Message,
                 streaming: true,
                 sw.Elapsed.TotalMilliseconds,
-                new OperationCanceledException(ct));
+                ex);
             writer.Complete();
         }
         catch (Exception ex)

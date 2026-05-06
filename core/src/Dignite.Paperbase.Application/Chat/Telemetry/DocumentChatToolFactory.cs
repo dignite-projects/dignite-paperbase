@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -16,7 +17,10 @@ namespace Dignite.Paperbase.Chat.Telemetry;
 
 public class DocumentChatToolFactory : IDocumentChatToolFactory, ITransientDependency
 {
-    private const int MaxStringValueLength = 256;
+    // Short-prefix hash is plenty for dedup/correlation in audit/metrics; longer
+    // prefixes give attackers more rainbow-table grip on free-form natural-language
+    // arguments such as the LLM-supplied `query` parameter to search_paperbase_documents.
+    private const int HashHexPrefixLength = 12;
     private const int MaxCollectionItems = 5;
 
     private static readonly string[] SensitiveKeyFragments =
@@ -177,7 +181,7 @@ public class DocumentChatToolFactory : IDocumentChatToolFactory, ITransientDepen
             case JsonElement json:
                 return SummarizeJsonValue(json);
             case string text:
-                return Truncate(text);
+                return HashStringForAudit(text);
             case Guid or DateTime or DateOnly or TimeOnly or bool:
                 return value;
             case int or long or short or byte or decimal or double or float:
@@ -185,7 +189,8 @@ public class DocumentChatToolFactory : IDocumentChatToolFactory, ITransientDepen
             case IEnumerable enumerable when value is not string:
                 return SummarizeEnumerable(enumerable);
             default:
-                return Truncate(Convert.ToString(value) ?? string.Empty);
+                // Unknown type → ToString may surface PII; only structural metadata is recorded.
+                return HashStringForAudit(Convert.ToString(value) ?? string.Empty);
         }
     }
 
@@ -193,7 +198,7 @@ public class DocumentChatToolFactory : IDocumentChatToolFactory, ITransientDepen
     {
         return json.ValueKind switch
         {
-            JsonValueKind.String => Truncate(json.GetString() ?? string.Empty),
+            JsonValueKind.String => HashStringForAudit(json.GetString() ?? string.Empty),
             JsonValueKind.Number => json.TryGetInt64(out var l) ? l : json.GetDouble(),
             JsonValueKind.True => true,
             JsonValueKind.False => false,
@@ -235,10 +240,37 @@ public class DocumentChatToolFactory : IDocumentChatToolFactory, ITransientDepen
         return SensitiveKeyFragments.Any(fragment => normalized.Contains(fragment, StringComparison.Ordinal));
     }
 
-    private static string Truncate(string value)
-        => value.Length <= MaxStringValueLength
-            ? value
-            : value[..MaxStringValueLength] + "...";
+    /// <summary>
+    /// Reduces a free-form string argument or result fragment to structural metadata
+    /// only — never the raw text. The LLM-supplied <c>query</c> argument to
+    /// <c>search_paperbase_documents</c> and similar contributor-tool inputs (party
+    /// names, contract numbers, free-form questions) frequently contain PII that
+    /// would otherwise be persisted indefinitely in <c>AbpAuditLogs.Comments</c>.
+    /// </summary>
+    /// <remarks>
+    /// Hash prefix is short (12 hex chars = 48 bits) — enough for dedup/correlation
+    /// across audit/metrics, not enough to surface plaintext.
+    /// </remarks>
+    private static object HashStringForAudit(string value)
+    {
+        return new
+        {
+            kind = "string",
+            length = value.Length,
+            hash = ComputeHashPrefix(value)
+        };
+    }
+
+    private static string ComputeHashPrefix(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value));
+        return Convert.ToHexString(bytes, 0, HashHexPrefixLength / 2).ToLowerInvariant();
+    }
 
     private sealed class AuditedDocumentChatFunction : AIFunction
     {

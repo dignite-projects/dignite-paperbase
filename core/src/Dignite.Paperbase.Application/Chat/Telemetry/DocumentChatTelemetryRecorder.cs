@@ -12,7 +12,9 @@ using Volo.Abp.DependencyInjection;
 
 namespace Dignite.Paperbase.Chat.Telemetry;
 
-public class DocumentChatTelemetryRecorder : ITransientDependency
+// Singleton lifetime matches the static Meter / instruments below — `System.Diagnostics.Metrics`
+// recommends one shared Meter per process, and per-scope construction would only churn allocations.
+public class DocumentChatTelemetryRecorder : ISingletonDependency
 {
     public const string AuditToolCallsPropertyName = "DocumentChat.ToolCalls";
     public const string AuditTurnPropertyName = "DocumentChat.Turn";
@@ -28,6 +30,8 @@ public class DocumentChatTelemetryRecorder : ITransientDependency
         "paperbase.document_chat.tool.result.size", unit: "By");
     private static readonly Counter<long> Turns = Meter.CreateCounter<long>(
         "paperbase.document_chat.turns");
+    private static readonly Counter<long> DegradedTurns = Meter.CreateCounter<long>(
+        "paperbase.document_chat.turn.degraded");
     private static readonly Histogram<double> TurnDuration = Meter.CreateHistogram<double>(
         "paperbase.document_chat.turn.duration", unit: "ms");
     private static readonly Counter<long> InputTokens = Meter.CreateCounter<long>(
@@ -91,6 +95,13 @@ public class DocumentChatTelemetryRecorder : ITransientDependency
         var tags = CreateTurnTags(entry);
         Turns.Add(1, tags);
         TurnDuration.Record(entry.ElapsedMs, tags);
+        // IsDegraded is the project's "honest signal" (CLAUDE.md) — count it as a
+        // first-class metric so cost-governance dashboards can alarm on classes of
+        // questions answered without retrieval.
+        if (entry.IsDegraded)
+        {
+            DegradedTurns.Add(1, tags);
+        }
         if (entry.InputTokenCount.HasValue)
         {
             InputTokens.Add(entry.InputTokenCount.Value, tags);

@@ -209,9 +209,12 @@ public class DocumentTextSearchAdapter : ITransientDependency
             _capture.Set(vectorResults);
 
             sw.Stop();
+            // Argument hashing + audit are recorded by AuditedDocumentChatFunction; do not
+            // log the raw `query` here — it usually contains the user's natural-language
+            // input or LLM rephrasing thereof, which can include PII.
             _adapter._logger.LogInformation(
-                "doc-chat search_paperbase_documents query={Query} documentIds={Ids} results={Count} latency={Latency}ms",
-                query,
+                "doc-chat search_paperbase_documents queryLength={Length} documentIds={Ids} results={Count} latency={Latency}ms",
+                query?.Length ?? 0,
                 documentIds == null ? "(none)" : string.Join(",", documentIds),
                 vectorResults.Count,
                 sw.ElapsedMilliseconds);

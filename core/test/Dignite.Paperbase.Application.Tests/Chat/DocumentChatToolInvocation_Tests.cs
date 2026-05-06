@@ -177,6 +177,11 @@ public class DocumentChatToolInvocation_Tests
         toolCalls[0].Outcome.ShouldBe(DocumentChatTelemetryOutcome.Success);
         toolCalls[0].ArgumentsSummary.ShouldContainKey("query");
 
+        // Sanitization: the raw query string ("payment terms") must NOT survive into
+        // the audit log. Only structural metadata (length + hash) is acceptable.
+        var auditJson = System.Text.Json.JsonSerializer.Serialize(toolCalls);
+        auditJson.ShouldNotContain("payment terms");
+
         var turn = auditLog.ExtraProperties[DocumentChatTelemetryRecorder.AuditTurnPropertyName]
             .ShouldBeOfType<DocumentChatTurnAuditEntry>();
         turn.ConversationId.ShouldBe(conversationId);
@@ -187,6 +192,43 @@ public class DocumentChatToolInvocation_Tests
         turn.OutputTokenCount.ShouldBe(7);
         turn.TotalTokenCount.ShouldBe(18);
         turn.Outcome.ShouldBe(DocumentChatTelemetryOutcome.Success);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_Records_Tool_Failure_When_Search_Throws()
+    {
+        // The tool implementation rejects with a typed exception. The wrapper at
+        // AuditedDocumentChatFunction must still emit an audit entry with
+        // Outcome=Failure and ExceptionType populated, and the underlying exception
+        // must propagate so the model sees the failure (rather than silently
+        // "succeeding" with no result).
+        _knowledgeIndex.SearchAsync(Arg.Any<VectorSearchRequest>(), Arg.Any<CancellationToken>())
+            .Returns<IReadOnlyList<VectorSearchResult>>(_ => throw new InvalidOperationException("vector store down"));
+
+        var conversationId = await CreateConversationAsync();
+
+        using var auditScope = _auditingManager.BeginScope();
+        await WithUnitOfWorkAsync(async () =>
+        {
+            using (ChangeUser(OwnerUserId))
+            {
+                // The chat path catches knowledge-index failures and degrades the answer
+                // (IsDegraded=true). The tool-call audit entry is still emitted with
+                // Outcome=Failure inside the wrapper.
+                await _appService.SendMessageAsync(conversationId, new SendChatMessageInput
+                {
+                    Message = "Audit the failing tool call",
+                    ClientTurnId = Guid.NewGuid()
+                });
+            }
+        });
+
+        var auditLog = _auditingManager.Current!.Log;
+        var toolCalls = auditLog.ExtraProperties[DocumentChatTelemetryRecorder.AuditToolCallsPropertyName]
+            .ShouldBeOfType<List<DocumentChatToolAuditEntry>>();
+        toolCalls.Count.ShouldBe(1);
+        toolCalls[0].Outcome.ShouldBe(DocumentChatTelemetryOutcome.Failure);
+        toolCalls[0].ExceptionType.ShouldNotBeNullOrEmpty();
     }
 
     private async Task<Guid> CreateConversationAsync(int? topK = null)
