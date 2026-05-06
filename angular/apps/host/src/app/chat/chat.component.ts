@@ -46,12 +46,12 @@ interface SelectedCitation {
 }
 
 @Component({
-  selector: 'app-document-chat',
-  templateUrl: './document-chat.component.html',
-  styleUrls: ['./document-chat.component.scss'],
+  selector: 'app-chat',
+  templateUrl: './chat.component.html',
+  styleUrls: ['./chat.component.scss'],
   imports: [CommonModule, FormsModule, RouterModule, LocalizationPipe],
 })
-export class DocumentChatComponent implements OnInit, AfterViewChecked {
+export class ChatComponent implements OnInit, AfterViewChecked {
   private readonly chatService = inject(DocumentChatService);
   private readonly documentService = inject(DocumentService);
   private readonly route = inject(ActivatedRoute);

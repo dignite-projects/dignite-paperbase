@@ -1,4 +1,4 @@
-.document-chat-shell {
+.chat-shell {
   min-height: calc(100vh - 170px);
   display: grid;
   grid-template-columns: minmax(240px, 300px) minmax(320px, 42%) minmax(0, 1fr);
@@ -214,7 +214,7 @@
 }
 
 @media (max-width: 991.98px) {
-  .document-chat-shell {
+  .chat-shell {
     grid-template-columns: 1fr;
   }
 

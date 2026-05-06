@@ -41,7 +41,7 @@ function configureRoutes() {
       layout: eLayoutType.application,
     },
     {
-      path: '/document-chat',
+      path: '/chat',
       name: '::Menu:DocumentChat',
       iconClass: 'fas fa-comments',
       order: 3,

@@ -171,7 +171,7 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
     const doc = this.document();
     if (!doc?.id) return;
 
-    this.router.navigate(['/document-chat'], {
+    this.router.navigate(['/chat'], {
       queryParams: {
         documentId: doc.id,
         documentTypeCode: doc.documentTypeCode || null,
