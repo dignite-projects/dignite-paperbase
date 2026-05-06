@@ -144,7 +144,7 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
         }
     }
 
-    public virtual string HashMessage(string message)
+    internal static string HashMessage(string message)
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(message));
         return Convert.ToHexString(bytes).ToLowerInvariant();

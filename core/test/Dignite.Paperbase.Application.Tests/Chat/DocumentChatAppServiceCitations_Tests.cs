@@ -52,28 +52,18 @@ public class DocumentChatAppServiceCitations_Tests
         }
     }
 
-    [Fact]
-    public void BuildCitationDtos_Source_Name_Uses_Chunk_Format_When_Page_Present()
+    [Theory]
+    [InlineData(12)]    // page present — page number is ignored
+    [InlineData(null)]  // page absent
+    public void BuildCitationDtos_Source_Name_Uses_Chunk_Format_Regardless_Of_Page(int? pageNumber)
     {
         var docId = Guid.NewGuid();
         var dto = DocumentChatAppService.BuildCitationDtos(new List<VectorSearchResult>
         {
-            new() { RecordId = Guid.NewGuid(), DocumentId = docId, ChunkIndex = 5, PageNumber = 12, Text = "..." }
+            new() { RecordId = Guid.NewGuid(), DocumentId = docId, ChunkIndex = 5, PageNumber = pageNumber, Text = "..." }
         }).Single();
 
         dto.SourceName.ShouldBe($"Document {docId} (chunk #5)");
-    }
-
-    [Fact]
-    public void BuildCitationDtos_Source_Name_Uses_Chunk_Format_When_Page_Null()
-    {
-        var docId = Guid.NewGuid();
-        var dto = DocumentChatAppService.BuildCitationDtos(new List<VectorSearchResult>
-        {
-            new() { RecordId = Guid.NewGuid(), DocumentId = docId, ChunkIndex = 7, PageNumber = null, Text = "..." }
-        }).Single();
-
-        dto.SourceName.ShouldBe($"Document {docId} (chunk #7)");
     }
 
     [Fact]
