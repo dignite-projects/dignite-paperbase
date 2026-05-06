@@ -10,9 +10,11 @@ using Shouldly;
 using Volo.Abp;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.BlobStoring;
+using Volo.Abp.Domain.Entities;
 using Volo.Abp.EventBus.Distributed;
 using Volo.Abp.EventBus.Local;
 using Volo.Abp.Modularity;
+using Volo.Abp.MultiTenancy;
 using Xunit;
 
 namespace Dignite.Paperbase.Documents;
@@ -44,6 +46,7 @@ public class DocumentAppService_Retry_Tests
     private readonly IDocumentRepository _documentRepository;
     private readonly IBackgroundJobManager _backgroundJobManager;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
+    private readonly ICurrentTenant _currentTenant;
 
     public DocumentAppService_Retry_Tests()
     {
@@ -51,6 +54,7 @@ public class DocumentAppService_Retry_Tests
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _backgroundJobManager = GetRequiredService<IBackgroundJobManager>();
         _pipelineRunManager = GetRequiredService<DocumentPipelineRunManager>();
+        _currentTenant = GetRequiredService<ICurrentTenant>();
     }
 
     [Fact]
@@ -196,6 +200,58 @@ public class DocumentAppService_Retry_Tests
     }
 
     [Fact]
+    public async Task RetryPipelineAsync_Throws_EntityNotFound_When_Cross_Tenant()
+    {
+        // Doc belongs to tenant A; caller is tenant B. The explicit assertion in
+        // RetryPipelineAsync must fail closed with EntityNotFoundException, never
+        // returning the document or letting the retry through.
+        var docTenant = Guid.NewGuid();
+        var callerTenant = Guid.NewGuid();
+        var doc = CreateDocument(tenantId: docTenant);
+        var run = await _pipelineRunManager.StartAsync(doc, PaperbasePipelines.TextExtraction);
+        await _pipelineRunManager.FailAsync(doc, run, errorMessage: "boom");
+        StubGet(doc);
+
+        using (_currentTenant.Change(callerTenant))
+        {
+            await Should.ThrowAsync<EntityNotFoundException>(async () =>
+                await _appService.RetryPipelineAsync(
+                    doc.Id,
+                    new RetryPipelineInput { PipelineCode = PaperbasePipelines.TextExtraction }));
+        }
+
+        await _backgroundJobManager.DidNotReceive().EnqueueAsync(
+            Arg.Any<DocumentTextExtractionJobArgs>(),
+            Arg.Any<BackgroundJobPriority>(),
+            Arg.Any<TimeSpan?>());
+    }
+
+    [Fact]
+    public async Task RetryPipelineAsync_Throws_BusinessException_When_Document_Soft_Deleted()
+    {
+        // Soft-deleted documents would normally be hidden by ABP's ambient ISoftDelete
+        // filter, but defense-in-depth requires an explicit check: a stub repository
+        // (or any code path that disables the filter) must not be able to retry a
+        // recycled document.
+        var doc = CreateDocument();
+        var run = await _pipelineRunManager.StartAsync(doc, PaperbasePipelines.TextExtraction);
+        await _pipelineRunManager.FailAsync(doc, run, errorMessage: "boom");
+        doc.IsDeleted = true;
+        StubGet(doc);
+
+        var ex = await Should.ThrowAsync<BusinessException>(async () =>
+            await _appService.RetryPipelineAsync(
+                doc.Id,
+                new RetryPipelineInput { PipelineCode = PaperbasePipelines.TextExtraction }));
+
+        ex.Code.ShouldBe(PaperbaseErrorCodes.DocumentInRecycleBin);
+        await _backgroundJobManager.DidNotReceive().EnqueueAsync(
+            Arg.Any<DocumentTextExtractionJobArgs>(),
+            Arg.Any<BackgroundJobPriority>(),
+            Arg.Any<TimeSpan?>());
+    }
+
+    [Fact]
     public async Task RetryPipelineAsync_Allows_Second_Retry_After_Second_Failure()
     {
         var doc = CreateDocument();
@@ -227,11 +283,15 @@ public class DocumentAppService_Retry_Tests
             .Returns(doc);
     }
 
-    private static Document CreateDocument()
+    // Default tenantId=null aligns with the host-mode test base where
+    // CurrentTenant.Id is also null. The cross-tenant tests pass an explicit
+    // tenantId AND wrap the call site in CurrentTenant.Change to exercise the
+    // explicit tenant assertion in RetryPipelineAsync.
+    private static Document CreateDocument(Guid? tenantId = null)
     {
         return new Document(
             Guid.NewGuid(),
-            Guid.NewGuid(),
+            tenantId,
             $"blobs/{Guid.NewGuid():N}.pdf",
             SourceType.Digital,
             new FileOrigin(

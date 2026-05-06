@@ -12,6 +12,7 @@ using Dignite.Paperbase.Documents.Pipelines.Embedding;
 using Dignite.Paperbase.Documents.Pipelines.TextExtraction;
 using Dignite.Paperbase.Permissions;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Logging;
 using Dignite.Paperbase.Documents.Events;
 using Volo.Abp;
 using Volo.Abp.Application.Dtos;
@@ -19,6 +20,7 @@ using Volo.Abp.BackgroundJobs;
 using Volo.Abp.BlobStoring;
 using Volo.Abp.Content;
 using Volo.Abp.Data;
+using Volo.Abp.Domain.Entities;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.EventBus.Distributed;
 using Volo.Abp.EventBus.Local;
@@ -216,6 +218,14 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         return new RemoteStreamContent(new MemoryStream(bytes), "documents.csv", "text/csv");
     }
 
+    /// <summary>
+    /// 重试单条 pipeline。当前仅 <see cref="PipelineRunStatus.Failed"/> 可重试；
+    /// Pending/Running 抛 <c>PipelineRetryInProgress</c>，Succeeded/Skipped 抛 <c>PipelineNotRetryable</c>。
+    /// 重试只入队对应的 BackgroundJob，新的 <c>DocumentPipelineRun</c> 由 Job 的 <c>StartAsync</c> 创建——
+    /// 避免 AppService 与 Job 各创建一条 Pending Run 的竞态。
+    /// 链式重放语义（隐式）：重试 <c>text-extraction</c> → 成功后链触发 <c>classification</c> → <c>embedding</c>；
+    /// 重试 <c>classification</c> → 链触发 <c>embedding</c>；重试 <c>embedding</c> 是叶子。
+    /// </summary>
     [Authorize(PaperbasePermissions.Documents.Pipelines.Retry)]
     public virtual async Task RetryPipelineAsync(Guid id, RetryPipelineInput input)
     {
@@ -226,6 +236,22 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         }
 
         var document = await _documentRepository.GetAsync(id);
+
+        // 显式租户断言 + 软删除门：不依赖 ambient DataFilter。
+        // 反例参考 .claude/rules/doc-chat-anti-patterns.md 反例 B。
+        if (document.TenantId != CurrentTenant.Id)
+        {
+            Logger.LogWarning(
+                "RetryPipelineAsync tenant mismatch: doc={DocumentId} docTenant={DocTenantId} currentTenant={CurrentTenantId}",
+                document.Id, document.TenantId, CurrentTenant.Id);
+            throw new EntityNotFoundException(typeof(Document), id);
+        }
+
+        if (document.IsDeleted)
+        {
+            throw new BusinessException(PaperbaseErrorCodes.DocumentInRecycleBin)
+                .WithData("FileName", document.OriginalFileBlobName);
+        }
 
         var latestRun = document.GetLatestRun(input.PipelineCode);
         if (latestRun == null)
@@ -246,6 +272,10 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
                     .WithData("PipelineCode", input.PipelineCode)
                     .WithData("Status", latestRun.Status.ToString());
         }
+
+        Logger.LogInformation(
+            "RetryPipelineAsync user={UserId} tenant={TenantId} doc={DocumentId} pipeline={PipelineCode} previousAttempt={Attempt}",
+            CurrentUser.Id, CurrentTenant.Id, document.Id, input.PipelineCode, latestRun.AttemptNumber);
 
         await EnqueuePipelineJobAsync(document.Id, input.PipelineCode);
     }
