@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.Metrics;
-using System.Security.Cryptography;
-using System.Text;
 using Dignite.Paperbase.Abstractions.Chat;
 using Microsoft.Extensions.Logging;
 using Volo.Abp.Auditing;
@@ -142,12 +140,6 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
         }
     }
 
-    internal static string HashMessage(string message)
-    {
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(message));
-        return Convert.ToHexString(bytes).ToLowerInvariant();
-    }
-
     private void AddToolCallToAuditLog(DocumentChatToolAuditEntry entry)
     {
         var scope = _auditingManager.Current;
@@ -231,8 +223,6 @@ public sealed class DocumentChatTurnAuditEntry
     public string? DocumentTypeCode { get; init; }
     public string? TraceId { get; init; }
     public required bool Streaming { get; init; }
-    public required string UserMessageHash { get; init; }
-    public required int UserMessageLength { get; init; }
     public int CitationCount { get; init; }
     public bool IsDegraded { get; init; }
     public required double ElapsedMs { get; init; }

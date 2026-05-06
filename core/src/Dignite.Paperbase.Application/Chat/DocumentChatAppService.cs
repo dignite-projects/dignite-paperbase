@@ -195,7 +195,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         catch (Exception ex)
         {
             sw.Stop();
-            RecordTurnFailure(conversation, input.Message, streaming: false, sw.Elapsed.TotalMilliseconds, ex);
+            RecordTurnFailure(conversation, streaming: false, sw.Elapsed.TotalMilliseconds, ex);
             throw;
         }
 
@@ -220,7 +220,6 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         // histogram (see DocumentChatTelemetryRecorder XML doc); no need to re-record.
         RecordTurnSuccess(
             conversation,
-            input.Message,
             streaming: false,
             sw.Elapsed.TotalMilliseconds,
             isDegraded,
@@ -538,7 +537,6 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
 
     protected virtual void RecordTurnSuccess(
         ChatConversation conversation,
-        string message,
         bool streaming,
         double elapsedMs,
         bool isDegraded,
@@ -553,8 +551,6 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             DocumentTypeCode = conversation.DocumentTypeCode,
             TraceId = Activity.Current?.TraceId.ToString(),
             Streaming = streaming,
-            UserMessageHash = DocumentChatTelemetryRecorder.HashMessage(message),
-            UserMessageLength = message.Length,
             CitationCount = citationCount,
             IsDegraded = isDegraded,
             ElapsedMs = elapsedMs,
@@ -564,7 +560,6 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
 
     protected virtual void RecordTurnFailure(
         ChatConversation conversation,
-        string message,
         bool streaming,
         double elapsedMs,
         Exception exception)
@@ -578,8 +573,6 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             DocumentTypeCode = conversation.DocumentTypeCode,
             TraceId = Activity.Current?.TraceId.ToString(),
             Streaming = streaming,
-            UserMessageHash = DocumentChatTelemetryRecorder.HashMessage(message),
-            UserMessageLength = message.Length,
             ElapsedMs = elapsedMs,
             Outcome = DocumentChatTelemetryOutcome.Failure,
             ExceptionType = exception.GetType().FullName
@@ -636,7 +629,6 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             sw.Stop();
             RecordTurnSuccess(
                 conversation,
-                input.Message,
                 streaming: true,
                 sw.Elapsed.TotalMilliseconds,
                 isDegraded,
@@ -668,7 +660,6 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             sw.Stop();
             RecordTurnFailure(
                 conversation,
-                input.Message,
                 streaming: true,
                 sw.Elapsed.TotalMilliseconds,
                 ex);
@@ -681,7 +672,6 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             sw.Stop();
             RecordTurnFailure(
                 conversation,
-                input.Message,
                 streaming: true,
                 sw.Elapsed.TotalMilliseconds,
                 ex);

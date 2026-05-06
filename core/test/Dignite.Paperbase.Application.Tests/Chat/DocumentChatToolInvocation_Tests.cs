@@ -190,7 +190,6 @@ public class DocumentChatToolInvocation_Tests
         var turn = auditLog.ExtraProperties[DocumentChatTelemetryRecorder.AuditTurnPropertyName]
             .ShouldBeOfType<DocumentChatTurnAuditEntry>();
         turn.ConversationId.ShouldBe(conversationId);
-        turn.UserMessageHash.ShouldNotBeNullOrWhiteSpace();
         turn.CitationCount.ShouldBe(1);
         turn.IsDegraded.ShouldBeFalse();
         turn.Outcome.ShouldBe(DocumentChatTelemetryOutcome.Success);
