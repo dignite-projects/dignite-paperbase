@@ -204,8 +204,9 @@ export class ChatPanelComponent implements OnInit, OnChanges, AfterViewChecked {
       title: this.emptyToNull(this.title()),
       // Panel mode auto-scopes to the document the host page is showing.
       // Full mode (`/chat`) starts unscoped — backend tools decide retrieval.
+      // documentId and documentTypeCode are mutually exclusive at the backend.
       documentId: this.isPanelMode() ? this.documentId() ?? null : null,
-      documentTypeCode: this.isPanelMode() ? this.documentTypeCode() ?? null : null,
+      documentTypeCode: null,
     });
   }
 
@@ -240,7 +241,7 @@ export class ChatPanelComponent implements OnInit, OnChanges, AfterViewChecked {
       this.createAndOpen(
         {
           documentId: this.isPanelMode() ? this.documentId() ?? null : null,
-          documentTypeCode: this.isPanelMode() ? this.documentTypeCode() ?? null : null,
+          documentTypeCode: null,
         },
         created => this.sendToConversation(created, text)
       );
@@ -315,7 +316,7 @@ export class ChatPanelComponent implements OnInit, OnChanges, AfterViewChecked {
 
     this.createAndOpen({
       documentId,
-      documentTypeCode: this.documentTypeCode() ?? null,
+      documentTypeCode: null,
     });
   }
 

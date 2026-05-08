@@ -97,6 +97,7 @@ Dignite.Paperbase.Abstractions（扩展契约层，无其他项目依赖）
 ## 处理规则
 
 1. 在 core 和 modules 中开发时，严格遵循 `.claude/rules/` 中的规则
+   - 修改 ABP BackgroundJob / JobArgs 时必须读取 `.claude/rules/background-jobs.md`
 2. 开发可复用模块时，**所有公共和受保护方法必须是虚拟（virtual）的**
 3. 模块中不要配置中间件，仅在 host 中配置
 4. 遵循 ABP 的依赖注入约定，不要手动调用 AddScoped/AddTransient/AddSingleton

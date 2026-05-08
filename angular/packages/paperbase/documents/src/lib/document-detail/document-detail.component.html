@@ -17,6 +17,14 @@
         {{ getStatusLabel(document()!.lifecycleStatus) | abpLocalization }}
       </span>
     }
+    <button
+      class="btn btn-outline-secondary btn-sm ms-auto"
+      (click)="refresh()"
+      [disabled]="isLoading()"
+      title="{{ '::Refresh' | abpLocalization }}"
+    >
+      <i class="fas fa-sync-alt" [class.fa-spin]="isLoading()"></i>
+    </button>
   </div>
 
   <!-- Loading state -->

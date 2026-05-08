@@ -6,12 +6,12 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Documents.Pipelines.Embedding;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.EventBus.Distributed;
+using Volo.Abp.Uow;
 
 namespace Dignite.Paperbase.Documents.Pipelines.Classification;
 
@@ -21,90 +21,147 @@ public class DocumentClassificationBackgroundJob
 {
     private readonly IDocumentRepository _documentRepository;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
+    private readonly DocumentPipelineRunAccessor _pipelineRunAccessor;
+    private readonly DocumentPipelineJobScheduler _pipelineJobScheduler;
     private readonly DocumentClassificationWorkflow _workflow;
     private readonly KeywordDocumentClassifier _keywordClassifier;
     private readonly IDistributedEventBus _distributedEventBus;
     private readonly DocumentTypeOptions _documentTypeOptions;
     private readonly PaperbaseAIBehaviorOptions _aiOptions;
-    private readonly IBackgroundJobManager _backgroundJobManager;
+    private readonly IUnitOfWorkManager _unitOfWorkManager;
 
     public DocumentClassificationBackgroundJob(
         IDocumentRepository documentRepository,
         DocumentPipelineRunManager pipelineRunManager,
+        DocumentPipelineRunAccessor pipelineRunAccessor,
+        DocumentPipelineJobScheduler pipelineJobScheduler,
         DocumentClassificationWorkflow workflow,
         KeywordDocumentClassifier keywordClassifier,
         IDistributedEventBus distributedEventBus,
         IOptions<DocumentTypeOptions> documentTypeOptions,
         IOptions<PaperbaseAIBehaviorOptions> aiOptions,
-        IBackgroundJobManager backgroundJobManager)
+        IUnitOfWorkManager unitOfWorkManager)
     {
         _documentRepository = documentRepository;
         _pipelineRunManager = pipelineRunManager;
+        _pipelineRunAccessor = pipelineRunAccessor;
+        _pipelineJobScheduler = pipelineJobScheduler;
         _workflow = workflow;
         _keywordClassifier = keywordClassifier;
         _distributedEventBus = distributedEventBus;
         _documentTypeOptions = documentTypeOptions.Value;
         _aiOptions = aiOptions.Value;
-        _backgroundJobManager = backgroundJobManager;
+        _unitOfWorkManager = unitOfWorkManager;
     }
 
     public override async Task ExecuteAsync(DocumentClassificationJobArgs args)
     {
-        var document = await _documentRepository.GetAsync(args.DocumentId);
-        var run = await _pipelineRunManager.StartAsync(document, PaperbasePipelines.Classification);
-        await _documentRepository.UpdateAsync(document);
+        var workItem = await BeginRunAsync(args);
 
         try
         {
-            // 候选集在此处一次确定（按 Priority 排序 + 截断），同时供 LLM 路径与
-            // 关键词兜底路径使用，避免两条路径结论指向不同子集。
-            var candidates = _documentTypeOptions.Types
-                .OrderByDescending(t => t.Priority)
-                .Take(_aiOptions.MaxDocumentTypesInClassificationPrompt)
-                .ToList();
-
-            // LLM 路径直接吃 Markdown（结构信号有助于分类）；
-            // 关键词兜底走纯文本投影（关键词只匹配字面，结构标记是噪音）。
-            var markdown = document.Markdown ?? string.Empty;
-
-            DocumentClassificationOutcome outcome;
-            try
-            {
-                outcome = await _workflow.RunAsync(candidates, markdown);
-            }
-            catch (Exception ex) when (IsTransientProviderError(ex))
-            {
-                // 网络/超时类故障：LLM 暂时不可用，关键词兜底是合理替代——
-                // 关键词命中即按兜底结果完成分类，未命中走 LowConfidence → PendingReview。
-                Logger.LogWarning(ex,
-                    "AI classification provider unavailable for document {DocumentId}; falling back to keyword classifier.",
-                    document.Id);
-                outcome = _keywordClassifier.Classify(candidates, MarkdownStripper.Strip(markdown));
-            }
-            catch (Exception ex) when (IsSchemaDeserializationError(ex))
-            {
-                // Schema 漂移：LLM 输出无法反序列化。这类问题不能用关键词兜底"修复"——
-                // 关键词命中只反映文本表面特征，不能替代被破坏的 LLM 语义判定。
-                // 直接走 PendingReview，由人工确认。
-                Logger.LogWarning(ex,
-                    "AI classification response failed JSON deserialization for document {DocumentId}; routing to PendingReview.",
-                    document.Id);
-                outcome = new DocumentClassificationOutcome
-                {
-                    TypeCode = null,
-                    ConfidenceScore = 0,
-                    Reason = "AI response could not be parsed (schema drift)."
-                };
-            }
-
-            await ApplyClassificationResultAsync(document, run, outcome);
-            await _documentRepository.UpdateAsync(document);
+            var outcome = await ClassifyAsync(workItem.DocumentId, workItem.Markdown);
+            await CompleteRunAsync(workItem.DocumentId, workItem.RunId, outcome);
         }
         catch (Exception ex)
         {
-            await _pipelineRunManager.FailAsync(document, run, ex.Message);
-            await _documentRepository.UpdateAsync(document);
+            await FailRunAsync(workItem.DocumentId, workItem.RunId, ex.Message);
         }
+    }
+
+    private async Task<ClassificationWorkItem> BeginRunAsync(DocumentClassificationJobArgs args)
+    {
+        using var uow = _unitOfWorkManager.Begin(requiresNew: true);
+
+        var document = await _documentRepository.GetAsync(args.DocumentId, includeDetails: true);
+        var run = await _pipelineRunAccessor.BeginOrStartAsync(
+            document, args.PipelineRunId, PaperbasePipelines.Classification);
+        await _documentRepository.UpdateAsync(document, autoSave: true);
+
+        await uow.CompleteAsync();
+
+        return new ClassificationWorkItem(run.Id, document.Id, document.Markdown ?? string.Empty);
+    }
+
+    private async Task<DocumentClassificationOutcome> ClassifyAsync(Guid documentId, string markdown)
+    {
+        // 候选集在此处一次确定（按 Priority 排序 + 截断），同时供 LLM 路径与
+        // 关键词兜底路径使用，避免两条路径结论指向不同子集。
+        var candidates = _documentTypeOptions.Types
+            .OrderByDescending(t => t.Priority)
+            .Take(_aiOptions.MaxDocumentTypesInClassificationPrompt)
+            .ToList();
+
+        // LLM 路径直接吃 Markdown（结构信号有助于分类）；
+        // 关键词兜底走纯文本投影（关键词只匹配字面，结构标记是噪音）。
+        try
+        {
+            return await _workflow.RunAsync(candidates, markdown);
+        }
+        catch (Exception ex) when (IsTransientProviderError(ex))
+        {
+            // 网络/超时类故障：LLM 暂时不可用，关键词兜底是合理替代——
+            // 关键词命中即按兜底结果完成分类，未命中走 LowConfidence → PendingReview。
+            Logger.LogWarning(ex,
+                "AI classification provider unavailable for document {DocumentId}; falling back to keyword classifier.",
+                documentId);
+            return _keywordClassifier.Classify(candidates, MarkdownStripper.Strip(markdown));
+        }
+        catch (Exception ex) when (IsSchemaDeserializationError(ex))
+        {
+            // Schema 漂移：LLM 输出无法反序列化。这类问题不能用关键词兜底"修复"——
+            // 关键词命中只反映文本表面特征，不能替代被破坏的 LLM 语义判定。
+            // 直接走 PendingReview，由人工确认。
+            Logger.LogWarning(ex,
+                "AI classification response failed JSON deserialization for document {DocumentId}; routing to PendingReview.",
+                documentId);
+            return new DocumentClassificationOutcome
+            {
+                TypeCode = null,
+                ConfidenceScore = 0,
+                Reason = "AI response could not be parsed (schema drift)."
+            };
+        }
+    }
+
+    private async Task CompleteRunAsync(
+        Guid documentId,
+        Guid runId,
+        DocumentClassificationOutcome outcome)
+    {
+        using var uow = _unitOfWorkManager.Begin(requiresNew: true);
+
+        var document = await _documentRepository.GetAsync(documentId, includeDetails: true);
+        var run = document.GetRun(runId)
+            ?? await _pipelineRunAccessor.BeginOrStartAsync(
+                document, runId, PaperbasePipelines.Classification);
+
+        var shouldQueueEmbedding = await ApplyClassificationResultAsync(document, run, outcome);
+        if (shouldQueueEmbedding)
+        {
+            await _pipelineJobScheduler.QueueAsync(document, PaperbasePipelines.Embedding);
+        }
+        else
+        {
+            await _documentRepository.UpdateAsync(document, autoSave: true);
+        }
+
+        await uow.CompleteAsync();
+    }
+
+    private async Task FailRunAsync(Guid documentId, Guid runId, string errorMessage)
+    {
+        using var uow = _unitOfWorkManager.Begin(requiresNew: true);
+
+        var document = await _documentRepository.GetAsync(documentId, includeDetails: true);
+        var run = document.GetRun(runId)
+            ?? await _pipelineRunAccessor.BeginOrStartAsync(
+                document, runId, PaperbasePipelines.Classification);
+
+        await _pipelineRunManager.FailAsync(document, run, errorMessage);
+        await _documentRepository.UpdateAsync(document, autoSave: true);
+
+        await uow.CompleteAsync();
     }
 
     /// <summary>
@@ -126,7 +183,7 @@ public class DocumentClassificationBackgroundJob
     private static bool IsSchemaDeserializationError(Exception ex)
         => ex is JsonException || ex.GetBaseException() is JsonException;
 
-    private async Task ApplyClassificationResultAsync(
+    private async Task<bool> ApplyClassificationResultAsync(
         Document document,
         DocumentPipelineRun run,
         DocumentClassificationOutcome outcome)
@@ -151,9 +208,7 @@ public class DocumentClassificationBackgroundJob
                 Markdown = document.Markdown
             });
 
-            await _backgroundJobManager.EnqueueAsync(
-                new DocumentEmbeddingJobArgs { DocumentId = document.Id });
-            return;
+            return true;
         }
 
         var candidates = outcome.Candidates
@@ -162,11 +217,17 @@ public class DocumentClassificationBackgroundJob
 
         await _pipelineRunManager.CompleteClassificationWithLowConfidenceAsync(
             document, run, outcome.Reason, candidates);
+        return false;
     }
 
+    private sealed record ClassificationWorkItem(
+        Guid RunId,
+        Guid DocumentId,
+        string Markdown);
 }
 
 public class DocumentClassificationJobArgs
 {
     public Guid DocumentId { get; set; }
+    public Guid? PipelineRunId { get; set; }
 }

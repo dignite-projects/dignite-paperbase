@@ -1,7 +1,6 @@
 import {
   Component,
   OnInit,
-  OnDestroy,
   inject,
   signal,
   computed,
@@ -10,7 +9,6 @@ import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { LocalizationPipe } from '@abp/ng.core';
 import { ToasterService } from '@abp/ng.theme.shared';
-import { interval, Subscription, switchMap, startWith } from 'rxjs';
 import {
   DocumentDto,
   DocumentLifecycleStatus,
@@ -37,7 +35,7 @@ const KNOWN_PIPELINE_CODES = ['text-extraction', 'classification', 'embedding'] 
   styleUrls: ['./document-detail.component.scss'],
   imports: [CommonModule, RouterModule, LocalizationPipe, ChatPanelComponent, DocumentRelationsComponent],
 })
-export class DocumentDetailComponent implements OnInit, OnDestroy {
+export class DocumentDetailComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly documentService = inject(DocumentService);
@@ -103,49 +101,27 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
   );
 
   private documentId!: string;
-  private pollSubscription?: Subscription;
 
   ngOnInit(): void {
     this.documentId = this.route.snapshot.paramMap.get('id')!;
-    this.startPolling();
+    this.loadDocument();
   }
 
-  ngOnDestroy(): void {
-    this.stopPolling();
+  refresh(): void {
+    this.loadDocument();
   }
 
-  private startPolling(): void {
-    this.pollSubscription = interval(3000)
-      .pipe(
-        startWith(0),
-        switchMap(() => this.documentService.get(this.documentId))
-      )
-      .subscribe({
-        next: doc => {
-          this.isLoading.set(false);
-          this.document.set(doc);
-
-          const lifecycleSettled =
-            doc.lifecycleStatus === DocumentLifecycleStatus.Ready ||
-            doc.lifecycleStatus === DocumentLifecycleStatus.Failed;
-          const anyRunPending = (doc.pipelineRuns ?? []).some(r =>
-            r.status === PipelineRunStatus.Pending || r.status === PipelineRunStatus.Running
-          );
-
-          if (lifecycleSettled && !anyRunPending) {
-            this.stopPolling();
-          }
-        },
-        error: () => {
-          this.isLoading.set(false);
-          this.stopPolling();
-        },
-      });
-  }
-
-  private stopPolling(): void {
-    this.pollSubscription?.unsubscribe();
-    this.pollSubscription = undefined;
+  private loadDocument(): void {
+    this.isLoading.set(true);
+    this.documentService.get(this.documentId).subscribe({
+      next: doc => {
+        this.document.set(doc);
+        this.isLoading.set(false);
+      },
+      error: () => {
+        this.isLoading.set(false);
+      },
+    });
   }
 
   setTab(tab: 'info' | 'relations'): void {
@@ -226,9 +202,7 @@ export class DocumentDetailComponent implements OnInit, OnDestroy {
       next: () => {
         this.retryingPipeline.set(null);
         this.toaster.success('::Document:Pipeline:RetryQueued', '::Success');
-        if (!this.pollSubscription) {
-          this.startPolling();
-        }
+        this.loadDocument();
       },
       error: () => {
         this.retryingPipeline.set(null);

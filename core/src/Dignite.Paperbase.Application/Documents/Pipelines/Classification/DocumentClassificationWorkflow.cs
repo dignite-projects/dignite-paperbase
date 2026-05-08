@@ -88,19 +88,26 @@ public class DocumentClassificationWorkflow : ITransientDependency
 
         var parsed = response.Result;
 
-        // LLM 偶发返回越界置信度（NaN / <0 / >1）。按"无可信结论"处理：
+        // LLM 偶发返回百分制置信度（如 99.9）或真正非法值（NaN / <0 / >100）。
+        // 百分制先归一化到 0..1；真正非法值按"无可信结论"处理：
         // typeCode 置 null、confidence 置 0，由 BackgroundJob 走 LowConfidence 分支
         // 触发 PendingReview，避免 Document.ApplyAutomaticClassificationResult 的
         // Check.Range 抛异常导致整条 PipelineRun 翻成 Failed。
         var rawConfidence = parsed?.Confidence ?? 0d;
         var typeCode = parsed?.TypeCode;
-        if (!IsValidConfidence(rawConfidence))
+        if (!TryNormalizeConfidence(rawConfidence, out var confidenceScore))
         {
             Logger.LogWarning(
                 "LLM returned out-of-range classification confidence {Confidence} (typeCode={TypeCode}); routing to PendingReview.",
                 rawConfidence, typeCode);
             typeCode = null;
-            rawConfidence = 0d;
+            confidenceScore = 0d;
+        }
+        else if (rawConfidence > 1d)
+        {
+            Logger.LogWarning(
+                "LLM returned percentage classification confidence {Confidence} (typeCode={TypeCode}); normalized to {NormalizedConfidence}.",
+                rawConfidence, typeCode, confidenceScore);
         }
 
         // Reason 由 BackgroundJob 路由：
@@ -110,7 +117,7 @@ public class DocumentClassificationWorkflow : ITransientDependency
         var outcome = new DocumentClassificationOutcome
         {
             TypeCode = typeCode,
-            ConfidenceScore = rawConfidence,
+            ConfidenceScore = confidenceScore,
             Reason = parsed?.Reason
         };
 
@@ -137,6 +144,28 @@ public class DocumentClassificationWorkflow : ITransientDependency
     // trivially correct given correct helpers).
     internal static bool IsValidConfidence(double value)
         => !double.IsNaN(value) && value >= 0d && value <= 1d;
+
+    internal static bool TryNormalizeConfidence(double value, out double normalized)
+    {
+        normalized = 0d;
+
+        if (double.IsNaN(value) || double.IsInfinity(value) || value < 0d)
+            return false;
+
+        if (value <= 1d)
+        {
+            normalized = value;
+            return true;
+        }
+
+        if (value <= 100d)
+        {
+            normalized = value / 100d;
+            return true;
+        }
+
+        return false;
+    }
 
     internal static double ClampConfidence(double value)
     {

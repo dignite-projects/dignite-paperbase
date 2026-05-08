@@ -13,6 +13,7 @@ using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
 using Volo.Abp.Modularity;
+using Volo.Abp.Uow;
 using Xunit;
 
 namespace Dignite.Paperbase.Documents;
@@ -48,6 +49,8 @@ public class DocumentEmbeddingBackgroundJob_Tests
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentKnowledgeIndex _knowledgeIndex;
     private readonly DocumentEmbeddingWorkflow _workflow;
+    private readonly DocumentPipelineRunManager _pipelineRunManager;
+    private readonly IUnitOfWorkManager _unitOfWorkManager;
 
     public DocumentEmbeddingBackgroundJob_Tests()
     {
@@ -55,6 +58,8 @@ public class DocumentEmbeddingBackgroundJob_Tests
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _knowledgeIndex = GetRequiredService<IDocumentKnowledgeIndex>();
         _workflow = GetRequiredService<DocumentEmbeddingWorkflow>();
+        _pipelineRunManager = GetRequiredService<DocumentPipelineRunManager>();
+        _unitOfWorkManager = GetRequiredService<IUnitOfWorkManager>();
     }
 
     [Fact]
@@ -92,6 +97,61 @@ public class DocumentEmbeddingBackgroundJob_Tests
                 u.TenantId == doc.TenantId &&
                 u.Chunks.Count == 1),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Job_Does_Not_Hold_UnitOfWork_While_Running_External_Work()
+    {
+        var doc = CreateDocument(extractedText: "契約書本文。");
+        SetupDocumentRepository(doc);
+
+        var chunks = new[]
+        {
+            new DocumentEmbeddingChunk { ChunkIndex = 0, ChunkText = "chunk-0", Vector = MakeVector(0.1f) }
+        };
+        _workflow
+            .RunAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                _unitOfWorkManager.Current.ShouldBeNull();
+                return chunks;
+            });
+        _knowledgeIndex
+            .UpsertDocumentAsync(
+                Arg.Any<DocumentVectorIndexUpdate>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                _unitOfWorkManager.Current.ShouldBeNull();
+                return Task.CompletedTask;
+            });
+
+        await _job.ExecuteAsync(new DocumentEmbeddingJobArgs { DocumentId = doc.Id });
+
+        await _knowledgeIndex.Received(1).UpsertDocumentAsync(
+            Arg.Any<DocumentVectorIndexUpdate>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Job_Uses_Precreated_Pending_Run_When_PipelineRunId_Is_Provided()
+    {
+        var doc = CreateDocument(extractedText: "契約書本文。");
+        var pendingRun = await _pipelineRunManager.QueueAsync(doc, PaperbasePipelines.Embedding);
+        SetupDocumentRepository(doc);
+        SetupWorkflowChunks([
+            new DocumentEmbeddingChunk { ChunkIndex = 0, ChunkText = "chunk-0", Vector = MakeVector(0.1f) }
+        ]);
+
+        await _job.ExecuteAsync(new DocumentEmbeddingJobArgs
+        {
+            DocumentId = doc.Id,
+            PipelineRunId = pendingRun.Id
+        });
+
+        pendingRun.Status.ShouldBe(PipelineRunStatus.Succeeded);
+        pendingRun.AttemptNumber.ShouldBe(1);
+        doc.PipelineRuns.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -157,6 +217,29 @@ public class DocumentEmbeddingBackgroundJob_Tests
         var run = doc.GetLatestRun(PaperbasePipelines.Embedding);
         run.ShouldNotBeNull();
         run.Status.ShouldBe(PipelineRunStatus.Succeeded);
+    }
+
+    [Fact]
+    public async Task KnowledgeIndex_Failure_Marks_Run_Failed_Without_Rethrowing()
+    {
+        var doc = CreateDocument(extractedText: "契約書本文。");
+        SetupDocumentRepository(doc);
+        SetupWorkflowChunks([
+            new DocumentEmbeddingChunk { ChunkIndex = 0, ChunkText = "chunk-0", Vector = MakeVector(0.1f) }
+        ]);
+
+        _knowledgeIndex
+            .UpsertDocumentAsync(
+                Arg.Any<DocumentVectorIndexUpdate>(),
+                Arg.Any<CancellationToken>())
+            .Returns<Task>(_ => throw new InvalidOperationException("vector store down"));
+
+        await _job.ExecuteAsync(new DocumentEmbeddingJobArgs { DocumentId = doc.Id });
+
+        var run = doc.GetLatestRun(PaperbasePipelines.Embedding);
+        run.ShouldNotBeNull();
+        run.Status.ShouldBe(PipelineRunStatus.Failed);
+        run.StatusMessage.ShouldBe("vector store down");
     }
 
     [Fact]

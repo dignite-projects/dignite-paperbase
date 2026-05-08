@@ -64,10 +64,8 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
 
     // --- 聚合内的 PipelineRun 集合 ---
 
-    public virtual IReadOnlyCollection<DocumentPipelineRun> PipelineRuns
-        => _pipelineRuns.AsReadOnly();
-
     private readonly List<DocumentPipelineRun> _pipelineRuns = new();
+    public virtual IReadOnlyCollection<DocumentPipelineRun> PipelineRuns => _pipelineRuns.AsReadOnly();
 
     // --- 派生访问器 ---
 
@@ -80,12 +78,17 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
 
     /// <summary>根据 PipelineCode 查询最近一次 Run（按 AttemptNumber 降序）。</summary>
     public DocumentPipelineRun? GetLatestRun(string pipelineCode)
-        => _pipelineRuns
+        => PipelineRuns
             .Where(r => r.PipelineCode == pipelineCode)
             .OrderByDescending(r => r.AttemptNumber)
             .FirstOrDefault();
 
-    protected Document() { }
+    public DocumentPipelineRun? GetRun(Guid runId)
+        => PipelineRuns.FirstOrDefault(r => r.Id == runId);
+
+    protected Document()
+    {
+    }
 
     public Document(
         Guid id,

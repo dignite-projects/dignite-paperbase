@@ -1,7 +1,6 @@
 import {
   Component,
   OnInit,
-  OnDestroy,
   inject,
   signal,
   computed,
@@ -14,7 +13,6 @@ import { LocalizationPipe } from '@abp/ng.core';
 import type { PagedResultDto } from '@abp/ng.core';
 import { ConfirmationService, ToasterService } from '@abp/ng.theme.shared';
 import { Confirmation } from '@abp/ng.theme.shared';
-import { Subscription, interval, switchMap, startWith } from 'rxjs';
 import {
   ClassificationCandidate,
   DocumentDto,
@@ -38,7 +36,7 @@ interface UploadResult {
   styleUrls: ['./document-list.component.scss'],
   imports: [CommonModule, RouterModule, FormsModule, LocalizationPipe],
 })
-export class DocumentListComponent implements OnInit, OnDestroy {
+export class DocumentListComponent implements OnInit {
   private readonly documentService = inject(DocumentService);
   private readonly router = inject(Router);
   private readonly confirmation = inject(ConfirmationService);
@@ -67,57 +65,36 @@ export class DocumentListComponent implements OnInit, OnDestroy {
   readonly DocumentLifecycleStatus = DocumentLifecycleStatus;
   readonly DocumentReviewStatus = DocumentReviewStatus;
 
-  private pollSubscription?: Subscription;
-
   ngOnInit(): void {
-    this.startPolling();
+    this.loadList();
   }
 
-  ngOnDestroy(): void {
-    this.stopPolling();
+  refresh(): void {
+    this.loadList();
   }
 
-  private startPolling(): void {
-    this.pollSubscription = interval(3000)
-      .pipe(
-        startWith(0),
-        switchMap(() => this.documentService.getList({
-          ...this.activeFilter,
-          maxResultCount: this.pageSize,
-          skipCount: this.page() * this.pageSize,
-          sorting: 'creationTime desc',
-          reviewStatus: this.reviewStatusFilter(),
-        }))
-      )
-      .subscribe({
-        next: result => {
-          this.isLoading.set(false);
-          this.documents.set(result);
-
-          const hasProcessing = result.items.some(
-            d => d.lifecycleStatus === DocumentLifecycleStatus.Processing ||
-                 d.lifecycleStatus === DocumentLifecycleStatus.Uploaded
-          );
-          if (!hasProcessing) {
-            this.stopPolling();
-          }
-        },
-        error: () => {
-          this.isLoading.set(false);
-        },
-      });
-  }
-
-  private stopPolling(): void {
-    this.pollSubscription?.unsubscribe();
-    this.pollSubscription = undefined;
+  private loadList(): void {
+    this.isLoading.set(true);
+    this.documentService.getList({
+      ...this.activeFilter,
+      maxResultCount: this.pageSize,
+      skipCount: this.page() * this.pageSize,
+      sorting: 'creationTime desc',
+      reviewStatus: this.reviewStatusFilter(),
+    }).subscribe({
+      next: result => {
+        this.documents.set(result);
+        this.isLoading.set(false);
+      },
+      error: () => {
+        this.isLoading.set(false);
+      },
+    });
   }
 
   navigateTo(page: number): void {
     this.page.set(page);
-    this.stopPolling();
-    this.isLoading.set(true);
-    this.startPolling();
+    this.loadList();
   }
 
   openDetail(doc: DocumentDto): void {
@@ -139,9 +116,7 @@ export class DocumentListComponent implements OnInit, OnDestroy {
     let completed = 0;
     const onAllDone = () => {
       this.isBulkUploading.set(false);
-      this.stopPolling();
-      this.isLoading.set(true);
-      this.startPolling();
+      this.loadList();
       input.value = '';
     };
 
@@ -173,9 +148,7 @@ export class DocumentListComponent implements OnInit, OnDestroy {
           this.documentService.delete(doc.id).subscribe({
             next: () => {
               this.toaster.success('::Document:DeletedSuccessfully', '::Success');
-              this.stopPolling();
-              this.isLoading.set(true);
-              this.startPolling();
+              this.loadList();
             },
           });
         }
@@ -187,9 +160,7 @@ export class DocumentListComponent implements OnInit, OnDestroy {
       v === DocumentReviewStatus.PendingReview ? undefined : DocumentReviewStatus.PendingReview
     );
     this.page.set(0);
-    this.stopPolling();
-    this.isLoading.set(true);
-    this.startPolling();
+    this.loadList();
   }
 
   getLatestClassificationRun(doc: DocumentDto): DocumentPipelineRunDto | null {
@@ -235,9 +206,7 @@ export class DocumentListComponent implements OnInit, OnDestroy {
         this.isConfirming.set(false);
         this.closeConfirmDialog();
         this.toaster.success('::Document:ClassificationConfirmed', '::Success');
-        this.stopPolling();
-        this.isLoading.set(true);
-        this.startPolling();
+        this.loadList();
       },
       error: () => {
         this.isConfirming.set(false);

@@ -36,8 +36,7 @@ public class DocumentAppServiceRetryTestModule : AbpModule
 /// <summary>
 /// Issue #94 守护：<see cref="DocumentAppService.RetryPipelineAsync"/> 必须按
 /// "仅 Failed 可重试 / Pending 与 Running 视为并发护栏 / Succeeded 与 Skipped 拒绝 /
-/// 未知 PipelineCode 拒绝"的规则放行，并把对应 BackgroundJob 入队（而非在 AppService
-/// 内部直接驱动 Run 状态）。
+/// 未知 PipelineCode 拒绝"的规则放行，先创建 Pending Run，再把对应 BackgroundJob 入队。
 /// </summary>
 public class DocumentAppService_Retry_Tests
     : PaperbaseApplicationTestBase<DocumentAppServiceRetryTestModule>
@@ -69,8 +68,15 @@ public class DocumentAppService_Retry_Tests
             doc.Id,
             new RetryPipelineInput { PipelineCode = PaperbasePipelines.TextExtraction });
 
+        var retryRun = doc.GetLatestRun(PaperbasePipelines.TextExtraction);
+        retryRun.ShouldNotBeNull();
+        retryRun.Status.ShouldBe(PipelineRunStatus.Pending);
+        retryRun.AttemptNumber.ShouldBe(2);
+
         await _backgroundJobManager.Received(1).EnqueueAsync(
-            Arg.Is<DocumentTextExtractionJobArgs>(a => a.DocumentId == doc.Id),
+            Arg.Is<DocumentTextExtractionJobArgs>(a =>
+                a.DocumentId == doc.Id &&
+                a.PipelineRunId == retryRun.Id),
             Arg.Any<BackgroundJobPriority>(),
             Arg.Any<TimeSpan?>());
     }

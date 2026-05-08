@@ -1,4 +1,4 @@
-﻿using Volo.Abp.Modularity;
+using Volo.Abp.Modularity;
 
 namespace Dignite.Paperbase;
 
@@ -8,5 +8,4 @@ namespace Dignite.Paperbase;
     )]
 public class PaperbaseApplicationTestModule : AbpModule
 {
-
 }

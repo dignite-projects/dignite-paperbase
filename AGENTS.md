@@ -6,6 +6,7 @@ This repository contains an ABP-based project. Before making code changes, read 
 
 - Start by checking `.cursor/rules` and load only the files relevant to the current task.
 - For backend work, prefer the applicable files under `.cursor/rules/framework/common`.
+- For ABP background jobs, also read `.cursor/rules/framework/common/background-jobs.mdc`.
 - For EF Core work, also read `.cursor/rules/framework/data/ef-core.mdc`.
 - For tests, also read `.cursor/rules/framework/testing/patterns.mdc`.
 - For Angular UI work, also read `.cursor/rules/framework/ui/angular.mdc`.

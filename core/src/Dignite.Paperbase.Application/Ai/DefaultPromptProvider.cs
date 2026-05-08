@@ -15,6 +15,7 @@ public class DefaultPromptProvider : IPromptProvider, ITransientDependency
         "Analyze the document text and determine the best matching document type from the provided list. " +
         "The document content is provided as Markdown — treat headings (#), tables, and lists as semantic " +
         "structure signals (e.g. an invoice usually has a table of line items; a contract has numbered clauses). " +
+        "Return JSON only. Confidence values must be decimal scores from 0.0 to 1.0; never return percentages. " +
         "If you are not confident, set confidence low and typeCode to null. " +
         $"Respond in: {language}."
     );

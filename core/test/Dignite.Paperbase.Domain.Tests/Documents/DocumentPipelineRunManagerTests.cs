@@ -42,6 +42,19 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
     // ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
+    public async Task Queue_Creates_Pending_Run_Before_BackgroundJob_Execution()
+    {
+        var doc = CreateDocument();
+
+        var run = await _manager.QueueAsync(doc, PaperbasePipelines.TextExtraction);
+
+        run.Status.ShouldBe(PipelineRunStatus.Pending);
+        run.AttemptNumber.ShouldBe(1);
+        doc.GetLatestRun(PaperbasePipelines.TextExtraction).ShouldBe(run);
+        doc.LifecycleStatus.ShouldBe(DocumentLifecycleStatus.Processing);
+    }
+
+    [Fact]
     public async Task All_KeyPipelines_Succeed_Transitions_To_Ready()
     {
         var doc = CreateDocument();

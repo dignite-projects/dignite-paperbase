@@ -18,10 +18,12 @@ public class ChatConversation : FullAuditedAggregateRoot<Guid>, IMultiTenant
     public virtual int? TopK { get; private set; }
     public virtual double? MinScore { get; private set; }
 
-    private readonly List<ChatMessage> _messages = new();
-    public virtual IReadOnlyCollection<ChatMessage> Messages => _messages.AsReadOnly();
+    public virtual ICollection<ChatMessage> Messages { get; protected set; }
 
-    protected ChatConversation() { }
+    protected ChatConversation()
+    {
+        Messages = new List<ChatMessage>();
+    }
 
     public ChatConversation(
         Guid id,
@@ -42,6 +44,7 @@ public class ChatConversation : FullAuditedAggregateRoot<Guid>, IMultiTenant
         DocumentTypeCode = documentTypeCode;
         TopK = topK;
         MinScore = minScore;
+        Messages = new List<ChatMessage>();
         // ConcurrencyStamp is owned by ABP. Manually rotating it here would conflict
         // with AbpDbContext.UpdateConcurrencyStamp, which sets OriginalValue from the
         // entity's current ConcurrencyStamp at save time — pre-rotated entities would
@@ -55,7 +58,7 @@ public class ChatConversation : FullAuditedAggregateRoot<Guid>, IMultiTenant
 
     public virtual ChatMessage AppendUserMessage(IClock clock, Guid messageId, string content, Guid clientTurnId)
     {
-        if (_messages.Any(m => m.ClientTurnId == clientTurnId))
+        if (Messages.Any(m => m.ClientTurnId == clientTurnId))
             throw new BusinessException(PaperbaseErrorCodes.DuplicateClientTurnId);
 
         var message = new ChatMessage(
@@ -68,7 +71,7 @@ public class ChatConversation : FullAuditedAggregateRoot<Guid>, IMultiTenant
             clientTurnId,
             clock.Now);
 
-        _messages.Add(message);
+        Messages.Add(message);
         return message;
     }
 
@@ -89,7 +92,7 @@ public class ChatConversation : FullAuditedAggregateRoot<Guid>, IMultiTenant
             clientTurnId: null,
             clock.Now);
 
-        _messages.Add(message);
+        Messages.Add(message);
         return message;
     }
 

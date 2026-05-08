@@ -7,6 +7,14 @@
     </h4>
     <div class="d-flex gap-2">
       <button
+        class="btn btn-outline-secondary"
+        (click)="refresh()"
+        [disabled]="isLoading()"
+        title="{{ '::Refresh' | abpLocalization }}"
+      >
+        <i class="fas fa-sync-alt" [class.fa-spin]="isLoading()"></i>
+      </button>
+      <button
         class="btn"
         [class.btn-warning]="reviewStatusFilter() === DocumentReviewStatus.PendingReview"
         [class.btn-outline-warning]="reviewStatusFilter() !== DocumentReviewStatus.PendingReview"

@@ -73,6 +73,12 @@ public class DocumentPipelineRun : Entity<Guid>, IMultiTenant, IHasExtraProperti
         StartedAt = now;
     }
 
+    internal void MarkPending(DateTime now)
+    {
+        Status = PipelineRunStatus.Pending;
+        StartedAt = now;
+    }
+
     internal void MarkSucceeded(DateTime now)
     {
         Status = PipelineRunStatus.Succeeded;

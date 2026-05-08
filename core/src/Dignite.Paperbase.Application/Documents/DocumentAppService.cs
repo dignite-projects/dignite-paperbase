@@ -7,16 +7,13 @@ using System.Text;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Documents.Pipelines.Classification;
-using Dignite.Paperbase.Documents.Pipelines.Embedding;
-using Dignite.Paperbase.Documents.Pipelines.TextExtraction;
+using Dignite.Paperbase.Documents.Pipelines;
 using Dignite.Paperbase.Permissions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging;
 using Dignite.Paperbase.Documents.Events;
 using Volo.Abp;
 using Volo.Abp.Application.Dtos;
-using Volo.Abp.BackgroundJobs;
 using Volo.Abp.BlobStoring;
 using Volo.Abp.Content;
 using Volo.Abp.Data;
@@ -32,8 +29,8 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentRelationRepository _relationRepository;
     private readonly IBlobContainer<PaperbaseDocumentContainer> _blobContainer;
-    private readonly IBackgroundJobManager _backgroundJobManager;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
+    private readonly DocumentPipelineJobScheduler _pipelineJobScheduler;
     private readonly IDistributedEventBus _distributedEventBus;
     private readonly ILocalEventBus _localEventBus;
 
@@ -41,16 +38,16 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         IDocumentRepository documentRepository,
         IDocumentRelationRepository relationRepository,
         IBlobContainer<PaperbaseDocumentContainer> blobContainer,
-        IBackgroundJobManager backgroundJobManager,
         DocumentPipelineRunManager pipelineRunManager,
+        DocumentPipelineJobScheduler pipelineJobScheduler,
         IDistributedEventBus distributedEventBus,
         ILocalEventBus localEventBus)
     {
         _documentRepository = documentRepository;
         _relationRepository = relationRepository;
         _blobContainer = blobContainer;
-        _backgroundJobManager = backgroundJobManager;
         _pipelineRunManager = pipelineRunManager;
+        _pipelineJobScheduler = pipelineJobScheduler;
         _distributedEventBus = distributedEventBus;
         _localEventBus = localEventBus;
     }
@@ -58,7 +55,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     public virtual async Task<DocumentDto> GetAsync(Guid id)
     {
         await CheckPolicyAsync(PaperbasePermissions.Documents.Default);
-        var document = await _documentRepository.GetAsync(id);
+        var document = await _documentRepository.GetAsync(id, includeDetails: true);
         return ObjectMapper.Map<Document, DocumentDto>(document);
     }
 
@@ -131,8 +128,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
 
         await _documentRepository.InsertAsync(document, autoSave: true);
 
-        await _backgroundJobManager.EnqueueAsync(
-            new DocumentTextExtractionJobArgs { DocumentId = document.Id });
+        await _pipelineJobScheduler.QueueAsync(document, PaperbasePipelines.TextExtraction);
 
         return ObjectMapper.Map<Document, DocumentDto>(document);
     }
@@ -141,7 +137,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     {
         await CheckPolicyAsync(PaperbasePermissions.Documents.Default);
 
-        var document = await _documentRepository.GetAsync(id);
+        var document = await _documentRepository.GetAsync(id, includeDetails: true);
         var stream = await _blobContainer.GetAsync(document.OriginalFileBlobName);
 
         return new RemoteStreamContent(
@@ -154,7 +150,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     [Authorize(PaperbasePermissions.Documents.Delete)]
     public virtual async Task DeleteAsync(Guid id)
     {
-        var document = await _documentRepository.GetAsync(id);
+        var document = await _documentRepository.GetAsync(id, includeDetails: true);
 
         // 立即投递本地事件（onUnitOfWorkComplete:false），handler 在主 UoW 仍活跃时
         // 注册 after-commit 回调，主事务提交后再以新 UoW 清理各 provider 的 chunks。
@@ -221,8 +217,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     /// <summary>
     /// 重试单条 pipeline。当前仅 <see cref="PipelineRunStatus.Failed"/> 可重试；
     /// Pending/Running 抛 <c>PipelineRetryInProgress</c>，Succeeded/Skipped 抛 <c>PipelineNotRetryable</c>。
-    /// 重试只入队对应的 BackgroundJob，新的 <c>DocumentPipelineRun</c> 由 Job 的 <c>StartAsync</c> 创建——
-    /// 避免 AppService 与 Job 各创建一条 Pending Run 的竞态。
+    /// 重试先创建 Pending Run，再把带 PipelineRunId 的 BackgroundJob 入队。
     /// 链式重放语义（隐式）：重试 <c>text-extraction</c> → 成功后链触发 <c>classification</c> → <c>embedding</c>；
     /// 重试 <c>classification</c> → 链触发 <c>embedding</c>；重试 <c>embedding</c> 是叶子。
     /// </summary>
@@ -235,7 +230,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
                 .WithData("PipelineCode", input.PipelineCode);
         }
 
-        var document = await _documentRepository.GetAsync(id);
+        var document = await _documentRepository.GetAsync(id, includeDetails: true);
 
         // 显式租户断言 + 软删除门：不依赖 ambient DataFilter。
         // 反例参考 .claude/rules/doc-chat-anti-patterns.md 反例 B。
@@ -277,37 +272,17 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
             "RetryPipelineAsync user={UserId} tenant={TenantId} doc={DocumentId} pipeline={PipelineCode} previousAttempt={Attempt}",
             CurrentUser.Id, CurrentTenant.Id, document.Id, input.PipelineCode, latestRun.AttemptNumber);
 
-        await EnqueuePipelineJobAsync(document.Id, input.PipelineCode);
-    }
-
-    /// <summary>
-    /// 按 PipelineCode 入队对应 BackgroundJob。
-    /// 不在 AppService 里调用 <see cref="DocumentPipelineRunManager.StartAsync"/>——
-    /// 新 Run 由 BackgroundJob 自身按"原始链路一致"的方式创建，避免出现两条 Pending Run。
-    /// </summary>
-    protected virtual Task EnqueuePipelineJobAsync(Guid documentId, string pipelineCode)
-    {
-        return pipelineCode switch
-        {
-            PaperbasePipelines.TextExtraction => _backgroundJobManager.EnqueueAsync(
-                new DocumentTextExtractionJobArgs { DocumentId = documentId }),
-            PaperbasePipelines.Classification => _backgroundJobManager.EnqueueAsync(
-                new DocumentClassificationJobArgs { DocumentId = documentId }),
-            PaperbasePipelines.Embedding => _backgroundJobManager.EnqueueAsync(
-                new DocumentEmbeddingJobArgs { DocumentId = documentId }),
-            _ => throw new BusinessException(PaperbaseErrorCodes.UnknownPipelineCode)
-                .WithData("PipelineCode", pipelineCode)
-        };
+        await _pipelineJobScheduler.QueueAsync(document, input.PipelineCode);
     }
 
     [Authorize(PaperbasePermissions.Documents.ConfirmClassification)]
     public virtual async Task<DocumentDto> ConfirmClassificationAsync(Guid id, ConfirmClassificationInput input)
     {
-        var document = await _documentRepository.GetAsync(id);
-        var run = await _pipelineRunManager.StartAsync(document, PaperbasePipelines.Classification);
+        var document = await _documentRepository.GetAsync(id, includeDetails: true);
+        var run = await _pipelineRunManager.QueueAsync(document, PaperbasePipelines.Classification);
+        await _pipelineRunManager.BeginAsync(document, run);
 
         await _pipelineRunManager.CompleteManualClassificationAsync(document, run, input.DocumentTypeCode);
-
         await _distributedEventBus.PublishAsync(new DocumentClassifiedEto
         {
             DocumentId = document.Id,
@@ -317,10 +292,8 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
             Markdown = document.Markdown
         });
 
-        await _backgroundJobManager.EnqueueAsync(
-            new DocumentEmbeddingJobArgs { DocumentId = document.Id });
+        await _pipelineJobScheduler.QueueAsync(document, PaperbasePipelines.Embedding);
 
-        await _documentRepository.UpdateAsync(document);
         return ObjectMapper.Map<Document, DocumentDto>(document);
     }
 

@@ -25,7 +25,10 @@ public class DocumentPipelineRunManager : DomainService
         _documentTypeOptions = documentTypeOptions.Value;
     }
 
-    public virtual Task<DocumentPipelineRun> StartAsync(Document document, string pipelineCode)
+    public virtual Task<DocumentPipelineRun> QueueAsync(
+        Document document,
+        string pipelineCode,
+        Guid? pipelineRunId = null)
     {
         var attemptNumber = document.PipelineRuns
             .Where(r => r.PipelineCode == pipelineCode)
@@ -34,18 +37,36 @@ public class DocumentPipelineRunManager : DomainService
             .Max() + 1;
 
         var run = new DocumentPipelineRun(
-            GuidGenerator.Create(),
+            pipelineRunId ?? GuidGenerator.Create(),
             document.Id,
             document.TenantId,
             pipelineCode,
             attemptNumber);
 
-        run.MarkRunning(Clock.Now);
+        run.MarkPending(Clock.Now);
         document.AddPipelineRun(run);
 
         DeriveLifecycle(document);
 
         return Task.FromResult(run);
+    }
+
+    public virtual async Task<DocumentPipelineRun> StartAsync(
+        Document document,
+        string pipelineCode,
+        Guid? pipelineRunId = null)
+    {
+        var run = await QueueAsync(document, pipelineCode, pipelineRunId);
+        run.MarkRunning(Clock.Now);
+        DeriveLifecycle(document);
+        return run;
+    }
+
+    public virtual Task BeginAsync(Document document, DocumentPipelineRun run)
+    {
+        run.MarkRunning(Clock.Now);
+        DeriveLifecycle(document);
+        return Task.CompletedTask;
     }
 
     public virtual Task CompleteAsync(

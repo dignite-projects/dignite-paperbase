@@ -47,7 +47,17 @@ sudo apt install -y postgresql-16-pgvector
 
 ## Getting Started (Local Development)
 
-### 1. Configure the database
+### 1. Start infrastructure services
+
+Qdrant (vector search) and PaddleOCR (OCR sidecar) run as Docker containers. Start them before the backend:
+
+```bash
+cd host
+docker compose up -d
+```
+
+
+### 2. Configure the database
 
 Create `host/src/appsettings.Development.json` with your local database connection:
 
@@ -69,7 +79,7 @@ Create `host/src/appsettings.Development.json` with your local database connecti
 
 > This file is git-ignored. In Development mode, the application automatically generates temporary OpenIddict certificates — no `.pfx` file is needed.
 
-### 2. Install client-side libraries
+### 3. Install client-side libraries
 
 The host project includes a login UI that requires client-side libraries. Run once after cloning or when dependencies change:
 
@@ -78,14 +88,14 @@ cd host/src
 abp install-libs
 ```
 
-### 3. Run the backend
+### 4. Run the backend
 
 ```bash
 cd host/src
 dotnet run
 ```
 
-### 4. Install frontend dependencies and run Angular
+### 5. Install frontend dependencies and run Angular
 
 ```bash
 cd host/angular
@@ -107,6 +117,7 @@ For database connection strings, OpenIddict signing certificate, string-encrypti
 
 Feature docs (start here for any specific topic):
 
+* [Local development setup](./docs/local-development.md) — prerequisites, Docker services, configuration, troubleshooting
 * [Text extraction](./docs/text-extraction.md) — Markdown-first contract, PaddleOCR / Azure DI configuration
 * [Classification](./docs/classification.md) — document-type pipeline and prompt tuning
 * [Embedding](./docs/embedding.md) — Markdown-aware chunking, switching the embedding model

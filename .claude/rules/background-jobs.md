@@ -1,0 +1,39 @@
+---
+description: "ABP background job unit of work boundaries and long-running work rules"
+paths:
+  - "**/*BackgroundJob*.cs"
+  - "**/*Job.cs"
+  - "**/*JobArgs.cs"
+---
+
+# ABP Background Job Rules
+
+## Unit Of Work Boundaries
+
+Do not wrap an entire background job `ExecuteAsync` in one long `[UnitOfWork]` when the job performs slow or external work, including but not limited to:
+
+- blob or file IO
+- OCR
+- LLM or AI provider calls
+- embedding generation
+- vector-store operations such as Qdrant upsert
+- HTTP calls or other network IO
+- long CPU-bound processing
+
+Use short unit-of-work phases instead:
+
+1. Begin phase: load the required aggregate(s), create or mark execution state as running, save, and commit.
+2. External phase: perform slow IO, AI, vector-store, network, or CPU-bound work outside any ambient UoW.
+3. Complete phase: reload the aggregate(s), apply success/failure/skipped state, save, and commit.
+
+This avoids holding database connections, locks, or transactions while external work is running. Long ambient UoW scopes can block normal HTTP reads and cause SQL command timeouts even for simple primary-key queries.
+
+## Aggregate Persistence
+
+- Modify child entities through their aggregate root.
+- Do not introduce repositories for child entities to work around persistence issues.
+- If a job carries an execution/run identifier in its args, persist that same identifier before enqueueing or beginning the job, and use it when completing or failing the job.
+
+## Tests
+
+When changing a background job that performs slow or external work, keep or add tests that verify the external work runs without an ambient UoW. A direct assertion such as `_unitOfWorkManager.Current.ShouldBeNull()` at the external call boundary is preferred.

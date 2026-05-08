@@ -112,8 +112,14 @@ public class DocumentClassificationBackgroundJob_Tests
             Arg.Any<bool>());
 
         // 入队了 Embedding Job
+        var embeddingRun = doc.GetLatestRun(PaperbasePipelines.Embedding);
+        embeddingRun.ShouldNotBeNull();
+        embeddingRun.Status.ShouldBe(PipelineRunStatus.Pending);
+
         await _backgroundJobManager.Received(1).EnqueueAsync(
-            Arg.Is<DocumentEmbeddingJobArgs>(a => a.DocumentId == doc.Id),
+            Arg.Is<DocumentEmbeddingJobArgs>(a =>
+                a.DocumentId == doc.Id &&
+                a.PipelineRunId == embeddingRun.Id),
             Arg.Any<BackgroundJobPriority>(),
             Arg.Any<TimeSpan?>());
     }
