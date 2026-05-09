@@ -393,11 +393,11 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         //   wraps IChatClient with .UseFunctionInvocation(); skipping the agent's default
         //   wrapping prevents a redundant FunctionInvokingChatClient layer and ensures the
         //   host's MaxToolIterations cap is the only one in effect.
-        // - No ChatHistoryProvider on agent options: verified empirically that MAF v1.2.0
-        //   does not auto-call ProvideChatHistoryAsync during RunAsync against our wiring
-        //   (multi-turn count test captures 1/3/5 messages, no duplication). History is
-        //   loaded directly via DocumentChatHistoryProvider and prepended in InvokeAgentAsync /
-        //   FillStreamingChannelAsync; persistence is owned by the ChatConversation aggregate.
+        // - ChatHistoryProvider = _historyProvider: MAF auto-calls ProvideChatHistoryAsync
+        //   on each RunAsync; history is loaded from the ChatConversation aggregate keyed
+        //   by ConversationId stashed in AgentSession.StateBag below. Persistence stays in
+        //   DocumentChatAppService (citations / IsDegraded are not on MAF ChatMessage), so
+        //   StoreChatHistoryAsync remains the base-class no-op.
         // - Instructions live inside ChatOptions because ChatClientAgentOptions does not
         //   expose a top-level Instructions property in v1.2.0 (only the convenience
         //   ChatClientAgent(client, instructions: "...") constructor does); the docs'
@@ -405,6 +405,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         var agentOptions = new ChatClientAgentOptions
         {
             UseProvidedChatClientAsIs = true,
+            ChatHistoryProvider = _historyProvider,
             ChatOptions = new ChatOptions
             {
                 Instructions = instructions,
@@ -415,6 +416,13 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
 
         var agent = new ChatClientAgent(_chatClient, agentOptions);
         var session = await agent.CreateSessionAsync(cancellationToken);
+
+        // Stash conversation id so DocumentChatHistoryProvider can resolve which
+        // conversation to load in ProvideChatHistoryAsync — the provider contract
+        // forbids storing session-specific state in provider fields.
+        session.StateBag.SetValue(
+            DocumentChatHistoryProvider.SessionStateKey,
+            new DocumentChatSessionState(conversation.Id));
 
         return new AgentSetup(agent, session, capture);
     }
@@ -454,11 +462,15 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         CancellationToken cancellationToken = default)
     {
         var setup = await PrepareAgentSetupAsync(conversation, cancellationToken);
-        var history = await _historyProvider.GetHistoryAsync(conversation.Id, cancellationToken);
-        var messages = history
-            .Concat([new MeAi.ChatMessage(MeAi.ChatRole.User, message)])
-            .ToList();
-        var response = await setup.Agent.RunAsync(messages, setup.Session, options: null, cancellationToken);
+        // History prepending is handled by MAF: ChatClientAgent calls
+        // DocumentChatHistoryProvider.InvokingAsync inside RunAsync, which reads the
+        // conversation id from the session StateBag and prepends history with the
+        // ChatHistory source-stamp. We only pass the new turn's user message here.
+        var response = await setup.Agent.RunAsync(
+            new MeAi.ChatMessage(MeAi.ChatRole.User, message),
+            setup.Session,
+            options: null,
+            cancellationToken);
         return new AgentRunOutcome(response.Text, setup.Capture);
     }
 
@@ -613,13 +625,10 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         try
         {
             var setup = await PrepareAgentSetupAsync(conversation, ct);
-            var history = await _historyProvider.GetHistoryAsync(conversation.Id, ct);
-            var messages = history
-                .Concat([new MeAi.ChatMessage(MeAi.ChatRole.User, input.Message)])
-                .ToList();
-
+            // MAF prepends history via DocumentChatHistoryProvider — see InvokeAgentAsync.
+            var newUserMessage = new MeAi.ChatMessage(MeAi.ChatRole.User, input.Message);
             await foreach (var update in setup.Agent.RunStreamingAsync(
-                messages, setup.Session, options: null, ct))
+                newUserMessage, setup.Session, options: null, ct))
             {
                 var text = update.Text;
                 if (!string.IsNullOrEmpty(text))
