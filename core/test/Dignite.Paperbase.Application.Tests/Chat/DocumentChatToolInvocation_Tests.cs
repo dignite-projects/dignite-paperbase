@@ -265,6 +265,14 @@ public class DocumentChatToolInvocation_Tests
         turn.CitationCount.ShouldBe(1);
         turn.IsDegraded.ShouldBeFalse();
         turn.Outcome.ShouldBe(DocumentChatTelemetryOutcome.Success);
+
+        // Issue #98: per-turn telemetry derives ToolCallSummary / ToolCallDepth /
+        // GroundingSource from the per-tool entries on the same audit scope. Here
+        // only search_paperbase_documents was invoked once → Vector grounding.
+        turn.ToolCallDepth.ShouldBe(1);
+        turn.ToolCallSummary.ShouldNotBeNull();
+        turn.ToolCallSummary!.ShouldContainKeyAndValue(ChatConsts.SearchPaperbaseDocumentsToolName, 1);
+        turn.GroundingSource.ShouldBe(GroundingSource.Vector);
     }
 
     [Fact]
