@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
@@ -32,7 +33,7 @@ public class DocumentChatHistoryProvider_Tests
         var conversationId = await CreateConversationWithMessagesAsync();
         var provider = new DocumentChatHistoryProvider(_scopeFactory);
 
-        var messages = (await provider.GetHistoryAsync(conversationId)).ToList();
+        var messages = (await provider.LoadHistoryAsync(conversationId)).ToList();
 
         messages.Count.ShouldBe(2);
         messages[0].Role.ShouldBe(ChatRole.User);
@@ -49,7 +50,7 @@ public class DocumentChatHistoryProvider_Tests
         // even if the conversation has been deleted between authorization and load.
         var provider = new DocumentChatHistoryProvider(_scopeFactory);
 
-        var messages = await provider.GetHistoryAsync(Guid.NewGuid());
+        var messages = await provider.LoadHistoryAsync(Guid.NewGuid());
 
         messages.ShouldBeEmpty();
     }
@@ -88,8 +89,8 @@ public class DocumentChatHistoryProvider_Tests
 
         var provider = new DocumentChatHistoryProvider(scopeFactory);
 
-        await provider.GetHistoryAsync(conversationId);
-        await provider.GetHistoryAsync(conversationId);
+        await provider.LoadHistoryAsync(conversationId);
+        await provider.LoadHistoryAsync(conversationId);
 
         scopeFactory.Received(2).CreateScope();
     }
@@ -97,21 +98,90 @@ public class DocumentChatHistoryProvider_Tests
     [Fact]
     public async Task Should_Return_Messages_In_Chronological_Order()
     {
-        // Caller (DocumentChatAppService) prepends history to the new user message and
-        // passes the lot to RunAsync; ordering must be ascending by creation time so the
-        // LLM sees the conversation as it actually unfolded.
+        // MAF prepends history into the LLM request in the order returned, so ordering
+        // must be ascending by creation time. Role alternation (user → assistant) of the
+        // seeded data is the proxy for creation-time ordering since CreationTime is not
+        // observable on MeAi.ChatMessage.
         var conversationId = await CreateConversationWithMessagesAsync();
         var provider = new DocumentChatHistoryProvider(_scopeFactory);
 
-        var messages = (await provider.GetHistoryAsync(conversationId)).ToList();
+        var messages = (await provider.LoadHistoryAsync(conversationId)).ToList();
 
         for (var i = 1; i < messages.Count; i++)
         {
-            // CreationTime ordering can't be observed on MeAi.ChatMessage directly, but
-            // role alternation (user → assistant) of the seeded data is the proxy.
             messages[i - 1].Role.ShouldBe(ChatRole.User);
             messages[i].Role.ShouldBe(ChatRole.Assistant);
         }
+    }
+
+    [Fact]
+    public async Task Provider_Returns_Empty_When_StateBag_Missing_ConversationId()
+    {
+        // ProvideChatHistoryAsync is the entry point MAF actually uses (via
+        // InvokingAsync inside the agent pipeline). With no conversation id stashed in
+        // the session StateBag, the provider must yield an empty history rather than
+        // failing — that's how a freshly-created session behaves before the AppService
+        // wires it up.
+        var provider = new DocumentChatHistoryProvider(_scopeFactory);
+        var session = new TestAgentSession();
+
+        var messages = (await InvokeProviderAsync(provider, session)).ToList();
+
+        // Default InvokingCoreAsync concatenates [] history with the request messages
+        // we passed in, so we expect just the request message back unchanged.
+        messages.Count.ShouldBe(1);
+        messages[0].Role.ShouldBe(ChatRole.User);
+        messages[0].Text.ShouldBe("ping");
+    }
+
+    [Fact]
+    public async Task Provider_Loads_History_From_StateBag_ConversationId()
+    {
+        // End-to-end through the MAF entry point: write the conversation id to the
+        // session StateBag (the AppService side of the contract), then verify the
+        // provider's InvokingAsync returns history-then-request, with the history
+        // messages stamped as ChatHistory source so downstream context providers
+        // (CompactionProvider) can distinguish them.
+        var conversationId = await CreateConversationWithMessagesAsync();
+        var provider = new DocumentChatHistoryProvider(_scopeFactory);
+        var session = new TestAgentSession();
+
+        session.StateBag.SetValue(
+            DocumentChatHistoryProvider.SessionStateKey,
+            new DocumentChatSessionState(conversationId));
+
+        var messages = (await InvokeProviderAsync(provider, session)).ToList();
+
+        // History (2) + new request (1)
+        messages.Count.ShouldBe(3);
+        messages[0].Text.ShouldBe("hello");
+        messages[1].Text.ShouldBe("hi");
+        messages[2].Text.ShouldBe("ping");
+
+        // History entries must be source-stamped so CompactionProvider treats them as
+        // chat history rather than fresh request when it integrates next.
+        messages[0].GetAgentRequestMessageSourceType().ShouldBe(AgentRequestMessageSourceType.ChatHistory);
+        messages[1].GetAgentRequestMessageSourceType().ShouldBe(AgentRequestMessageSourceType.ChatHistory);
+        messages[2].GetAgentRequestMessageSourceType().ShouldNotBe(AgentRequestMessageSourceType.ChatHistory);
+    }
+
+    private static async Task<IEnumerable<MeAi.ChatMessage>> InvokeProviderAsync(
+        DocumentChatHistoryProvider provider,
+        AgentSession session)
+    {
+        // InvokingContext ctor is annotated [Experimental(MAAI001)]; suppression is
+        // scoped to this helper so production code stays clean of the diagnostic.
+        // NSubstitute can stand in for AIAgent (an abstract class) since we only need
+        // a non-null reference for the ctor's null-guard — InvokingCoreAsync never
+        // touches its members.
+#pragma warning disable MAAI001
+        var agent = Substitute.For<AIAgent>();
+        var ctx = new ChatHistoryProvider.InvokingContext(
+            agent,
+            session,
+            [new MeAi.ChatMessage(ChatRole.User, "ping")]);
+#pragma warning restore MAAI001
+        return await provider.InvokingAsync(ctx);
     }
 
     private async Task<Guid> CreateConversationWithMessagesAsync()
@@ -138,5 +208,15 @@ public class DocumentChatHistoryProvider_Tests
 
             return conversation.Id;
         });
+    }
+
+    /// <summary>
+    /// Minimal in-test <see cref="AgentSession"/>: real ChatClient sessions are created
+    /// by <c>ChatClientAgent.CreateSessionAsync</c> which requires a live LLM client;
+    /// this stand-in avoids that dependency since the provider only touches StateBag.
+    /// </summary>
+    private sealed class TestAgentSession : AgentSession
+    {
+        public TestAgentSession() : base(new AgentSessionStateBag()) { }
     }
 }

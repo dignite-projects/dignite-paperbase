@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.DependencyInjection;
 using MeAi = Microsoft.Extensions.AI;
@@ -10,30 +11,25 @@ using MeAi = Microsoft.Extensions.AI;
 namespace Dignite.Paperbase.Chat;
 
 /// <summary>
-/// Provides prior chat messages for a document-chat conversation, returning them in
-/// MAF's <see cref="MeAi.ChatMessage"/> shape ready to be prepended to the next
-/// agent turn.
+/// MAF <see cref="ChatHistoryProvider"/> backed by the <c>ChatConversation</c> aggregate.
+/// Read-only: persistence (including <c>CitationsJson</c> and <c>IsDegraded</c>, neither
+/// of which exists on <see cref="MeAi.ChatMessage"/>) is owned by
+/// <see cref="DocumentChatAppService"/> via <c>ChatConversation.AppendUserMessage</c>
+/// / <c>AppendAssistantMessage</c>; <see cref="StoreChatHistoryAsync"/> stays at the
+/// base class no-op default.
 ///
 /// <para>
-/// This is a plain ABP service following the project's <c>*Provider</c> convention
-/// (cf. <see cref="IPromptProvider"/>); it does NOT inherit from MAF's
-/// <c>ChatHistoryProvider</c> and is not wired into the agent pipeline. Empirically
-/// MAF v1.2.0's <c>ChatClientAgent</c> does not auto-load history through that
-/// pipeline against our wiring, so <see cref="DocumentChatAppService"/> calls
-/// <see cref="GetHistoryAsync"/> directly and prepends the result to
-/// <c>ChatClientAgent.RunAsync</c> messages.
-/// </para>
-///
-/// <para>
-/// Persistence is owned by the <c>ChatConversation</c> aggregate root, written
-/// via <c>ChatConversation.AppendUserMessage</c> / <c>AppendAssistantMessage</c>;
-/// this provider is read-only and uses <see cref="IChatConversationRepository"/>
-/// (storage backend irrelevant — Postgres in production, SQLite in tests).
+/// The conversation id is taken from <see cref="AgentSession.StateBag"/> under
+/// <see cref="SessionStateKey"/> rather than ambient context, because per the
+/// <see cref="ChatHistoryProvider"/> contract a provider instance must be safe to
+/// share across many sessions.
 /// </para>
 /// </summary>
-public class DocumentChatHistoryProvider : ITransientDependency
+public class DocumentChatHistoryProvider : ChatHistoryProvider, ITransientDependency
 {
-    private const int HistoryMessageTake = 50;
+    public const string SessionStateKey = "Paperbase.DocumentChat";
+
+    protected virtual int MaxHistoryMessages => 50;
 
     private readonly IServiceScopeFactory _scopeFactory;
 
@@ -42,18 +38,40 @@ public class DocumentChatHistoryProvider : ITransientDependency
         _scopeFactory = scopeFactory;
     }
 
-    /// <summary>
-    /// Returns the most recent <see cref="HistoryMessageTake"/> messages of
-    /// <paramref name="conversationId"/> in chronological order. Returns an empty
-    /// list if the conversation is missing — callers treat that as "no prior
-    /// history" rather than an error.
-    /// </summary>
+    /// <inheritdoc />
     /// <remarks>
-    /// Uses a fresh DI scope per call so the provider can be invoked safely from
-    /// background threads / Hangfire / any context where the ambient scope might
-    /// be missing or stale.
+    /// A fresh DI scope is used per call so the provider can be invoked from background
+    /// or non-HTTP contexts where the ambient scope might be missing or stale.
+    /// Returns an empty enumerable when the StateBag has no conversation id, or when the
+    /// conversation has been deleted between authorization and load — callers treat that
+    /// as "no prior history" rather than an error.
     /// </remarks>
-    public virtual async Task<IReadOnlyList<MeAi.ChatMessage>> GetHistoryAsync(
+    protected override async ValueTask<IEnumerable<MeAi.ChatMessage>> ProvideChatHistoryAsync(
+        InvokingContext context,
+        CancellationToken cancellationToken = default)
+    {
+        var session = context.Session;
+        if (session is null)
+        {
+            return [];
+        }
+
+        var state = session.StateBag.GetValue<DocumentChatSessionState>(SessionStateKey);
+        if (state is null || state.ConversationId == Guid.Empty)
+        {
+            return [];
+        }
+
+        return await LoadHistoryAsync(state.ConversationId, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Loads history without going through the MAF invocation pipeline. Exposed as
+    /// <c>internal virtual</c> so tests can exercise the database adapter directly
+    /// without constructing an <see cref="InvokingContext"/> (which carries the
+    /// experimental <c>MAAI001</c> diagnostic).
+    /// </summary>
+    internal virtual async Task<IReadOnlyList<MeAi.ChatMessage>> LoadHistoryAsync(
         Guid conversationId,
         CancellationToken cancellationToken = default)
     {
@@ -62,7 +80,7 @@ public class DocumentChatHistoryProvider : ITransientDependency
 
         var conversation = await repository.FindByIdWithMessagesAsync(
             conversationId,
-            HistoryMessageTake,
+            MaxHistoryMessages,
             cancellationToken);
 
         if (conversation is null)
