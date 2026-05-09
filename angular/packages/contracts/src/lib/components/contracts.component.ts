@@ -146,50 +146,57 @@ import {
             </tr>
           </thead>
           <tbody>
-            <tr *ngIf="loading">
-              <td colspan="8" class="text-center py-4">
-                <span class="spinner-border spinner-border-sm me-2"></span>
-                {{ 'AbpUi::Loading' | abpLocalization }}
-              </td>
-            </tr>
-            <tr
-              *ngFor="let contract of contracts"
-              class="contract-row"
-              role="button"
-              tabindex="0"
-              (click)="open(contract)"
-              (keydown.enter)="open(contract)"
-            >
-              <td>
-                <div class="fw-semibold">{{ contract.title || '-' }}</div>
-                <div class="text-muted small">{{ contract.contractNumber || contract.documentId }}</div>
-              </td>
-              <td>{{ contract.counterpartyName || '-' }}</td>
-              <td>{{ contract.signedDate | date: 'yyyy-MM-dd' }}</td>
-              <td>{{ contract.expirationDate | date: 'yyyy-MM-dd' }}</td>
-              <td class="text-end">
-                {{ contract.totalAmount == null ? '-' : (contract.totalAmount | number: '1.0-0') }}
-                <span *ngIf="contract.totalAmount != null">{{ contract.currency || 'JPY' }}</span>
-              </td>
-              <td>
-                <span class="badge" [ngClass]="statusClass(contract)">
-                  {{ statusText(contract.status) }}
-                </span>
-              </td>
-              <td>
-                <span class="badge" [ngClass]="reviewStatusClass(contract.reviewStatus)">
-                  {{ reviewStatusLocalizationKey(contract.reviewStatus) | abpLocalization }}
-                </span>
-              </td>
-              <td class="text-end">
-                {{ contract.extractionConfidence == null ? '-' : (contract.extractionConfidence | percent: '1.0-0') }}
-              </td>
-            </tr>
-            <tr *ngIf="!loading && contracts.length === 0">
-              <td colspan="8" class="text-center text-muted py-4">
-                {{ 'AbpUi::NoDataAvailable' | abpLocalization }}
-              </td>
-            </tr>
+            @if (loading) {
+              <tr>
+                <td colspan="8" class="text-center py-4">
+                  <span class="spinner-border spinner-border-sm me-2"></span>
+                  {{ 'AbpUi::Loading' | abpLocalization }}
+                </td>
+              </tr>
+            }
+            @for (contract of contracts; track contract.id) {
+              <tr
+                class="contract-row"
+                role="button"
+                tabindex="0"
+                (click)="open(contract)"
+                (keydown.enter)="open(contract)"
+              >
+                <td>
+                  <div class="fw-semibold">{{ contract.title || '-' }}</div>
+                  <div class="text-muted small">{{ contract.contractNumber || contract.documentId }}</div>
+                </td>
+                <td>{{ contract.counterpartyName || '-' }}</td>
+                <td>{{ contract.signedDate | date: 'yyyy-MM-dd' }}</td>
+                <td>{{ contract.expirationDate | date: 'yyyy-MM-dd' }}</td>
+                <td class="text-end">
+                  {{ contract.totalAmount === null ? '-' : (contract.totalAmount | number: '1.0-0') }}
+                  @if (contract.totalAmount !== null) {
+                    <span>{{ contract.currency || 'JPY' }}</span>
+                  }
+                </td>
+                <td>
+                  <span class="badge" [ngClass]="statusClass(contract)">
+                    {{ statusText(contract.status) }}
+                  </span>
+                </td>
+                <td>
+                  <span class="badge" [ngClass]="reviewStatusClass(contract.reviewStatus)">
+                    {{ reviewStatusLocalizationKey(contract.reviewStatus) | abpLocalization }}
+                  </span>
+                </td>
+                <td class="text-end">
+                  {{ contract.extractionConfidence === null ? '-' : (contract.extractionConfidence | percent: '1.0-0') }}
+                </td>
+              </tr>
+            }
+            @if (!loading && contracts.length === 0) {
+              <tr>
+                <td colspan="8" class="text-center text-muted py-4">
+                  {{ 'AbpUi::NoDataAvailable' | abpLocalization }}
+                </td>
+              </tr>
+            }
           </tbody>
         </table>
       </div>

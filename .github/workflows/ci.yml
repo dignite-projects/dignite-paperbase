@@ -20,10 +20,10 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore core
-        run: dotnet restore core/Dignite.Paperbase.slnx
+        run: dotnet restore Dignite.Paperbase.slnx
 
       - name: Build core
-        run: dotnet build core/Dignite.Paperbase.slnx --no-restore --configuration Release
+        run: dotnet build Dignite.Paperbase.slnx --no-restore --configuration Release
 
       - name: Restore host
         run: dotnet restore host/src/Dignite.Paperbase.Host.csproj
@@ -75,6 +75,6 @@ jobs:
         run: npx nx run-many -t lint
         working-directory: angular
 
-      - name: Test
-        run: npx nx run-many -t test
-        working-directory: angular
+      # Test step intentionally disabled — no *.spec.ts / *.test.ts files exist in the
+      # workspace yet, so vitest fails with "No tests found" before any rule runs.
+      # Re-enable when the first Angular spec lands.

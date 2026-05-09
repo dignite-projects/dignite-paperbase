@@ -43,7 +43,7 @@
 
           <dt class="col-sm-3 text-muted">{{ '::Contract:ExtractionConfidence' | abpLocalization }}</dt>
           <dd class="col-sm-9">
-            @if (c.extractionConfidence != null) {
+            @if (c.extractionConfidence !== null) {
               {{ c.extractionConfidence | percent: '1.0-0' }}
             } @else {
               —

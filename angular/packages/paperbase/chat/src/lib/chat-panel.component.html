@@ -79,7 +79,7 @@
           </div>
           @if (selectedCitation()?.citation; as citation) {
             <span class="badge bg-light text-dark border">
-              @if (citation.chunkIndex != null) {
+              @if (citation.chunkIndex !== null) {
                 chunk #{{ citation.chunkIndex }}
               } @else {
                 citation
