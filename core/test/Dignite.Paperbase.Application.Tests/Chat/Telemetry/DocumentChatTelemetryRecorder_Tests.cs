@@ -116,6 +116,47 @@ public class DocumentChatTelemetryRecorder_Tests
     }
 
     [Fact]
+    public void RecordTurn_PreservesCitationsTrimmedFromCaller()
+    {
+        // The capture knows whether MaxCapturedCitations clamped the result set; the
+        // AppService passes that flag through to the recorder so the audit row carries
+        // a single, faithful per-turn signal.
+        using var auditScope = _auditingManager.BeginScope();
+
+        _recorder.RecordToolCall(BuildToolEntry(ChatConsts.SearchPaperbaseDocumentsToolName));
+
+        _recorder.RecordTurn(BuildTurnEntry(citationsTrimmed: true));
+
+        var turn = ReadTurnFromAuditScope();
+        turn.CitationsTrimmed.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GetCurrentTurnGroundingSource_DelegatesToClassify()
+    {
+        // The AppService uses this helper to derive ChatTurnResultDto.GroundingSource
+        // (and IsDegraded) BEFORE RecordTurn fires. It must produce the same
+        // classification the audit entry will eventually receive — single source of truth.
+        using var auditScope = _auditingManager.BeginScope();
+
+        _recorder.RecordToolCall(BuildToolEntry("get_contract_aggregate"));
+
+        _recorder.GetCurrentTurnGroundingSource().ShouldBe(GroundingSource.Structured);
+    }
+
+    [Fact]
+    public void GetCurrentTurnGroundingSource_ReturnsNone_WhenNoScopeOrNoToolsCalled()
+    {
+        // No audit scope active (e.g. a code path that runs outside a scope by mistake)
+        // must still return a sane value rather than throw — the AppService treats
+        // None as "answer not grounded → IsDegraded".
+        _recorder.GetCurrentTurnGroundingSource().ShouldBe(GroundingSource.None);
+
+        using var auditScope = _auditingManager.BeginScope();
+        _recorder.GetCurrentTurnGroundingSource().ShouldBe(GroundingSource.None);
+    }
+
+    [Fact]
     public void RecordTurn_CountsFailedInvocations_BecauseTheyReflectModelBehavior()
     {
         // A failed tool call still counts toward ToolCallDepth — telemetry is about
@@ -141,13 +182,14 @@ public class DocumentChatTelemetryRecorder_Tests
             .ShouldBeOfType<DocumentChatTurnAuditEntry>();
     }
 
-    private static DocumentChatTurnAuditEntry BuildTurnEntry()
+    private static DocumentChatTurnAuditEntry BuildTurnEntry(bool citationsTrimmed = false)
         => new()
         {
             ConversationId = ConversationId,
             Streaming = false,
             ElapsedMs = 1.0,
-            Outcome = DocumentChatTelemetryOutcome.Success
+            Outcome = DocumentChatTelemetryOutcome.Success,
+            CitationsTrimmed = citationsTrimmed
         };
 
     private static DocumentChatToolAuditEntry BuildToolEntry(

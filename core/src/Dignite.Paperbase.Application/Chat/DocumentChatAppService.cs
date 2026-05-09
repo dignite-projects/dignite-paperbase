@@ -210,7 +210,13 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
 
         conversation.AppendUserMessage(Clock, userMessageId, input.Message, input.ClientTurnId);
 
-        var isDegraded = !run.Capture.HasSearches;
+        // Issue #99: derive IsDegraded from the recorder's audit-scope view, not from
+        // run.Capture.HasSearches alone. A turn that answered using only structured
+        // business tools (e.g. get_contract_aggregate) is also grounded — flagging it
+        // as degraded would mislead the UI into showing "no sources used" for a
+        // perfectly grounded answer.
+        var grounding = _telemetryRecorder.GetCurrentTurnGroundingSource();
+        var isDegraded = grounding == GroundingSource.None;
         var citationsJson = SerializeCitations(run.Capture.Results);
         conversation.AppendAssistantMessage(Clock, assistantMessageId, run.Text, citationsJson, isDegraded);
         if (shouldGenerateTitle)
@@ -233,7 +239,8 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             streaming: false,
             sw.Elapsed.TotalMilliseconds,
             isDegraded,
-            citations.Count);
+            citations.Count,
+            run.Capture.WasTruncated);
 
         return new ChatTurnResultDto
         {
@@ -241,9 +248,8 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             AssistantMessageId = assistantMessageId,
             Answer = run.Text,
             Citations = citations,
-            // HasSearches=false means the model never invoked the search tool — answer is
-            // ungrounded; the UI should surface this so users know there are no sources.
-            IsDegraded = isDegraded
+            IsDegraded = isDegraded,
+            GroundingSource = grounding
         };
     }
 
@@ -267,7 +273,8 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
                 UserMessageId = priorResult.UserMessageId,
                 AssistantMessageId = priorResult.AssistantMessageId,
                 Citations = priorResult.Citations,
-                IsDegraded = priorResult.IsDegraded
+                IsDegraded = priorResult.IsDegraded,
+                GroundingSource = priorResult.GroundingSource
             };
             yield break;
         }
@@ -374,7 +381,11 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         //
         // Security note: function name and description are static string literals —
         // they MUST NOT contain user input or conversation metadata (prompt-injection risk).
-        var capture = new DocumentSearchCapture();
+        // Bound the per-turn citation set so a pathological LLM retry loop or a
+        // very wide query cannot blow up the citations payload (or the Markdown
+        // assistant message it gets serialized into). Hits past the cap are dropped
+        // and surfaced via setup.Capture.WasTruncated → telemetry CitationsTrimmed.
+        var capture = new DocumentSearchCapture(_aiOptions.MaxCapturedCitations);
         var toolContext = CreateToolContext(conversation);
         var searchFn = _textSearchAdapter.CreateSearchFunction(
             conversation.TenantId,
@@ -515,13 +526,29 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             ? new List<ChatCitationDto>()
             : (DeserializeCitations(assistantMessage!.CitationsJson!) ?? new List<ChatCitationDto>());
 
+        // Idempotent replay can only approximate the original GroundingSource — the
+        // per-turn audit scope is gone by now, and ChatMessage doesn't persist it
+        // (would require a schema change). Best-effort reconstruction:
+        //   IsDegraded=true                         → None
+        //   IsDegraded=false && citations.Count>0   → Vector (Mixed indistinguishable here)
+        //   IsDegraded=false && citations.Count==0  → Structured
+        // If callers need a guaranteed-accurate replay value, they should not rely on
+        // GroundingSource for idempotent retries.
+        var isDegraded = assistantMessage?.IsDegraded ?? false;
+        var grounding = isDegraded
+            ? GroundingSource.None
+            : citations.Count > 0
+                ? GroundingSource.Vector
+                : GroundingSource.Structured;
+
         return new ChatTurnResultDto
         {
             UserMessageId = userMessage.Id,
             AssistantMessageId = assistantMessage?.Id ?? Guid.Empty,
             Answer = assistantMessage?.Content ?? string.Empty,
             Citations = citations,
-            IsDegraded = assistantMessage?.IsDegraded ?? false
+            IsDegraded = isDegraded,
+            GroundingSource = grounding
         };
     }
 
@@ -590,7 +617,8 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         bool streaming,
         double elapsedMs,
         bool isDegraded,
-        int citationCount)
+        int citationCount,
+        bool citationsTrimmed = false)
     {
         _telemetryRecorder.RecordTurn(new DocumentChatTurnAuditEntry
         {
@@ -604,7 +632,8 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             CitationCount = citationCount,
             IsDegraded = isDegraded,
             ElapsedMs = elapsedMs,
-            Outcome = DocumentChatTelemetryOutcome.Success
+            Outcome = DocumentChatTelemetryOutcome.Success,
+            CitationsTrimmed = citationsTrimmed
         });
     }
 
@@ -669,7 +698,10 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             var fullText = sb.ToString();
             var shouldGenerateTitle = ShouldGenerateTitle(conversation);
             conversation.AppendUserMessage(Clock, userMessageId, input.Message, input.ClientTurnId);
-            var isDegraded = !setup.Capture.HasSearches;
+            // Issue #99: see SendMessageAsync for the rationale behind sourcing
+            // grounding from the telemetry recorder rather than capture.HasSearches.
+            var grounding = _telemetryRecorder.GetCurrentTurnGroundingSource();
+            var isDegraded = grounding == GroundingSource.None;
             var citationsJson = SerializeCitations(setup.Capture.Results);
             conversation.AppendAssistantMessage(Clock, assistantMessageId, fullText, citationsJson, isDegraded);
             if (shouldGenerateTitle)
@@ -684,7 +716,8 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
                 streaming: true,
                 sw.Elapsed.TotalMilliseconds,
                 isDegraded,
-                citations.Count);
+                citations.Count,
+                setup.Capture.WasTruncated);
 
             await writer.WriteAsync(new ChatTurnDeltaDto
             {
@@ -692,9 +725,8 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
                 UserMessageId = userMessageId,
                 AssistantMessageId = assistantMessageId,
                 Citations = citations,
-                // HasSearches=false → the model never invoked the search tool; answer is
-                // ungrounded so the UI should surface "no sources" to the user.
-                IsDegraded = isDegraded
+                IsDegraded = isDegraded,
+                GroundingSource = grounding
             }, ct);
 
             writer.Complete();

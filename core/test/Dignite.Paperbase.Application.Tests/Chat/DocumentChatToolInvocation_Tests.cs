@@ -103,6 +103,9 @@ public class DocumentChatToolInvocation_Tests
         });
 
         result.IsDegraded.ShouldBeFalse();
+        // Issue #99: GroundingSource on the DTO. Only search_paperbase_documents was
+        // invoked → Vector (Mixed only when a structured tool is also called).
+        result.GroundingSource.ShouldBe(GroundingSource.Vector);
         result.Citations.Count.ShouldBe(1);
         result.Citations[0].DocumentId.ShouldBe(docId);
         result.Citations[0].ChunkIndex.ShouldBe(0);

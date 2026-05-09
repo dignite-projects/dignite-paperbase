@@ -31,10 +31,20 @@ public class ChatTurnDeltaDto
     public Guid? AssistantMessageId { get; set; }
 
     /// <summary>
-    /// True when the model did not invoke the document-search tool, so the answer is
-    /// ungrounded. The UI should display a "no sources used" notice to the user.
+    /// True when the model declined to invoke ANY tool in this turn, so the answer
+    /// has no traceable grounding. Equivalent to
+    /// <c>GroundingSource == GroundingSource.None</c>. The UI should surface a
+    /// "no sources used" notice when this is true. Set on the
+    /// <see cref="ChatTurnDeltaKind.Done"/> event only.
     /// </summary>
     public bool IsDegraded { get; set; }
+
+    /// <summary>
+    /// Categorizes which kinds of tools the model invoked (vector search vs. structured
+    /// business tools vs. both vs. none). Set on the <see cref="ChatTurnDeltaKind.Done"/>
+    /// event only. See <see cref="ChatTurnResultDto.GroundingSource"/>.
+    /// </summary>
+    public GroundingSource GroundingSource { get; set; }
 
     /// <summary>
     /// Client-safe error message. Present only when <see cref="Kind"/> is

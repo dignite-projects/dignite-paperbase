@@ -189,9 +189,24 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
             ExceptionType = entry.ExceptionType,
             ToolCallSummary = summary,
             ToolCallDepth = toolCalls.Count,
-            GroundingSource = ClassifyGrounding(toolCalls)
+            GroundingSource = ClassifyGrounding(toolCalls),
+            CitationsTrimmed = entry.CitationsTrimmed
         };
     }
+
+    /// <summary>
+    /// Returns the <see cref="GroundingSource"/> for the in-flight turn, derived from
+    /// the per-tool entries already on the current audit scope. Used by
+    /// <c>DocumentChatAppService</c> to derive the user-facing
+    /// <see cref="ChatTurnResultDto.IsDegraded"/> signal from the same source of truth
+    /// as the audit entry — guaranteeing the two never disagree.
+    /// </summary>
+    /// <remarks>
+    /// Returns <see cref="GroundingSource.None"/> when no audit scope is active or no
+    /// tool has been invoked yet; the caller will treat that as "answer not grounded".
+    /// </remarks>
+    public virtual GroundingSource GetCurrentTurnGroundingSource()
+        => ClassifyGrounding(ReadToolCallsFromAuditScope());
 
     /// <summary>
     /// Classifies a turn's grounding source from the tool names invoked.
@@ -367,4 +382,11 @@ public sealed class DocumentChatTurnAuditEntry
     /// recorder. See <see cref="GroundingSource"/> for the classification rule.
     /// </summary>
     public GroundingSource GroundingSource { get; init; }
+
+    /// <summary>
+    /// True when the per-turn citation cap (see <c>PaperbaseAIBehaviorOptions.MaxCapturedCitations</c>)
+    /// was hit and additional vector-search hits were dropped. Surfaces pathological LLM
+    /// retry loops or queries that fan out into very large recall sets — both worth alerting on.
+    /// </summary>
+    public bool CitationsTrimmed { get; init; }
 }

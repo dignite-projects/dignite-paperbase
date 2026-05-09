@@ -65,9 +65,11 @@ public class DocumentChatDegradedSignal_Tests
             }
         });
 
-        // The substituted IChatClient never returns FunctionCallContent, so the search
-        // AIFunction is never invoked → HasSearches stays false → IsDegraded.
+        // The substituted IChatClient never returns FunctionCallContent, so no tool
+        // (search or otherwise) is invoked. Issue #99 redefined IsDegraded as
+        // "GroundingSource == None"; both signals must agree.
         result.IsDegraded.ShouldBeTrue();
+        result.GroundingSource.ShouldBe(GroundingSource.None);
     }
 
     [Fact]
@@ -159,6 +161,7 @@ public class DocumentChatDegradedSignal_Tests
 
         done.ShouldNotBeNull();
         done!.IsDegraded.ShouldBeTrue();
+        done.GroundingSource.ShouldBe(GroundingSource.None);
     }
 
     [Fact]

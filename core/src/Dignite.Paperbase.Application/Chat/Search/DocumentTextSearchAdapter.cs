@@ -206,7 +206,7 @@ public class DocumentTextSearchAdapter : ITransientDependency
                 : _baseScope;
 
             var vectorResults = await _adapter.SearchVectorAsync(_tenantId, scope, query, cancellationToken);
-            _capture.Set(vectorResults);
+            _capture.Append(vectorResults);
 
             sw.Stop();
             // Argument hashing + audit are recorded by AuditedDocumentChatFunction; do not

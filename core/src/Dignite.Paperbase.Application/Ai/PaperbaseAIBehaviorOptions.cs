@@ -75,4 +75,13 @@ public class PaperbaseAIBehaviorOptions
     /// <see cref="ChatCompactionOptions"/>。
     /// </summary>
     public ChatCompactionOptions ChatCompaction { get; set; } = new();
+
+    /// <summary>
+    /// Hard upper bound on the number of distinct vector-search hits captured per
+    /// chat turn (across all <c>search_paperbase_documents</c> invocations). Excess
+    /// hits are dropped and a <c>citations_trimmed</c> telemetry signal is recorded.
+    /// Bounds prompt-context growth and protects against pathological LLM retry loops.
+    /// Set to 0 to disable the cap (not recommended in production).
+    /// </summary>
+    public int MaxCapturedCitations { get; set; } = 50;
 }
