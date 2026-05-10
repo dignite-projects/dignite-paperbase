@@ -12,12 +12,12 @@ import type {
   GetChatConversationListInput,
   GetChatMessageListInput,
   SendChatMessageInput,
-} from '../../documents/chat/models';
+} from '../chat/models';
 
 @Injectable({
   providedIn: 'root',
 })
-export class DocumentChatService {
+export class ChatService {
   private restService = inject(RestService);
   // Issue #116 FE half: streaming is hand-rolled (fetch + ReadableStream) because
   // ABP's RestService is request/response shaped. EnvironmentService gives us the
@@ -31,7 +31,7 @@ export class DocumentChatService {
   createConversation = (input: CreateChatConversationInput, config?: Partial<Rest.Config>) =>
     this.restService.request<any, ChatConversationDto>({
       method: 'POST',
-      url: '/api/paperbase/document-chat/conversations',
+      url: '/api/paperbase/chat/conversations',
       body: input,
     },
     { apiName: this.apiName,...config });
@@ -40,7 +40,7 @@ export class DocumentChatService {
   deleteConversation = (conversationId: string, config?: Partial<Rest.Config>) =>
     this.restService.request<any, void>({
       method: 'DELETE',
-      url: `/api/paperbase/document-chat/conversations/${conversationId}`,
+      url: `/api/paperbase/chat/conversations/${conversationId}`,
     },
     { apiName: this.apiName,...config });
 
@@ -48,7 +48,7 @@ export class DocumentChatService {
   getConversation = (conversationId: string, config?: Partial<Rest.Config>) =>
     this.restService.request<any, ChatConversationDto>({
       method: 'GET',
-      url: `/api/paperbase/document-chat/conversations/${conversationId}`,
+      url: `/api/paperbase/chat/conversations/${conversationId}`,
     },
     { apiName: this.apiName,...config });
 
@@ -56,7 +56,7 @@ export class DocumentChatService {
   getConversationList = (input: GetChatConversationListInput, config?: Partial<Rest.Config>) =>
     this.restService.request<any, PagedResultDto<ChatConversationListItemDto>>({
       method: 'GET',
-      url: '/api/paperbase/document-chat/conversations',
+      url: '/api/paperbase/chat/conversations',
       params: { documentId: input.documentId, sorting: input.sorting, skipCount: input.skipCount, maxResultCount: input.maxResultCount },
     },
     { apiName: this.apiName,...config });
@@ -65,7 +65,7 @@ export class DocumentChatService {
   getMessageList = (conversationId: string, input: GetChatMessageListInput, config?: Partial<Rest.Config>) =>
     this.restService.request<any, PagedResultDto<ChatMessageDto>>({
       method: 'GET',
-      url: `/api/paperbase/document-chat/conversations/${conversationId}/messages`,
+      url: `/api/paperbase/chat/conversations/${conversationId}/messages`,
       params: { sorting: input.sorting, skipCount: input.skipCount, maxResultCount: input.maxResultCount },
     },
     { apiName: this.apiName,...config });
@@ -74,7 +74,7 @@ export class DocumentChatService {
   sendMessage = (conversationId: string, input: SendChatMessageInput, config?: Partial<Rest.Config>) =>
     this.restService.request<any, ChatTurnResultDto>({
       method: 'POST',
-      url: `/api/paperbase/document-chat/conversations/${conversationId}/messages`,
+      url: `/api/paperbase/chat/conversations/${conversationId}/messages`,
       body: input,
     },
     { apiName: this.apiName,...config });
@@ -82,7 +82,7 @@ export class DocumentChatService {
   /**
    * Issue #116: streams the per-turn deltas (PartialText + ToolCallStarted /
    * ToolCallCompleted + Done / Error) from the SSE endpoint at
-   * `POST /api/paperbase/document-chat/conversations/{id}/messages/stream`.
+   * `POST /api/paperbase/chat/conversations/{id}/messages/stream`.
    *
    * Why fetch + ReadableStream instead of `EventSource`:
    * - `EventSource` is GET-only; the backend takes the message body as POST
@@ -97,7 +97,7 @@ export class DocumentChatService {
     return new Observable<ChatTurnDeltaDto>(subscriber => {
       const controller = new AbortController();
       const baseUrl = this.environmentService.getApiUrl('default');
-      const url = `${baseUrl}/api/paperbase/document-chat/conversations/${conversationId}/messages/stream`;
+      const url = `${baseUrl}/api/paperbase/chat/conversations/${conversationId}/messages/stream`;
       const token = this.authService.getAccessToken();
 
       fetch(url, {

@@ -13,14 +13,14 @@ using MeAi = Microsoft.Extensions.AI;
 
 namespace Dignite.Paperbase.Chat;
 
-public class DocumentChatHistoryProvider_Tests
-    : PaperbaseApplicationTestBase<DocumentChatAppServiceTestModule>
+public class ConversationHistoryProvider_Tests
+    : PaperbaseApplicationTestBase<ChatAppServiceTestModule>
 {
     private readonly IChatConversationRepository _repository;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly Volo.Abp.Timing.IClock _clock;
 
-    public DocumentChatHistoryProvider_Tests()
+    public ConversationHistoryProvider_Tests()
     {
         _repository = GetRequiredService<IChatConversationRepository>();
         _scopeFactory = GetRequiredService<IServiceScopeFactory>();
@@ -31,7 +31,7 @@ public class DocumentChatHistoryProvider_Tests
     public async Task Should_Load_History_From_Conversation_Repository()
     {
         var conversationId = await CreateConversationWithMessagesAsync();
-        var provider = new DocumentChatHistoryProvider(_scopeFactory);
+        var provider = new ConversationHistoryProvider(_scopeFactory);
 
         var messages = (await provider.LoadHistoryAsync(conversationId)).ToList();
 
@@ -48,7 +48,7 @@ public class DocumentChatHistoryProvider_Tests
         // Conversation id never inserted — provider treats this as "no prior history"
         // rather than throwing, so the chat AppService can start a fresh turn cleanly
         // even if the conversation has been deleted between authorization and load.
-        var provider = new DocumentChatHistoryProvider(_scopeFactory);
+        var provider = new ConversationHistoryProvider(_scopeFactory);
 
         var messages = await provider.LoadHistoryAsync(Guid.NewGuid());
 
@@ -84,7 +84,7 @@ public class DocumentChatHistoryProvider_Tests
         var scopeFactory = Substitute.For<IServiceScopeFactory>();
         scopeFactory.CreateScope().Returns(scope);
 
-        var provider = new DocumentChatHistoryProvider(scopeFactory);
+        var provider = new ConversationHistoryProvider(scopeFactory);
 
         await provider.LoadHistoryAsync(conversationId);
         await provider.LoadHistoryAsync(conversationId);
@@ -100,7 +100,7 @@ public class DocumentChatHistoryProvider_Tests
         // seeded data is the proxy for creation-time ordering since CreationTime is not
         // observable on MeAi.ChatMessage.
         var conversationId = await CreateConversationWithMessagesAsync();
-        var provider = new DocumentChatHistoryProvider(_scopeFactory);
+        var provider = new ConversationHistoryProvider(_scopeFactory);
 
         var messages = (await provider.LoadHistoryAsync(conversationId)).ToList();
 
@@ -119,7 +119,7 @@ public class DocumentChatHistoryProvider_Tests
         // the session StateBag, the provider must yield an empty history rather than
         // failing — that's how a freshly-created session behaves before the AppService
         // wires it up.
-        var provider = new DocumentChatHistoryProvider(_scopeFactory);
+        var provider = new ConversationHistoryProvider(_scopeFactory);
         var session = new TestAgentSession();
 
         var messages = (await InvokeProviderAsync(provider, session)).ToList();
@@ -140,12 +140,12 @@ public class DocumentChatHistoryProvider_Tests
         // messages stamped as ChatHistory source so downstream context providers
         // (CompactionProvider) can distinguish them.
         var conversationId = await CreateConversationWithMessagesAsync();
-        var provider = new DocumentChatHistoryProvider(_scopeFactory);
+        var provider = new ConversationHistoryProvider(_scopeFactory);
         var session = new TestAgentSession();
 
         session.StateBag.SetValue(
-            DocumentChatHistoryProvider.SessionStateKey,
-            new DocumentChatSessionState(conversationId));
+            ConversationHistoryProvider.SessionStateKey,
+            new ChatSessionState(conversationId));
 
         var messages = (await InvokeProviderAsync(provider, session)).ToList();
 
@@ -163,7 +163,7 @@ public class DocumentChatHistoryProvider_Tests
     }
 
     private static async Task<IEnumerable<MeAi.ChatMessage>> InvokeProviderAsync(
-        DocumentChatHistoryProvider provider,
+        ConversationHistoryProvider provider,
         AgentSession session)
     {
         // InvokingContext ctor is annotated [Experimental(MAAI001)]; suppression is

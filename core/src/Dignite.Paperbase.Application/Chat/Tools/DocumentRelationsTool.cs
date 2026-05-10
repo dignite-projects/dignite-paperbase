@@ -53,8 +53,8 @@ public class DocumentRelationsTool : ITransientDependency
     }
 
     public virtual AIFunction CreateAIFunction(
-        DocumentChatToolContext ctx,
-        IDocumentChatToolFactory toolFactory)
+        ChatToolContext ctx,
+        IChatToolFactory toolFactory)
     {
         var binding = new Binding(_repository, _asyncExecuter, _authorizationService, ctx.TenantId);
         return toolFactory.Create(

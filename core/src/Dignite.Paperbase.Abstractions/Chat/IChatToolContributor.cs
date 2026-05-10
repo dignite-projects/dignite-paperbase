@@ -11,7 +11,7 @@ namespace Dignite.Paperbase.Abstractions.Chat;
 /// <strong>In-process usage:</strong> implement this interface in a business module's
 /// Application layer and register it via ABP's auto-DI
 /// (<see cref="Volo.Abp.DependencyInjection.ITransientDependency"/>).
-/// <see cref="DocumentChatAppService"/> collects every registered contributor on every
+/// <see cref="ChatAppService"/> collects every registered contributor on every
 /// turn and adds the returned <see cref="AIFunction"/> instances to the active
 /// <c>ChatClientAgent</c>'s tool list. Tool selection is the LLM's job; the AppService
 /// no longer filters contributors by document type (Issue #100 — cross-document reasoning
@@ -28,12 +28,12 @@ namespace Dignite.Paperbase.Abstractions.Chat;
 ///
 /// <para>
 /// <strong>MCP / cross-process expansion (future, backlog):</strong>
-/// contributors receive an <see cref="IDocumentChatToolFactory"/> so all in-process tools
+/// contributors receive an <see cref="IChatToolFactory"/> so all in-process tools
 /// use the same audit, logging, and metrics behavior. Future cross-process/MCP tools should
 /// either be adapted through this factory or provide equivalent instrumentation at the bridge.
 /// </para>
 /// </summary>
-public interface IDocumentChatToolContributor
+public interface IChatToolContributor
 {
     /// <summary>
     /// Informational hint describing the document type this contributor primarily targets
@@ -49,6 +49,6 @@ public interface IDocumentChatToolContributor
     /// <c>search_paperbase_documents</c> RAG tool.
     /// </summary>
     IEnumerable<AIFunction> ContributeTools(
-        DocumentChatToolContext ctx,
-        IDocumentChatToolFactory toolFactory);
+        ChatToolContext ctx,
+        IChatToolFactory toolFactory);
 }

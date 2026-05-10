@@ -56,7 +56,7 @@ export enum GroundingSource {
 }
 
 // Issue #116: SSE delta event shape streamed from the
-// `POST /api/paperbase/document-chat/conversations/{id}/messages/stream` endpoint.
+// `POST /api/paperbase/chat/conversations/{id}/messages/stream` endpoint.
 // Numeric `kind` values must match the .NET enum order in
 // core/src/Dignite.Paperbase.Application.Contracts/Chat/ChatTurnDeltaKind.cs.
 export enum ChatTurnDeltaKind {

@@ -22,7 +22,7 @@ public class DefaultPromptProvider_QaTests
     [Fact]
     public void QaPrompt_References_Search_Tool_By_Name()
     {
-        // The exact tool name DocumentChatAppService registers must appear verbatim
+        // The exact tool name ChatAppService registers must appear verbatim
         // so the model can match instructions to the available tool.
         var prompt = _provider.GetQaPrompt("ja").SystemInstructions;
         prompt.ShouldContain("search_paperbase_documents");

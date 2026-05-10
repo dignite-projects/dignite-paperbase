@@ -19,7 +19,7 @@ namespace Dignite.Paperbase.Chat;
 
 /// <summary>
 /// Issue #100 — guards for the anchor-document handling in
-/// <see cref="DocumentChatAppService.BuildAnchorContextAsync"/>. The anchor must:
+/// <see cref="ChatAppService.BuildAnchorContextAsync"/>. The anchor must:
 /// <list type="bullet">
 ///   <item>Include only structured identifiers (id + typeCode), <strong>never</strong> the
 ///         user-controlled <c>Document.Title</c> (prompt-injection vector — see
@@ -31,10 +31,10 @@ namespace Dignite.Paperbase.Chat;
 ///         operators can observe permission drift at scale.</item>
 /// </list>
 /// </summary>
-public class DocumentChatAnchor_Tests
-    : PaperbaseApplicationTestBase<DocumentChatAppServiceTestModule>
+public class ChatAnchor_Tests
+    : PaperbaseApplicationTestBase<ChatAppServiceTestModule>
 {
-    private readonly IDocumentChatAppService _appService;
+    private readonly IChatAppService _appService;
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentKnowledgeIndex _knowledgeIndex;
     private readonly IChatClient _chatClient;
@@ -54,9 +54,9 @@ public class DocumentChatAnchor_Tests
     // (which legitimately mentions the literal "<anchor>" tag name as a protected zone).
     private const string AnchorBlockSentinel = "User opened this conversation from a document detail page";
 
-    public DocumentChatAnchor_Tests()
+    public ChatAnchor_Tests()
     {
-        _appService = GetRequiredService<IDocumentChatAppService>();
+        _appService = GetRequiredService<IChatAppService>();
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _knowledgeIndex = GetRequiredService<IDocumentKnowledgeIndex>();
         _chatClient = GetRequiredService<IChatClient>();
@@ -189,8 +189,8 @@ public class DocumentChatAnchor_Tests
         captured.Instructions.ShouldNotContain(anchorId.ToString());
 
         var turn = _auditingManager.Current!.Log.ExtraProperties[
-                DocumentChatTelemetryRecorder.AuditTurnPropertyName]
-            .ShouldBeOfType<DocumentChatTurnAuditEntry>();
+                ChatTelemetryRecorder.AuditTurnPropertyName]
+            .ShouldBeOfType<ChatTurnAuditEntry>();
         turn.AnchorResolutionFailed.ShouldBeTrue();
     }
 

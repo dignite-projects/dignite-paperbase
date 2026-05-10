@@ -8,7 +8,7 @@ using Volo.Abp.DependencyInjection;
 
 // MAF compaction APIs (CompactionProvider, CompactionStrategy hierarchy, CompactionTriggers)
 // are annotated [Experimental(MAAI001)]. This factory is the single integration point;
-// suppression is file-scoped here so callers (DocumentChatAppService, tests) don't need it.
+// suppression is file-scoped here so callers (ChatAppService, tests) don't need it.
 #pragma warning disable MAAI001
 
 namespace Dignite.Paperbase.Chat.Compaction;
@@ -20,7 +20,7 @@ namespace Dignite.Paperbase.Chat.Compaction;
 /// <para>
 /// The provider runs once per agent turn (when registered on
 /// <c>ChatClientAgentOptions.AIContextProviders</c>): it sees messages already prepended
-/// by <c>DocumentChatHistoryProvider</c> and stamped with
+/// by <c>ConversationHistoryProvider</c> and stamped with
 /// <c>AgentRequestMessageSourceType.ChatHistory</c>. The pipeline collapses tool results
 /// first (gentle), summarizes older turns (moderate), bounds by sliding window
 /// (aggressive), then truncates as an emergency backstop.
@@ -28,7 +28,7 @@ namespace Dignite.Paperbase.Chat.Compaction;
 ///
 /// <para>
 /// Returning <see langword="null"/> when compaction is disabled lets
-/// <c>DocumentChatAppService</c> skip wiring <c>AIContextProviders</c> entirely, keeping
+/// <c>ChatAppService</c> skip wiring <c>AIContextProviders</c> entirely, keeping
 /// the no-compaction path identical to the pre-compaction wiring (zero allocation, zero
 /// MAF pipeline overhead).
 /// </para>

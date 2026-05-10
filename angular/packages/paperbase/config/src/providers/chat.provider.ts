@@ -14,9 +14,9 @@ export function provideChat(): EnvironmentProviders {
       routes.add([
         {
           path: '/chat',
-          name: '::Menu:DocumentChat',
+          name: '::Menu:Chat',
           iconClass: 'fas fa-comments',
-          requiredPolicy: PAPERBASE_PERMISSIONS.Documents.Chat.Default,
+          requiredPolicy: PAPERBASE_PERMISSIONS.Chat.Default,
           order: 3,
           layout: eLayoutType.application,
         },

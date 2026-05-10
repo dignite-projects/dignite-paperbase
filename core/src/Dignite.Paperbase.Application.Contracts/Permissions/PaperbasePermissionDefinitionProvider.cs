@@ -17,13 +17,13 @@ public class PaperbasePermissionDefinitionProvider : PermissionDefinitionProvide
         documents.AddChild(PaperbasePermissions.Documents.Export, L("Permission:Documents.Export"));
         documents.AddChild(PaperbasePermissions.Documents.ConfirmClassification, L("Permission:Documents.ConfirmClassification"));
 
-        var chat = documents.AddChild(PaperbasePermissions.Documents.Chat.Default, L("Permission:Documents.Chat"));
-        chat.AddChild(PaperbasePermissions.Documents.Chat.Create, L("Permission:Documents.Chat.Create"));
-        chat.AddChild(PaperbasePermissions.Documents.Chat.SendMessage, L("Permission:Documents.Chat.SendMessage"));
-        chat.AddChild(PaperbasePermissions.Documents.Chat.Delete, L("Permission:Documents.Chat.Delete"));
-
         var pipelines = documents.AddChild(PaperbasePermissions.Documents.Pipelines.Default, L("Permission:Documents.Pipelines"));
         pipelines.AddChild(PaperbasePermissions.Documents.Pipelines.Retry, L("Permission:Documents.Pipelines.Retry"));
+
+        var chat = group.AddPermission(PaperbasePermissions.Chat.Default, L("Permission:Chat"));
+        chat.AddChild(PaperbasePermissions.Chat.Create, L("Permission:Chat.Create"));
+        chat.AddChild(PaperbasePermissions.Chat.SendMessage, L("Permission:Chat.SendMessage"));
+        chat.AddChild(PaperbasePermissions.Chat.Delete, L("Permission:Chat.Delete"));
 
         var relations = group.AddPermission(PaperbasePermissions.DocumentRelations.Default, L("Permission:DocumentRelations"));
         relations.AddChild(PaperbasePermissions.DocumentRelations.Create, L("Permission:DocumentRelations.Create"));

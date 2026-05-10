@@ -12,8 +12,8 @@ using Volo.Abp.Application.Dtos;
 namespace Dignite.Paperbase.HttpApi.Chat;
 
 [Area("paperbase")]
-[Route("api/paperbase/document-chat")]
-public class DocumentChatController : PaperbaseController, IDocumentChatAppService
+[Route("api/paperbase/chat")]
+public class ChatController : PaperbaseController, IChatAppService
 {
     // Issue #116 FE half: the SSE handler below bypasses ABP's MVC pipeline (it
     // writes the response stream directly), so it never picks up ABP's per-request
@@ -25,9 +25,9 @@ public class DocumentChatController : PaperbaseController, IDocumentChatAppServi
     private static readonly JsonSerializerOptions SseSerializerOptions =
         new(JsonSerializerDefaults.Web);
 
-    private readonly IDocumentChatAppService _documentChatAppService;
+    private readonly IChatAppService _documentChatAppService;
 
-    public DocumentChatController(IDocumentChatAppService documentChatAppService)
+    public ChatController(IChatAppService documentChatAppService)
     {
         _documentChatAppService = documentChatAppService;
     }

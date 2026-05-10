@@ -119,7 +119,7 @@ public class DocumentTextSearchAdapter_Tests
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
     private readonly TestDocumentRerankWorkflow _rerankWorkflow;
     private readonly PaperbaseAIBehaviorOptions _aiOptions;
-    private readonly IDocumentChatToolFactory _toolFactory;
+    private readonly IChatToolFactory _toolFactory;
 
     public DocumentTextSearchAdapter_Tests()
     {
@@ -128,14 +128,14 @@ public class DocumentTextSearchAdapter_Tests
         _embeddingGenerator = GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
         _rerankWorkflow = GetRequiredService<TestDocumentRerankWorkflow>();
         _aiOptions = GetRequiredService<IOptions<PaperbaseAIBehaviorOptions>>().Value;
-        _toolFactory = GetRequiredService<IDocumentChatToolFactory>();
+        _toolFactory = GetRequiredService<IChatToolFactory>();
         _aiOptions.EnableLlmRerank = false;
         _aiOptions.RecallExpandFactor = 4;
 
         SetupDefaultEmbedding();
     }
 
-    private DocumentChatToolContext ToolContext(Guid? tenantId = null)
+    private ChatToolContext ToolContext(Guid? tenantId = null)
         => new()
         {
             ConversationId = Guid.NewGuid(),
@@ -441,7 +441,7 @@ public class DocumentTextSearchAdapter_Tests
     [Fact]
     public async Task SearchFunction_Forwards_BaseScope_To_KnowledgeIndex()
     {
-        // Replaces the deleted DocumentChatAppService_Tests.Should_Pass_Scope_To_VectorSearchRequest;
+        // Replaces the deleted ChatAppService_Tests.Should_Pass_Scope_To_VectorSearchRequest;
         // scope propagation is an adapter concern, exercised through the AIFunction surface.
         VectorSearchRequest? captured = null;
         _vectorStore.SearchAsync(Arg.Do<VectorSearchRequest>(r => captured = r), Arg.Any<CancellationToken>())

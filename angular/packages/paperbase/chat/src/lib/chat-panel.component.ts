@@ -29,7 +29,7 @@ import {
   ChatTurnDeltaKind,
   CreateChatConversationInput,
   DocumentDto,
-  DocumentChatService,
+  ChatService,
   DocumentService,
 } from '@dignite/paperbase';
 
@@ -75,7 +75,7 @@ export type ChatPanelMode = 'full' | 'panel';
   imports: [CommonModule, FormsModule, RouterModule, LocalizationPipe],
 })
 export class ChatPanelComponent implements OnInit, OnChanges, AfterViewChecked {
-  private readonly chatService = inject(DocumentChatService);
+  private readonly chatService = inject(ChatService);
   private readonly documentService = inject(DocumentService);
   private readonly confirmation = inject(ConfirmationService);
   private readonly toaster = inject(ToasterService);
@@ -177,7 +177,7 @@ export class ChatPanelComponent implements OnInit, OnChanges, AfterViewChecked {
           this.conversations.set(result.items ?? []);
           afterLoad?.();
         },
-        error: () => this.toaster.error('::DocumentChat:LoadFailed', '::Error'),
+        error: () => this.toaster.error('::Chat:LoadFailed', '::Error'),
       });
   }
 
@@ -206,12 +206,12 @@ export class ChatPanelComponent implements OnInit, OnChanges, AfterViewChecked {
           .pipe(finalize(() => this.isLoadingMessages.set(false)))
           .subscribe({
             next: result => this.messages.set((result.items ?? []).map(m => this.toMessageView(m))),
-            error: () => this.toaster.error('::DocumentChat:LoadFailed', '::Error'),
+            error: () => this.toaster.error('::Chat:LoadFailed', '::Error'),
           });
       },
       error: () => {
         this.isLoadingMessages.set(false);
-        this.toaster.error('::DocumentChat:LoadFailed', '::Error');
+        this.toaster.error('::Chat:LoadFailed', '::Error');
       },
     });
   }
@@ -231,7 +231,7 @@ export class ChatPanelComponent implements OnInit, OnChanges, AfterViewChecked {
     if (!conversation.id) return;
 
     this.confirmation
-      .warn('::DocumentChat:AreYouSureToDelete', '::AreYouSure')
+      .warn('::Chat:AreYouSureToDelete', '::AreYouSure')
       .subscribe(status => {
         if (status !== Confirmation.Status.confirm) return;
 
@@ -243,7 +243,7 @@ export class ChatPanelComponent implements OnInit, OnChanges, AfterViewChecked {
             }
             this.loadConversations();
           },
-          error: () => this.toaster.error('::DocumentChat:DeleteFailed', '::Error'),
+          error: () => this.toaster.error('::Chat:DeleteFailed', '::Error'),
         });
       });
   }
@@ -278,11 +278,11 @@ export class ChatPanelComponent implements OnInit, OnChanges, AfterViewChecked {
     if (conversation.documentTypeCode) return conversation.documentTypeCode;
     if (conversation.documentId) {
       return this.localization.instant({
-        key: '::DocumentChat:Scope:Document',
+        key: '::Chat:Scope:Document',
         defaultValue: `doc:${conversation.documentId.slice(0, 8)}`,
       }, conversation.documentId.slice(0, 8));
     }
-    return this.localization.instant({ key: '::DocumentChat:Scope:Global', defaultValue: 'global' });
+    return this.localization.instant({ key: '::Chat:Scope:Global', defaultValue: 'global' });
   }
 
   selectCitation(messageId: string, citationIndex: number, citation: ChatCitationDto): void {
@@ -299,7 +299,7 @@ export class ChatPanelComponent implements OnInit, OnChanges, AfterViewChecked {
       this.sourceRequestId++;
       this.isLoadingSource.set(false);
       this.sourceDocument.set(null);
-      this.sourceError.set('::DocumentChat:SourceMissingDocumentId');
+      this.sourceError.set('::Chat:SourceMissingDocumentId');
       return;
     }
 
@@ -342,7 +342,7 @@ export class ChatPanelComponent implements OnInit, OnChanges, AfterViewChecked {
           this.loadConversations();
           afterCreate?.(conversation);
         },
-        error: () => this.toaster.error('::DocumentChat:CreateFailed', '::Error'),
+        error: () => this.toaster.error('::Chat:CreateFailed', '::Error'),
       });
   }
 
@@ -350,7 +350,7 @@ export class ChatPanelComponent implements OnInit, OnChanges, AfterViewChecked {
    * Issue #116: streams the turn so the user sees tool-call progress + text
    * deltas in real time instead of staring at a `Thinking…` spinner during the
    * 5–10s the multi-step tool reasoning takes. Internally consumes SSE via
-   * {@link DocumentChatService.sendMessageStream}.
+   * {@link ChatService.sendMessageStream}.
    *
    * Lifecycle of the pending assistant message:
    *  - On send: insert a row with `isPending=true`, empty content, empty toolEvents
@@ -397,14 +397,14 @@ export class ChatPanelComponent implements OnInit, OnChanges, AfterViewChecked {
               item.id === pendingAssistantId
                 ? {
                     ...item,
-                    content: 'DocumentChat:SendFailed',
+                    content: 'Chat:SendFailed',
                     isPending: false,
                     isError: true,
                   }
                 : item
             )
           );
-          this.toaster.error('::DocumentChat:SendFailed', '::Error');
+          this.toaster.error('::Chat:SendFailed', '::Error');
         },
         complete: () => this.loadConversations(),
       });
@@ -472,7 +472,7 @@ export class ChatPanelComponent implements OnInit, OnChanges, AfterViewChecked {
               ...item,
               isPending: false,
               isError: true,
-              content: delta.errorMessage ?? 'DocumentChat:SendFailed',
+              content: delta.errorMessage ?? 'Chat:SendFailed',
             };
           }
           default:
@@ -510,7 +510,7 @@ export class ChatPanelComponent implements OnInit, OnChanges, AfterViewChecked {
    * Trade-offs:
    *  - First-occurrence only. If the snippet appears in multiple chunks, the UI
    *    cannot disambiguate without persisted chunk offsets (intentionally not
-   *    introduced — see docs/document-chat.md citation-to-source navigation).
+   *    introduced — see docs/chat.md citation-to-source navigation).
    *  - Snippet must match raw Markdown text from the rendered DOM. The chunker
    *    typically preserves whitespace/punctuation, so direct substring search
    *    works in practice. Falls back to `snippetMissing=true` (warning banner)
@@ -633,7 +633,7 @@ export class ChatPanelComponent implements OnInit, OnChanges, AfterViewChecked {
         error: () => {
           if (requestId !== this.sourceRequestId) return;
           this.sourceDocument.set(null);
-          this.sourceError.set('::DocumentChat:SourceLoadFailed');
+          this.sourceError.set('::Chat:SourceLoadFailed');
         },
       });
   }

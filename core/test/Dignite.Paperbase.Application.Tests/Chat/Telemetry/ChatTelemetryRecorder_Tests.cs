@@ -8,7 +8,7 @@ using Xunit;
 namespace Dignite.Paperbase.Chat;
 
 /// <summary>
-/// Focused tests for <see cref="DocumentChatTelemetryRecorder"/>'s per-turn enrichment
+/// Focused tests for <see cref="ChatTelemetryRecorder"/>'s per-turn enrichment
 /// (Issue #98): <c>ToolCallSummary</c>, <c>ToolCallDepth</c>, <c>GroundingSource</c>
 /// must be derived from the per-tool entries already on the audit scope.
 /// <para>
@@ -17,17 +17,17 @@ namespace Dignite.Paperbase.Chat;
 /// Structured / Mixed cases without standing up a fake business-module contributor.
 /// </para>
 /// </summary>
-public class DocumentChatTelemetryRecorder_Tests
-    : PaperbaseApplicationTestBase<DocumentChatAppServiceTestModule>
+public class ChatTelemetryRecorder_Tests
+    : PaperbaseApplicationTestBase<ChatAppServiceTestModule>
 {
-    private readonly DocumentChatTelemetryRecorder _recorder;
+    private readonly ChatTelemetryRecorder _recorder;
     private readonly IAuditingManager _auditingManager;
 
     private static readonly Guid ConversationId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
-    public DocumentChatTelemetryRecorder_Tests()
+    public ChatTelemetryRecorder_Tests()
     {
-        _recorder = GetRequiredService<DocumentChatTelemetryRecorder>();
+        _recorder = GetRequiredService<ChatTelemetryRecorder>();
         _auditingManager = GetRequiredService<IAuditingManager>();
     }
 
@@ -165,7 +165,7 @@ public class DocumentChatTelemetryRecorder_Tests
 
         _recorder.RecordToolCall(BuildToolEntry(
             ChatConsts.SearchPaperbaseDocumentsToolName,
-            outcome: DocumentChatTelemetryOutcome.Failure));
+            outcome: ChatTelemetryOutcome.Failure));
 
         _recorder.RecordTurn(BuildTurnEntry());
 
@@ -174,27 +174,27 @@ public class DocumentChatTelemetryRecorder_Tests
         turn.GroundingSource.ShouldBe(GroundingSource.Vector);
     }
 
-    private DocumentChatTurnAuditEntry ReadTurnFromAuditScope()
+    private ChatTurnAuditEntry ReadTurnFromAuditScope()
     {
         var scope = _auditingManager.Current.ShouldNotBeNull();
-        scope.Log.ExtraProperties.ShouldContainKey(DocumentChatTelemetryRecorder.AuditTurnPropertyName);
-        return scope.Log.ExtraProperties[DocumentChatTelemetryRecorder.AuditTurnPropertyName]
-            .ShouldBeOfType<DocumentChatTurnAuditEntry>();
+        scope.Log.ExtraProperties.ShouldContainKey(ChatTelemetryRecorder.AuditTurnPropertyName);
+        return scope.Log.ExtraProperties[ChatTelemetryRecorder.AuditTurnPropertyName]
+            .ShouldBeOfType<ChatTurnAuditEntry>();
     }
 
-    private static DocumentChatTurnAuditEntry BuildTurnEntry(bool citationsTrimmed = false)
+    private static ChatTurnAuditEntry BuildTurnEntry(bool citationsTrimmed = false)
         => new()
         {
             ConversationId = ConversationId,
             Streaming = false,
             ElapsedMs = 1.0,
-            Outcome = DocumentChatTelemetryOutcome.Success,
+            Outcome = ChatTelemetryOutcome.Success,
             CitationsTrimmed = citationsTrimmed
         };
 
-    private static DocumentChatToolAuditEntry BuildToolEntry(
+    private static ChatToolAuditEntry BuildToolEntry(
         string toolName,
-        DocumentChatTelemetryOutcome outcome = DocumentChatTelemetryOutcome.Success)
+        ChatTelemetryOutcome outcome = ChatTelemetryOutcome.Success)
         => new()
         {
             ConversationId = ConversationId,

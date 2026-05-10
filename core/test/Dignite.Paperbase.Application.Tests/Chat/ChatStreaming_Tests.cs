@@ -17,15 +17,15 @@ using MEAI = Microsoft.Extensions.AI;
 namespace Dignite.Paperbase.Chat;
 
 /// <summary>
-/// Tests for <see cref="IDocumentChatAppService.SendMessageStreamingAsync"/>. Exercises:
+/// Tests for <see cref="IChatAppService.SendMessageStreamingAsync"/>. Exercises:
 /// SSE delta sequence, fail-closed authorization gate (streaming path), per-turn
 /// idempotency, single-shot persistence, error event on LLM exception, and
 /// cancellation (no persistence when stream is cancelled).
 /// </summary>
-public class DocumentChatStreaming_Tests
-    : PaperbaseApplicationTestBase<DocumentChatAppServiceTestModule>
+public class ChatStreaming_Tests
+    : PaperbaseApplicationTestBase<ChatAppServiceTestModule>
 {
-    private readonly IDocumentChatAppService _appService;
+    private readonly IChatAppService _appService;
     private readonly IChatConversationRepository _repository;
     private readonly IChatClient _chatClient;
     private readonly IDocumentKnowledgeIndex _knowledgeIndex;
@@ -35,9 +35,9 @@ public class DocumentChatStreaming_Tests
     private static readonly Guid OwnerUserId = Guid.Parse("00000000-0000-0000-0000-000000000001");
     private static readonly Guid OtherUserId = Guid.Parse("00000000-0000-0000-0000-000000000002");
 
-    public DocumentChatStreaming_Tests()
+    public ChatStreaming_Tests()
     {
-        _appService         = GetRequiredService<IDocumentChatAppService>();
+        _appService         = GetRequiredService<IChatAppService>();
         _repository         = GetRequiredService<IChatConversationRepository>();
         _chatClient         = GetRequiredService<IChatClient>();
         _knowledgeIndex     = GetRequiredService<IDocumentKnowledgeIndex>();

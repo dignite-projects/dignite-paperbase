@@ -154,7 +154,7 @@ The Angular client renders three views:
 - **Detail page → Graph tab** (`lib-document-relation-graph`) — radial SVG of the relation graph rooted at this document. Configurable hop depth (1 / 2 / 3). Manual edges = solid green, AI suggestions = dashed amber, module-auto = solid cyan. Click a non-root node to navigate to it.
 - **Detail page → Pipeline status** — the `relation-discovery` pipeline appears alongside text-extraction / classification / embedding so operators can see whether L2 ran for the current document and how it ended.
 
-Inside the chat panel, the LLM agent has direct access to the relation graph through the [`get_document_relations`](document-chat.md#tools) tool. When asked "is this contract paid?", the model typically calls `get_document_relations(anchorId)` first to find linked invoices and payments, then narrows `search_paperbase_documents` to those `documentIds`.
+Inside the chat panel, the LLM agent has direct access to the relation graph through the [`get_document_relations`](chat.md#tools) tool. When asked "is this contract paid?", the model typically calls `get_document_relations(anchorId)` first to find linked invoices and payments, then narrows `search_paperbase_documents` to those `documentIds`.
 
 ## Operational notes
 
@@ -167,5 +167,5 @@ Inside the chat panel, the LLM agent has direct access to the relation graph thr
 
 - [classification.md](classification.md) — publishes the `DocumentClassifiedEto` that triggers L2.
 - [pipeline-runs.md](pipeline-runs.md) — `DocumentPipelineRun` schema and `ExtraProperties` payload conventions.
-- [document-chat.md](document-chat.md) — how the chat agent consumes the relation graph via the `get_document_relations` tool.
+- [chat.md](chat.md) — how the chat agent consumes the relation graph via the `get_document_relations` tool.
 - [knowledge-index.md](knowledge-index.md) — the vector store L3 queries during semantic recall.

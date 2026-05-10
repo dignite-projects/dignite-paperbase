@@ -62,18 +62,18 @@ public class PaperbaseAIBehaviorOptions
     /// 跨语言/专有名词查询调低）。低于底层知识库默认值是为了改善跨语言查询和专有名词查询
     /// 的召回。设为 null 时回落到 <c>PaperbaseKnowledgeIndex:MinScore</c>。
     /// </summary>
-    public double? DocumentChatMinScore { get; set; } = 0.45;
+    public double? ChatMinScore { get; set; } = 0.45;
 
     /// <summary>
     /// 文档 Chat RAG 搜索默认 TopK。模型可在 <c>search_paperbase_documents</c> 工具参数里
     /// 显式覆盖（如跨文档对账场景拉到 10–15 提升召回宽度）。设为 0 时回落到底层知识库的
     /// <c>DefaultTopK</c>。
     /// </summary>
-    public int DocumentChatTopK { get; set; } = 5;
+    public int ChatTopK { get; set; } = 5;
 
     /// <summary>
     /// Hard upper bound on the number of <see cref="AIFunction"/> tools (built-in
-    /// search + every <c>IDocumentChatToolContributor</c> tool) exposed to the LLM
+    /// search + every <c>IChatToolContributor</c> tool) exposed to the LLM
     /// in a single turn. <c>0</c> = unbounded (current default; the production tool
     /// inventory is well below the OpenAI/Azure OpenAI sweet spot of ≤ 10–15 tools
     /// where routing accuracy is high). Activate this cap when the inventory grows
@@ -138,7 +138,7 @@ public class PaperbaseAIBehaviorOptions
 
     /// <summary>
     /// L3 向量召回最低分数。低于此分数的候选直接淘汰，不送 LLM。
-    /// 高于普通 chat RAG 的 <see cref="DocumentChatMinScore"/>——L3 只关心强语义匹配，弱匹配是噪音。
+    /// 高于普通 chat RAG 的 <see cref="ChatMinScore"/>——L3 只关心强语义匹配，弱匹配是噪音。
     /// </summary>
     public double SemanticRelationDiscoveryMinScore { get; set; } = 0.65;
 

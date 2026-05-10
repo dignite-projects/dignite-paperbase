@@ -22,10 +22,10 @@ namespace Dignite.Paperbase.Chat;
 /// <see cref="ChatTurnResultDto.IsDegraded"/> must be <c>true</c> — the honest signal
 /// that the answer was not grounded in retrieved sources.
 /// </summary>
-public class DocumentChatDegradedSignal_Tests
-    : PaperbaseApplicationTestBase<DocumentChatAppServiceTestModule>
+public class ChatDegradedSignal_Tests
+    : PaperbaseApplicationTestBase<ChatAppServiceTestModule>
 {
-    private readonly IDocumentChatAppService _appService;
+    private readonly IChatAppService _appService;
     private readonly IChatClient _chatClient;
     private readonly IDocumentKnowledgeIndex _knowledgeIndex;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
@@ -33,9 +33,9 @@ public class DocumentChatDegradedSignal_Tests
 
     private static readonly Guid OwnerUserId = Guid.Parse("00000000-0000-0000-0000-000000000001");
 
-    public DocumentChatDegradedSignal_Tests()
+    public ChatDegradedSignal_Tests()
     {
-        _appService         = GetRequiredService<IDocumentChatAppService>();
+        _appService         = GetRequiredService<IChatAppService>();
         _chatClient         = GetRequiredService<IChatClient>();
         _knowledgeIndex     = GetRequiredService<IDocumentKnowledgeIndex>();
         _embeddingGenerator = GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();

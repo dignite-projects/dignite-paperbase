@@ -1,15 +1,15 @@
-# Document Chat
+# Chat
 
 Paperbase exposes a conversational endpoint that lets users ask questions over their document corpus. The chat runs as a MAF `ChatClientAgent` with retrieval-augmented generation: each turn pulls relevant chunks from the [knowledge index](knowledge-index.md), feeds them into the prompt, and returns a grounded answer with citations.
 
-This page covers the chat as a *feature* — what it does, how to tune it, and what knobs are safe to flip. For end-to-end HTTP request/response shapes (idempotency, retry, error handling), see [document-chat-client.md](document-chat-client.md).
+This page covers the chat as a *feature* — what it does, how to tune it, and what knobs are safe to flip. For end-to-end HTTP request/response shapes (idempotency, retry, error handling), see [chat-client.md](chat-client.md).
 
 ## What it can do
 
 - **Anchor-driven, not scope-locked.** A conversation may carry a `documentId` — the document the user opened when starting the chat. This is treated as a **soft anchor** in the system prompt (`id` + `documentTypeCode` only — never the title), not a retrieval constraint. The model is free to (and encouraged to) search across other documents and types, follow `DocumentRelation` edges, and reconcile across the corpus. A conversation without `documentId` behaves the same way, just without the anchor hint.
 - **Citations.** Every answer carries the chunk(s) that grounded it. The agent prompt enforces `[chunk N]` citations and the result is post-processed into a structured `citations` array (document id, chunk index, snippet, source name). Citations from multiple `search_paperbase_documents` invocations within one turn are **appended and de-duplicated** — never overwritten — and capped at `MaxCapturedCitations`.
 - **Tool calling.** The agent always sees the same flat toolset (built-in tools + every business module's contributor tools). See the [Tools](#tools) section below for the catalog and the fail-closed contract every tool follows.
-- **Streaming.** The HTTP API exposes both a buffered `POST .../messages` and a Server-Sent-Events `POST .../messages/stream` endpoint. The streaming endpoint emits `PartialText`, `ToolCallStarted`, `ToolCallCompleted`, and a terminal `Done` (or `Error`) delta — see [client guide → Streaming](document-chat-client.md#3-stream-a-message-server-sent-events) for the protocol.
+- **Streaming.** The HTTP API exposes both a buffered `POST .../messages` and a Server-Sent-Events `POST .../messages/stream` endpoint. The streaming endpoint emits `PartialText`, `ToolCallStarted`, `ToolCallCompleted`, and a terminal `Done` (or `Error`) delta — see [client guide → Streaming](chat-client.md#3-stream-a-message-server-sent-events) for the protocol.
 - **Idempotent turns.** The client generates a `clientTurnId` per turn; replays with the same id never re-invoke the model. Idempotency applies to both the buffered and streaming endpoints.
 - **Optional LLM rerank.** Off by default. When enabled, retrieval recall is expanded `RecallExpandFactor`× and the chat model rescues the most relevant `TopK` before the answer prompt.
 
@@ -17,12 +17,12 @@ This page covers the chat as a *feature* — what it does, how to tune it, and w
 
 | Permission | Grants |
 |---|---|
-| `Paperbase.Documents.Chat` | Read own conversations and messages (default) |
-| `Paperbase.Documents.Chat.Create` | Create a new conversation |
-| `Paperbase.Documents.Chat.SendMessage` | Send a message in an existing conversation |
-| `Paperbase.Documents.Chat.Delete` | Delete an owned conversation |
+| `Paperbase.Chat` | Read own conversations and messages (default) |
+| `Paperbase.Chat.Create` | Create a new conversation |
+| `Paperbase.Chat.SendMessage` | Send a message in an existing conversation |
+| `Paperbase.Chat.Delete` | Delete an owned conversation |
 
-A user holding only `Paperbase.Documents.Chat` can read but not act. Tool contributors enforce their own per-feature permissions on top of this — for example `search_contracts` requires `Contracts.Default` even though the chat permission is already held.
+A user holding only `Paperbase.Chat` can read but not act. Tool contributors enforce their own per-feature permissions on top of this — for example `search_contracts` requires `Contracts.Default` even though the chat permission is already held.
 
 ## Configuration
 
@@ -32,8 +32,8 @@ Chat-related knobs live in `PaperbaseAIBehavior` alongside the other Application
 "PaperbaseAIBehavior": {
   "EnableLlmRerank": false,
   "RecallExpandFactor": 4,
-  "DocumentChatTopK": 5,
-  "DocumentChatMinScore": 0.45,
+  "ChatTopK": 5,
+  "ChatMinScore": 0.45,
   "MaxCapturedCitations": 50,
   "MaxToolsPerTurn": 0
 }
@@ -42,32 +42,32 @@ Chat-related knobs live in `PaperbaseAIBehavior` alongside the other Application
 | Key | Default | Description |
 | --- | --- | --- |
 | `EnableLlmRerank` | `false` | When enabled, document chat retrieves an expanded candidate set, asks the chat model to rerank chunks by question relevance, and injects only the final `TopK` into the answer prompt. Off by default to conserve tokens; enable when retrieval quality is the bottleneck (often in mixed-language corpora). |
-| `RecallExpandFactor` | `4` | Multiplier applied to `DocumentChatTopK` (or `PaperbaseKnowledgeIndex:DefaultTopK`) before LLM rerank. With the defaults `topK=5` × `4` = 20 candidates rescored. |
-| `DocumentChatTopK` | `5` | Default top-K passed to `search_paperbase_documents` when the model does not specify it. The model can override per call (e.g. raise to 10–15 for cross-document reconciliation). |
-| `DocumentChatMinScore` | `0.45` | Default normalized cosine threshold for document chat RAG searches when the model does not specify `minScore`. Intentionally lower than `PaperbaseKnowledgeIndex:MinScore` to improve recall for cross-language questions and proper-noun lookups. |
+| `RecallExpandFactor` | `4` | Multiplier applied to `ChatTopK` (or `PaperbaseKnowledgeIndex:DefaultTopK`) before LLM rerank. With the defaults `topK=5` × `4` = 20 candidates rescored. |
+| `ChatTopK` | `5` | Default top-K passed to `search_paperbase_documents` when the model does not specify it. The model can override per call (e.g. raise to 10–15 for cross-document reconciliation). |
+| `ChatMinScore` | `0.45` | Default normalized cosine threshold for document chat RAG searches when the model does not specify `minScore`. Intentionally lower than `PaperbaseKnowledgeIndex:MinScore` to improve recall for cross-language questions and proper-noun lookups. |
 | `MaxCapturedCitations` | `50` | Hard upper bound on the number of distinct citations a single turn may accumulate across all `search_paperbase_documents` calls. When the cap is hit, additional results are dropped and `CitationsTrimmed = true` is recorded on the audit row. Defends against prompt-injection-driven citation bombs. |
 | `MaxToolsPerTurn` | `0` (unlimited) | Soft cap on the number of contributor tools exposed to the agent per turn. `0` means no cap. When the cap is exceeded, the dispatcher prefers tools whose contributor `DocumentTypeCode` matches the conversation anchor and trims the rest, recording `ToolsTrimmed = true`. Leave at `0` until business modules genuinely outgrow the model's tool-list comprehension. |
 
 The agent uses `ChatToolMode.Auto` — the model picks when (and with what `documentIds` / `documentTypeCode` / `topK` / `minScore`) to invoke each tool. There is no operator switch for "always retrieve before answering" — see *When the answer is degraded* below for the honest-signal contract that replaced it.
 
-`IDocumentChatToolContributor.DocumentTypeCode` is **informational** — it is *not* a filter. Every contributor's tools are exposed on every turn regardless of conversation anchor. The field is used only as a tie-breaker hint for `MaxToolsPerTurn` trimming and to help reviewers understand intent. Do not rely on it for authorization (do that inside each tool body — see *Adding a tool contributor* below).
+`IChatToolContributor.DocumentTypeCode` is **informational** — it is *not* a filter. Every contributor's tools are exposed on every turn regardless of conversation anchor. The field is used only as a tie-breaker hint for `MaxToolsPerTurn` trimming and to help reviewers understand intent. Do not rely on it for authorization (do that inside each tool body — see *Adding a tool contributor* below).
 
 The hard cap on tool-call rounds within a single turn is configured at host wiring time via `PaperbaseAI:MaxToolIterations` (default `10`); see [ai-provider.md → Provider wiring](ai-provider.md#provider-wiring-paperbaseai). For prompt language behavior, see [ai-provider.md → Cross-cutting LLM behavior](ai-provider.md#cross-cutting-llm-behavior-paperbaseaibehavior). For retrieval `topK` / `minScore` defaults, see [knowledge-index.md](knowledge-index.md). For BM25-augmented hybrid retrieval, see [hybrid-search.md](hybrid-search.md).
 
 ## Tools
 
-The agent's toolset is the union of the built-in tools below plus every `IDocumentChatToolContributor`-registered tool. The model picks when, in what order, and with what arguments to invoke each — there is no scripted workflow.
+The agent's toolset is the union of the built-in tools below plus every `IChatToolContributor`-registered tool. The model picks when, in what order, and with what arguments to invoke each — there is no scripted workflow.
 
 ### Built-in tools
 
 | Tool | What it does | Notes |
 |---|---|---|
-| `search_paperbase_documents` | Semantic vector search over the user's documents. The model supplies a natural-language `query`; optional `documentIds[]`, `documentTypeCode`, `topK`, `minScore` parameters let it drill in after a structured-tool round. | Tenant-scoped at the binding layer (`_tenantId` is captured in the closure, not derived from `DataFilter`). Defaults from `PaperbaseAIBehavior:DocumentChatTopK` / `:DocumentChatMinScore`. Citations from all calls in one turn are appended + deduplicated up to `MaxCapturedCitations`. |
+| `search_paperbase_documents` | Semantic vector search over the user's documents. The model supplies a natural-language `query`; optional `documentIds[]`, `documentTypeCode`, `topK`, `minScore` parameters let it drill in after a structured-tool round. | Tenant-scoped at the binding layer (`_tenantId` is captured in the closure, not derived from `DataFilter`). Defaults from `PaperbaseAIBehavior:ChatTopK` / `:ChatMinScore`. Citations from all calls in one turn are appended + deduplicated up to `MaxCapturedCitations`. |
 | `get_document_relations` | Bidirectional lookup over the `DocumentRelation` aggregate — returns documents linked to a given `documentId` (manual + AI-discovered edges). Ordered by source (`Manual` first) then by `Confidence` desc, capped at 20 per call. | Requires `Paperbase.Documents.Default` (re-asserted inside the tool body). Powers cross-document reasoning chains like contract → matching invoices. See [relation-discovery.md](relation-discovery.md) for how the underlying graph is populated. |
 
 ### Contributor tools
 
-Every business module that wants to expose structured queries to the agent ships an `IDocumentChatToolContributor` (registered as `ITransientDependency`). Reference: `modules/contracts/src/Dignite.Paperbase.Contracts.Application/Chat/ContractChatToolContributor.cs` contributes:
+Every business module that wants to expose structured queries to the agent ships an `IChatToolContributor` (registered as `ITransientDependency`). Reference: `modules/contracts/src/Dignite.Paperbase.Contracts.Application/Chat/ContractChatToolContributor.cs` contributes:
 
 - `search_contracts` — list contracts by counterparty / number / status
 - `get_contract_detail` — fetch a single contract's structured fields
@@ -87,7 +87,7 @@ Reverse examples and the rationale: [`.claude/rules/doc-chat-anti-patterns.md`](
 
 ### Tool-call progress description
 
-The streaming endpoint emits a `ToolCallStarted` delta when the model fires a tool. The user-facing label on that delta comes from the optional `progressDescriber` parameter on `IDocumentChatToolFactory.Create(..., progressDescriber)`:
+The streaming endpoint emits a `ToolCallStarted` delta when the model fires a tool. The user-facing label on that delta comes from the optional `progressDescriber` parameter on `IChatToolFactory.Create(..., progressDescriber)`:
 
 ```csharp
 yield return toolFactory.Create(
@@ -150,7 +150,7 @@ Every turn carries a `groundingSource` enum on `ChatTurnResultDto` describing wh
 | `Structured` (2) | The model invoked only structured/contributor tools (`search_contracts`, `get_contract_aggregate`, `get_document_relations`, …). The answer is grounded in business data, often without text citations. | `false` |
 | `Mixed` (3) | The model invoked both vector search and structured tools in the same turn. | `false` |
 
-`isDegraded` is therefore equivalent to `groundingSource == None`. The classification is performed by inspecting the turn's tool-call audit trail in `DocumentChatTelemetryRecorder` — there is no separate flag the model can lie about.
+`isDegraded` is therefore equivalent to `groundingSource == None`. The classification is performed by inspecting the turn's tool-call audit trail in `ChatTelemetryRecorder` — there is no separate flag the model can lie about.
 
 | Cause | What happened | What to do |
 |---|---|---|
@@ -161,14 +161,14 @@ Every turn carries a `groundingSource` enum on `ChatTurnResultDto` describing wh
 
 ## Observability
 
-Beyond the OpenTelemetry signals from `Microsoft.Extensions.AI` (see [ai-provider.md → OpenTelemetry signals](ai-provider.md#opentelemetry-signals)), each turn enriches the ABP audit row through `DocumentChatTelemetryRecorder`. Two structured payloads are attached to `AbpAuditLogs.ExtraProperties`:
+Beyond the OpenTelemetry signals from `Microsoft.Extensions.AI` (see [ai-provider.md → OpenTelemetry signals](ai-provider.md#opentelemetry-signals)), each turn enriches the ABP audit row through `ChatTelemetryRecorder`. Two structured payloads are attached to `AbpAuditLogs.ExtraProperties`:
 
 | Property key | Shape | Meaning |
 | --- | --- | --- |
-| `DocumentChat.Turn` | `DocumentChatTurnAuditEntry` (single object) | One per turn. Carries `ConversationId`, `Streaming`, `CitationCount`, `IsDegraded`, `ElapsedMs`, `Outcome`, plus the dimensions in the table below. |
-| `DocumentChat.ToolCalls` | `IReadOnlyList<DocumentChatToolAuditEntry>` | One entry per tool invocation, in call order. Carries `ToolName`, `ArgumentsSummary` (sanitised — never raw user input), `ResultSizeBytes`, `ElapsedMs`, `Outcome`, `ExceptionType`. |
+| `Chat.Turn` | `ChatTurnAuditEntry` (single object) | One per turn. Carries `ConversationId`, `Streaming`, `CitationCount`, `IsDegraded`, `ElapsedMs`, `Outcome`, plus the dimensions in the table below. |
+| `Chat.ToolCalls` | `IReadOnlyList<ChatToolAuditEntry>` | One entry per tool invocation, in call order. Carries `ToolName`, `ArgumentsSummary` (sanitised — never raw user input), `ResultSizeBytes`, `ElapsedMs`, `Outcome`, `ExceptionType`. |
 
-Notable fields on `DocumentChat.Turn`:
+Notable fields on `Chat.Turn`:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -182,7 +182,7 @@ These dimensions are what drives the upgrade decision in the future: if producti
 
 ## Adding a tool contributor (business modules)
 
-To let the chat answer business-domain questions ("show contracts with Acme Corp expiring this quarter"), a business module implements `IDocumentChatToolContributor`. Three rules apply, each enforced at PR review:
+To let the chat answer business-domain questions ("show contracts with Acme Corp expiring this quarter"), a business module implements `IChatToolContributor`. Three rules apply, each enforced at PR review:
 
 1. **`ContributeTools` returns `AIFunction`s with static descriptions** — never interpolate user-controlled text into the description (prompt-injection vector).
 2. **Each tool method is fail-closed**: explicit `IAuthorizationService.CheckAsync(...)` for the feature permission + explicit `Where(x => x.TenantId == _tenantId)` (do not rely on ABP's ambient `DataFilter`) + a hard `Take(N)` row cap.
@@ -192,7 +192,7 @@ Reference implementation: `modules/contracts/src/Dignite.Paperbase.Contracts.App
 
 ## See also
 
-- [HTTP client guide](document-chat-client.md) — request/response shapes, idempotency, 409 retry pattern
+- [HTTP client guide](chat-client.md) — request/response shapes, idempotency, 409 retry pattern
 - [Knowledge index](knowledge-index.md) — what backs retrieval
 - [Hybrid search](hybrid-search.md) — BM25 + dense recall fusion
 - [Embedding pipeline](embedding.md) — where chunks come from

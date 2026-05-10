@@ -20,7 +20,7 @@ using MEAI = Microsoft.Extensions.AI;
 
 namespace Dignite.Paperbase.Chat;
 
-public class DocumentChatToolInvocationTestModule : DocumentChatAppServiceTestModule
+public class ChatToolInvocationTestModule : ChatAppServiceTestModule
 {
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
@@ -40,13 +40,13 @@ public class DocumentChatToolInvocationTestModule : DocumentChatAppServiceTestMo
 
 /// <summary>
 /// Integration-level guard for the successful MAF tool-calling path:
-/// <c>DocumentChatAppService → ChatClientAgent → FunctionInvokingChatClient →
+/// <c>ChatAppService → ChatClientAgent → FunctionInvokingChatClient →
 /// search_paperbase_documents AIFunction → DocumentSearchCapture → citations</c>.
 /// </summary>
-public class DocumentChatToolInvocation_Tests
-    : PaperbaseApplicationTestBase<DocumentChatToolInvocationTestModule>
+public class ChatToolInvocation_Tests
+    : PaperbaseApplicationTestBase<ChatToolInvocationTestModule>
 {
-    private readonly IDocumentChatAppService _appService;
+    private readonly IChatAppService _appService;
     private readonly IChatConversationRepository _repository;
     private readonly ScriptedToolCallingChatClient _innerChatClient;
     private readonly IDocumentKnowledgeIndex _knowledgeIndex;
@@ -56,9 +56,9 @@ public class DocumentChatToolInvocation_Tests
 
     private static readonly Guid OwnerUserId = Guid.Parse("00000000-0000-0000-0000-000000000001");
 
-    public DocumentChatToolInvocation_Tests()
+    public ChatToolInvocation_Tests()
     {
-        _appService = GetRequiredService<IDocumentChatAppService>();
+        _appService = GetRequiredService<IChatAppService>();
         _repository = GetRequiredService<IChatConversationRepository>();
         _innerChatClient = GetRequiredService<ScriptedToolCallingChatClient>();
         _knowledgeIndex = GetRequiredService<IDocumentKnowledgeIndex>();
@@ -143,7 +143,7 @@ public class DocumentChatToolInvocation_Tests
     }
 
     [Fact]
-    public async Task SendMessageAsync_Uses_DocumentChatMinScore_From_Options()
+    public async Task SendMessageAsync_Uses_ChatMinScore_From_Options()
     {
         // Issue #100: every conversation is "unscoped" at the aggregate level —
         // there is no longer a per-conversation MinScore to override the default.
@@ -217,14 +217,14 @@ public class DocumentChatToolInvocation_Tests
         var currentAuditScope = _auditingManager.Current;
         currentAuditScope.ShouldNotBeNull();
         var auditLog = currentAuditScope.Log;
-        auditLog.ExtraProperties.ShouldContainKey(DocumentChatTelemetryRecorder.AuditToolCallsPropertyName);
-        auditLog.ExtraProperties.ShouldContainKey(DocumentChatTelemetryRecorder.AuditTurnPropertyName);
+        auditLog.ExtraProperties.ShouldContainKey(ChatTelemetryRecorder.AuditToolCallsPropertyName);
+        auditLog.ExtraProperties.ShouldContainKey(ChatTelemetryRecorder.AuditTurnPropertyName);
 
-        var toolCalls = auditLog.ExtraProperties[DocumentChatTelemetryRecorder.AuditToolCallsPropertyName]
-            .ShouldBeOfType<List<DocumentChatToolAuditEntry>>();
+        var toolCalls = auditLog.ExtraProperties[ChatTelemetryRecorder.AuditToolCallsPropertyName]
+            .ShouldBeOfType<List<ChatToolAuditEntry>>();
         toolCalls.Count.ShouldBe(1);
         toolCalls[0].ToolName.ShouldBe("search_paperbase_documents");
-        toolCalls[0].Outcome.ShouldBe(DocumentChatTelemetryOutcome.Success);
+        toolCalls[0].Outcome.ShouldBe(ChatTelemetryOutcome.Success);
         toolCalls[0].ArgumentsSummary.ShouldContainKey("query");
 
         // Sanitization: the raw query string ("payment terms") must NOT survive into
@@ -237,12 +237,12 @@ public class DocumentChatToolInvocation_Tests
         // chatBuilder.UseOpenTelemetry()). The audit entry carries only business-domain
         // fields (tenant/user/conversation/document) plus the project-specific IsDegraded /
         // CitationCount.
-        var turn = auditLog.ExtraProperties[DocumentChatTelemetryRecorder.AuditTurnPropertyName]
-            .ShouldBeOfType<DocumentChatTurnAuditEntry>();
+        var turn = auditLog.ExtraProperties[ChatTelemetryRecorder.AuditTurnPropertyName]
+            .ShouldBeOfType<ChatTurnAuditEntry>();
         turn.ConversationId.ShouldBe(conversationId);
         turn.CitationCount.ShouldBe(1);
         turn.IsDegraded.ShouldBeFalse();
-        turn.Outcome.ShouldBe(DocumentChatTelemetryOutcome.Success);
+        turn.Outcome.ShouldBe(ChatTelemetryOutcome.Success);
 
         // Issue #98: per-turn telemetry derives ToolCallSummary / ToolCallDepth /
         // GroundingSource from the per-tool entries on the same audit scope. Here
@@ -257,7 +257,7 @@ public class DocumentChatToolInvocation_Tests
     public async Task SendMessageAsync_Records_Tool_Failure_When_Search_Throws()
     {
         // The tool implementation rejects with a typed exception. The wrapper at
-        // AuditedDocumentChatFunction must still emit an audit entry with
+        // AuditedChatFunction must still emit an audit entry with
         // Outcome=Failure and ExceptionType populated, and the underlying exception
         // must propagate so the model sees the failure (rather than silently
         // "succeeding" with no result).
@@ -283,10 +283,10 @@ public class DocumentChatToolInvocation_Tests
         });
 
         var auditLog = _auditingManager.Current!.Log;
-        var toolCalls = auditLog.ExtraProperties[DocumentChatTelemetryRecorder.AuditToolCallsPropertyName]
-            .ShouldBeOfType<List<DocumentChatToolAuditEntry>>();
+        var toolCalls = auditLog.ExtraProperties[ChatTelemetryRecorder.AuditToolCallsPropertyName]
+            .ShouldBeOfType<List<ChatToolAuditEntry>>();
         toolCalls.Count.ShouldBe(1);
-        toolCalls[0].Outcome.ShouldBe(DocumentChatTelemetryOutcome.Failure);
+        toolCalls[0].Outcome.ShouldBe(ChatTelemetryOutcome.Failure);
         toolCalls[0].ExceptionType.ShouldNotBeNullOrEmpty();
     }
 

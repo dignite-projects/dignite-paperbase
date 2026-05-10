@@ -13,7 +13,7 @@
     <PackageReference Include="Volo.Abp.Core" />
     <PackageReference Include="Volo.Abp.EventBus.Abstractions" />
     <!-- AIFunction is the only ME.AI type in the public contract; kept here so business
-         modules implementing IDocumentChatToolContributor don't need a separate reference. -->
+         modules implementing IChatToolContributor don't need a separate reference. -->
     <PackageReference Include="Microsoft.Extensions.AI" />
   </ItemGroup>
 

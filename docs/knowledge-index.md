@@ -71,6 +71,6 @@ Search and delete filters always include `tenant_id`, so host-level documents �
 ## See also
 
 - [Embedding pipeline](embedding.md) — what writes into the knowledge index
-- [Document chat](document-chat.md) — primary reader of the knowledge index
+- [Document chat](chat.md) — primary reader of the knowledge index
 - [Hybrid search](hybrid-search.md) — BM25 + dense RRF on the Qdrant provider
 - [Knowledge-index provider authoring](knowledge-index-provider.md) — how to add a non-Qdrant backend

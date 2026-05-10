@@ -7,7 +7,7 @@ Paperbase delegates all chat-completion and embedding calls to `Microsoft.Extens
 | `PaperbaseAI` | Provider wiring (endpoint, credentials, model ids, prompt-cache middleware switch) | Host only — `PaperbaseHostModule.ConfigureAI` reads it once at startup to register `IChatClient` and `IEmbeddingGenerator<string, Embedding<float>>` |
 | `PaperbaseAIBehavior` | Workflow / Chat behavior knobs (prompt language, truncation, chunking, rerank, tool-call cap, …) | Application layer via `IOptions<PaperbaseAIBehaviorOptions>` — `PaperbaseApplicationModule.ConfigureServices` binds the section to the type |
 
-The split keeps credentials (`ApiKey`) out of any `IOptions<>` flowing into business code and lets operators tune behavior independently of provider switches. Every downstream feature — [classification](classification.md), [embedding](embedding.md), [document chat](document-chat.md), business-module field extraction — shares the same `IChatClient` registration regardless of behavior tuning.
+The split keeps credentials (`ApiKey`) out of any `IOptions<>` flowing into business code and lets operators tune behavior independently of provider switches. Every downstream feature — [classification](classification.md), [embedding](embedding.md), [document chat](chat.md), business-module field extraction — shares the same `IChatClient` registration regardless of behavior tuning.
 
 ## Provider wiring (`PaperbaseAI`)
 
@@ -39,7 +39,7 @@ The two model ids are independent — pair a small embedding model with a strong
 |---|---|
 | `Documents/Pipelines/Classification/DocumentClassificationWorkflow` | `IChatClient` |
 | `Documents/Pipelines/Embedding/DocumentEmbeddingWorkflow` | `IEmbeddingGenerator` |
-| `Chat/DocumentChatAppService` + `Chat/Search/DocumentRerankWorkflow` | `IChatClient` |
+| `Chat/ChatAppService` + `Chat/Search/DocumentRerankWorkflow` | `IChatClient` |
 | Business-module field extractors (e.g. `ContractDocumentHandler`) | `IChatClient` (caller constructs its own `ChatClientAgent`) |
 
 A single `PaperbaseAI` block serves all of them. There is no per-pipeline endpoint switch — picking different models per pipeline is a host-level customization that replaces the registrations in `PaperbaseHostModule.ConfigureServices`.
@@ -60,7 +60,7 @@ The `PaperbaseAI` section becomes irrelevant in that case — drop it from `apps
 
 | Required | Why |
 | --- | --- |
-| `IChatClient` registered via `services.AddChatClient(...)` with `.UseFunctionInvocation()` | Document Chat tool calling (`IDocumentChatToolContributor`) and any business-module function tools rely on this middleware — without it the LLM's `tool_call` requests are returned to the caller instead of being executed. |
+| `IChatClient` registered via `services.AddChatClient(...)` with `.UseFunctionInvocation()` | Chat tool calling (`IChatToolContributor`) and any business-module function tools rely on this middleware — without it the LLM's `tool_call` requests are returned to the caller instead of being executed. |
 | `IEmbeddingGenerator<string, Embedding<float>>` registered via `services.AddEmbeddingGenerator(...)` | The embedding pipeline and hybrid search require it. If your chat provider has no embedding model (e.g. native Anthropic), pair it with a separate embedding provider — the chat and embedding registrations are independent. |
 | `.UseDistributedCache()` on the chat builder when prompt caching is desired | Provider-agnostic; relies only on the host's `IDistributedCache`. |
 
@@ -163,7 +163,7 @@ These knobs describe *how Paperbase calls the model* (language hint, retrieval s
 Per-pipeline tuning also lives in `PaperbaseAIBehavior` — see the feature docs for the keys each pipeline reads:
 - Classification truncation and prompt size → [classification.md](classification.md)
 - Chunking → [embedding.md](embedding.md)
-- Chat retrieval, rerank, tool-calling → [document-chat.md](document-chat.md)
+- Chat retrieval, rerank, tool-calling → [chat.md](chat.md)
 
 ## OpenTelemetry signals
 
@@ -179,15 +179,15 @@ context.Services.AddOpenTelemetry()
     .WithTracing(b => b.AddSource("Experimental.Microsoft.Extensions.AI"))
     .WithMetrics(b => b
         .AddMeter("Experimental.Microsoft.Extensions.AI")     // gen_ai.* signals
-        .AddMeter("Dignite.Paperbase.DocumentChat"));          // project-specific
+        .AddMeter("Dignite.Paperbase.Chat"));          // project-specific
 ```
 
 | Source / Meter | Emitted by | What it covers |
 | --- | --- | --- |
 | `Experimental.Microsoft.Extensions.AI` (Activity + Meter) | `OpenTelemetryChatClient` | OTel GenAI semantic conventions: `chat {model}` / `execute_tool {name}` spans, `gen_ai.client.operation.duration` (s), `gen_ai.client.token.usage`, streaming `time_to_first_chunk` / `time_per_output_chunk` |
-| `Dignite.Paperbase.DocumentChat` (Meter) | `DocumentChatTelemetryRecorder` | Project-specific deltas only: `paperbase.document_chat.turn.degraded` counter (the "honest signal" — model invoked **no tool at all**, equivalent to `GroundingSource == None`) and `paperbase.document_chat.tool.result.size` histogram. The full per-turn / per-tool dimensions (`GroundingSource`, `ToolCallSummary`, `ToolCallDepth`, `CitationsTrimmed`, `AnchorResolutionFailed`) are attached to `AbpAuditLogs.ExtraProperties` rather than emitted as metric tags — see [document-chat.md → Observability](document-chat.md#observability). **Does not duplicate** the gen_ai.* signals above. |
+| `Dignite.Paperbase.Chat` (Meter) | `ChatTelemetryRecorder` | Project-specific deltas only: `paperbase.chat.turn.degraded` counter (the "honest signal" — model invoked **no tool at all**, equivalent to `GroundingSource == None`) and `paperbase.chat.tool.result.size` histogram. The full per-turn / per-tool dimensions (`GroundingSource`, `ToolCallSummary`, `ToolCallDepth`, `CitationsTrimmed`, `AnchorResolutionFailed`) are attached to `AbpAuditLogs.ExtraProperties` rather than emitted as metric tags — see [chat.md → Observability](chat.md#observability). **Does not duplicate** the gen_ai.* signals above. |
 
 Business-domain audit (tenant / user / conversation / document) goes to
-`AbpAuditLogs.Comments` + `ExtraProperties` (`DocumentChatTelemetryRecorder`
+`AbpAuditLogs.Comments` + `ExtraProperties` (`ChatTelemetryRecorder`
 calls `IAuditingManager.Current`); the audit row links to the OTel trace
 through `Activity.Current.TraceId`.

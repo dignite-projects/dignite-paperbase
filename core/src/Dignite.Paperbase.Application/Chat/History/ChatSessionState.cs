@@ -4,7 +4,7 @@ namespace Dignite.Paperbase.Chat;
 
 /// <summary>
 /// State carried in <see cref="Microsoft.Agents.AI.AgentSession.StateBag"/> by
-/// <see cref="DocumentChatAppService"/> so <see cref="DocumentChatHistoryProvider"/>
+/// <see cref="ChatAppService"/> so <see cref="ConversationHistoryProvider"/>
 /// can resolve the conversation aggregate to load history from.
 ///
 /// <para>
@@ -13,11 +13,11 @@ namespace Dignite.Paperbase.Chat;
 /// + public setter — required by <c>AgentSessionStateBagJsonConverter</c>.
 /// </para>
 /// </summary>
-public sealed class DocumentChatSessionState
+public sealed class ChatSessionState
 {
-    public DocumentChatSessionState() { }
+    public ChatSessionState() { }
 
-    public DocumentChatSessionState(Guid conversationId)
+    public ChatSessionState(Guid conversationId)
     {
         ConversationId = conversationId;
     }

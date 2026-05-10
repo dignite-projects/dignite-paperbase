@@ -411,7 +411,7 @@ public class PaperbaseHostModule : AbpModule
         // OTel decorators emit the gen_ai.* semantic-convention signals (turn duration,
         // token usage, execute_tool spans). Wire them inside the pipeline so a host that
         // adds an OTel exporter automatically picks up the standard signals — Paperbase's
-        // own DocumentChatTelemetryRecorder only adds project-specific deltas on top
+        // own ChatTelemetryRecorder only adds project-specific deltas on top
         // (turn.degraded counter, tool.result.size histogram, business audit log).
         chatBuilder.UseOpenTelemetry();
         chatBuilder.UseLogging();

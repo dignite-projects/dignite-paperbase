@@ -26,10 +26,10 @@ namespace Dignite.Paperbase.Chat.Telemetry;
 /// <para>
 /// What this recorder adds beyond the OTel standard:
 /// <list type="bullet">
-///   <item><c>paperbase.document_chat.turn.degraded</c> — counter for the project's
+///   <item><c>paperbase.chat.turn.degraded</c> — counter for the project's
 ///     "honest signal" (CLAUDE.md): turns where the model declined to invoke search
 ///     OR retrieval threw and the turn fell back to context-only.</item>
-///   <item><c>paperbase.document_chat.tool.result.size</c> — histogram of result
+///   <item><c>paperbase.chat.tool.result.size</c> — histogram of result
 ///     payload size (bytes), useful for spotting pathological tool outputs that
 ///     blow up LLM context.</item>
 ///   <item>Business-domain audit entries on <see cref="IAuditingManager"/>:
@@ -40,33 +40,33 @@ namespace Dignite.Paperbase.Chat.Telemetry;
 /// </summary>
 // Singleton lifetime matches the static Meter / instruments below — `System.Diagnostics.Metrics`
 // recommends one shared Meter per process, and per-scope construction would only churn allocations.
-public class DocumentChatTelemetryRecorder : ISingletonDependency
+public class ChatTelemetryRecorder : ISingletonDependency
 {
-    public const string AuditToolCallsPropertyName = "DocumentChat.ToolCalls";
-    public const string AuditTurnPropertyName = "DocumentChat.Turn";
-    public const string MeterName = "Dignite.Paperbase.DocumentChat";
+    public const string AuditToolCallsPropertyName = "Chat.ToolCalls";
+    public const string AuditTurnPropertyName = "Chat.Turn";
+    public const string MeterName = "Dignite.Paperbase.Chat";
 
     private static readonly Meter Meter = new(MeterName);
 
     private static readonly Counter<long> DegradedTurns = Meter.CreateCounter<long>(
-        "paperbase.document_chat.turn.degraded",
+        "paperbase.chat.turn.degraded",
         description: "Number of chat turns that ran without retrieval grounding (model declined to invoke search OR retrieval failed).");
     private static readonly Histogram<long> ToolResultSize = Meter.CreateHistogram<long>(
-        "paperbase.document_chat.tool.result.size", unit: "By",
+        "paperbase.chat.tool.result.size", unit: "By",
         description: "Size of tool-call result payloads in bytes.");
 
     private readonly IAuditingManager _auditingManager;
-    private readonly ILogger<DocumentChatTelemetryRecorder> _logger;
+    private readonly ILogger<ChatTelemetryRecorder> _logger;
 
-    public DocumentChatTelemetryRecorder(
+    public ChatTelemetryRecorder(
         IAuditingManager auditingManager,
-        ILogger<DocumentChatTelemetryRecorder> logger)
+        ILogger<ChatTelemetryRecorder> logger)
     {
         _auditingManager = auditingManager;
         _logger = logger;
     }
 
-    public virtual void RecordToolCall(DocumentChatToolAuditEntry entry)
+    public virtual void RecordToolCall(ChatToolAuditEntry entry)
     {
         AddToolCallToAuditLog(entry);
 
@@ -78,7 +78,7 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
             ToolResultSize.Record(entry.ResultSizeBytes.Value, CreateToolTags(entry));
         }
 
-        if (entry.Outcome == DocumentChatTelemetryOutcome.Success)
+        if (entry.Outcome == ChatTelemetryOutcome.Success)
         {
             _logger.LogInformation(
                 "Document chat tool {ToolName} completed. ConversationId={ConversationId} TenantId={TenantId} DocumentTypeCode={DocumentTypeCode} ElapsedMs={ElapsedMs} ResultSizeBytes={ResultSizeBytes}",
@@ -102,7 +102,7 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
         }
     }
 
-    public virtual void RecordTurn(DocumentChatTurnAuditEntry entry)
+    public virtual void RecordTurn(ChatTurnAuditEntry entry)
     {
         // Derive ToolCallSummary / ToolCallDepth / GroundingSource from the per-tool
         // entries already accumulated on the audit scope. Keeping the derivation here
@@ -122,7 +122,7 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
             DegradedTurns.Add(1, CreateTurnTags(enriched));
         }
 
-        if (enriched.Outcome == DocumentChatTelemetryOutcome.Success)
+        if (enriched.Outcome == ChatTelemetryOutcome.Success)
         {
             _logger.LogInformation(
                 "Document chat turn completed. ConversationId={ConversationId} TenantId={TenantId} DocumentTypeCode={DocumentTypeCode} Streaming={Streaming} IsDegraded={IsDegraded} GroundingSource={GroundingSource} ToolCallDepth={ToolCallDepth} CitationCount={CitationCount} ElapsedMs={ElapsedMs}",
@@ -154,16 +154,16 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
     /// <summary>
     /// Reads the per-tool entries already recorded on the current audit scope and
     /// returns a copy of <paramref name="entry"/> enriched with the derived per-turn
-    /// dimensions (<see cref="DocumentChatTurnAuditEntry.ToolCallSummary"/>,
-    /// <see cref="DocumentChatTurnAuditEntry.ToolCallDepth"/>,
-    /// <see cref="DocumentChatTurnAuditEntry.GroundingSource"/>).
+    /// dimensions (<see cref="ChatTurnAuditEntry.ToolCallSummary"/>,
+    /// <see cref="ChatTurnAuditEntry.ToolCallDepth"/>,
+    /// <see cref="ChatTurnAuditEntry.GroundingSource"/>).
     /// </summary>
     /// <remarks>
     /// Counts include both successful and failed tool invocations — failures still
     /// reflect what the model attempted, which is what callers actually want to see in
     /// telemetry (e.g. "model retried 3 times before giving up").
     /// </remarks>
-    protected virtual DocumentChatTurnAuditEntry EnrichTurnEntryFromAuditScope(DocumentChatTurnAuditEntry entry)
+    protected virtual ChatTurnAuditEntry EnrichTurnEntryFromAuditScope(ChatTurnAuditEntry entry)
     {
         var toolCalls = ReadToolCallsFromAuditScope();
 
@@ -173,7 +173,7 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
                 .GroupBy(t => t.ToolName, StringComparer.Ordinal)
                 .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
 
-        return new DocumentChatTurnAuditEntry
+        return new ChatTurnAuditEntry
         {
             ConversationId = entry.ConversationId,
             UserId = entry.UserId,
@@ -198,7 +198,7 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
     /// <summary>
     /// Returns the <see cref="GroundingSource"/> for the in-flight turn, derived from
     /// the per-tool entries already on the current audit scope. Used by
-    /// <c>DocumentChatAppService</c> to derive the user-facing
+    /// <c>ChatAppService</c> to derive the user-facing
     /// <see cref="ChatTurnResultDto.IsDegraded"/> signal from the same source of truth
     /// as the audit entry — guaranteeing the two never disagree.
     /// </summary>
@@ -214,7 +214,7 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
     /// Override to extend classification (e.g. when a future business module
     /// contributes another vector-style search tool).
     /// </summary>
-    protected virtual GroundingSource ClassifyGrounding(IReadOnlyList<DocumentChatToolAuditEntry> toolCalls)
+    protected virtual GroundingSource ClassifyGrounding(IReadOnlyList<ChatToolAuditEntry> toolCalls)
     {
         if (toolCalls.Count == 0)
         {
@@ -256,24 +256,24 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
     protected virtual bool IsVectorSearchTool(string toolName)
         => string.Equals(toolName, ChatConsts.SearchPaperbaseDocumentsToolName, StringComparison.Ordinal);
 
-    private IReadOnlyList<DocumentChatToolAuditEntry> ReadToolCallsFromAuditScope()
+    private IReadOnlyList<ChatToolAuditEntry> ReadToolCallsFromAuditScope()
     {
         var scope = _auditingManager.Current;
         if (scope?.Log == null)
         {
-            return Array.Empty<DocumentChatToolAuditEntry>();
+            return Array.Empty<ChatToolAuditEntry>();
         }
 
         if (scope.Log.ExtraProperties.TryGetValue(AuditToolCallsPropertyName, out var existing)
-            && existing is List<DocumentChatToolAuditEntry> entries)
+            && existing is List<ChatToolAuditEntry> entries)
         {
             return entries;
         }
 
-        return Array.Empty<DocumentChatToolAuditEntry>();
+        return Array.Empty<ChatToolAuditEntry>();
     }
 
-    private void AddToolCallToAuditLog(DocumentChatToolAuditEntry entry)
+    private void AddToolCallToAuditLog(ChatToolAuditEntry entry)
     {
         var scope = _auditingManager.Current;
         if (scope?.Log == null)
@@ -282,16 +282,16 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
         }
 
         if (!scope.Log.ExtraProperties.TryGetValue(AuditToolCallsPropertyName, out var existing)
-            || existing is not List<DocumentChatToolAuditEntry> entries)
+            || existing is not List<ChatToolAuditEntry> entries)
         {
-            entries = new List<DocumentChatToolAuditEntry>();
+            entries = new List<ChatToolAuditEntry>();
             scope.Log.ExtraProperties[AuditToolCallsPropertyName] = entries;
         }
 
         entries.Add(entry);
     }
 
-    private void AddTurnToAuditLog(DocumentChatTurnAuditEntry entry)
+    private void AddTurnToAuditLog(ChatTurnAuditEntry entry)
     {
         var scope = _auditingManager.Current;
         if (scope?.Log == null)
@@ -302,7 +302,7 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
         scope.Log.ExtraProperties[AuditTurnPropertyName] = entry;
     }
 
-    private static KeyValuePair<string, object?>[] CreateToolTags(DocumentChatToolAuditEntry entry)
+    private static KeyValuePair<string, object?>[] CreateToolTags(ChatToolAuditEntry entry)
         => new[]
         {
             new KeyValuePair<string, object?>("tool.name", entry.ToolName),
@@ -310,7 +310,7 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
             new KeyValuePair<string, object?>("document.type", entry.DocumentTypeCode ?? "(none)")
         };
 
-    private static KeyValuePair<string, object?>[] CreateTurnTags(DocumentChatTurnAuditEntry entry)
+    private static KeyValuePair<string, object?>[] CreateTurnTags(ChatTurnAuditEntry entry)
         => new[]
         {
             new KeyValuePair<string, object?>("outcome", entry.Outcome.ToString()),
@@ -320,13 +320,13 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
         };
 }
 
-public enum DocumentChatTelemetryOutcome
+public enum ChatTelemetryOutcome
 {
     Success = 0,
     Failure = 1
 }
 
-public sealed class DocumentChatToolAuditEntry
+public sealed class ChatToolAuditEntry
 {
     public required Guid ConversationId { get; init; }
     public Guid? UserId { get; init; }
@@ -339,7 +339,7 @@ public sealed class DocumentChatToolAuditEntry
     public IReadOnlyDictionary<string, object?>? ResultSummary { get; init; }
     public long? ResultSizeBytes { get; init; }
     public required double ElapsedMs { get; init; }
-    public required DocumentChatTelemetryOutcome Outcome { get; init; }
+    public required ChatTelemetryOutcome Outcome { get; init; }
     public string? ExceptionType { get; init; }
 }
 
@@ -348,7 +348,7 @@ public sealed class DocumentChatToolAuditEntry
 // the gen_ai.client.token.usage histogram emits each turn's token counts. Audit
 // rows correlate with that telemetry through TraceId; carrying the raw counts on
 // the audit entry as well would only re-emit the same data.
-public sealed class DocumentChatTurnAuditEntry
+public sealed class ChatTurnAuditEntry
 {
     public required Guid ConversationId { get; init; }
     public Guid? UserId { get; init; }
@@ -360,13 +360,13 @@ public sealed class DocumentChatTurnAuditEntry
     public int CitationCount { get; init; }
     public bool IsDegraded { get; init; }
     public required double ElapsedMs { get; init; }
-    public required DocumentChatTelemetryOutcome Outcome { get; init; }
+    public required ChatTelemetryOutcome Outcome { get; init; }
     public string? ExceptionType { get; init; }
 
     /// <summary>
     /// Per-tool invocation count for this turn (tool name → count). <c>null</c> when no
     /// tool was invoked. Derived from the audit scope's per-tool entries by
-    /// <see cref="DocumentChatTelemetryRecorder.RecordTurn"/> — callers do not need to
+    /// <see cref="ChatTelemetryRecorder.RecordTurn"/> — callers do not need to
     /// supply this; it is overwritten if they do.
     /// </summary>
     public IReadOnlyDictionary<string, int>? ToolCallSummary { get; init; }

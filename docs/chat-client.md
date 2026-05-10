@@ -1,15 +1,15 @@
-# Document Chat — Client Calling Guide
+# Chat — Client Calling Guide
 
-Base URL: `{selfUrl}/api/paperbase/document-chat`
+Base URL: `{selfUrl}/api/paperbase/chat`
 
 All endpoints require an OAuth 2.0 Bearer token. The required permission depends on the operation:
 
 | Permission | Grants |
 |---|---|
-| `Paperbase.Documents.Chat` | Read own conversations and messages (default) |
-| `Paperbase.Documents.Chat.Create` | Create a new conversation |
-| `Paperbase.Documents.Chat.SendMessage` | Send a message in an existing conversation |
-| `Paperbase.Documents.Chat.Delete` | Delete an owned conversation |
+| `Paperbase.Chat` | Read own conversations and messages (default) |
+| `Paperbase.Chat.Create` | Create a new conversation |
+| `Paperbase.Chat.SendMessage` | Send a message in an existing conversation |
+| `Paperbase.Chat.Delete` | Delete an owned conversation |
 
 ---
 
@@ -18,7 +18,7 @@ All endpoints require an OAuth 2.0 Bearer token. The required permission depends
 **POST** `/conversations`
 
 ```http
-POST /api/paperbase/document-chat/conversations
+POST /api/paperbase/chat/conversations
 Authorization: Bearer {token}
 Content-Type: application/json
 
@@ -30,10 +30,10 @@ Content-Type: application/json
 
 Both `title` and `documentId` are optional. `documentId` is the **anchor** — the document the user opened when starting the chat. The server hints the anchor's `id` + `documentTypeCode` to the model each turn, but **does not constrain retrieval** to it. The model is free to search across other documents and types. Omit `documentId` for a chat that starts with no anchor.
 
-> Removed since 2026-05: `documentTypeCode`, `topK`, and `minScore` are no longer accepted on create. Per-turn retrieval defaults come from server-side `PaperbaseAIBehavior` (see [document-chat.md → Configuration](document-chat.md#configuration)) and the model decides per call whether to override them via the `search_paperbase_documents` tool parameters.
+> Removed since 2026-05: `documentTypeCode`, `topK`, and `minScore` are no longer accepted on create. Per-turn retrieval defaults come from server-side `PaperbaseAIBehavior` (see [chat.md → Configuration](chat.md#configuration)) and the model decides per call whether to override them via the `search_paperbase_documents` tool parameters.
 
 ```bash
-curl -X POST https://localhost:44393/api/paperbase/document-chat/conversations \
+curl -X POST https://localhost:44393/api/paperbase/chat/conversations \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"title":"Q4 Contract Review","documentId":"d9e8f7a6-1234-5678-9abc-def012345678"}'
@@ -87,7 +87,7 @@ CLIENT_TURN_ID=$(uuidgen)
 ### Request
 
 ```http
-POST /api/paperbase/document-chat/conversations/3fa85f64-5717-4562-b3fc-2c963f66afa6/messages
+POST /api/paperbase/chat/conversations/3fa85f64-5717-4562-b3fc-2c963f66afa6/messages
 Authorization: Bearer {token}
 Content-Type: application/json
 
@@ -99,7 +99,7 @@ Content-Type: application/json
 
 ```bash
 curl -X POST \
-  "https://localhost:44393/api/paperbase/document-chat/conversations/${CONV_ID}/messages" \
+  "https://localhost:44393/api/paperbase/chat/conversations/${CONV_ID}/messages" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"message\":\"What are the payment terms?\",\"clientTurnId\":\"$CLIENT_TURN_ID\"}"
@@ -136,9 +136,9 @@ curl -X POST \
 | `citations[].snippet` | Truncated text chunk (≤ 200 graphemes). This is the primary client-side highlight key |
 | `citations[].sourceName` | Human-readable source label for display |
 | `isDegraded` | `true` when `groundingSource == None`, i.e. the model produced an answer without invoking any tool. **Not** an infrastructure-failure signal on its own. |
-| `groundingSource` | `0` = `None`, `1` = `Vector`, `2` = `Structured`, `3` = `Mixed`. See [document-chat.md → Grounding source and degraded answers](document-chat.md#grounding-source-and-degraded-answers) for the full classification rule. |
+| `groundingSource` | `0` = `None`, `1` = `Vector`, `2` = `Structured`, `3` = `Mixed`. See [chat.md → Grounding source and degraded answers](chat.md#grounding-source-and-degraded-answers) for the full classification rule. |
 
-For clickable citation behavior, see [document-chat.md → Citation-to-source navigation](document-chat.md#citation-to-source-navigation). In short: open `documentId`, render `Document.Markdown`, highlight `snippet` when possible, and treat `chunkIndex` as context only.
+For clickable citation behavior, see [chat.md → Citation-to-source navigation](chat.md#citation-to-source-navigation). In short: open `documentId`, render `Document.Markdown`, highlight `snippet` when possible, and treat `chunkIndex` as context only.
 
 ---
 
@@ -151,7 +151,7 @@ The streaming endpoint returns Server-Sent Events (`Content-Type: text/event-str
 The request body, idempotency contract, and 409 retry semantics are identical to the buffered endpoint in section 2 — the same `clientTurnId` is honoured. The server persists at the same boundary; if the client drops mid-stream, the abort cancels the underlying request and **no partial answer is committed**.
 
 ```http
-POST /api/paperbase/document-chat/conversations/3fa85f64-…/messages/stream
+POST /api/paperbase/chat/conversations/3fa85f64-…/messages/stream
 Authorization: Bearer {token}
 Content-Type: application/json
 Accept: text/event-stream
@@ -217,14 +217,14 @@ data: {"kind":1,"userMessageId":"a1b2c3d4-…001","assistantMessageId":"a1b2c3d4
 ### Consumer guarantees
 
 - **Tool-call correlation** — `ToolCallStarted` and `ToolCallCompleted` are correlated by `toolCallId`. The server emits started events as the model fires them and completed events as each finishes; the model can fan out tools in parallel, so completed events do not necessarily arrive in started-event order.
-- **`progressDescription` is always sanitised** — every tool registered through `IDocumentChatToolFactory.Create(..., progressDescriber)` produces a static or structurally-derived label (e.g. `"正在按甲方筛选合同…"`). It **never echoes raw user input or raw model arguments**, so it is safe to render directly in the UI before any per-tool authorization check has fired.
+- **`progressDescription` is always sanitised** — every tool registered through `IChatToolFactory.Create(..., progressDescriber)` produces a static or structurally-derived label (e.g. `"正在按甲方筛选合同…"`). It **never echoes raw user input or raw model arguments**, so it is safe to render directly in the UI before any per-tool authorization check has fired.
 - **`Done` is the only signal that text is complete** — earlier `PartialText` events have no terminator. Wait for `kind == 1` before clearing any "thinking…" state.
 - **`Error` (`kind == 2`) is terminal** — the server closes the stream after emitting it. Treat as the stream-equivalent of a non-200 response on the buffered endpoint.
 - **JSON casing** — payloads are camelCase (`JsonSerializerDefaults.Web`), matching the rest of the proxy types.
 
 ### Why not `EventSource`?
 
-`EventSource` is GET-only and cannot set `Authorization` headers without polyfills. Consume the stream with `fetch` + `ReadableStream` + `AbortController` (see `angular/packages/paperbase/src/lib/proxy/http-api/documents/document-chat.service.ts → sendMessageStream` for a reference Angular implementation that exposes the deltas as an RxJS `Observable<ChatTurnDeltaDto>`).
+`EventSource` is GET-only and cannot set `Authorization` headers without polyfills. Consume the stream with `fetch` + `ReadableStream` + `AbortController` (see `angular/packages/paperbase/src/lib/proxy/http-api/documents/chat.service.ts → sendMessageStream` for a reference Angular implementation that exposes the deltas as an RxJS `Observable<ChatTurnDeltaDto>`).
 
 ### Cancellation
 

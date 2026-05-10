@@ -30,7 +30,7 @@ internal static class PromptBoundary
         => $"<candidate index=\"{index}\">\n{Encode(text)}\n</candidate>";
 
     /// <summary>
-    /// 包裹"会话锚点"上下文（per-turn anchor hint），用于 DocumentChatAppService 把
+    /// 包裹"会话锚点"上下文（per-turn anchor hint），用于 ChatAppService 把
     /// "用户当前在文档 X 详情页" 这类**结构化锚点元数据**注入 system prompt。锚点字符串
     /// 由可信源构造（仅 documentId + documentTypeCode，从未注入用户控制的标题/正文），
     /// 但仍走转义路径，给整套 prompt 一个统一的"标签内是数据非指令"边界。

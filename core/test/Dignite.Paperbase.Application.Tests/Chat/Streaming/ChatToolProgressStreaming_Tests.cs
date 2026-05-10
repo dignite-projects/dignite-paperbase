@@ -22,10 +22,10 @@ namespace Dignite.Paperbase.Chat;
 /// <see cref="ChatTurnDeltaKind.ToolCallCompleted"/> events on the SSE channel —
 /// so the user sees activity instead of a black screen during multi-tool reasoning.
 /// </summary>
-public class DocumentChatToolProgressStreaming_Tests
-    : PaperbaseApplicationTestBase<DocumentChatAppServiceTestModule>
+public class ChatToolProgressStreaming_Tests
+    : PaperbaseApplicationTestBase<ChatAppServiceTestModule>
 {
-    private readonly IDocumentChatAppService _appService;
+    private readonly IChatAppService _appService;
     private readonly IChatClient _chatClient;
     private readonly IDocumentKnowledgeIndex _knowledgeIndex;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
@@ -33,9 +33,9 @@ public class DocumentChatToolProgressStreaming_Tests
 
     private static readonly Guid OwnerUserId = Guid.Parse("00000000-0000-0000-0000-000000000001");
 
-    public DocumentChatToolProgressStreaming_Tests()
+    public ChatToolProgressStreaming_Tests()
     {
-        _appService = GetRequiredService<IDocumentChatAppService>();
+        _appService = GetRequiredService<IChatAppService>();
         _chatClient = GetRequiredService<IChatClient>();
         _knowledgeIndex = GetRequiredService<IDocumentKnowledgeIndex>();
         _embeddingGenerator = GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();

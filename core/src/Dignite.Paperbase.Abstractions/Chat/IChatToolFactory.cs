@@ -5,16 +5,16 @@ using Microsoft.Extensions.AI;
 namespace Dignite.Paperbase.Abstractions.Chat;
 
 /// <summary>
-/// Creates document-chat AI tools with the project's shared audit, logging, and metrics behavior.
+/// Creates chat AI tools with the project's shared audit, logging, and metrics behavior.
 /// Business modules should use this factory instead of calling <see cref="AIFunctionFactory"/> directly.
 /// </summary>
-public interface IDocumentChatToolFactory
+public interface IChatToolFactory
 {
     /// <summary>
-    /// Creates an audited document-chat tool from a .NET method delegate.
+    /// Creates an audited chat tool from a .NET method delegate.
     /// </summary>
     AIFunction Create(
-        DocumentChatToolContext ctx,
+        ChatToolContext ctx,
         Delegate method,
         string name,
         string description);
@@ -27,12 +27,12 @@ public interface IDocumentChatToolFactory
     /// <remarks>
     /// <para>
     /// Default implementation forwards to the four-arg
-    /// <see cref="Create(DocumentChatToolContext, Delegate, string, string)"/>
+    /// <see cref="Create(ChatToolContext, Delegate, string, string)"/>
     /// and discards the describer — preserving binary compatibility with external
     /// implementers compiled against the pre-Issue-#116 interface (Issue #130
     /// post-mortem: PR #129 originally mutated the existing signature, which
     /// breaks pre-built modules loaded against an upgraded core package).
-    /// First-party <c>DocumentChatToolFactory</c> overrides this overload to
+    /// First-party <c>ChatToolFactory</c> overrides this overload to
     /// actually route the describer into the audit wrapper.
     /// </para>
     /// <para>
@@ -43,7 +43,7 @@ public interface IDocumentChatToolFactory
     /// </para>
     /// </remarks>
     AIFunction Create(
-        DocumentChatToolContext ctx,
+        ChatToolContext ctx,
         Delegate method,
         string name,
         string description,

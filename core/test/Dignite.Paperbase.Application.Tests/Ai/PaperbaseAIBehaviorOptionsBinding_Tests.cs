@@ -29,7 +29,7 @@ public class PaperbaseAIBehaviorOptionsBindingTestModule : AbpModule
                 ["PaperbaseAIBehavior:DefaultLanguage"] = "en",
                 ["PaperbaseAIBehavior:EnableLlmRerank"] = "true",
                 ["PaperbaseAIBehavior:RecallExpandFactor"] = "7",
-                ["PaperbaseAIBehavior:DocumentChatMinScore"] = "0.44",
+                ["PaperbaseAIBehavior:ChatMinScore"] = "0.44",
                 ["PaperbaseAIBehavior:ChatCompaction:Enabled"] = "true",
                 ["PaperbaseAIBehavior:ChatCompaction:SummarizeAtTokens"] = "2048",
                 ["PaperbaseAIBehavior:ChatCompaction:SlidingWindowTurns"] = "12",
@@ -64,7 +64,7 @@ public class PaperbaseAIBehaviorOptionsBinding_Tests
         _options.DefaultLanguage.ShouldBe("en");                             // default "ja"
         _options.EnableLlmRerank.ShouldBeTrue();                              // default false
         _options.RecallExpandFactor.ShouldBe(7);                              // default 4
-        _options.DocumentChatMinScore.ShouldBe(0.44);                         // default 0.45
+        _options.ChatMinScore.ShouldBe(0.44);                         // default 0.45
         _options.ChatCompaction.Enabled.ShouldBeTrue();                       // default false
         _options.ChatCompaction.SummarizeAtTokens.ShouldBe(2048);             // default 1280
         _options.ChatCompaction.SlidingWindowTurns.ShouldBe(12);              // default 8

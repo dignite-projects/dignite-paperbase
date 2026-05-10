@@ -14,7 +14,7 @@ namespace Dignite.Paperbase.Chat;
 /// MAF <see cref="ChatHistoryProvider"/> backed by the <c>ChatConversation</c> aggregate.
 /// Read-only: persistence (including <c>CitationsJson</c> and <c>IsDegraded</c>, neither
 /// of which exists on <see cref="MeAi.ChatMessage"/>) is owned by
-/// <see cref="DocumentChatAppService"/> via <c>ChatConversation.AppendUserMessage</c>
+/// <see cref="ChatAppService"/> via <c>ChatConversation.AppendUserMessage</c>
 /// / <c>AppendAssistantMessage</c>; <see cref="StoreChatHistoryAsync"/> stays at the
 /// base class no-op default.
 ///
@@ -25,15 +25,15 @@ namespace Dignite.Paperbase.Chat;
 /// share across many sessions.
 /// </para>
 /// </summary>
-public class DocumentChatHistoryProvider : ChatHistoryProvider, ITransientDependency
+public class ConversationHistoryProvider : ChatHistoryProvider, ITransientDependency
 {
-    public const string SessionStateKey = "Paperbase.DocumentChat";
+    public const string SessionStateKey = "Paperbase.Chat";
 
     protected virtual int MaxHistoryMessages => 50;
 
     private readonly IServiceScopeFactory _scopeFactory;
 
-    public DocumentChatHistoryProvider(IServiceScopeFactory scopeFactory)
+    public ConversationHistoryProvider(IServiceScopeFactory scopeFactory)
     {
         _scopeFactory = scopeFactory;
     }
@@ -56,7 +56,7 @@ public class DocumentChatHistoryProvider : ChatHistoryProvider, ITransientDepend
             return [];
         }
 
-        var state = session.StateBag.GetValue<DocumentChatSessionState>(SessionStateKey);
+        var state = session.StateBag.GetValue<ChatSessionState>(SessionStateKey);
         if (state is null || state.ConversationId == Guid.Empty)
         {
             return [];

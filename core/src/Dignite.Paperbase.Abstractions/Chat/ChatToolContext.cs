@@ -3,10 +3,10 @@ using System;
 namespace Dignite.Paperbase.Abstractions.Chat;
 
 /// <summary>
-/// Contextual information passed to <see cref="IDocumentChatToolContributor.ContributeTools"/>
+/// Contextual information passed to <see cref="IChatToolContributor.ContributeTools"/>
 /// so contributors can scope their tool implementations to the right tenant.
 /// </summary>
-public sealed class DocumentChatToolContext
+public sealed class ChatToolContext
 {
     /// <summary>
     /// Optional document type hint. Issue #100 stopped pinning this on the conversation;
