@@ -6,22 +6,21 @@ EXPOSE 443
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-COPY ["host/src/Dignite.Paperbase.Host.csproj", "host/src/"]
-COPY ["core/src/Dignite.Paperbase.Abstractions/Dignite.Paperbase.Abstractions.csproj", "core/src/Dignite.Paperbase.Abstractions/"]
-COPY ["core/src/Dignite.Paperbase.Domain.Shared/Dignite.Paperbase.Domain.Shared.csproj", "core/src/Dignite.Paperbase.Domain.Shared/"]
-COPY ["core/src/Dignite.Paperbase.Domain/Dignite.Paperbase.Domain.csproj", "core/src/Dignite.Paperbase.Domain/"]
-COPY ["core/src/Dignite.Paperbase.Application.Contracts/Dignite.Paperbase.Application.Contracts.csproj", "core/src/Dignite.Paperbase.Application.Contracts/"]
-COPY ["core/src/Dignite.Paperbase.Application/Dignite.Paperbase.Application.csproj", "core/src/Dignite.Paperbase.Application/"]
-COPY ["core/src/Dignite.Paperbase.EntityFrameworkCore/Dignite.Paperbase.EntityFrameworkCore.csproj", "core/src/Dignite.Paperbase.EntityFrameworkCore/"]
-COPY ["core/src/Dignite.Paperbase.HttpApi/Dignite.Paperbase.HttpApi.csproj", "core/src/Dignite.Paperbase.HttpApi/"]
-COPY ["host/common.props", "host/"]
-COPY ["core/common.props", "core/"]
+# Issue #112: copy the whole source tree before restore. The previous Slice-0
+# pattern of per-csproj COPY directives existed only to keep the restore-cache
+# layer stable across pure source edits, but it silently broke the moment
+# Slice 1+ added projects (KnowledgeIndex.Qdrant, TextExtraction*,
+# Ocr.PaddleOcr, Contracts.*) and moved the Slice-0 per-tier props files into
+# the consolidated root common.props + Directory.Packages.props. Trading the
+# restore-cache for a build that doesn't need a Dockerfile audit on every
+# project add — the Host image is rebuilt by CI per push, not in tight inner
+# loops, so the lost cache cost is negligible.
+COPY common.props Directory.Packages.props Dignite.Paperbase.slnx ./
+COPY core/ core/
+COPY modules/ modules/
+COPY host/ host/
 
 RUN dotnet restore "host/src/Dignite.Paperbase.Host.csproj"
-
-COPY host/ host/
-COPY core/src/ core/src/
-
 RUN dotnet build "host/src/Dignite.Paperbase.Host.csproj" -c Release -o /app/build
 
 FROM build AS publish
