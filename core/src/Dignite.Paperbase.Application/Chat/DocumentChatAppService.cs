@@ -382,7 +382,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             capture,
             toolContext,
             _toolFactory,
-            functionName: "search_paperbase_documents",
+            functionName: ChatConsts.SearchPaperbaseDocumentsToolName,
             functionDescription:
                 "Search Paperbase documents within the conversation's scope. " +
                 "Returns relevant text chunks with source citations. " +

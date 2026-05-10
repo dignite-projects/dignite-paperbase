@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.Metrics;
+using System.Linq;
 using Dignite.Paperbase.Abstractions.Chat;
 using Microsoft.Extensions.Logging;
 using Volo.Abp.Auditing;
@@ -103,41 +104,157 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
 
     public virtual void RecordTurn(DocumentChatTurnAuditEntry entry)
     {
-        AddTurnToAuditLog(entry);
+        // Derive ToolCallSummary / ToolCallDepth / GroundingSource from the per-tool
+        // entries already accumulated on the audit scope. Keeping the derivation here
+        // (rather than asking the AppService to re-aggregate) guarantees the per-turn
+        // counts always match the per-tool entries — they share one source of truth.
+        var enriched = EnrichTurnEntryFromAuditScope(entry);
+
+        AddTurnToAuditLog(enriched);
 
         // Turn count + duration + token usage are emitted by
         // Microsoft.Extensions.AI's OpenTelemetryChatClient as standard
         // gen_ai.* signals — don't duplicate here.
         // IsDegraded is the project's "honest signal" (CLAUDE.md) and has no
         // OTel-standard equivalent, so we count it explicitly.
-        if (entry.IsDegraded)
+        if (enriched.IsDegraded)
         {
-            DegradedTurns.Add(1, CreateTurnTags(entry));
+            DegradedTurns.Add(1, CreateTurnTags(enriched));
         }
 
-        if (entry.Outcome == DocumentChatTelemetryOutcome.Success)
+        if (enriched.Outcome == DocumentChatTelemetryOutcome.Success)
         {
             _logger.LogInformation(
-                "Document chat turn completed. ConversationId={ConversationId} TenantId={TenantId} DocumentTypeCode={DocumentTypeCode} Streaming={Streaming} IsDegraded={IsDegraded} CitationCount={CitationCount} ElapsedMs={ElapsedMs}",
-                entry.ConversationId,
-                entry.TenantId,
-                entry.DocumentTypeCode,
-                entry.Streaming,
-                entry.IsDegraded,
-                entry.CitationCount,
-                entry.ElapsedMs);
+                "Document chat turn completed. ConversationId={ConversationId} TenantId={TenantId} DocumentTypeCode={DocumentTypeCode} Streaming={Streaming} IsDegraded={IsDegraded} GroundingSource={GroundingSource} ToolCallDepth={ToolCallDepth} CitationCount={CitationCount} ElapsedMs={ElapsedMs}",
+                enriched.ConversationId,
+                enriched.TenantId,
+                enriched.DocumentTypeCode,
+                enriched.Streaming,
+                enriched.IsDegraded,
+                enriched.GroundingSource,
+                enriched.ToolCallDepth,
+                enriched.CitationCount,
+                enriched.ElapsedMs);
         }
         else
         {
             _logger.LogWarning(
-                "Document chat turn failed. ConversationId={ConversationId} TenantId={TenantId} DocumentTypeCode={DocumentTypeCode} Streaming={Streaming} ElapsedMs={ElapsedMs} ExceptionType={ExceptionType}",
-                entry.ConversationId,
-                entry.TenantId,
-                entry.DocumentTypeCode,
-                entry.Streaming,
-                entry.ElapsedMs,
-                entry.ExceptionType);
+                "Document chat turn failed. ConversationId={ConversationId} TenantId={TenantId} DocumentTypeCode={DocumentTypeCode} Streaming={Streaming} GroundingSource={GroundingSource} ToolCallDepth={ToolCallDepth} ElapsedMs={ElapsedMs} ExceptionType={ExceptionType}",
+                enriched.ConversationId,
+                enriched.TenantId,
+                enriched.DocumentTypeCode,
+                enriched.Streaming,
+                enriched.GroundingSource,
+                enriched.ToolCallDepth,
+                enriched.ElapsedMs,
+                enriched.ExceptionType);
         }
+    }
+
+    /// <summary>
+    /// Reads the per-tool entries already recorded on the current audit scope and
+    /// returns a copy of <paramref name="entry"/> enriched with the derived per-turn
+    /// dimensions (<see cref="DocumentChatTurnAuditEntry.ToolCallSummary"/>,
+    /// <see cref="DocumentChatTurnAuditEntry.ToolCallDepth"/>,
+    /// <see cref="DocumentChatTurnAuditEntry.GroundingSource"/>).
+    /// </summary>
+    /// <remarks>
+    /// Counts include both successful and failed tool invocations — failures still
+    /// reflect what the model attempted, which is what callers actually want to see in
+    /// telemetry (e.g. "model retried 3 times before giving up").
+    /// </remarks>
+    protected virtual DocumentChatTurnAuditEntry EnrichTurnEntryFromAuditScope(DocumentChatTurnAuditEntry entry)
+    {
+        var toolCalls = ReadToolCallsFromAuditScope();
+
+        var summary = toolCalls.Count == 0
+            ? null
+            : (IReadOnlyDictionary<string, int>)toolCalls
+                .GroupBy(t => t.ToolName, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+
+        return new DocumentChatTurnAuditEntry
+        {
+            ConversationId = entry.ConversationId,
+            UserId = entry.UserId,
+            TenantId = entry.TenantId,
+            DocumentId = entry.DocumentId,
+            DocumentTypeCode = entry.DocumentTypeCode,
+            TraceId = entry.TraceId,
+            Streaming = entry.Streaming,
+            CitationCount = entry.CitationCount,
+            IsDegraded = entry.IsDegraded,
+            ElapsedMs = entry.ElapsedMs,
+            Outcome = entry.Outcome,
+            ExceptionType = entry.ExceptionType,
+            ToolCallSummary = summary,
+            ToolCallDepth = toolCalls.Count,
+            GroundingSource = ClassifyGrounding(toolCalls)
+        };
+    }
+
+    /// <summary>
+    /// Classifies a turn's grounding source from the tool names invoked.
+    /// Override to extend classification (e.g. when a future business module
+    /// contributes another vector-style search tool).
+    /// </summary>
+    protected virtual GroundingSource ClassifyGrounding(IReadOnlyList<DocumentChatToolAuditEntry> toolCalls)
+    {
+        if (toolCalls.Count == 0)
+        {
+            return GroundingSource.None;
+        }
+
+        var hasVector = false;
+        var hasStructured = false;
+        foreach (var t in toolCalls)
+        {
+            if (IsVectorSearchTool(t.ToolName))
+            {
+                hasVector = true;
+            }
+            else
+            {
+                hasStructured = true;
+            }
+
+            if (hasVector && hasStructured)
+            {
+                break;
+            }
+        }
+
+        return (hasVector, hasStructured) switch
+        {
+            (true, true) => GroundingSource.Mixed,
+            (true, false) => GroundingSource.Vector,
+            (false, true) => GroundingSource.Structured,
+            _ => GroundingSource.None
+        };
+    }
+
+    /// <summary>
+    /// Returns true if <paramref name="toolName"/> identifies a vector-search tool
+    /// (currently just the built-in <see cref="ChatConsts.SearchPaperbaseDocumentsToolName"/>).
+    /// </summary>
+    protected virtual bool IsVectorSearchTool(string toolName)
+        => string.Equals(toolName, ChatConsts.SearchPaperbaseDocumentsToolName, StringComparison.Ordinal);
+
+    private IReadOnlyList<DocumentChatToolAuditEntry> ReadToolCallsFromAuditScope()
+    {
+        var scope = _auditingManager.Current;
+        if (scope?.Log == null)
+        {
+            return Array.Empty<DocumentChatToolAuditEntry>();
+        }
+
+        if (scope.Log.ExtraProperties.TryGetValue(AuditToolCallsPropertyName, out var existing)
+            && existing is List<DocumentChatToolAuditEntry> entries)
+        {
+            return entries;
+        }
+
+        return Array.Empty<DocumentChatToolAuditEntry>();
     }
 
     private void AddToolCallToAuditLog(DocumentChatToolAuditEntry entry)
@@ -182,7 +299,8 @@ public class DocumentChatTelemetryRecorder : ISingletonDependency
         {
             new KeyValuePair<string, object?>("outcome", entry.Outcome.ToString()),
             new KeyValuePair<string, object?>("document.type", entry.DocumentTypeCode ?? "(none)"),
-            new KeyValuePair<string, object?>("streaming", entry.Streaming)
+            new KeyValuePair<string, object?>("streaming", entry.Streaming),
+            new KeyValuePair<string, object?>("grounding_source", entry.GroundingSource.ToString())
         };
 }
 
@@ -228,4 +346,25 @@ public sealed class DocumentChatTurnAuditEntry
     public required double ElapsedMs { get; init; }
     public required DocumentChatTelemetryOutcome Outcome { get; init; }
     public string? ExceptionType { get; init; }
+
+    /// <summary>
+    /// Per-tool invocation count for this turn (tool name → count). <c>null</c> when no
+    /// tool was invoked. Derived from the audit scope's per-tool entries by
+    /// <see cref="DocumentChatTelemetryRecorder.RecordTurn"/> — callers do not need to
+    /// supply this; it is overwritten if they do.
+    /// </summary>
+    public IReadOnlyDictionary<string, int>? ToolCallSummary { get; init; }
+
+    /// <summary>
+    /// Total number of tool invocations in this turn (sum of <see cref="ToolCallSummary"/>
+    /// values). Includes failed invocations because they reflect the model's actual
+    /// behavior. Derived by the recorder.
+    /// </summary>
+    public int ToolCallDepth { get; init; }
+
+    /// <summary>
+    /// Categorizes which kinds of tools the model invoked in this turn. Derived by the
+    /// recorder. See <see cref="GroundingSource"/> for the classification rule.
+    /// </summary>
+    public GroundingSource GroundingSource { get; init; }
 }
