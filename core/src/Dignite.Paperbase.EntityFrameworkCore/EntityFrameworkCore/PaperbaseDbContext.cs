@@ -12,6 +12,7 @@ public class PaperbaseDbContext : AbpDbContext<PaperbaseDbContext>, IPaperbaseDb
     public DbSet<Document> Documents { get; set; }
     public DbSet<DocumentPipelineRun> DocumentPipelineRuns { get; set; }
     public DbSet<DocumentRelation> DocumentRelations { get; set; }
+    public DbSet<DocumentIdentifier> DocumentIdentifiers { get; set; }
     public DbSet<ChatConversation> ChatConversations { get; set; }
 
     public PaperbaseDbContext(DbContextOptions<PaperbaseDbContext> options)

@@ -12,5 +12,6 @@ public interface IPaperbaseDbContext : IEfCoreDbContext
     DbSet<Document> Documents { get; }
     DbSet<DocumentPipelineRun> DocumentPipelineRuns { get; }
     DbSet<DocumentRelation> DocumentRelations { get; }
+    DbSet<DocumentIdentifier> DocumentIdentifiers { get; }
     DbSet<ChatConversation> ChatConversations { get; }
 }

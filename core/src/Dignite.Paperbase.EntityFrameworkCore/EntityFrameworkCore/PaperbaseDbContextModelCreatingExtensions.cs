@@ -78,6 +78,31 @@ public static class PaperbaseDbContextModelCreatingExtensions
             b.HasIndex(x => x.TargetDocumentId);
         });
 
+        builder.Entity<DocumentIdentifier>(b =>
+        {
+            // Issue #115 L1: 跨文档标识符索引。L2 关系发现 Pipeline 通过 (IdentifierType, IdentifierValue)
+            // 反查持有同一标识符的其他文档，自动建立 AiSuggested DocumentRelation。
+            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "DocumentIdentifiers", PaperbaseDbProperties.DbSchema);
+            b.ConfigureByConvention();
+
+            b.Property(x => x.DocumentId).IsRequired();
+            b.Property(x => x.IdentifierType).IsRequired().HasMaxLength(DocumentIdentifierConsts.MaxTypeLength);
+            b.Property(x => x.IdentifierValue).IsRequired().HasMaxLength(DocumentIdentifierConsts.MaxValueLength);
+
+            // L2 主查询路径：按 (IdentifierType, IdentifierValue) 反查文档列表。
+            // 同时把 DocumentId 纳入索引，覆盖 ExistsAsync 和 RemoveByDocumentIdAsync 的过滤。
+            b.HasIndex(x => new { x.IdentifierType, x.IdentifierValue });
+            b.HasIndex(x => x.DocumentId);
+
+            // 幂等性：(DocumentId, IdentifierType, IdentifierValue) 唯一约束。
+            // 不带 TenantId：DocumentId 是 Guid，全局唯一，DocumentId 已隐含租户归属；
+            // 带 TenantId 反而会因 host 单租户场景（TenantId 全 NULL + EF Core 默认 filter [TenantId] IS NOT NULL）
+            // 失去约束效果。RegisterAsync 在 Application 层已先 ExistsAsync 兜底；
+            // 唯一索引是数据库层硬保护，并发插入会触发唯一约束错误而非静默重复。
+            b.HasIndex(x => new { x.DocumentId, x.IdentifierType, x.IdentifierValue })
+                .IsUnique();
+        });
+
         builder.Entity<ChatConversation>(b =>
         {
             b.ToTable(PaperbaseDbProperties.DbTablePrefix + "ChatConversations", PaperbaseDbProperties.DbSchema);

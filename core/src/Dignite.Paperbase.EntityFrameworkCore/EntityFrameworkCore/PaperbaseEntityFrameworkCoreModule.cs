@@ -20,6 +20,7 @@ public class PaperbaseEntityFrameworkCoreModule : AbpModule
 
             options.AddRepository<Document, EfCoreDocumentRepository>();
             options.AddRepository<DocumentRelation, EfCoreDocumentRelationRepository>();
+            options.AddRepository<DocumentIdentifier, EfCoreDocumentIdentifierRepository>();
             options.AddRepository<ChatConversation, EfCoreChatConversationRepository>();
         });
     }
