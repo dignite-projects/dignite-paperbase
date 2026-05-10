@@ -14,6 +14,7 @@ using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.Chat.Compaction;
 using Dignite.Paperbase.Chat.Search;
 using Dignite.Paperbase.Chat.Telemetry;
+using Dignite.Paperbase.Chat.Tools;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Permissions;
 using Dignite.Paperbase.KnowledgeIndex;
@@ -56,6 +57,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     private readonly IChatConversationRepository _conversationRepository;
     private readonly IDocumentRepository _documentRepository;
     private readonly DocumentTextSearchAdapter _textSearchAdapter;
+    private readonly DocumentRelationsTool _documentRelationsTool;
     private readonly IChatClient _chatClient;
     private readonly IPromptProvider _promptProvider;
     private readonly DocumentChatHistoryProvider _historyProvider;
@@ -69,6 +71,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         IChatConversationRepository conversationRepository,
         IDocumentRepository documentRepository,
         DocumentTextSearchAdapter textSearchAdapter,
+        DocumentRelationsTool documentRelationsTool,
         IChatClient chatClient,
         IPromptProvider promptProvider,
         DocumentChatHistoryProvider historyProvider,
@@ -81,6 +84,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         _conversationRepository = conversationRepository;
         _documentRepository = documentRepository;
         _textSearchAdapter = textSearchAdapter;
+        _documentRelationsTool = documentRelationsTool;
         _chatClient = chatClient;
         _promptProvider = promptProvider;
         _historyProvider = historyProvider;
@@ -398,7 +402,15 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
                 "Optional documentTypeCode: restrict to one type (e.g. 'contract.general', 'receipt.general'). " +
                 "Optional topK / minScore: override the configured defaults for this call (raise topK 10–15 for cross-document reconciliation).");
 
-        var tools = new List<AITool> { searchFn };
+        var tools = new List<AITool>
+        {
+            searchFn,
+            // Issue #101: get_document_relations is a core tool (graph walker over the
+            // DocumentRelation aggregate). Sits next to search_paperbase_documents because
+            // it's the natural pre-step for cross-document reasoning ("anchor → related →
+            // drill-into-content").
+            _documentRelationsTool.CreateAIFunction(toolContext, _toolFactory)
+        };
         tools.AddRange(CollectContributorTools(conversation));
 
         // Idiomatic MAF wiring:
