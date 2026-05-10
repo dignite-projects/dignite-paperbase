@@ -15,7 +15,7 @@ using Volo.Abp.DependencyInjection;
 
 namespace Dignite.Paperbase.Chat.Telemetry;
 
-public class DocumentChatToolFactory : IDocumentChatToolFactory, ITransientDependency
+public class ChatToolFactory : IChatToolFactory, ITransientDependency
 {
     // Short-prefix hash is plenty for dedup/correlation in audit/metrics; longer
     // prefixes give attackers more rainbow-table grip on free-form natural-language
@@ -33,9 +33,9 @@ public class DocumentChatToolFactory : IDocumentChatToolFactory, ITransientDepen
         "authorization"
     ];
 
-    private readonly DocumentChatTelemetryRecorder _recorder;
+    private readonly ChatTelemetryRecorder _recorder;
 
-    public DocumentChatToolFactory(DocumentChatTelemetryRecorder recorder)
+    public ChatToolFactory(ChatTelemetryRecorder recorder)
     {
         _recorder = recorder;
     }
@@ -45,21 +45,21 @@ public class DocumentChatToolFactory : IDocumentChatToolFactory, ITransientDepen
     // is the original required member; the 5-arg is the opt-in describer-aware
     // overload introduced for #116.
     public virtual AIFunction Create(
-        DocumentChatToolContext ctx,
+        ChatToolContext ctx,
         Delegate method,
         string name,
         string description)
         => Create(ctx, method, name, description, progressDescriber: null);
 
     public virtual AIFunction Create(
-        DocumentChatToolContext ctx,
+        ChatToolContext ctx,
         Delegate method,
         string name,
         string description,
         Func<IReadOnlyDictionary<string, object?>, string?>? progressDescriber)
     {
         var inner = AIFunctionFactory.Create(method, name, description);
-        return new AuditedDocumentChatFunction(inner, ctx, _recorder, progressDescriber);
+        return new AuditedChatFunction(inner, ctx, _recorder, progressDescriber);
     }
 
     private static IReadOnlyDictionary<string, object?> SummarizeArguments(AIFunctionArguments? arguments)
@@ -285,16 +285,16 @@ public class DocumentChatToolFactory : IDocumentChatToolFactory, ITransientDepen
     }
 
     /// <summary>
-    /// Internal so <c>DocumentChatAppService</c> (same assembly) can downcast on the
+    /// Internal so <c>ChatAppService</c> (same assembly) can downcast on the
     /// streaming path to fetch <see cref="ProgressDescriber"/> for
     /// <c>ToolCallStarted</c> events. External consumers should treat the returned
     /// <see cref="AIFunction"/> as opaque.
     /// </summary>
-    internal sealed class AuditedDocumentChatFunction : AIFunction
+    internal sealed class AuditedChatFunction : AIFunction
     {
         private readonly AIFunction _inner;
-        private readonly DocumentChatToolContext _ctx;
-        private readonly DocumentChatTelemetryRecorder _recorder;
+        private readonly ChatToolContext _ctx;
+        private readonly ChatTelemetryRecorder _recorder;
 
         /// <summary>
         /// Issue #116: optional sanitized-progress describer supplied at registration
@@ -303,10 +303,10 @@ public class DocumentChatToolFactory : IDocumentChatToolFactory, ITransientDepen
         /// </summary>
         public Func<IReadOnlyDictionary<string, object?>, string?>? ProgressDescriber { get; }
 
-        public AuditedDocumentChatFunction(
+        public AuditedChatFunction(
             AIFunction inner,
-            DocumentChatToolContext ctx,
-            DocumentChatTelemetryRecorder recorder,
+            ChatToolContext ctx,
+            ChatTelemetryRecorder recorder,
             Func<IReadOnlyDictionary<string, object?>, string?>? progressDescriber = null)
         {
             _inner = inner;
@@ -337,7 +337,7 @@ public class DocumentChatToolFactory : IDocumentChatToolFactory, ITransientDepen
                 sw.Stop();
 
                 var resultSummary = SummarizeResult(result);
-                _recorder.RecordToolCall(new DocumentChatToolAuditEntry
+                _recorder.RecordToolCall(new ChatToolAuditEntry
                 {
                     ConversationId = _ctx.ConversationId,
                     UserId = _ctx.UserId,
@@ -350,7 +350,7 @@ public class DocumentChatToolFactory : IDocumentChatToolFactory, ITransientDepen
                     ResultSummary = resultSummary,
                     ResultSizeBytes = GetResultSizeBytes(resultSummary),
                     ElapsedMs = sw.Elapsed.TotalMilliseconds,
-                    Outcome = DocumentChatTelemetryOutcome.Success
+                    Outcome = ChatTelemetryOutcome.Success
                 });
 
                 return result;
@@ -358,7 +358,7 @@ public class DocumentChatToolFactory : IDocumentChatToolFactory, ITransientDepen
             catch (Exception ex)
             {
                 sw.Stop();
-                _recorder.RecordToolCall(new DocumentChatToolAuditEntry
+                _recorder.RecordToolCall(new ChatToolAuditEntry
                 {
                     ConversationId = _ctx.ConversationId,
                     UserId = _ctx.UserId,
@@ -369,7 +369,7 @@ public class DocumentChatToolFactory : IDocumentChatToolFactory, ITransientDepen
                     ToolName = Name,
                     ArgumentsSummary = SummarizeArguments(arguments),
                     ElapsedMs = sw.Elapsed.TotalMilliseconds,
-                    Outcome = DocumentChatTelemetryOutcome.Failure,
+                    Outcome = ChatTelemetryOutcome.Failure,
                     ExceptionType = ex.GetType().FullName
                 });
                 throw;

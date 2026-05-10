@@ -1,6 +1,6 @@
 # Embedding Pipeline
 
-After a document is classified, Paperbase splits its Markdown into chunks, vectorizes each chunk, and writes the vectors to the [knowledge index](knowledge-index.md). This is what makes the document retrievable from [document chat](document-chat.md) and from any other RAG-style query.
+After a document is classified, Paperbase splits its Markdown into chunks, vectorizes each chunk, and writes the vectors to the [knowledge index](knowledge-index.md). This is what makes the document retrievable from [document chat](chat.md) and from any other RAG-style query.
 
 This page is the *what and why*. For chunker source, see `core/src/Dignite.Paperbase.Application/Documents/Pipelines/Embedding/TextChunker.cs`.
 

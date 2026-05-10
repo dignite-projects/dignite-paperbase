@@ -4,7 +4,7 @@
       <div>
         <h4 class="mb-1">
           <i class="fas fa-comments me-2"></i>
-          {{ '::DocumentChat:Title' | abpLocalization }}
+          {{ '::Chat:Title' | abpLocalization }}
         </h4>
       </div>
       <button class="btn btn-outline-secondary" (click)="loadConversations()">
@@ -20,7 +20,7 @@
         <div class="new-conversation">
           <button class="btn btn-primary btn-sm w-100" type="button" (click)="startDraft()">
             <i class="fas fa-plus me-1"></i>
-            {{ '::DocumentChat:NewConversation' | abpLocalization }}
+            {{ '::Chat:NewConversation' | abpLocalization }}
           </button>
         </div>
 
@@ -61,7 +61,7 @@
           @if (!isLoadingConversations() && visibleConversations().length === 0) {
             <div class="empty-state">
               <i class="fas fa-comment-dots d-block mb-2"></i>
-              {{ '::DocumentChat:NoConversations' | abpLocalization }}
+              {{ '::Chat:NoConversations' | abpLocalization }}
             </div>
           }
         </div>
@@ -70,11 +70,11 @@
       <section class="source-panel border-end" style="min-width: 0; display: grid; grid-template-rows: auto minmax(0, 1fr);">
         <header class="d-flex justify-content-between gap-3 p-3 border-bottom">
           <div>
-            <h5 class="mb-1">{{ '::DocumentChat:Source' | abpLocalization }}</h5>
+            <h5 class="mb-1">{{ '::Chat:Source' | abpLocalization }}</h5>
             @if (sourceDocument(); as document) {
               <span class="text-muted small text-truncate d-block">{{ sourceTitle(document) }}</span>
             } @else {
-              <span class="text-muted small">{{ '::DocumentChat:SelectCitation' | abpLocalization }}</span>
+              <span class="text-muted small">{{ '::Chat:SelectCitation' | abpLocalization }}</span>
             }
           </div>
           @if (selectedCitation()?.citation; as citation) {
@@ -92,7 +92,7 @@
           @if (isLoadingSource()) {
             <div class="text-center text-muted p-4">
               <span class="spinner-border spinner-border-sm me-2"></span>
-              {{ '::DocumentChat:LoadingSource' | abpLocalization }}
+              {{ '::Chat:LoadingSource' | abpLocalization }}
             </div>
           } @else if (sourceError()) {
             <div class="text-center text-danger p-4">
@@ -103,20 +103,20 @@
             @if (document.markdown) {
               @if (snippetMissing()) {
                 <div class="alert alert-warning py-2 px-3 m-3 small">
-                  {{ '::DocumentChat:SnippetNotFound' | abpLocalization }}
+                  {{ '::Chat:SnippetNotFound' | abpLocalization }}
                 </div>
               }
               <div #markdownContainer class="chat-source-markdown" [innerHTML]="markdownHtml()"></div>
             } @else {
               <div class="text-center text-muted p-4">
                 <i class="fas fa-file-alt d-block mb-2"></i>
-                <p class="mb-2">{{ '::DocumentChat:SourcePreviewUnavailable' | abpLocalization }}</p>
+                <p class="mb-2">{{ '::Chat:SourcePreviewUnavailable' | abpLocalization }}</p>
               </div>
             }
           } @else {
             <div class="text-center text-muted p-4">
               <i class="fas fa-file-alt d-block mb-2"></i>
-              {{ '::DocumentChat:SelectCitationToInspect' | abpLocalization }}
+              {{ '::Chat:SelectCitationToInspect' | abpLocalization }}
             </div>
           }
         </div>
@@ -128,13 +128,13 @@
         <header class="chat-header chat-header--panel">
           <div class="d-flex align-items-center gap-2">
             <i class="fas fa-comments"></i>
-            <h6 class="mb-0">{{ '::DocumentChat:Title' | abpLocalization }}</h6>
+            <h6 class="mb-0">{{ '::Chat:Title' | abpLocalization }}</h6>
             <button
               type="button"
               class="btn btn-link btn-sm ms-auto p-0"
               (click)="startDraft()"
               [disabled]="isCreating()"
-              [title]="'::DocumentChat:NewConversation' | abpLocalization"
+              [title]="'::Chat:NewConversation' | abpLocalization"
             >
               <i class="fas fa-plus"></i>
             </button>
@@ -212,9 +212,9 @@
             >
               @if (item.isPending) {
                 <span class="spinner-border spinner-border-sm me-2"></span>
-                {{ '::DocumentChat:Thinking' | abpLocalization }}
+                {{ '::Chat:Thinking' | abpLocalization }}
               } @else if (item.isError) {
-                {{ '::DocumentChat:SendFailed' | abpLocalization }}
+                {{ '::Chat:SendFailed' | abpLocalization }}
               } @else {
                 <span>{{ item.content }}</span>
               }
@@ -223,7 +223,7 @@
             @if (item.isDegraded) {
               <div class="message-meta text-warning">
                 <i class="fas fa-exclamation-triangle me-1"></i>
-                {{ '::DocumentChat:Degraded' | abpLocalization }}
+                {{ '::Chat:Degraded' | abpLocalization }}
               </div>
             }
 
@@ -250,7 +250,7 @@
         @if (!activeConversation() && !isLoadingMessages() && messages().length === 0) {
           <div class="no-active-conversation">
             <i class="fas fa-comments d-block mb-3"></i>
-            <h5>{{ '::DocumentChat:SelectConversation' | abpLocalization }}</h5>
+            <h5>{{ '::Chat:SelectConversation' | abpLocalization }}</h5>
           </div>
         }
       </section>
@@ -259,7 +259,7 @@
         <textarea
           class="form-control"
           rows="3"
-          [placeholder]="'::DocumentChat:MessagePlaceholder' | abpLocalization"
+          [placeholder]="'::Chat:MessagePlaceholder' | abpLocalization"
           [ngModel]="message()"
           (ngModelChange)="message.set($event)"
           (keydown)="onMessageKeydown($event)"
@@ -270,7 +270,7 @@
             <span class="spinner-border spinner-border-sm me-1"></span>
           }
           <i class="fas fa-paper-plane me-1"></i>
-          {{ '::DocumentChat:Send' | abpLocalization }}
+          {{ '::Chat:Send' | abpLocalization }}
         </button>
       </footer>
     </main>

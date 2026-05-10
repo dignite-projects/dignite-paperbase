@@ -22,7 +22,7 @@ namespace Dignite.Paperbase.Chat;
     typeof(PaperbaseEntityFrameworkCoreModule),
     typeof(AbpEntityFrameworkCoreSqliteModule)
 )]
-public class DocumentChatAppServiceTestModule : AbpModule
+public class ChatAppServiceTestModule : AbpModule
 {
     public override void PreConfigureServices(ServiceConfigurationContext context)
     {

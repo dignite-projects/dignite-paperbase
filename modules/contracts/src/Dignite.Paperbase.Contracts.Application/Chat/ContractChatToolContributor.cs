@@ -29,7 +29,7 @@ namespace Dignite.Paperbase.Contracts.Chat;
 /// and is restricted to the current tenant via an explicit <c>TenantId</c> predicate (no reliance on
 /// the ambient ABP <c>DataFilter</c>).
 /// </summary>
-public class ContractChatToolContributor : IDocumentChatToolContributor, ITransientDependency
+public class ContractChatToolContributor : IChatToolContributor, ITransientDependency
 {
     private readonly IContractRepository _contractRepository;
     private readonly IAsyncQueryableExecuter _asyncExecuter;
@@ -48,8 +48,8 @@ public class ContractChatToolContributor : IDocumentChatToolContributor, ITransi
     public virtual string DocumentTypeCode => ContractsDocumentTypes.General;
 
     public virtual IEnumerable<AIFunction> ContributeTools(
-        DocumentChatToolContext ctx,
-        IDocumentChatToolFactory toolFactory)
+        ChatToolContext ctx,
+        IChatToolFactory toolFactory)
     {
         var binding = new ContractToolBindings(
             _contractRepository,

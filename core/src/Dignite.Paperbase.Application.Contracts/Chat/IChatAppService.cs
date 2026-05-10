@@ -8,7 +8,7 @@ using Volo.Abp.Application.Dtos;
 
 namespace Dignite.Paperbase.Chat;
 
-public interface IDocumentChatAppService : IApplicationService
+public interface IChatAppService : IApplicationService
 {
     Task<ChatConversationDto> CreateConversationAsync(CreateChatConversationInput input);
 

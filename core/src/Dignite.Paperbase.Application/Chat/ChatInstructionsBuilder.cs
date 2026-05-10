@@ -5,7 +5,7 @@ namespace Dignite.Paperbase.Chat;
 
 /// <summary>
 /// Issue #100: structured assembly of the per-turn system prompt for
-/// <c>DocumentChatAppService</c>. Replaces the ad-hoc string concatenation that grew
+/// <c>ChatAppService</c>. Replaces the ad-hoc string concatenation that grew
 /// inside <c>PrepareAgentSetupAsync</c> as boundary rules / anchor hints / multi-step
 /// reasoning guidance accumulated. Each segment is rendered on its own line so
 /// downstream prompt-cache hashing stays stable when only one segment changes.

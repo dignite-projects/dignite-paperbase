@@ -90,9 +90,9 @@ Dignite.Paperbase.Abstractions（扩展契约层，无其他项目依赖）
 
 ### AI 实现约定
 
-- **Chat 路径的诚实信号**：`DocumentChatAppService` 走在线请求，检索通过 MAF `AIFunction`（`search_paperbase_documents`）由模型 `ChatToolMode.Auto` 自决调用；模型未调用 search 工具时 `ChatTurnResultDto.IsDegraded = true` 是**诚实信号**，不做强制注入兜底；**不保留 FullText 降级**——未向量化文档由上游流水线保证最终被向量化。
+- **Chat 路径的诚实信号**：`ChatAppService` 走在线请求，检索通过 MAF `AIFunction`（`search_paperbase_documents`）由模型 `ChatToolMode.Auto` 自决调用；模型未调用 search 工具时 `ChatTurnResultDto.IsDegraded = true` 是**诚实信号**，不做强制注入兜底；**不保留 FullText 降级**——未向量化文档由上游流水线保证最终被向量化。
 - **AI 配置两节正交**：`PaperbaseAI`（host 装配 `IChatClient`，含凭据）与 `PaperbaseAIBehavior`（Application 层行为参数）**职责正交不可合并**——前者是 provider wiring，后者是行为参数，混合会让 host 看到不该看的行为开关、Application 看到不该看的凭据。
-- **业务模块向 Chat 贡献工具必须 fail-closed**：实现 `IDocumentChatToolContributor`（注册为 `ITransientDependency`）；每个工具体内**显式** `IAuthorizationService.CheckAsync(...)` + **显式** `TenantId` 谓词（不依赖 ambient `DataFilter`）+ 结果集硬上限（`Take(N)`），不得裸跑 raw SQL。反例见 `.claude/rules/doc-chat-anti-patterns.md` 反例 C，参照 `modules/contracts/src/Dignite.Paperbase.Contracts.Application/Chat/ContractChatToolContributor.cs`。
+- **业务模块向 Chat 贡献工具必须 fail-closed**：实现 `IChatToolContributor`（注册为 `ITransientDependency`）；每个工具体内**显式** `IAuthorizationService.CheckAsync(...)` + **显式** `TenantId` 谓词（不依赖 ambient `DataFilter`）+ 结果集硬上限（`Take(N)`），不得裸跑 raw SQL。反例见 `.claude/rules/doc-chat-anti-patterns.md` 反例 C，参照 `modules/contracts/src/Dignite.Paperbase.Contracts.Application/Chat/ContractChatToolContributor.cs`。
 
 ## 处理规则
 

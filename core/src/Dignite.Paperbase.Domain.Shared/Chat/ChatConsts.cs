@@ -8,8 +8,8 @@ public static class ChatConsts
 
     /// <summary>
     /// Canonical name of the built-in vector search tool exposed to the model.
-    /// Used both at registration (see <c>DocumentChatAppService.PrepareAgentSetupAsync</c>)
-    /// and at telemetry classification (see <c>DocumentChatTelemetryRecorder.ClassifyGrounding</c>)
+    /// Used both at registration (see <c>ChatAppService.PrepareAgentSetupAsync</c>)
+    /// and at telemetry classification (see <c>ChatTelemetryRecorder.ClassifyGrounding</c>)
     /// so the two stay in sync.
     /// </summary>
     public const string SearchPaperbaseDocumentsToolName = "search_paperbase_documents";

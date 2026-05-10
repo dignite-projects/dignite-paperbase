@@ -31,8 +31,8 @@ using MeAi = Microsoft.Extensions.AI;
 
 namespace Dignite.Paperbase.Chat;
 
-[Authorize(PaperbasePermissions.Documents.Chat.Default)]
-public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppService
+[Authorize(PaperbasePermissions.Chat.Default)]
+public class ChatAppService : PaperbaseAppService, IChatAppService
 {
     /// <summary>
     /// Tail window of messages the repository returns when loading a conversation.
@@ -60,25 +60,25 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     private readonly DocumentRelationsTool _documentRelationsTool;
     private readonly IChatClient _chatClient;
     private readonly IPromptProvider _promptProvider;
-    private readonly DocumentChatHistoryProvider _historyProvider;
+    private readonly ConversationHistoryProvider _historyProvider;
     private readonly PaperbaseAIBehaviorOptions _aiOptions;
-    private readonly IEnumerable<IDocumentChatToolContributor> _toolContributors;
-    private readonly IDocumentChatToolFactory _toolFactory;
-    private readonly DocumentChatTelemetryRecorder _telemetryRecorder;
+    private readonly IEnumerable<IChatToolContributor> _toolContributors;
+    private readonly IChatToolFactory _toolFactory;
+    private readonly ChatTelemetryRecorder _telemetryRecorder;
     private readonly ChatCompactionStrategyFactory _compactionFactory;
 
-    public DocumentChatAppService(
+    public ChatAppService(
         IChatConversationRepository conversationRepository,
         IDocumentRepository documentRepository,
         DocumentTextSearchAdapter textSearchAdapter,
         DocumentRelationsTool documentRelationsTool,
         IChatClient chatClient,
         IPromptProvider promptProvider,
-        DocumentChatHistoryProvider historyProvider,
+        ConversationHistoryProvider historyProvider,
         IOptions<PaperbaseAIBehaviorOptions> aiOptions,
-        IEnumerable<IDocumentChatToolContributor> toolContributors,
-        IDocumentChatToolFactory toolFactory,
-        DocumentChatTelemetryRecorder telemetryRecorder,
+        IEnumerable<IChatToolContributor> toolContributors,
+        IChatToolFactory toolFactory,
+        ChatTelemetryRecorder telemetryRecorder,
         ChatCompactionStrategyFactory compactionFactory)
     {
         _conversationRepository = conversationRepository;
@@ -95,7 +95,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         _compactionFactory = compactionFactory;
     }
 
-    [Authorize(PaperbasePermissions.Documents.Chat.Create)]
+    [Authorize(PaperbasePermissions.Chat.Create)]
     public virtual async Task<ChatConversationDto> CreateConversationAsync(CreateChatConversationInput input)
     {
         // Issue #100: DocumentTypeCode / TopK / MinScore are no longer pinned at
@@ -109,7 +109,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         }
 
         var title = string.IsNullOrWhiteSpace(input.Title)
-            ? L["DocumentChat:UntitledConversation"].Value
+            ? L["Chat:UntitledConversation"].Value
             : input.Title!;
 
         var conversation = new ChatConversation(
@@ -152,7 +152,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         return ObjectMapper.Map<ChatConversation, ChatConversationDto>(conversation);
     }
 
-    [Authorize(PaperbasePermissions.Documents.Chat.Delete)]
+    [Authorize(PaperbasePermissions.Chat.Delete)]
     public virtual async Task DeleteConversationAsync(Guid conversationId)
     {
         var conversation = await LoadAndAuthorizeAsync(conversationId);
@@ -176,7 +176,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             ObjectMapper.Map<List<ChatMessage>, List<ChatMessageDto>>(paged));
     }
 
-    [Authorize(PaperbasePermissions.Documents.Chat.SendMessage)]
+    [Authorize(PaperbasePermissions.Chat.SendMessage)]
     public virtual async Task<ChatTurnResultDto> SendMessageAsync(
         Guid conversationId,
         SendChatMessageInput input)
@@ -234,7 +234,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         var citations = BuildCitationDtos(run.Capture.Results);
         sw.Stop();
         // Token counts are emitted by Microsoft.Extensions.AI's gen_ai.client.token.usage
-        // histogram (see DocumentChatTelemetryRecorder XML doc); no need to re-record.
+        // histogram (see ChatTelemetryRecorder XML doc); no need to re-record.
         RecordTurnSuccess(
             conversation,
             streaming: false,
@@ -255,7 +255,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         };
     }
 
-    [Authorize(PaperbasePermissions.Documents.Chat.SendMessage)]
+    [Authorize(PaperbasePermissions.Chat.SendMessage)]
     public virtual async IAsyncEnumerable<ChatTurnDeltaDto> SendMessageStreamingAsync(
         Guid conversationId,
         SendChatMessageInput input,
@@ -365,8 +365,8 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     {
         var defaultScope = new DocumentSearchScope
         {
-            TopK = _aiOptions.DocumentChatTopK > 0 ? _aiOptions.DocumentChatTopK : null,
-            MinScore = _aiOptions.DocumentChatMinScore
+            TopK = _aiOptions.ChatTopK > 0 ? _aiOptions.ChatTopK : null,
+            MinScore = _aiOptions.ChatMinScore
         };
 
         var template = _promptProvider.GetQaPrompt(_aiOptions.DefaultLanguage);
@@ -421,7 +421,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         // - ChatHistoryProvider = _historyProvider: MAF auto-calls ProvideChatHistoryAsync
         //   on each RunAsync; history is loaded from the ChatConversation aggregate keyed
         //   by ConversationId stashed in AgentSession.StateBag below. Persistence stays in
-        //   DocumentChatAppService (citations / IsDegraded are not on MAF ChatMessage), so
+        //   ChatAppService (citations / IsDegraded are not on MAF ChatMessage), so
         //   StoreChatHistoryAsync remains the base-class no-op.
         // - Instructions live inside ChatOptions because ChatClientAgentOptions does not
         //   expose a top-level Instructions property in v1.2.0 (only the convenience
@@ -448,12 +448,12 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         var agent = new ChatClientAgent(_chatClient, agentOptions);
         var session = await agent.CreateSessionAsync(cancellationToken);
 
-        // Stash conversation id so DocumentChatHistoryProvider can resolve which
+        // Stash conversation id so ConversationHistoryProvider can resolve which
         // conversation to load in ProvideChatHistoryAsync — the provider contract
         // forbids storing session-specific state in provider fields.
         session.StateBag.SetValue(
-            DocumentChatHistoryProvider.SessionStateKey,
-            new DocumentChatSessionState(conversation.Id));
+            ConversationHistoryProvider.SessionStateKey,
+            new ChatSessionState(conversation.Id));
 
         // Anchor resolution failed = caller asked for an anchor (DocumentId set on the
         // conversation) but BuildAnchorContextAsync degraded for it. Surfaces to
@@ -480,10 +480,10 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
 
     /// <summary>
     /// Collects <see cref="AIFunction"/> tools from <strong>every</strong> registered
-    /// <see cref="IDocumentChatToolContributor"/>. Issue #100 dropped the previous
+    /// <see cref="IChatToolContributor"/>. Issue #100 dropped the previous
     /// per-conversation <c>DocumentTypeCode</c> filter: cross-document reasoning
     /// requires that, e.g., search_contracts AND search_receipts are both available
-    /// on the same turn. <see cref="IDocumentChatToolContributor.DocumentTypeCode"/>
+    /// on the same turn. <see cref="IChatToolContributor.DocumentTypeCode"/>
     /// is now an informational hint, not a router. Contributors that need to scope
     /// their behavior do so inside their tool bodies (with the standard fail-closed
     /// permission/tenant assertions described in
@@ -508,11 +508,11 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             .ToList();
     }
 
-    protected virtual DocumentChatToolContext CreateToolContext(ChatConversation conversation)
+    protected virtual ChatToolContext CreateToolContext(ChatConversation conversation)
         => new()
         {
             // Issue #100: scope is no longer pinned to the conversation. The hint
-            // remains nullable on DocumentChatToolContext for forward compatibility
+            // remains nullable on ChatToolContext for forward compatibility
             // (e.g. when a future tool wants to log "anchor type" alongside its call),
             // but the AppService no longer supplies one — anchor metadata is in the
             // system prompt, not the tool context.
@@ -608,7 +608,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     {
         var setup = await PrepareAgentSetupAsync(conversation, cancellationToken);
         // History prepending is handled by MAF: ChatClientAgent calls
-        // DocumentChatHistoryProvider.InvokingAsync inside RunAsync, which reads the
+        // ConversationHistoryProvider.InvokingAsync inside RunAsync, which reads the
         // conversation id from the session StateBag and prepends history with the
         // ChatHistory source-stamp. We only pass the new turn's user message here.
         var response = await setup.Agent.RunAsync(
@@ -730,7 +730,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         bool citationsTrimmed = false,
         bool anchorResolutionFailed = false)
     {
-        _telemetryRecorder.RecordTurn(new DocumentChatTurnAuditEntry
+        _telemetryRecorder.RecordTurn(new ChatTurnAuditEntry
         {
             ConversationId = conversation.Id,
             UserId = CurrentUser.Id,
@@ -738,14 +738,14 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             DocumentId = conversation.DocumentId,
             // DocumentTypeCode left null: Issue #100 dropped it from the conversation
             // aggregate. Per-tool entries continue to record DocumentTypeCode when a
-            // future contributor populates DocumentChatToolContext.DocumentTypeCode.
+            // future contributor populates ChatToolContext.DocumentTypeCode.
             DocumentTypeCode = null,
             TraceId = Activity.Current?.TraceId.ToString(),
             Streaming = streaming,
             CitationCount = citationCount,
             IsDegraded = isDegraded,
             ElapsedMs = elapsedMs,
-            Outcome = DocumentChatTelemetryOutcome.Success,
+            Outcome = ChatTelemetryOutcome.Success,
             CitationsTrimmed = citationsTrimmed,
             AnchorResolutionFailed = anchorResolutionFailed
         });
@@ -757,7 +757,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         double elapsedMs,
         Exception exception)
     {
-        _telemetryRecorder.RecordTurn(new DocumentChatTurnAuditEntry
+        _telemetryRecorder.RecordTurn(new ChatTurnAuditEntry
         {
             ConversationId = conversation.Id,
             UserId = CurrentUser.Id,
@@ -767,7 +767,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             TraceId = Activity.Current?.TraceId.ToString(),
             Streaming = streaming,
             ElapsedMs = elapsedMs,
-            Outcome = DocumentChatTelemetryOutcome.Failure,
+            Outcome = ChatTelemetryOutcome.Failure,
             ExceptionType = exception.GetType().FullName
         });
     }
@@ -789,7 +789,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     /// <remarks>
     /// Tool-name → describer resolution: looks up the AIFunction by name in
     /// <paramref name="tools"/> (the same list passed to <c>ChatClientAgentOptions</c>),
-    /// downcasts to <see cref="Telemetry.DocumentChatToolFactory.AuditedDocumentChatFunction"/>,
+    /// downcasts to <see cref="Telemetry.ChatToolFactory.AuditedChatFunction"/>,
     /// and invokes its <c>ProgressDescriber</c>. Falls back to a generic label when the
     /// tool didn't supply one — never reveals raw <c>arguments</c> JSON, which would
     /// re-introduce the prompt-injection / PII vector reverse example C #4 forbids.
@@ -871,7 +871,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     {
         foreach (var tool in tools)
         {
-            if (tool is Telemetry.DocumentChatToolFactory.AuditedDocumentChatFunction audited
+            if (tool is Telemetry.ChatToolFactory.AuditedChatFunction audited
                 && string.Equals(audited.Name, toolName, StringComparison.Ordinal))
             {
                 var described = audited.ProgressDescriber?.Invoke(arguments);
@@ -900,7 +900,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
         try
         {
             var setup = await PrepareAgentSetupAsync(conversation, ct);
-            // MAF prepends history via DocumentChatHistoryProvider — see InvokeAgentAsync.
+            // MAF prepends history via ConversationHistoryProvider — see InvokeAgentAsync.
             var newUserMessage = new MeAi.ChatMessage(MeAi.ChatRole.User, input.Message);
 
             // Issue #116: per-CallId stopwatch dictionary so ToolCallCompleted can carry
@@ -996,7 +996,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
             writer.TryWrite(new ChatTurnDeltaDto
             {
                 Kind = ChatTurnDeltaKind.Error,
-                ErrorMessage = L["DocumentChat:StreamError"].Value
+                ErrorMessage = L["Chat:StreamError"].Value
             });
             writer.Complete();
         }
@@ -1022,7 +1022,7 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
 
     protected virtual bool ShouldGenerateTitle(ChatConversation conversation)
         => conversation.Messages.Count == 0
-            && conversation.Title == L["DocumentChat:UntitledConversation"].Value;
+            && conversation.Title == L["Chat:UntitledConversation"].Value;
 
     protected virtual async Task TryGenerateAndApplyTitleAsync(
         ChatConversation conversation,
@@ -1084,13 +1084,13 @@ public class DocumentChatAppService : PaperbaseAppService, IDocumentChatAppServi
     /// <remarks>
     /// <see cref="AnchorResolutionFailed"/> is <c>true</c> when the conversation has an
     /// anchor <see cref="ChatConversation.DocumentId"/> but
-    /// <see cref="DocumentChatAppService.BuildAnchorContextAsync"/> degraded for it
+    /// <see cref="ChatAppService.BuildAnchorContextAsync"/> degraded for it
     /// (deleted, tenant mismatch, or caller lost <c>Documents.Default</c>). Surfaces
     /// to telemetry so operators can see permission drift at scale; never blocks the turn.
     /// <para>
     /// Issue #116: <see cref="Tools"/> mirrors the <c>ChatClientAgentOptions.ChatOptions.Tools</c>
     /// list so the streaming path can look up an
-    /// <see cref="Telemetry.DocumentChatToolFactory.AuditedDocumentChatFunction"/> by name
+    /// <see cref="Telemetry.ChatToolFactory.AuditedChatFunction"/> by name
     /// to resolve its <c>ProgressDescriber</c> when emitting <c>ToolCallStarted</c> events.
     /// </para>
     /// </remarks>

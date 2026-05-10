@@ -20,16 +20,16 @@ using MEAI = Microsoft.Extensions.AI;
 namespace Dignite.Paperbase.Chat;
 
 /// <summary>
-/// Behavioral tests for <see cref="DocumentChatAppService"/>. Exercises:
+/// Behavioral tests for <see cref="ChatAppService"/>. Exercises:
 /// fail-closed authorization (tenant + ownership), per-turn idempotency,
 /// optimistic-concurrency surfacing, and multi-turn history propagation. Search
 /// scope / citation / chunk-formatting concerns live in
 /// <see cref="Search.DocumentTextSearchAdapter_Tests"/> at the adapter level.
 /// </summary>
-public class DocumentChatAppService_Tests
-    : PaperbaseApplicationTestBase<DocumentChatAppServiceTestModule>
+public class ChatAppService_Tests
+    : PaperbaseApplicationTestBase<ChatAppServiceTestModule>
 {
-    private readonly IDocumentChatAppService _appService;
+    private readonly IChatAppService _appService;
     private readonly IChatConversationRepository _repository;
     private readonly IChatClient _chatClient;
     private readonly IDocumentKnowledgeIndex _knowledgeIndex;
@@ -41,9 +41,9 @@ public class DocumentChatAppService_Tests
     private static readonly Guid OwnerUserId = Guid.Parse("00000000-0000-0000-0000-000000000001");
     private static readonly Guid OtherUserId = Guid.Parse("00000000-0000-0000-0000-000000000002");
 
-    public DocumentChatAppService_Tests()
+    public ChatAppService_Tests()
     {
-        _appService = GetRequiredService<IDocumentChatAppService>();
+        _appService = GetRequiredService<IChatAppService>();
         _repository = GetRequiredService<IChatConversationRepository>();
         _chatClient = GetRequiredService<IChatClient>();
         _knowledgeIndex = GetRequiredService<IDocumentKnowledgeIndex>();

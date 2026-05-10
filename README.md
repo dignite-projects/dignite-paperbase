@@ -123,7 +123,7 @@ Feature docs (start here for any specific topic):
 * [Embedding](./docs/embedding.md) — Markdown-aware chunking, switching the embedding model
 * [Knowledge index](./docs/knowledge-index.md) — Qdrant schema, payload indexes, retrieval defaults
 * [Hybrid search](./docs/hybrid-search.md) — dense + BM25 RRF fusion on Qdrant
-* [Document chat](./docs/document-chat.md) — feature overview, rerank, tool contributors → [HTTP client guide](./docs/document-chat-client.md)
+* [Document chat](./docs/chat.md) — feature overview, rerank, tool contributors → [HTTP client guide](./docs/chat-client.md)
 * [AI provider](./docs/ai-provider.md) — wiring `IChatClient` and `IEmbeddingGenerator`
 * [Pipeline runs](./docs/pipeline-runs.md) — run history and review-UI payloads
 * [Deployment](./docs/deployment.md) — DB, Qdrant, certificate, Docker

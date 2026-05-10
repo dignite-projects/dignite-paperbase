@@ -1,6 +1,6 @@
 # doc-chat 反例说明
 
-本文件由 `maf-workflow-reviewer` agent 在审查 PR 时引用，用于快速定位 **DocumentChatAppService** 发送路径
+本文件由 `maf-workflow-reviewer` agent 在审查 PR 时引用，用于快速定位 **ChatAppService** 发送路径
 和业务模块 **字段抽取 Agent** 的典型错误模式。
 
 所有示例均为**伪代码**，不可编译，仅用于说明意图。
@@ -98,7 +98,7 @@ catch (AbpDbConcurrencyException)
 ### ✅ 正确实现要点
 
 ```
-[Authorize(PaperbasePermissions.Documents.Chat.SendMessage)]
+[Authorize(PaperbasePermissions.Chat.SendMessage)]
 public virtual async Task<ChatTurnResultDto> SendMessageAsync(Guid conversationId, SendChatMessageInput input)
 {
     // 1. LoadAndAuthorizeAsync 依次: 租户断言 → 归属断言（均抛 EntityNotFoundException）
@@ -116,22 +116,22 @@ public virtual async Task<ChatTurnResultDto> SendMessageAsync(Guid conversationI
 ```
 
 **参照实现**：
-`core/src/Dignite.Paperbase.Application/Documents/Chat/DocumentChatAppService.cs`
+`core/src/Dignite.Paperbase.Application/Documents/Chat/ChatAppService.cs`
 
 ---
 
-## 反例 C：业务模块 `IDocumentChatToolContributor` 工具未做 fail-closed 安全门
+## 反例 C：业务模块 `IChatToolContributor` 工具未做 fail-closed 安全门
 
 **规则来源**：Issue #69 验收标准 — "每个 tool 显式断言租户 + 权限"
 
-**背景**：业务模块通过 `IDocumentChatToolContributor` 把 `AIFunction` 挂进 Chat 后，函数体由 LLM 决定何时调用、参数由 LLM 决定如何填。HTTP 边界上的 `[Authorize]` 不再覆盖此调用——AIFunction 在 Chat 转一轮内被反射调用，绕过 controller。安全断言必须落到工具方法体内部。
+**背景**：业务模块通过 `IChatToolContributor` 把 `AIFunction` 挂进 Chat 后，函数体由 LLM 决定何时调用、参数由 LLM 决定如何填。HTTP 边界上的 `[Authorize]` 不再覆盖此调用——AIFunction 在 Chat 转一轮内被反射调用，绕过 controller。安全断言必须落到工具方法体内部。
 
 ### ❌ 错误写法 1：依赖 AppService 上的 `[Authorize]` / 不做权限断言
 
 ```
-public class InvoiceChatToolContributor : IDocumentChatToolContributor, ITransientDependency
+public class InvoiceChatToolContributor : IChatToolContributor, ITransientDependency
 {
-    public IEnumerable<AIFunction> ContributeTools(DocumentChatToolContext ctx)
+    public IEnumerable<AIFunction> ContributeTools(ChatToolContext ctx)
     {
         // 错误：直接把 AppService 方法包成 AIFunction
         // IInvoiceAppService 的 [Authorize(InvoicePermissions.Default)] 在反射调用时不生效
@@ -190,9 +190,9 @@ public async Task<string> ReportAsync(string whereClause)
 ### ✅ 正确实现要点
 
 ```
-public class InvoiceChatToolContributor : IDocumentChatToolContributor, ITransientDependency
+public class InvoiceChatToolContributor : IChatToolContributor, ITransientDependency
 {
-    public IEnumerable<AIFunction> ContributeTools(DocumentChatToolContext ctx)
+    public IEnumerable<AIFunction> ContributeTools(ChatToolContext ctx)
     {
         var binding = new InvoiceToolBindings(_repo, _executer, ctx.TenantId, _authService);
         yield return AIFunctionFactory.Create(binding.SearchAsync,
@@ -203,7 +203,7 @@ public class InvoiceChatToolContributor : IDocumentChatToolContributor, ITransie
     private sealed class InvoiceToolBindings
     {
         private const int MaxResultRows = 20;
-        // 构造函数注入 _tenantId（来自 DocumentChatToolContext.TenantId）
+        // 构造函数注入 _tenantId（来自 ChatToolContext.TenantId）
 
         public async Task<string> SearchAsync(/* [Description] params */)
         {
@@ -233,17 +233,17 @@ public class InvoiceChatToolContributor : IDocumentChatToolContributor, ITransie
 
 **规则来源**：Issue #100 — 编排哲学声明（"细粒度工具自主编排" vs "agent-级编排"）
 
-**背景**：MAF `ChatClientAgent.AsAIFunction()` 可以把一个 agent 包成 `AIFunction` 给外层 agent 调用（即"agent-as-tools"模式）。在 Paperbase 当前规模（工具 ≤ 15 个、推理深度 ≤ 8 步）下，这种嵌套是 over-engineering——每次 sub-agent 调用都要再开一轮 LLM + 自己的 tool list，而权限/租户上下文需要二次穿透，会**稀释** `DocumentChatToolContext` 的闭包注入模式。
+**背景**：MAF `ChatClientAgent.AsAIFunction()` 可以把一个 agent 包成 `AIFunction` 给外层 agent 调用（即"agent-as-tools"模式）。在 Paperbase 当前规模（工具 ≤ 15 个、推理深度 ≤ 8 步）下，这种嵌套是 over-engineering——每次 sub-agent 调用都要再开一轮 LLM + 自己的 tool list，而权限/租户上下文需要二次穿透，会**稀释** `ChatToolContext` 的闭包注入模式。
 
 ### ❌ 错误写法
 
 ```
 // 错误：模块自己起一个 sub-agent 包成 tool 给主 chat
-public class InvoiceChatToolContributor : IDocumentChatToolContributor
+public class InvoiceChatToolContributor : IChatToolContributor
 {
     public IEnumerable<AIFunction> ContributeTools(
-        DocumentChatToolContext ctx,
-        IDocumentChatToolFactory toolFactory)
+        ChatToolContext ctx,
+        IChatToolFactory toolFactory)
     {
         var subAgent = new ChatClientAgent(_chatClient, new ChatClientAgentOptions
         {
@@ -271,11 +271,11 @@ public class InvoiceChatToolContributor : IDocumentChatToolContributor
 把每个原子能力作为**独立的细粒度工具**贡献，让主 agent 直接编排：
 
 ```
-public class InvoiceChatToolContributor : IDocumentChatToolContributor
+public class InvoiceChatToolContributor : IChatToolContributor
 {
     public IEnumerable<AIFunction> ContributeTools(
-        DocumentChatToolContext ctx,
-        IDocumentChatToolFactory toolFactory)
+        ChatToolContext ctx,
+        IChatToolFactory toolFactory)
     {
         var binding = new InvoiceToolBindings(_repo, _executer, ctx.TenantId!.Value, _authService);
         yield return toolFactory.Create(ctx, binding.SearchAsync, "search_invoices",   "...");
@@ -372,7 +372,7 @@ protected virtual async Task<string?> BuildAnchorContextAsync(
 ```
 
 **参照实现**：
-`core/src/Dignite.Paperbase.Application/Chat/DocumentChatAppService.BuildAnchorContextAsync`
+`core/src/Dignite.Paperbase.Application/Chat/ChatAppService.BuildAnchorContextAsync`
 
 ---
 

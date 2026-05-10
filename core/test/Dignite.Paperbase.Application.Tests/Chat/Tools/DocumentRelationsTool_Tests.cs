@@ -21,10 +21,10 @@ namespace Dignite.Paperbase.Chat;
 /// upper bound that protects the LLM context from a relation explosion.
 /// </summary>
 public class DocumentRelationsTool_Tests
-    : PaperbaseApplicationTestBase<DocumentChatAppServiceTestModule>
+    : PaperbaseApplicationTestBase<ChatAppServiceTestModule>
 {
     private readonly DocumentRelationsTool _tool;
-    private readonly IDocumentChatToolFactory _toolFactory;
+    private readonly IChatToolFactory _toolFactory;
     private readonly IDocumentRelationRepository _relationRepository;
     private readonly ICurrentTenant _currentTenant;
 
@@ -34,7 +34,7 @@ public class DocumentRelationsTool_Tests
     public DocumentRelationsTool_Tests()
     {
         _tool = GetRequiredService<DocumentRelationsTool>();
-        _toolFactory = GetRequiredService<IDocumentChatToolFactory>();
+        _toolFactory = GetRequiredService<IChatToolFactory>();
         _relationRepository = GetRequiredService<IDocumentRelationRepository>();
         _currentTenant = GetRequiredService<ICurrentTenant>();
     }
@@ -161,7 +161,7 @@ public class DocumentRelationsTool_Tests
     // helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    private async Task<JsonElement> InvokeAsync(DocumentChatToolContext ctx, Guid documentId)
+    private async Task<JsonElement> InvokeAsync(ChatToolContext ctx, Guid documentId)
     {
         var function = _tool.CreateAIFunction(ctx, _toolFactory);
         var args = new AIFunctionArguments
@@ -185,7 +185,7 @@ public class DocumentRelationsTool_Tests
         return JsonDocument.Parse(json).RootElement;
     }
 
-    private static DocumentChatToolContext BuildContext(Guid tenantId) => new()
+    private static ChatToolContext BuildContext(Guid tenantId) => new()
     {
         TenantId = tenantId,
         ConversationId = Guid.NewGuid(),

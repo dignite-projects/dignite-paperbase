@@ -24,17 +24,17 @@ namespace Dignite.Paperbase.Chat;
 
 /// <summary>
 /// End-to-end integration tests that exercise full request paths the unit tests in
-/// <see cref="DocumentChatAppService_Tests"/> do not cover: CRUD lifecycle, pagination,
+/// <see cref="ChatAppService_Tests"/> do not cover: CRUD lifecycle, pagination,
 /// multi-turn history depth, search scope variants, and boundary / negation paths.
 ///
-/// Uses the same <see cref="DocumentChatAppServiceTestModule"/> (substituted IChatClient +
+/// Uses the same <see cref="ChatAppServiceTestModule"/> (substituted IChatClient +
 /// IDocumentKnowledgeIndex; SQLite in-memory; always-allow authorization).
 /// Does NOT call a real LLM or vector store.
 /// </summary>
-public class DocumentChat_E2E_Tests
-    : PaperbaseApplicationTestBase<DocumentChatAppServiceTestModule>
+public class Chat_E2E_Tests
+    : PaperbaseApplicationTestBase<ChatAppServiceTestModule>
 {
-    private readonly IDocumentChatAppService _appService;
+    private readonly IChatAppService _appService;
     private readonly IChatConversationRepository _conversationRepository;
     private readonly IDocumentRepository _documentRepository;
     private readonly IChatClient _chatClient;
@@ -47,9 +47,9 @@ public class DocumentChat_E2E_Tests
     private static readonly Guid OwnerUserId  = Guid.Parse("00000000-0000-0000-0000-000000000001");
     private static readonly Guid OtherUserId  = Guid.Parse("00000000-0000-0000-0000-000000000002");
 
-    public DocumentChat_E2E_Tests()
+    public Chat_E2E_Tests()
     {
-        _appService             = GetRequiredService<IDocumentChatAppService>();
+        _appService             = GetRequiredService<IChatAppService>();
         _conversationRepository = GetRequiredService<IChatConversationRepository>();
         _documentRepository     = GetRequiredService<IDocumentRepository>();
         _chatClient             = GetRequiredService<IChatClient>();

@@ -141,8 +141,8 @@ public class DocumentTextSearchAdapter : ITransientDependency
         Guid? tenantId,
         DocumentSearchScope? baseScope,
         DocumentSearchCapture capture,
-        DocumentChatToolContext toolContext,
-        IDocumentChatToolFactory toolFactory,
+        ChatToolContext toolContext,
+        IChatToolFactory toolFactory,
         string functionName,
         string functionDescription)
     {
@@ -265,7 +265,7 @@ public class DocumentTextSearchAdapter : ITransientDependency
             _capture.Append(vectorResults);
 
             sw.Stop();
-            // Argument hashing + audit are recorded by AuditedDocumentChatFunction; do not
+            // Argument hashing + audit are recorded by AuditedChatFunction; do not
             // log the raw `query` here — it usually contains the user's natural-language
             // input or LLM rephrasing thereof, which can include PII.
             _adapter._logger.LogInformation(

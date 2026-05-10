@@ -6,16 +6,16 @@ export const PAPERBASE_PERMISSIONS = {
     Restore: 'Paperbase.Documents.Restore',
     Export: 'Paperbase.Documents.Export',
     ConfirmClassification: 'Paperbase.Documents.ConfirmClassification',
-    Chat: {
-      Default: 'Paperbase.Documents.Chat',
-      Create: 'Paperbase.Documents.Chat.Create',
-      SendMessage: 'Paperbase.Documents.Chat.SendMessage',
-      Delete: 'Paperbase.Documents.Chat.Delete',
-    },
     Pipelines: {
       Default: 'Paperbase.Documents.Pipelines',
       Retry: 'Paperbase.Documents.Pipelines.Retry',
     },
+  },
+  Chat: {
+    Default: 'Paperbase.Chat',
+    Create: 'Paperbase.Chat.Create',
+    SendMessage: 'Paperbase.Chat.SendMessage',
+    Delete: 'Paperbase.Chat.Delete',
   },
   DocumentRelations: {
     Default: 'Paperbase.DocumentRelations',
