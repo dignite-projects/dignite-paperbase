@@ -197,7 +197,7 @@
                       <i class="fas fa-times-circle me-2 text-danger"></i>
                     }
                     <span class="tool-event-description">{{ ev.description }}</span>
-                    @if (ev.elapsedMs != null) {
+                    @if (ev.elapsedMs !== null && ev.elapsedMs !== undefined) {
                       <span class="tool-event-elapsed">{{ ev.elapsedMs | number:'1.0-0' }}ms</span>
                     }
                   </div>

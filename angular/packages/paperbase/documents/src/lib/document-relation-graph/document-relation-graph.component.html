@@ -8,17 +8,18 @@
     <div class="d-flex align-items-center gap-2 flex-wrap">
       <!-- Depth selector -->
       <div class="btn-group btn-group-sm" role="group">
-        <button
-          *ngFor="let d of [1, 2, 3]"
-          type="button"
-          class="btn"
-          [class.btn-primary]="depth() === d"
-          [class.btn-outline-secondary]="depth() !== d"
-          (click)="setDepth(d)"
-          [disabled]="isLoading()"
-        >
-          {{ d }} {{ '::Document:RelationGraph:Hop' | abpLocalization }}
-        </button>
+        @for (d of [1, 2, 3]; track d) {
+          <button
+            type="button"
+            class="btn"
+            [class.btn-primary]="depth() === d"
+            [class.btn-outline-secondary]="depth() !== d"
+            (click)="setDepth(d)"
+            [disabled]="isLoading()"
+          >
+            {{ d }} {{ '::Document:RelationGraph:Hop' | abpLocalization }}
+          </button>
+        }
       </div>
 
       <!-- Show AiSuggested toggle -->
@@ -149,7 +150,7 @@
               <span class="badge bg-warning text-dark ms-1">
                 <i class="fas fa-robot me-1"></i>{{ '::Document:RelationSource:AI' | abpLocalization }}
               </span>
-              @if (e.confidence != null && e.confidence > 0) {
+              @if (e.confidence !== null && e.confidence !== undefined && e.confidence > 0) {
                 <span class="text-muted ms-2">{{ (e.confidence * 100).toFixed(0) }}%</span>
               }
             } @else if (e.source === RelationSource.Manual) {
