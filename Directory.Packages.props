@@ -72,6 +72,18 @@
         <PackageVersion Include="Microsoft.Agents.AI" Version="1.5.0" />
     </ItemGroup>
 
+    <ItemGroup Label="OpenTelemetry">
+        <!-- Aligned with the OTel 1.15.x family that Microsoft.Agents.AI 1.4+ depends on
+             (see plan doc § "MAF 版本升级 1.2 → 1.5"). The host wires up the export
+             pipeline so MAF's built-in CompactionTelemetry, Microsoft.Extensions.AI's
+             gen_ai.* spans, and project-owned Dignite.Paperbase.* Meters reach OTLP. -->
+        <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.0" />
+        <PackageVersion Include="OpenTelemetry.Exporter.Console" Version="1.15.0" />
+        <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.0" />
+        <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.13.0" />
+        <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.13.0" />
+    </ItemGroup>
+
     <ItemGroup Label="Infrastructure">
         <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.2" />
         <PackageVersion Include="Microsoft.EntityFrameworkCore.Proxies" Version="10.0.2" />

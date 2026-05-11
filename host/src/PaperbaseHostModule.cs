@@ -13,6 +13,9 @@ using Dignite.Paperbase.TextExtraction.ElBrunoMarkItDown;
 using Microsoft.Extensions.AI;
 using Microsoft.EntityFrameworkCore;
 using OpenAI;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Extensions.DependencyInjection;
@@ -210,6 +213,7 @@ public class PaperbaseHostModule : AbpModule
         ConfigureVirtualFiles(hostingEnvironment);
         ConfigureEfCore(context);
         ConfigureAI(context, configuration);
+        ConfigureOpenTelemetry(context, configuration);
     }
     
 
@@ -436,6 +440,98 @@ public class PaperbaseHostModule : AbpModule
                 .AsIEmbeddingGenerator())
             .UseOpenTelemetry()
             .UseLogging();
+    }
+
+    // OTel export pipeline. MAF (CompactionTelemetry / Microsoft.Agents.AI), Microsoft.Extensions.AI
+    // (gen_ai.* spans from the chat-client UseOpenTelemetry decorators above), and Paperbase's own
+    // ChatTelemetryRecorder / RelationDiscoveryTelemetryRecorder all emit signals. Without an
+    // exporter wired here they are silently dropped. See plan doc § "启发点 2：接通 OpenTelemetry
+    // 导出管道" and Issue #142 for the full rationale.
+    private void ConfigureOpenTelemetry(ServiceConfigurationContext context, IConfiguration configuration)
+    {
+        var section = configuration.GetSection("OpenTelemetry");
+        if (!section.GetValue("Enabled", defaultValue: false))
+        {
+            return;
+        }
+
+        var endpointValue = section["Otlp:Endpoint"];
+        var useOtlp = !string.IsNullOrWhiteSpace(endpointValue);
+        var useConsole = section.GetValue("ConsoleExporter", defaultValue: false);
+
+        var serviceVersion = typeof(PaperbaseHostModule).Assembly.GetName().Version?.ToString() ?? "1.0.0";
+
+        var otel = context.Services.AddOpenTelemetry();
+
+        otel.ConfigureResource(resource => resource
+            .AddService(serviceName: "Dignite.Paperbase", serviceVersion: serviceVersion));
+
+        otel.WithTracing(tracing =>
+        {
+            tracing
+                // MAF spans incl. CompactionTelemetry's compaction.compact / compaction.summarize.
+                .AddSource("Microsoft.Agents.AI")
+                // gen_ai.* spans from the chat-client / embedding-client UseOpenTelemetry decorators.
+                .AddSource("Microsoft.Extensions.AI")
+                // Future ActivitySources under the project's namespace (wildcard supported by OTel).
+                .AddSource("Dignite.Paperbase.*")
+                .AddAspNetCoreInstrumentation()
+                .AddHttpClientInstrumentation();
+
+            if (useOtlp)
+            {
+                tracing.AddOtlpExporter(o => ConfigureOtlpExporter(o, section));
+            }
+
+            if (useConsole)
+            {
+                tracing.AddConsoleExporter();
+            }
+        });
+
+        otel.WithMetrics(metrics =>
+        {
+            metrics
+                // Paperbase-owned Meters: Dignite.Paperbase.Chat,
+                // Dignite.Paperbase.Documents.RelationDiscovery, plus future siblings.
+                .AddMeter("Dignite.Paperbase.*")
+                // MAF Meters (token usage, tool call counts, etc.).
+                .AddMeter("Microsoft.Agents.AI")
+                .AddMeter("Microsoft.Extensions.AI")
+                .AddAspNetCoreInstrumentation()
+                .AddHttpClientInstrumentation();
+
+            if (useOtlp)
+            {
+                metrics.AddOtlpExporter(o => ConfigureOtlpExporter(o, section));
+            }
+
+            if (useConsole)
+            {
+                metrics.AddConsoleExporter();
+            }
+        });
+    }
+
+    private static void ConfigureOtlpExporter(
+        OpenTelemetry.Exporter.OtlpExporterOptions options,
+        IConfigurationSection section)
+    {
+        var endpoint = section["Otlp:Endpoint"];
+        if (!string.IsNullOrWhiteSpace(endpoint))
+        {
+            options.Endpoint = new Uri(endpoint);
+        }
+
+        var protocol = section["Otlp:Protocol"];
+        if (string.Equals(protocol, "HttpProtobuf", StringComparison.OrdinalIgnoreCase))
+        {
+            options.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
+        }
+        else if (string.Equals(protocol, "Grpc", StringComparison.OrdinalIgnoreCase))
+        {
+            options.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.Grpc;
+        }
     }
 
     public override void OnApplicationInitialization(ApplicationInitializationContext context)
