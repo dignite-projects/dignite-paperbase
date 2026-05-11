@@ -2,6 +2,7 @@
   "culture": "zh-Hans",
   "texts": {
     "MyAccount": "我的账户",
-    "SamplePageMessage": "Contracts 模块的示例页面"
+    "SamplePageMessage": "Contracts 模块的示例页面",
+    "Contract:OpenSourceDocument": "打开源文档"
   }
 }

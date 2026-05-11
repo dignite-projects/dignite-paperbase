@@ -66,7 +66,7 @@
     "Document:RestoredSuccessfully": "已恢复。",
     "Document:PermanentlyDeletedSuccessfully": "已彻底删除。",
     "Document:AreYouSureToRestore": "确定恢复此文档吗？",
-    "Document:AreYouSureToPermanentlyDelete": "此操作不可恢复。文档、向量、附件以及派生业务数据都会被永久删除，是否继续？",
+    "Document:AreYouSureToPermanentlyDelete": "此操作不可恢复。文档、向量、附件，以及由此派生的所有业务记录（含其上的人工修正）都将被永久删除，是否继续？",
     "Chat:Title": "文档对话",
     "Chat:TitlePlaceholder": "标题（可选）",
     "Chat:DocumentIdPlaceholder": "文档 ID（可选）",

@@ -7,7 +7,15 @@
     <h1 class="h4 mb-0 ms-2">{{ '::Contract:Detail' | abpLocalization }}</h1>
 
     @if (contract(); as c) {
-      <span [ngClass]="reviewStatusBadgeClass(c.reviewStatus)" class="ms-auto">
+      <a
+        class="btn btn-outline-secondary btn-sm ms-auto"
+        [routerLink]="['/documents', c.documentId]"
+        title="{{ '::Contract:OpenSourceDocument' | abpLocalization }}"
+      >
+        <i class="fa fa-file-alt me-1"></i>
+        {{ '::Contract:OpenSourceDocument' | abpLocalization }}
+      </a>
+      <span [ngClass]="reviewStatusBadgeClass(c.reviewStatus)">
         {{ reviewStatusLabel(c.reviewStatus) | abpLocalization }}
       </span>
       <span class="badge text-bg-secondary">{{ statusLabel(c.status) }}</span>
@@ -31,11 +39,6 @@
     <div class="card shadow-sm mb-3">
       <div class="card-body">
         <dl class="row mb-0 small">
-          <dt class="col-sm-3 text-muted">{{ '::Contract:DocumentId' | abpLocalization }}</dt>
-          <dd class="col-sm-9">
-            <a [routerLink]="['/documents', c.documentId]">{{ c.documentId }}</a>
-          </dd>
-
           <dt class="col-sm-3 text-muted">{{ '::Contract:DocumentType' | abpLocalization }}</dt>
           <dd class="col-sm-9">
             <span class="badge bg-info text-dark">{{ c.documentTypeCode }}</span>

@@ -20,6 +20,7 @@
     "ReviewStatus": "Review status",
     "ContractReviewStatus:Pending": "Pending review",
     "ContractReviewStatus:Confirmed": "Confirmed",
-    "ContractReviewStatus:Corrected": "Corrected"
+    "ContractReviewStatus:Corrected": "Corrected",
+    "Contract:OpenSourceDocument": "Open Source Document"
   }
 }

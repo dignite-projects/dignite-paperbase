@@ -44,12 +44,13 @@ Paperbase 采用**三层分离**的模块化架构：
   - 持久化自己的领域聚合根，提供业务 API 和 UI
   - 在自己的聚合根上维护业务查询字段，**不得回写到 Document 聚合根**（判断依据：如果一个字段的含义只有在特定业务场景下才成立，它就不属于 `Document`）
 - **非耦合实现**：业务模块之间无依赖；业务模块与核心通过事件解耦通信
-- **业务记录是 Document 投影，无独立删除入口**：业务模块聚合根（如 `Contract`）的全部字段都派生自 `Document.Markdown`，没有独立的 truth source。因此：
+- **业务记录是 Document 投影，无独立删除入口**：业务模块聚合根（如 `Contract`）的初始字段全部派生自 `Document.Markdown`，可以叠加**人工修正**（"人在回路"模式：Update API + `ReviewStatus.Corrected` 状态）。Document 仍是 truth source 的源头，业务记录是它的"派生 + 修正叠加"投影。因此：
   - 业务模块**不提供**自身的 `DeleteAsync` / `PermanentDeleteAsync` API，也**不在自己的 UI 上**暴露删除/恢复/彻底删除按钮
-  - 业务记录的销毁通过**删除源文档**触发：`DocumentDeletedEto` → 业务记录归档；`DocumentPermanentlyDeletedEto` → 业务记录物理删除
+  - 业务记录的销毁通过**删除源文档**触发：`DocumentDeletedEto` → 业务记录归档；`DocumentPermanentlyDeletedEto` → 业务记录物理删除（**人工修正一并丢失**——这是用户彻底删 Document 的明示意图）
   - 业务模块 UI 详情页**提供"打开源文档"链接**，让用户跳转到 Document 详情页执行删除
+  - **Document 彻底删除的二次确认必须显式警告用户**："包括从中派生的所有业务记录及其人工修正"
   - 后端依赖拓扑也禁止业务模块调用 Core 的 `IDocumentAppService`（业务模块只能发布/订阅事件）
-  - **唯一例外**：业务模块如果引入"会因 Document 删除而丢失的人工输入字段"（如人工修正后的合同金额、签署人电子签章等），该字段不属于这个投影聚合根，应分裂出独立聚合根（如 `ContractAnnotation`），它才能有独立的生命周期和删除 API
+  - **不要为"保住人工修正"而分裂聚合根**（如假想中的 `ContractAnnotation`）——这会引入显著复杂度但收益小：用户主动彻底删源文档时，连带派生数据丢失是符合预期的，而 UI 二次确认已经把后果讲清楚了
 
 ### 第三层：Host（宿主应用）
 
