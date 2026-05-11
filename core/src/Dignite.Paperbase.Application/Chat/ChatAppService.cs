@@ -58,6 +58,7 @@ public class ChatAppService : PaperbaseAppService, IChatAppService
     private readonly IDocumentRepository _documentRepository;
     private readonly DocumentTextSearchAdapter _textSearchAdapter;
     private readonly DocumentRelationsTool _documentRelationsTool;
+    private readonly DocumentContentTool _documentContentTool;
     private readonly IChatClient _chatClient;
     private readonly IPromptProvider _promptProvider;
     private readonly ConversationHistoryProvider _historyProvider;
@@ -72,6 +73,7 @@ public class ChatAppService : PaperbaseAppService, IChatAppService
         IDocumentRepository documentRepository,
         DocumentTextSearchAdapter textSearchAdapter,
         DocumentRelationsTool documentRelationsTool,
+        DocumentContentTool documentContentTool,
         IChatClient chatClient,
         IPromptProvider promptProvider,
         ConversationHistoryProvider historyProvider,
@@ -85,6 +87,7 @@ public class ChatAppService : PaperbaseAppService, IChatAppService
         _documentRepository = documentRepository;
         _textSearchAdapter = textSearchAdapter;
         _documentRelationsTool = documentRelationsTool;
+        _documentContentTool = documentContentTool;
         _chatClient = chatClient;
         _promptProvider = promptProvider;
         _historyProvider = historyProvider;
@@ -417,7 +420,15 @@ public class ChatAppService : PaperbaseAppService, IChatAppService
             // DocumentRelation aggregate). Sits next to search_paperbase_documents because
             // it's the natural pre-step for cross-document reasoning ("anchor → related →
             // drill-into-content").
-            _documentRelationsTool.CreateAIFunction(toolContext, _toolFactory)
+            _documentRelationsTool.CreateAIFunction(toolContext, _toolFactory),
+            // Issue #144: precise-navigation complement to the vector search above.
+            //   get_document_outline → heading tree (no body), for structural questions.
+            //   get_document_excerpt → exact-substring grep with context, for tokens the
+            //                          vector recall is bad at (contract numbers, IDs).
+            // Single class, two AIFunctions, fail-closed inside each binding
+            // (see .claude/rules/doc-chat-anti-patterns.md reverse example C).
+            _documentContentTool.CreateOutlineFunction(toolContext, _toolFactory),
+            _documentContentTool.CreateExcerptFunction(toolContext, _toolFactory)
         };
         tools.AddRange(CollectContributorTools(conversation));
 
