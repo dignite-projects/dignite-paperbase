@@ -14,6 +14,7 @@ public class ContractDocumentHandler :
     IDistributedEventHandler<DocumentClassifiedEto>,
     IDistributedEventHandler<DocumentDeletedEto>,
     IDistributedEventHandler<DocumentRestoredEto>,
+    IDistributedEventHandler<DocumentPermanentlyDeletedEto>,
     ITransientDependency
 {
     private readonly IContractRepository _contractRepository;
@@ -97,6 +98,22 @@ public class ContractDocumentHandler :
 
             contract.RestoreBecauseDocumentRestored();
             await _contractRepository.UpdateAsync(contract, autoSave: true);
+        }
+    }
+
+    public virtual async Task HandleEventAsync(DocumentPermanentlyDeletedEto eventData)
+    {
+        using (_currentTenant.Change(eventData.TenantId))
+        {
+            var contract = await _contractRepository.FindByDocumentIdAsync(eventData.DocumentId);
+            if (contract == null)
+            {
+                return;
+            }
+
+            // Document 已不可恢复，派生 Contract 失去数据源头 → 物理删除
+            // Contract 基类是 AuditedAggregateRoot（无 ISoftDelete），DeleteAsync 即真正物理删除
+            await _contractRepository.DeleteAsync(contract, autoSave: true);
         }
     }
 

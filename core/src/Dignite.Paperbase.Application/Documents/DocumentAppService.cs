@@ -150,7 +150,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     [Authorize(PaperbasePermissions.Documents.Delete)]
     public virtual async Task DeleteAsync(Guid id)
     {
-        await _documentRepository.GetAsync(id);
+        var document = await _documentRepository.GetAsync(id);
 
         // 级联软删除关系（DocumentRelation 实现 ISoftDelete，ABP 拦截为 UPDATE IsDeleted=1）
         var relations = await _relationRepository.GetListByDocumentIdAsync(id);
@@ -160,6 +160,14 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         }
 
         await _documentRepository.DeleteAsync(id);
+
+        // 通知业务模块：Document 进入回收站，应将派生数据置为可恢复的归档状态
+        await _distributedEventBus.PublishAsync(new DocumentDeletedEto
+        {
+            DocumentId = document.Id,
+            TenantId = document.TenantId,
+            DocumentTypeCode = document.DocumentTypeCode
+        });
     }
 
     [Authorize(PaperbasePermissions.Documents.PermanentDelete)]
@@ -193,7 +201,8 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
                 document.OriginalFileBlobName, id);
         }
 
-        await _distributedEventBus.PublishAsync(new DocumentDeletedEto
+        // 通知业务模块：Document 已不可恢复，应物理删除派生数据
+        await _distributedEventBus.PublishAsync(new DocumentPermanentlyDeletedEto
         {
             DocumentId = document.Id,
             TenantId = document.TenantId,
