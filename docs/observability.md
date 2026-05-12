@@ -93,6 +93,23 @@ Expected sightings:
 
 aspire-dashboard takes 30–60 seconds to become reachable after `Up` status. If `http://localhost:18888` refuses, wait and retry — or check `docker compose logs aspire-dashboard | tail` for `Now listening on:`.
 
+### Gotcha: `gen_ai.usage.*` is unreliable in streaming mode on some providers
+
+The `Experimental.Microsoft.Extensions.AI` ChatClient emits `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens` on every `chat <model>` span. **These numbers cannot be trusted as cost-tracking ground truth.** Verified mismatch on SiliconFlow (`api.siliconflow.cn`) with DeepSeek-V3 in streaming mode:
+
+| Source | Input tokens | Output tokens |
+|---|---:|---:|
+| OTel `gen_ai.usage.*` for one chat turn | 401,278 | 5,884 |
+| SiliconFlow billing CSV for the whole day | **5,997** | **145** |
+
+Inflation factor ~67× input / ~40× output. Root cause: `Microsoft.Extensions.AI` 10.5.x's `OpenTelemetryChatClient` accumulates usage per streamed chunk, but some OpenAI-compatible gateways report **cumulative-so-far** usage on each chunk rather than per-chunk deltas. The SDK adds them all up, multiplying the real total by the chunk count.
+
+**For cost monitoring**, treat the provider's billing dashboard / CSV as authoritative, not OTel. The `gen_ai.usage.*` values are still useful for *relative* comparisons within a single turn (e.g. "the synthesis call used much more than the routing call") but not for absolute totals.
+
+**For provider compatibility** when this matters: OpenAI's native API and Azure OpenAI report per-chunk delta usage correctly; SiliconFlow, some Anthropic-via-OpenAI shims, and unverified third-party gateways may not. Disable streaming (`ChatOptions.Stream = false`) for a side-by-side comparison if you suspect inflation, or check the provider's billing dashboard for ground truth.
+
+Tracking: [#145](https://github.com/dignite-projects/dignite-paperbase/issues/145).
+
 ### Gotcha: the `Experimental.*` source-name prefix
 
 MAF and `Microsoft.Extensions.AI` currently publish their ActivitySources and Meters under names with an **`Experimental.`** prefix:
