@@ -470,8 +470,15 @@ public class PaperbaseHostModule : AbpModule
         {
             tracing
                 // MAF spans incl. CompactionTelemetry's compaction.compact / compaction.summarize.
+                // The actual ActivitySource name MAF uses is the Experimental.* prefixed form
+                // (OpenTelemetryConsts.DefaultSourceName = "Experimental.Microsoft.Agents.AI").
+                // The unprefixed form is registered too in case Microsoft drops the Experimental
+                // prefix in a future stable release.
+                .AddSource("Experimental.Microsoft.Agents.AI")
                 .AddSource("Microsoft.Agents.AI")
-                // gen_ai.* spans from the chat-client / embedding-client UseOpenTelemetry decorators.
+                // gen_ai.* spans from the chat-client / embedding-client UseOpenTelemetry
+                // decorators. Same Experimental.* convention as MAF.
+                .AddSource("Experimental.Microsoft.Extensions.AI")
                 .AddSource("Microsoft.Extensions.AI")
                 // Future ActivitySources under the project's namespace (wildcard supported by OTel).
                 .AddSource("Dignite.Paperbase.*")
@@ -493,10 +500,13 @@ public class PaperbaseHostModule : AbpModule
         {
             metrics
                 // Paperbase-owned Meters: Dignite.Paperbase.Chat,
-                // Dignite.Paperbase.Documents.RelationDiscovery, plus future siblings.
+                // Dignite.Paperbase.Documents.RelationDiscovery, Dignite.Paperbase.Contracts,
+                // plus future siblings.
                 .AddMeter("Dignite.Paperbase.*")
-                // MAF Meters (token usage, tool call counts, etc.).
+                // MAF / ME.AI Meters — same Experimental.* prefix convention as traces.
+                .AddMeter("Experimental.Microsoft.Agents.AI")
                 .AddMeter("Microsoft.Agents.AI")
+                .AddMeter("Experimental.Microsoft.Extensions.AI")
                 .AddMeter("Microsoft.Extensions.AI")
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation();
