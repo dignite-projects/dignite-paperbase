@@ -228,19 +228,27 @@ public class QdrantClientGateway : IQdrantClientGateway, ISingletonDependency
         { }
     }
 
-    protected virtual async Task EnsureSparseBm25VectorAsync(
+    protected virtual Task EnsureSparseBm25VectorAsync(
         IQdrantClient client,
         string collectionName,
         CollectionInfo info,
         CancellationToken cancellationToken)
     {
-        if (info.Config.Params.SparseVectorsConfig.Map.ContainsKey(QdrantPayloadFields.Bm25VectorName))
-            return;
+        var existing = info.Config.Params.SparseVectorsConfig;
+        if (existing != null && existing.Map.ContainsKey(QdrantPayloadFields.Bm25VectorName))
+            return Task.CompletedTask;
 
-        await client.UpdateCollectionAsync(
-            collectionName,
-            sparseVectorsConfig: BuildSparseBm25Config(),
-            cancellationToken: cancellationToken);
+        // Qdrant's UpdateCollection cannot ADD a new sparse vector field to an existing
+        // collection — it only modifies parameters of an already-declared sparse vector.
+        // To turn EnableHybridSearch on for a collection that was created in dense-only mode,
+        // the collection must be dropped and re-created (which will recreate it with the bm25
+        // sparse vector via the CreateCollection branch above), then chunks must be re-indexed.
+        throw new InvalidOperationException(
+            $"Qdrant collection '{collectionName}' was created without the '{QdrantPayloadFields.Bm25VectorName}' " +
+            "sparse vector. Qdrant does not support adding a sparse vector to an existing collection. " +
+            "To enable hybrid search, drop the collection (it will be recreated on next startup with the " +
+            "correct schema) and re-run the embedding job to re-index all documents. " +
+            "Alternatively set QdrantKnowledgeIndex:EnableHybridSearch = false to keep dense-only search.");
     }
 
     protected virtual SparseVectorConfig BuildSparseBm25Config()
