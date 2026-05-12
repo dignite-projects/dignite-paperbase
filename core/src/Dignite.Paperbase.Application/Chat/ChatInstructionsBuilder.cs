@@ -32,28 +32,32 @@ internal static class ChatInstructionsBuilder
     public const string MultiStepReasoningGuidance =
         "Tool selection by intent:\n" +
         "  • CONTENT questions (clauses, terms, descriptions, any specific text inside documents) → " +
-             "call search_paperbase_documents FIRST. This is the primary retrieval tool. " +
+             "call search_paperbase_documents directly. Primary content retrieval tool. " +
              "Structured tools like search_contracts only expose fixed metadata (number, parties, " +
              "amount, dates) and cannot answer content-level questions.\n" +
         "  • METADATA-ONLY questions (contract count, total amount, list by party / date / amount range) → " +
-             "start with the structured tool that matches (search_contracts, get_contract_aggregate, " +
-             "get_contract_detail).\n" +
-        "  • ANCHOR-LINKED questions (when an anchor document id is present AND the question implies " +
-             "linked documents — payments, receipts, attachments, amendments) → " +
-             "call get_document_relations(anchorDocumentId) first to discover related document ids, " +
-             "then pass those ids into search_paperbase_documents(documentIds=[...]) for precise retrieval.\n" +
+             "use the structured tool that matches (search_contracts, get_contract_aggregate, " +
+             "get_contract_detail). If the result fully answers the question, STOP — do not call " +
+             "vector search on top. That's wasted cost and risks contradicting the structured answer.\n" +
+        "  • ANCHOR-LINKED questions (anchor document id present AND question implies linked documents " +
+             "— payments, receipts, attachments, amendments) → call get_document_relations(anchorDocumentId) " +
+             "first to discover related document ids, then pass them into " +
+             "search_paperbase_documents(documentIds=[...]) for precise retrieval.\n" +
         "\n" +
-        "Required fallback: if a structured tool returns EMPTY or its result does not directly answer " +
-        "the question, you MUST call search_paperbase_documents before concluding 'not found'. Do not " +
-        "treat an empty structured search as proof that nothing matches — vector retrieval may still " +
-        "find relevant content the structured filter missed.\n" +
+        "When to fall back to search_paperbase_documents after a structured tool:\n" +
+        "  • The structured tool returned EMPTY → try vector before concluding 'not found'. " +
+             "An empty structured search is not proof that nothing matches; the filter may have " +
+             "missed the document.\n" +
+        "  • The structured tool returned ids / metadata but the question is about CONTENT " +
+             "(clauses, terms, specifics) → drill in via " +
+             "search_paperbase_documents(documentIds=returned_ids) to read the actual text.\n" +
+        "  Do NOT fall back when the structured result fully answers a metadata-only question.\n" +
         "\n" +
         "Chaining patterns:\n" +
-        "  • Narrow-then-content: search_contracts(filter) → search_paperbase_documents(documentIds=returned_ids) " +
-             "to read content of specific contracts.\n" +
+        "  • Narrow-then-content: search_contracts(filter) → search_paperbase_documents(documentIds=returned_ids).\n" +
         "  • Pure content: search_paperbase_documents directly (no structured pre-step needed).\n" +
         "  • Reconciliation: get_document_relations(anchorId) → " +
-             "search_paperbase_documents(documentIds=returned_ids, documentTypeCode='receipt.general') → match → answer.\n" +
+             "search_paperbase_documents(documentIds=returned_ids, documentTypeCode='receipt.general').\n" +
         "\n" +
         "The anchor is a soft hint, never a hard scope. If a question references multiple document " +
         "types or implies cross-document evidence, do not stay inside the anchor document.";
