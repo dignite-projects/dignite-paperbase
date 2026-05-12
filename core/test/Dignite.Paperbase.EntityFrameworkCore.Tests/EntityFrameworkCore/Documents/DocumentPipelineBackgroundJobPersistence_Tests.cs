@@ -4,10 +4,12 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.TextExtraction;
+using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.Pipelines;
 using Dignite.Paperbase.Documents.Pipelines.Classification;
 using Dignite.Paperbase.Documents.Pipelines.TextExtraction;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Shouldly;
@@ -27,6 +29,8 @@ public class DocumentPipelineBackgroundJobPersistenceTestModule : AbpModule
         context.Services.AddSingleton(Substitute.For<ITextExtractor>());
         context.Services.AddSingleton(Substitute.For<IBlobContainer<PaperbaseDocumentContainer>>());
         context.Services.AddSingleton(Substitute.For<IBackgroundJobManager>());
+        context.Services.AddSingleton(Substitute.For<IChatClient>());
+        context.Services.AddSingleton(Substitute.For<IPromptProvider>());
     }
 }
 

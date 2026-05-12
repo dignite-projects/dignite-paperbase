@@ -121,6 +121,8 @@ public class DocumentAppService_Delete_Tests
 
         _documentRepository.GetAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(doc);
+        _relationRepository.GetListByDocumentIdAsync(doc.Id, Arg.Any<CancellationToken>())
+            .Returns(new List<DocumentRelation>());
 
         await _appService.RestoreAsync(doc.Id);
 

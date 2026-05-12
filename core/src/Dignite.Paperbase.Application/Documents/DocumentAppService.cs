@@ -180,6 +180,11 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
             await _relationRepository.DeleteManyAsync(relations);
         }
 
+        // Slice E: 注册 after-commit 回调，UoW 提交后清理向量存储
+        await _localEventBus.PublishAsync(
+            new DocumentDeletingEvent(id, document.TenantId),
+            onUnitOfWorkComplete: false);
+
         await _documentRepository.DeleteAsync(id);
 
         // 通知业务模块：Document 进入回收站，应将派生数据置为可恢复的归档状态
