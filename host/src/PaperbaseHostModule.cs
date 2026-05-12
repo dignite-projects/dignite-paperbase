@@ -434,6 +434,21 @@ public class PaperbaseHostModule : AbpModule
             .UseOpenTelemetry()
             .UseLogging();
 
+        // Title-generator chat client: same shape as the summarizer — single-shot,
+        // tool-free, prompt-unique-per-call so distributed caching is a net negative.
+        // Consumed by ChatAppService.TryGenerateAndApplyTitleAsync via
+        // [FromKeyedServices(PaperbaseAIConsts.TitleGeneratorChatClientKey)]. Falls back
+        // to the primary ChatModelId when TitleGeneratorModelId is unset; a host that
+        // wants to cut cost can point this at a small fast model (e.g. Qwen3-8B) while
+        // keeping the main chat on a stronger one.
+        var titleGeneratorModelId = configuration["PaperbaseAI:TitleGeneratorModelId"]
+            ?? configuration["PaperbaseAI:ChatModelId"]!;
+        context.Services.AddKeyedChatClient(
+            PaperbaseAIConsts.TitleGeneratorChatClientKey,
+            _ => openAIClient.GetChatClient(titleGeneratorModelId).AsIChatClient())
+            .UseOpenTelemetry()
+            .UseLogging();
+
         context.Services
             .AddEmbeddingGenerator(_ => openAIClient
                 .GetEmbeddingClient(configuration["PaperbaseAI:EmbeddingModelId"]!)

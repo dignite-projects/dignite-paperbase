@@ -21,6 +21,7 @@ using Dignite.Paperbase.KnowledgeIndex;
 using Microsoft.Agents.AI;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Volo.Abp;
@@ -60,6 +61,14 @@ public class ChatAppService : PaperbaseAppService, IChatAppService
     private readonly DocumentRelationsTool _documentRelationsTool;
     private readonly DocumentContentTool _documentContentTool;
     private readonly IChatClient _chatClient;
+    /// <summary>
+    /// Single-shot, tool-free chat client dedicated to <see cref="TryGenerateAndApplyTitleAsync"/>.
+    /// Host registers this under <see cref="PaperbaseAIConsts.TitleGeneratorChatClientKey"/> WITHOUT
+    /// <c>.UseFunctionInvocation()</c> or <c>.UseDistributedCache()</c>, so the title path doesn't
+    /// produce a phantom <c>orchestrate_tools</c> span on traces and doesn't burn cache lookups on
+    /// guaranteed-unique prompts.
+    /// </summary>
+    private readonly IChatClient _titleGeneratorChatClient;
     private readonly IPromptProvider _promptProvider;
     private readonly ConversationHistoryProvider _historyProvider;
     private readonly PaperbaseAIBehaviorOptions _aiOptions;
@@ -75,6 +84,7 @@ public class ChatAppService : PaperbaseAppService, IChatAppService
         DocumentRelationsTool documentRelationsTool,
         DocumentContentTool documentContentTool,
         IChatClient chatClient,
+        [FromKeyedServices(PaperbaseAIConsts.TitleGeneratorChatClientKey)] IChatClient titleGeneratorChatClient,
         IPromptProvider promptProvider,
         ConversationHistoryProvider historyProvider,
         IOptions<PaperbaseAIBehaviorOptions> aiOptions,
@@ -89,6 +99,7 @@ public class ChatAppService : PaperbaseAppService, IChatAppService
         _documentRelationsTool = documentRelationsTool;
         _documentContentTool = documentContentTool;
         _chatClient = chatClient;
+        _titleGeneratorChatClient = titleGeneratorChatClient;
         _promptProvider = promptProvider;
         _historyProvider = historyProvider;
         _aiOptions = aiOptions.Value;
@@ -1060,7 +1071,10 @@ public class ChatAppService : PaperbaseAppService, IChatAppService
                 {PromptBoundary.WrapDocument(assistantMessage)}
                 """;
 
-            var response = await _chatClient.GetResponseAsync(
+            // Use the dedicated title-generator chat client (no FunctionInvocation,
+            // no DistributedCache). Keeps trace shape honest — no orchestrate_tools
+            // wrapping a call that has no tools — and skips a guaranteed cache miss.
+            var response = await _titleGeneratorChatClient.GetResponseAsync(
                 [new MeAi.ChatMessage(MeAi.ChatRole.User, prompt)],
                 new ChatOptions
                 {

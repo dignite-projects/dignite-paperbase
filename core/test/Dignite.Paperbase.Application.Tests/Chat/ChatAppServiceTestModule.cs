@@ -57,6 +57,14 @@ public class ChatAppServiceTestModule : AbpModule
         context.Services.AddKeyedSingleton(
             PaperbaseAIConsts.SummarizerChatClientKey,
             Substitute.For<IChatClient>());
+
+        // Title-generator client for ChatAppService.TryGenerateAndApplyTitleAsync.
+        // ShouldGenerateTitle is only true on the first message of an Untitled
+        // conversation; tests that don't hit that path never resolve this client, but
+        // the keyed registration must exist or DI will fail to construct ChatAppService.
+        context.Services.AddKeyedSingleton(
+            PaperbaseAIConsts.TitleGeneratorChatClientKey,
+            Substitute.For<IChatClient>());
     }
 
     private static SqliteConnection CreateDatabaseAndGetConnection()

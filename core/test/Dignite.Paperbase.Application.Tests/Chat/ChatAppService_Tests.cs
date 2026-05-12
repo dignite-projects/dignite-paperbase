@@ -4,8 +4,10 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.KnowledgeIndex;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Shouldly;
 using Volo.Abp;
@@ -32,6 +34,7 @@ public class ChatAppService_Tests
     private readonly IChatAppService _appService;
     private readonly IChatConversationRepository _repository;
     private readonly IChatClient _chatClient;
+    private readonly IChatClient _titleGeneratorChatClient;
     private readonly IDocumentKnowledgeIndex _knowledgeIndex;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
     private readonly ICurrentPrincipalAccessor _principalAccessor;
@@ -46,6 +49,8 @@ public class ChatAppService_Tests
         _appService = GetRequiredService<IChatAppService>();
         _repository = GetRequiredService<IChatConversationRepository>();
         _chatClient = GetRequiredService<IChatClient>();
+        _titleGeneratorChatClient = ServiceProvider.GetRequiredKeyedService<IChatClient>(
+            PaperbaseAIConsts.TitleGeneratorChatClientKey);
         _knowledgeIndex = GetRequiredService<IDocumentKnowledgeIndex>();
         _embeddingGenerator = GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
         _principalAccessor = GetRequiredService<ICurrentPrincipalAccessor>();
@@ -239,7 +244,11 @@ public class ChatAppService_Tests
     [Fact]
     public async Task Should_Generate_Title_After_First_Turn_When_Title_Is_Default()
     {
-        _chatClient.GetResponseAsync(
+        // Title generator now uses a separate keyed IChatClient (no FunctionInvocation,
+        // no DistributedCache) — wire the stub on that client, not the main _chatClient.
+        // See PaperbaseAIConsts.TitleGeneratorChatClientKey and
+        // ChatAppService.TryGenerateAndApplyTitleAsync.
+        _titleGeneratorChatClient.GetResponseAsync(
                 Arg.Any<IEnumerable<MEAI.ChatMessage>>(),
                 Arg.Is<ChatOptions?>(o => o != null && o.Instructions != null && o.Instructions.Contains("conversation titles")),
                 Arg.Any<CancellationToken>())

@@ -59,7 +59,17 @@ Field extraction is more forgiving than chat because the prompt explicitly deman
 
 ### Choosing per-pipeline (advanced)
 
-A single `PaperbaseAI` block registers one chat client used by every pipeline. To split (e.g. small fast model for classification + large model for chat), replace `ConfigureAI` in your host with a per-purpose registration using `AddKeyedChatClient` — see the existing `PaperbaseAIConsts.SummarizerChatClientKey` keyed registration in `PaperbaseHostModule.ConfigureAI` for the pattern. Production teams running tight token budgets often go this route.
+A single `PaperbaseAI` block registers one main chat client plus two keyed side-clients out of the box, falling back to `ChatModelId` when not overridden:
+
+| Config key | Keyed registration | Consumed by |
+|---|---|---|
+| `PaperbaseAI:ChatModelId` (required) | default `IChatClient` (with `UseFunctionInvocation` + optional `UseDistributedCache`) | Document chat, classification, business-module field extractors, rerank |
+| `PaperbaseAI:SummarizerModelId` (optional) | `PaperbaseAIConsts.SummarizerChatClientKey` (no FunctionInvocation, no DistributedCache) | `SummarizationCompactionStrategy` |
+| `PaperbaseAI:TitleGeneratorModelId` (optional) | `PaperbaseAIConsts.TitleGeneratorChatClientKey` (no FunctionInvocation, no DistributedCache) | `ChatAppService.TryGenerateAndApplyTitleAsync` for auto-generated conversation titles |
+
+The two side-clients exist to keep single-shot text-completion calls off the main client's tool-calling pipeline — no phantom `orchestrate_tools` spans on traces, no DistributedCache lookups for guaranteed-unique prompts. Both fall back to the main `ChatModelId` automatically, so a host that doesn't care about cost can leave them unset and ship.
+
+To split further (e.g. small fast model for classification + large model for chat), replace `ConfigureAI` in your host with additional per-purpose `AddKeyedChatClient` registrations following the same pattern. Production teams running tight token budgets often go this route.
 
 ## Where it is used
 
