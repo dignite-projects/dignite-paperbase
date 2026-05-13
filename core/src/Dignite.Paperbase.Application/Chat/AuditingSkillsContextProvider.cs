@@ -31,6 +31,21 @@ namespace Dignite.Paperbase.Chat;
 /// <see cref="AIContext"/>, then walk its <see cref="AIContext.Tools"/> in-place to
 /// replace each <see cref="AIFunction"/> with an audited variant.
 /// </para>
+///
+/// <para>
+/// <strong>Intentional non-forwarding of post-invocation hooks.</strong> This decorator
+/// only forwards <see cref="AIContextProvider.InvokingAsync"/> and
+/// <see cref="AIContextProvider.StateKeys"/>. The base
+/// <see cref="AIContextProvider.InvokedAsync"/> and <c>StoreAIContextAsync</c> hooks
+/// are deliberately not delegated to the inner provider because <see cref="AgentSkillsProvider"/>
+/// in MAF 1.5 does not override them — it has no per-invocation state to update once
+/// the response comes back, and no per-message storage to persist. If a future MAF
+/// version adds behaviour to those hooks (or if Paperbase swaps the inner provider for
+/// something stateful), this decorator must grow forwarding overrides for them too.
+/// Catch it via the <c>ChatSkillInvocation_Tests</c> guards in this assembly: those
+/// tests exercise the full <c>SendMessageAsync → run_skill_script → audit log</c> path
+/// and will fail if the wrapping breaks.
+/// </para>
 /// </summary>
 internal sealed class AuditingSkillsContextProvider : AIContextProvider
 {

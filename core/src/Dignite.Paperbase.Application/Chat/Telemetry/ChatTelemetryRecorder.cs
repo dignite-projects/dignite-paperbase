@@ -273,11 +273,15 @@ public class ChatTelemetryRecorder : ISingletonDependency
     /// <summary>
     /// Returns true for MAF's skill-system meta tools that do not constitute grounding
     /// evidence (loading SKILL.md instructions or supporting resources is preparatory
-    /// reasoning, not data retrieval).
+    /// reasoning, not data retrieval). The literal names match
+    /// <see cref="ChatToolFactory.MafLoadSkillToolName"/> and
+    /// <see cref="ChatToolFactory.MafReadSkillResourceToolName"/> — co-located here as a
+    /// virtual method so a project that uses a forked MAF (custom meta-tool names) can
+    /// override without touching the factory.
     /// </summary>
     protected virtual bool IsSkillMetaTool(string toolName)
-        => string.Equals(toolName, "load_skill", StringComparison.Ordinal)
-        || string.Equals(toolName, "read_skill_resource", StringComparison.Ordinal);
+        => string.Equals(toolName, ChatToolFactory.MafLoadSkillToolName, StringComparison.Ordinal)
+        || string.Equals(toolName, ChatToolFactory.MafReadSkillResourceToolName, StringComparison.Ordinal);
 
     private IReadOnlyList<ChatToolAuditEntry> ReadToolCallsFromAuditScope()
     {

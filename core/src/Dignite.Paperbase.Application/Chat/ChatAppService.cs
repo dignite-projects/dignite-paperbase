@@ -536,6 +536,19 @@ public class ChatAppService : PaperbaseAppService, IChatAppService
     /// <see cref="AuditingSkillsContextProvider"/> so each emitted skill AIFunction
     /// participates in <c>ChatToolAuditEntry</c> recording.
     /// </summary>
+    /// <remarks>
+    /// The two core <see cref="AgentInlineSkill"/> instances (<c>get-document-relations</c>
+    /// + <c>document-inspection</c>) are deliberately constructed per turn. Each
+    /// construction is a couple of allocations plus a delegate capture pointing at the
+    /// (per-request transient) <see cref="DocumentRelationsTool"/> /
+    /// <see cref="DocumentContentTool"/> instance — sub-microsecond, dwarfed by the
+    /// embedding + LLM round-trips this same turn drives. Caching the inline skills
+    /// across turns would require lifting them to a singleton lifetime, which is
+    /// possible (the script bodies resolve services via the <c>IServiceProvider</c>
+    /// parameter, not constructor injection) but adds a layer for a perf win that
+    /// doesn't pay back in any chat trace we have. Revisit if profiling shows skill
+    /// construction in the top N.
+    /// </remarks>
     protected virtual AIContextProvider? BuildAgentSkillsProvider(ChatConversation conversation)
     {
         var builder = new AgentSkillsProviderBuilder();

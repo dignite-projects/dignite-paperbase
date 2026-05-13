@@ -309,6 +309,21 @@ public class ChatToolFactory : ITransientDependency
     }
 
     /// <summary>
+    /// MAF <see cref="Microsoft.Agents.AI.AgentSkillsProvider"/> emits three meta-tools
+    /// with these names (see <c>AgentSkillsProvider.BuildTools</c> in
+    /// <c>Microsoft.Agents.AI</c> 1.5). Extracting them as named constants here keeps the
+    /// dependency explicit: a future MAF rename surfaces as a single find/replace site
+    /// instead of three scattered string literals. The end-to-end coverage in
+    /// <c>ChatSkillInvocation_Tests</c> + <c>ChatTelemetryRecorder_Tests</c> still
+    /// catches the rename loudly (FunctionInvokingChatClient can't dispatch a tool
+    /// MAF doesn't expose), but those failures are diagnostic — these constants make
+    /// the coupling browsable.
+    /// </summary>
+    internal const string MafLoadSkillToolName = "load_skill";
+    internal const string MafRunSkillScriptToolName = "run_skill_script";
+    internal const string MafReadSkillResourceToolName = "read_skill_resource";
+
+    /// <summary>
     /// Internal so <c>ChatAppService</c> (same assembly) can downcast on the
     /// streaming path to fetch <see cref="ProgressDescriber"/> for
     /// <c>ToolCallStarted</c> events. External consumers should treat the returned
@@ -425,7 +440,7 @@ public class ChatToolFactory : ITransientDependency
         /// </remarks>
         internal static string DeriveSkillAwareToolName(string innerName, AIFunctionArguments? arguments)
         {
-            if (innerName != "run_skill_script" || arguments is null)
+            if (innerName != MafRunSkillScriptToolName || arguments is null)
             {
                 return innerName;
             }
