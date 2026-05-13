@@ -86,6 +86,22 @@ If a future workload demands cross-document keyword retrieval that business skil
 
 > Note: the `Microsoft.SemanticKernel.Connectors.*` packages are still in preview as of MEVD 10.1.0. The MS docs explicitly state these providers have nothing to do with Semantic Kernel proper and are usable from anywhere in .NET — the naming is legacy and a rename to `Microsoft.Extensions.VectorData.*` is expected in a future release.
 
+## Enhancement triggers
+
+The current stack — `bge-m3` dense embeddings + MEVD/Qdrant + optional [LLM rerank](../core/src/Dignite.Paperbase.Application/Chat/Search/DocumentRerankWorkflow.cs) — is intentionally the honest minimum. Several well-known retrieval enhancements (cross-encoder rerank, MMR, HyDE, multi-query expansion, Matryoshka / quantized embeddings) are **not** enabled. Each adds engineering cost; none of them is justified until a concrete signal shows up. This section lists the signals so future maintainers can decide based on evidence, not vibes.
+
+| Enhancement | What it does | Trigger to add it |
+|---|---|---|
+| `PaperbaseAIBehavior:EnableLlmRerank = true` | Already implemented. Expands recall by `RecallExpandFactor` × `topK`, asks the structured LLM to score each chunk 0-1, returns top N. Off by default to save tokens. | User reports "chat's cited chunks aren't quite the right ones" **and** the top-K candidates are visibly out of order by relevance |
+| **Cross-encoder rerank** (bge-reranker-v2-m3, Cohere Rerank API, etc.) — replaces LLM rerank | Dedicated small reranker model: ~10× faster, ~50× cheaper than LLM rerank. Requires separate model deployment or external API. | `EnableLlmRerank = true` has been on long enough to measure: rerank adds > 300ms P99 **or** rerank tokens > 20% of chat total cost |
+| **MMR** (Maximal Marginal Relevance) in `DocumentTextSearchAdapter` | Picks top-K balancing relevance and diversity, so K chunks aren't all from the same paragraph of one document. No extra LLM call. | User reports "citations all come from one section, I can't see other relevant places" |
+| **HyDE** / **Multi-query expansion** | LLM generates a hypothetical answer (HyDE) or multiple query variants (multi-query) before embedding. | A systematic class of short / vague user queries shows degraded recall@k vs. the same query manually expanded |
+| Matryoshka / int8 / binary quantization | Compresses embeddings 4-32× for memory or storage savings. | Qdrant RAM or disk becomes a real bottleneck at production data scale |
+
+Note: keyword-precise queries (合同号 / 产品编号 / 人名) intentionally do **not** flow through vector retrieval — they're handled by business-module MAF Agent Skills hitting SQL directly. "Hybrid search" in the MEVD sense (text-match + dense union) is therefore not on the trigger list; it would overlap that path with non-normalized scores.
+
+Before adding any enhancement, build a small query/expected-result benchmark corpus first — without ground truth there's no way to measure the change.
+
 ## See also
 
 - [Embedding pipeline](embedding.md) — what writes into the vector store
