@@ -146,10 +146,10 @@ Every turn carries a `groundingSource` enum on `ChatTurnResultDto` describing wh
 
 | `groundingSource` | Meaning | `isDegraded` |
 |---|---|---|
-| `None` (0) | The model produced an answer **without invoking any tool** — no search, no contributor tool. Falls back to conversation history and the model's parametric knowledge. | `true` |
+| `None` (0) | The model produced an answer **without invoking any data-fetching tool** — no `search_paperbase_documents`, no skill scripts. (MAF skill meta-tools `load_skill` / `read_skill_resource` are also excluded from grounding because they retrieve SKILL.md instructions, not answer-grounding data.) Falls back to conversation history and the model's parametric knowledge. | `true` |
 | `Vector` (1) | The model invoked `search_paperbase_documents` (and/or other vector-backed retrieval) at least once. Retrieved chunks are reflected in `citations`. | `false` |
-| `Structured` (2) | The model invoked only structured/contributor tools (`search_contracts`, `get_contract_aggregate`, `get_document_relations`, …). The answer is grounded in business data, often without text citations. | `false` |
-| `Mixed` (3) | The model invoked both vector search and structured tools in the same turn. | `false` |
+| `Structured` (2) | The model invoked only skill scripts (audit entries like `skill:contracts/search`, `skill:contracts/aggregate`, `skill:get-document-relations/invoke`). The answer is grounded in business data, often without text citations. | `false` |
+| `Mixed` (3) | The model invoked both `search_paperbase_documents` and one or more skill scripts in the same turn. | `false` |
 
 `isDegraded` is therefore equivalent to `groundingSource == None`. The classification is performed by inspecting the turn's tool-call audit trail in `ChatTelemetryRecorder` — there is no separate flag the model can lie about.
 
@@ -272,6 +272,36 @@ ABP auto-registers the skill via `[ExposeServices(typeof(AgentSkill))]` + `ITran
 **Resolution rule**: skills are consumed via `IEnumerable<AgentSkill>`, never by concrete type. `[ExposeServices(typeof(AgentSkill))]` defaults to `IncludeSelf = false`, so `GetRequiredService<InvoicesSkill>()` will throw — by design. Tests that want to inspect the skill in isolation should `new` it directly (the constructor is parameterless; services are resolved per-script-call via the `IServiceProvider` parameter).
 
 **Granularity guideline**: bundle scripts under one skill when they share a domain (same aggregate root, same auth, same chaining patterns). Split into separate skills only when intents diverge enough that one SKILL.md cannot cover them all. The contracts module is the canonical example: one `ContractsSkill` with `search` / `get-detail` / `aggregate` scripts — they all operate over the `Contract` aggregate with the same `ContractsPermissions.Contracts.Default` permission. Future contract operations (export / compare / lifecycle) become new `[AgentSkillScript]` methods on the same class.
+
+### Referencing the vector-search tool from skill prose
+
+If your skill's `Instructions` tell the model to chain to vector search on empty / content-level results — most do — **do not hardcode** the string `"search_paperbase_documents"`. Use `Dignite.Paperbase.Chat.ChatToolNames.SearchPaperbaseDocuments` (in `Dignite.Paperbase.Abstractions`, which your module already references) and interpolate it via a raw-interpolated string:
+
+```csharp
+protected override string Instructions => $$"""
+    Use this skill when ...
+
+    Chaining:
+      1. List → content: `search` → drill into returned ids with `{{ChatToolNames.SearchPaperbaseDocuments}}`.
+      2. Empty `search` → if `note` says try vector, call `{{ChatToolNames.SearchPaperbaseDocuments}}` with the same query.
+    """;
+```
+
+`$$"""..."""` raw-interpolated strings treat `{{x}}` as the interpolation marker, leaving single `{` / `}` characters alone (handy for embedded JSON examples). A future rename of the underlying AIFunction propagates compile-time through every SKILL.md that uses the constant. The same constant is also fine to use in the JSON `note` strings the skill returns on empty results.
+
+### Testing a skill
+
+Three patterns the contracts module uses, each catching a distinct class of regression:
+
+| What | Where | Pattern |
+|---|---|---|
+| **Partial-filter regression** — single-filter calls don't throw "missing required argument" | `modules/contracts/test/.../EntityFrameworkCore/Chat/ContractSkillScriptInvocation_Tests.cs` | Drive the script through `AgentSkillScript.RunAsync(skill, partialJsonArgs, sp, ct)`. This is the exact code path MAF's `run_skill_script` dispatcher takes — proves parameter binding is honoured, not just C# defaults. |
+| **DI registration sanity** — `[ExposeServices(typeof(AgentSkill))]` + `ITransientDependency` survives refactors | `modules/contracts/test/.../Application.Tests/Chat/ContractSkillRegistration_Tests.cs` | Resolve `IEnumerable<AgentSkill>` from the test container; assert your skill instance is present and its `Frontmatter.Name` + `Scripts[].Name` match expectations. |
+| **End-to-end audit + grounding** — a model-issued `run_skill_script` produces a `skill:<name>/<script>` audit entry and the turn classifies as `Structured` | `core/test/.../Application.Tests/Chat/ChatSkillInvocation_Tests.cs` | Script a stub `IChatClient` to emit a `FunctionCallContent("run_skill_script", { skillName, scriptName, arguments })`, send a message via `IChatAppService.SendMessageAsync`, then read `Chat.ToolCalls` from the audit log and assert `ToolName == "skill:<skill>/<script>"`. The stub skill should count invocations so you also prove the script actually ran. |
+
+Use `ChatSkillInvocation_Tests` as the template for testing a brand-new module skill end-to-end before the LLM ever sees real traffic.
+
+---
 
 Reference implementations: [`ContractsSkill.cs`](../modules/contracts/src/Dignite.Paperbase.Contracts.Application/Chat/ContractsSkill.cs) + [`ContractSkillHelpers.cs`](../modules/contracts/src/Dignite.Paperbase.Contracts.Application/Chat/ContractSkillHelpers.cs). Counter-examples and the rationale: [`.claude/rules/doc-chat-anti-patterns.md`](../.claude/rules/doc-chat-anti-patterns.md).
 

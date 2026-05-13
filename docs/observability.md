@@ -143,6 +143,21 @@ OpenTelemetry__Otlp__Endpoint=http://otel-collector:4317
 
 Production deployments should set the endpoint via env var or Kubernetes ConfigMap — never commit a production OTLP URL to `appsettings.json`.
 
+## Chat tool / skill audit naming
+
+`ChatToolAuditEntry.ToolName` (the audit-log key under `Chat.ToolCalls`) and the per-turn `ToolCallSummary` dictionary use the following naming scheme — relevant when building dashboards or alerts off the audit log:
+
+| Audit `ToolName` shape | Source | `GroundingSource` contribution |
+|---|---|---|
+| `search_paperbase_documents` | The platform's direct vector-search AIFunction | `Vector` |
+| `skill:<skill-name>/<script-name>` | A MAF skill script invocation (e.g. `skill:contracts/search`, `skill:document-inspection/outline`) — derived by `ChatToolFactory.AuditedChatFunction.DeriveSkillAwareToolName` from the LLM's `run_skill_script` arguments | `Structured` |
+| `load_skill` | MAF skill-system meta-tool (LLM loaded a skill's full SKILL.md) | **filtered out** — preparatory reading, not grounding evidence |
+| `read_skill_resource` | MAF skill-system meta-tool (LLM read a skill resource) | **filtered out** — same reason |
+
+So a Grafana / Elasticsearch query aggregating "all contract-related skill activity" should match `ToolName LIKE 'skill:contracts/%'` rather than `LIKE 'search_contracts%'` (which was the pre-#149 shape and now matches nothing).
+
+The `skill:` prefix is a stable string format implemented by `ChatToolFactory.AuditedChatFunction.DeriveSkillAwareToolName`; tested by `ChatTelemetryRecorder_Tests.DeriveSkillAwareToolName_*`. A structured `SkillName` / `ScriptName` pair on `ChatToolAuditEntry` is tracked as a follow-up (see issue tracker for "structured skill identity").
+
 ## Tagging policy and cardinality
 
 All Paperbase-owned Meters follow the same rule: **tags are low-cardinality enums or bounded sets**.
