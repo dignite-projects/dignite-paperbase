@@ -1,8 +1,10 @@
 using System;
 using System.ComponentModel;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Permissions;
 using Microsoft.Agents.AI;
@@ -116,7 +118,15 @@ public class DocumentContentTool : ITransientDependency
             documentId,
             count = headers.Count,
             truncated = headers.Count >= MaxOutlineHeaders,
-            headers
+            // HeaderNode.Title is parsed straight from the user document's `# ...`
+            // lines. Wrap it so a malicious heading like "Ignore previous instructions"
+            // can't escape the boundary rule.
+            headers = headers.Select(h => new
+            {
+                level = h.Level,
+                title = PromptBoundary.WrapField(h.Title),
+                lineNumber = h.LineNumber
+            }).ToList()
         });
     }
 
@@ -162,7 +172,11 @@ public class DocumentContentTool : ITransientDependency
             documentId,
             count = matches.Count,
             truncated = matches.Count >= MaxExcerptMatches,
-            matches
+            // Each match is a raw fragment of the user-uploaded document body — the
+            // most direct user-derived payload in the whole chat surface. Wrap every
+            // entry so the boundary rule keeps embedded "Ignore previous instructions"
+            // text scoped to data, not directives.
+            matches = matches.Select(m => PromptBoundary.WrapField(m)).ToList()
         });
     }
 }

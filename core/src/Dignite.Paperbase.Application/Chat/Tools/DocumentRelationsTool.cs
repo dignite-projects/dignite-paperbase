@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Permissions;
 using Microsoft.Agents.AI;
@@ -135,7 +136,10 @@ public class DocumentRelationsTool : ITransientDependency
                 relatedDocumentId = r.SourceDocumentId == documentId
                     ? r.TargetDocumentId
                     : r.SourceDocumentId,
-                description = r.Description,
+                // Description is user-controlled (set by manual relation creation OR by
+                // the AI inference workflow that extracted it from user documents).
+                // Wrap to keep indirect prompt-injection content inside <field>…</field>.
+                description = PromptBoundary.WrapField(r.Description),
                 source = r.Source.ToString(),   // "Manual" / "AiSuggested"
                 confidence = r.Confidence
             })
