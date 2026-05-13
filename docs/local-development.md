@@ -41,7 +41,7 @@ Paperbase requires two services that run as Docker containers, plus one optional
 
 | Service | Port | Purpose | Profile |
 |---------|------|---------|---------|
-| **Qdrant** | 6333 (HTTP), 6334 (gRPC) | Vector store for document embeddings and hybrid search | default |
+| **Qdrant** | 6333 (HTTP), 6334 (gRPC) | Vector store for document chunk embeddings (dense-only — see [vectors.md](vectors.md)) | default |
 | **PaddleOCR** | 8866 | OCR sidecar for scanned documents (PP-StructureV3, CPU mode) | default |
 | **aspire-dashboard** | 18888 (UI), 4317 (OTLP gRPC) | Local OpenTelemetry backend — renders traces / metrics / logs from the app at `http://localhost:18888`. Optional but recommended; the project's launchSettings.json defaults to sending OTel signals to `localhost:4317`. | `observability` |
 

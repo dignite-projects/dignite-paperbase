@@ -39,7 +39,7 @@ Three capabilities the chat model **must** have for Paperbase to work end-to-end
 
 | Capability | Where it's used | Failure mode if weak |
 |---|---|---|
-| Function calling (OpenAI-compatible `tool_calls`) | Chat (`search_paperbase_documents`, `get_document_outline`, `get_document_excerpt`, contributor tools), classification, business-module field extractors | Tools never invoked → Chat degrades to answering from training memory; classification fails silently |
+| Function calling (OpenAI-compatible `tool_calls`) | Chat (`search_paperbase_documents` direct tool + MAF `AgentSkillsProvider` meta-tools `load_skill` / `run_skill_script` / `read_skill_resource` dispatching to core + business-module skills), classification, business-module field extractors | Tools never invoked → Chat degrades to answering from training memory; classification fails silently |
 | Structured JSON output (`response_format: json_schema`) | Contract / invoice / license field extraction via `agent.RunAsync<T>` | Extraction returns nulls or invalid JSON → `StructuredExtractionRetryMiddleware` burns its retries and the record is routed to manual review |
 | **Tool-call _willingness_** — the model's tendency to actually CALL a tool when the question requires retrieval, instead of guessing from training data | Document chat above all (RAG is the whole point) | Worse failure than "function calling broken" — the model produces a confident-sounding answer that is **not grounded in the user's documents** at all |
 
@@ -108,7 +108,7 @@ The `PaperbaseAI` section becomes irrelevant in that case — drop it from `apps
 | Required | Why |
 | --- | --- |
 | `IChatClient` registered via `services.AddChatClient(...)` with `.UseFunctionInvocation()` | Chat tool calling — `search_paperbase_documents`, MAF `AgentSkillsProvider` meta-tools (`load_skill` / `run_skill_script` / `read_skill_resource`), and every business-module skill script — relies on this middleware. Without it the LLM's `tool_call` requests are returned to the caller instead of being executed. |
-| `IEmbeddingGenerator<string, Embedding<float>>` registered via `services.AddEmbeddingGenerator(...)` | The embedding pipeline and hybrid search require it. If your chat provider has no embedding model (e.g. native Anthropic), pair it with a separate embedding provider — the chat and embedding registrations are independent. |
+| `IEmbeddingGenerator<string, Embedding<float>>` registered via `services.AddEmbeddingGenerator(...)` | The embedding pipeline and document chat retrieval require it. If your chat provider has no embedding model (e.g. native Anthropic), pair it with a separate embedding provider — the chat and embedding registrations are independent. |
 | `.UseDistributedCache()` on the chat builder when prompt caching is desired | Provider-agnostic; relies only on the host's `IDistributedCache`. |
 
 Structured output (Classification, Rerank) is delegated to MAF's `RunAsync<T>` schema-aware path; non-OpenAI providers are handled inside the `IChatClient` adapter and need no extra configuration here.

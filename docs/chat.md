@@ -8,7 +8,7 @@ This page covers the chat as a *feature* — what it does, how to tune it, and w
 
 - **Anchor-driven, not scope-locked.** A conversation may carry a `documentId` — the document the user opened when starting the chat. This is treated as a **soft anchor** in the system prompt (`id` + `documentTypeCode` only — never the title), not a retrieval constraint. The model is free to (and encouraged to) search across other documents and types, follow `DocumentRelation` edges, and reconcile across the corpus. A conversation without `documentId` behaves the same way, just without the anchor hint.
 - **Citations.** Every answer carries the chunk(s) that grounded it. The agent prompt enforces `[chunk N]` citations and the result is post-processed into a structured `citations` array (document id, chunk index, snippet, source name). Citations from multiple `search_paperbase_documents` invocations within one turn are **appended and de-duplicated** — never overwritten — and capped at `MaxCapturedCitations`.
-- **Tool calling.** The agent always sees the same flat toolset (built-in tools + every business module's contributor tools). See the [Tools](#tools) section below for the catalog and the fail-closed contract every tool follows.
+- **Tool calling.** The agent sees one always-available tool (`search_paperbase_documents`) plus every registered MAF Agent Skill (core navigation skills + business-module skills, advertised via `AgentSkillsProvider`'s progressive disclosure). See [Tools and skills](#tools-and-skills) for the catalog and the fail-closed contract every script body follows.
 - **Streaming.** The HTTP API exposes both a buffered `POST .../messages` and a Server-Sent-Events `POST .../messages/stream` endpoint. The streaming endpoint emits `PartialText`, `ToolCallStarted`, `ToolCallCompleted`, and a terminal `Done` (or `Error`) delta — see [client guide → Streaming](chat-client.md#3-stream-a-message-server-sent-events) for the protocol.
 - **Idempotent turns.** The client generates a `clientTurnId` per turn; replays with the same id never re-invoke the model. Idempotency applies to both the buffered and streaming endpoints.
 - **Optional LLM rerank.** Off by default. When enabled, retrieval recall is expanded `RecallExpandFactor`× and the chat model rescues the most relevant `TopK` before the answer prompt.
@@ -22,7 +22,7 @@ This page covers the chat as a *feature* — what it does, how to tune it, and w
 | `Paperbase.Chat.SendMessage` | Send a message in an existing conversation |
 | `Paperbase.Chat.Delete` | Delete an owned conversation |
 
-A user holding only `Paperbase.Chat` can read but not act. Tool contributors enforce their own per-feature permissions on top of this — for example `search_contracts` requires `Contracts.Default` even though the chat permission is already held.
+A user holding only `Paperbase.Chat` can read but not act. Each skill script enforces its own per-feature permission on top of this — for example the `contracts` skill's `search` script requires `Contracts.Default` even though the chat permission is already held.
 
 ## Configuration
 
@@ -46,7 +46,7 @@ Chat-related knobs live in `PaperbaseAIBehavior` alongside the other Application
 | `ChatTopK` | `5` | Default top-K passed to `search_paperbase_documents` when the model does not specify it. The model can override per call (e.g. raise to 10–15 for cross-document reconciliation). |
 | `ChatMinScore` | `0.45` | Default normalized cosine threshold for document chat RAG searches when the model does not specify `minScore`. Intentionally lower than `PaperbaseVectorStore:MinScore` to improve recall for cross-language questions and proper-noun lookups. |
 | `MaxCapturedCitations` | `50` | Hard upper bound on the number of distinct citations a single turn may accumulate across all `search_paperbase_documents` calls. When the cap is hit, additional results are dropped and `CitationsTrimmed = true` is recorded on the audit row. Defends against prompt-injection-driven citation bombs. |
-| `MaxToolsPerTurn` | `0` (unlimited) | Soft cap on the number of contributor tools exposed to the agent per turn. `0` means no cap. When the cap is exceeded, the dispatcher prefers tools whose contributor `DocumentTypeCode` matches the conversation anchor and trims the rest, recording `ToolsTrimmed = true`. Leave at `0` until business modules genuinely outgrow the model's tool-list comprehension. |
+| `MaxToolsPerTurn` | `0` (unlimited) | Soft cap on the number of direct AIFunction tools exposed to the agent per turn. `0` means no cap. Note that MAF skills are not counted by this cap — they sit behind `AgentSkillsProvider`'s three meta-tools (`load_skill` / `read_skill_resource` / `run_skill_script`), so a business-module skill inventory growing 10× doesn't change the advertised tool count. Leave at `0` until direct-tool registrations (not skills) genuinely outgrow the model's tool-list comprehension. |
 
 The agent uses `ChatToolMode.Auto` — the model picks when (and with what `documentIds` / `documentTypeCode` / `topK` / `minScore`) to invoke each tool. There is no operator switch for "always retrieve before answering" — see *When the answer is degraded* below for the honest-signal contract that replaced it.
 
@@ -155,7 +155,7 @@ Every turn carries a `groundingSource` enum on `ChatTurnResultDto` describing wh
 
 | Cause | What happened | What to do |
 |---|---|---|
-| Knowledge index unavailable | `IDocumentKnowledgeIndex.SearchAsync` threw — Qdrant down, network fault, etc. The model may still call other tools or fall back to history. | Treat as a transient infrastructure incident. If the model still called structured tools, the turn is `Structured`, not `None`. |
+| Vector store unavailable | `VectorStoreCollection.SearchAsync` threw — Qdrant down, network fault, etc. The model may still call other tools or fall back to history. | Treat as a transient infrastructure incident. If the model still called structured tools, the turn is `Structured`, not `None`. |
 | Model declined to invoke any tool | The model judged the question answerable without retrieval (greetings, follow-up clarifications). | Accept it: an empty `citations` array with `groundingSource = None` and `isDegraded = true` is the honest signal. If a class of questions is consistently answered without tool calls where you want them grounded, tighten the QA system prompt in `DefaultPromptProvider` rather than forcing pre-injection. |
 
 `isDegraded` and `groundingSource` are both surfaced on the API response so the UI can show a "no sources used" banner or a "answered from contract data" badge.

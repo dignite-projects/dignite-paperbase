@@ -101,7 +101,7 @@ Implications:
 
 - **Schema rollback differs.** A bad EF migration can be reverted with `dotnet ef database update <previous>`. A bad Qdrant payload-index change requires either deleting the collection or dropping/re-adding the affected index manually.
 - **Embedding-model changes are downtime.** Qdrant collections are dimension-locked. Switching the embedding model means recreating the collection — see [embedding.md → Switching the embedding model](embedding.md#switching-the-embedding-model).
-- **Document delete is after-commit.** The Application-layer event handler calls `IDocumentKnowledgeIndex.DeleteByDocumentIdAsync` only after the relational transaction commits, avoiding stranded points if the relational write later rolls back.
+- **Document delete is after-commit.** The Application-layer event handler pages through `VectorStoreCollection.GetAsync(filter) + DeleteAsync(keys)` only after the relational transaction commits, avoiding stranded points if the relational write later rolls back.
 
 ## Verifying a release
 

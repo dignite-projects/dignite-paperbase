@@ -15,14 +15,16 @@ DocumentClassifiedEto ──► DocumentEmbeddingBackgroundJob ──► Documen
                                                               │
                                                               ├─► IEmbeddingGenerator.GenerateAsync(chunks)
                                                               │
-                                                              └─► IDocumentKnowledgeIndex.UpsertDocumentAsync
-                                                                     (whole-document replace; stable ids)
+                                                              └─► VectorStoreCollection<Guid, DocumentChunkRecord>
+                                                                     UpsertAsync(records) +
+                                                                     GetAsync(filter) → DeleteAsync(stragglers)
+                                                                     (whole-document replace; deterministic ids)
 ```
 
 Two design properties matter:
 
-- **Markdown-aware chunking.** `TextChunker` parses the Markdown AST, splits on top-level blocks, and prefixes every chunk with the heading path it came from (e.g. `> # Contract > ## Article 5 > ### Payment Terms`). At search time the heading prefix is part of the dense embedding *and* the BM25 sparse vector — so a query like "payment terms" matches the heading even if the body uses the word "remittance".
-- **Whole-document replace.** Re-embedding a document deletes its old chunks and writes the new set in one upsert. Re-running the job for any reason — Markdown updated, embedding model swapped, manual retry — converges to the latest content with no orphan chunks.
+- **Markdown-aware chunking.** `TextChunker` parses the Markdown AST, splits on top-level blocks, and prefixes every chunk with the heading path it came from (e.g. `> # Contract > ## Article 5 > ### Payment Terms`). The heading prefix becomes part of the dense embedding — so a query like "payment terms" matches the heading even if the body uses the word "remittance". (The sparse BM25 path is gone; the vector store is dense-only — see [vectors.md → No hybrid search](vectors.md#no-hybrid-search).)
+- **Whole-document replace.** Re-embedding a document upserts the new chunk set with deterministic point ids (overwriting prior versions) and then deletes any stragglers under `(tenant_id, document_id)` whose key is no longer in the new set. Re-running the job for any reason — Markdown updated, embedding model swapped, manual retry — converges to the latest content with no orphan chunks.
 
 ## Configuration
 
