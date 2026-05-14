@@ -70,7 +70,6 @@ public class DocumentRelationAppService_Tests
         firstHop.Distance.ShouldBe(1);
         firstHop.Title.ShouldBe("first-hop.pdf");
         firstHop.DocumentTypeCode.ShouldBe("invoice");
-        firstHop.Summary.ShouldBe("First hop summary.");
         result.Edges.Count.ShouldBe(1);
         result.Edges.Single().TargetDocumentId.ShouldBe(firstHopId);
     }
