@@ -78,17 +78,20 @@ public class EfCoreDocumentRelationRepository
         CancellationToken cancellationToken = default)
     {
         var dbContext = await GetDbContextAsync();
-        IQueryable<DocumentRelation> query = dbContext.Set<DocumentRelation>();
 
-        if (includeDismissed)
-        {
-            // R2: bypass soft-delete filter so dismissed (IsDeleted=true) rows still block
-            // re-suggestion. EF Core's IgnoreQueryFilters is all-or-nothing pre-EF10 — must
-            // re-apply tenant filter explicitly. Caller passes Document.TenantId (Hangfire-safe).
-            query = query.IgnoreQueryFilters().Where(r => r.TenantId == tenantId);
-        }
+        // R5 [2nd-round review]: tenant predicate applied UNCONDITIONALLY (both branches).
+        // Earlier draft applied tenantId only when includeDismissed=true and silently relied on
+        // ambient IMultiTenant filter otherwise — an API footgun: a future caller that drops
+        // the includeDismissed=true flag or runs without CurrentTenant.Change would silently
+        // resolve against host/ambient tenant. Explicit predicate is Hangfire-safe and matches
+        // the callsite comments ("tenant flows through Document.TenantId; no ambient dependency").
+        // EF Core deduplicates the predicate with the ambient filter — no perf cost.
+        IQueryable<DocumentRelation> query = includeDismissed
+            ? dbContext.Set<DocumentRelation>().IgnoreQueryFilters()
+            : dbContext.Set<DocumentRelation>();
 
         return await query
+            .Where(r => r.TenantId == tenantId)
             .Where(r => r.SourceDocumentId == documentId || r.TargetDocumentId == documentId)
             .Select(r => r.SourceDocumentId == documentId ? r.TargetDocumentId : r.SourceDocumentId)
             .Distinct()

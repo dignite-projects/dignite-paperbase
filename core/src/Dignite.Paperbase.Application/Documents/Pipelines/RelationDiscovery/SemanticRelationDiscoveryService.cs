@@ -283,6 +283,21 @@ public class SemanticRelationDiscoveryService : DomainService
         // throws in ValidateConfidence → caught by outer `catch (Exception)` → silently logged
         // as Error → user never sees this AiSuggested relation that the LLM otherwise agreed with.
         // Clamp + warn keeps the signal visible while preserving the aggregate invariant.
+        //
+        // R3-followup [2nd-round review]: Math.Clamp does NOT normalize NaN — NaN compares false
+        // against both bounds so Clamp returns NaN unchanged. Subsequent `NaN < threshold` is
+        // also false, so NaN flows into the relation and persists. ASP.NET Core's default
+        // JsonSerializer throws on NaN → poisons the relation list GET endpoint with HTTP 500.
+        // Reject non-finite values up front; +/- Infinity get clamped to bounds correctly.
+        if (double.IsNaN(inference.Confidence) || double.IsInfinity(inference.Confidence))
+        {
+            Logger.LogWarning(
+                "L3 SemanticRelationDiscovery: LLM returned non-finite confidence {Raw} for ({Source}, {Candidate}); treating as Rejected",
+                inference.Confidence, sourceDocumentId, candidateId);
+            _telemetry.RecordL3LlmCall(RelationDiscoveryL3CallResult.Rejected);
+            return (null, false);
+        }
+
         var clamped = Math.Clamp(inference.Confidence, 0d, 1d);
         if (Math.Abs(clamped - inference.Confidence) > double.Epsilon)
         {

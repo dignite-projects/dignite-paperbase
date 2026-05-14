@@ -394,6 +394,39 @@ public class SemanticRelationDiscoveryService_Tests
     }
 
     [Fact]
+    public async Task DiscoverAsync_Should_Reject_Non_Finite_Confidence_From_LLM()
+    {
+        // R3-followup [2nd-round review] regression guard: Math.Clamp(NaN, 0, 1) returns NaN
+        // (NaN compares false against both bounds). Subsequent `NaN < threshold` is also false,
+        // so without explicit NaN handling, NaN flows into DocumentRelation and persists.
+        // ASP.NET Core's default JsonSerializer throws on NaN → poisons the relation list
+        // GET endpoint with HTTP 500. Service must Reject non-finite confidence up front.
+        var source = CreateDocument(markdown: "合同内容");
+        var candidate = CreateDocument(markdown: "强相关发票");
+        SetupSource(source);
+        SetupCandidate(candidate);
+        SetupEmbedding();
+        StageVectorHit(candidate.Id, score: 0.9);
+        SetupNoExistingRelations(source.Id);
+
+        _inferenceAgent.EvaluateAsync(
+                Arg.Any<DocumentSnapshot>(), Arg.Any<DocumentSnapshot>(), Arg.Any<CancellationToken>())
+            .Returns(new RelationInferenceResult
+            {
+                IsRelated = true,
+                Confidence = double.NaN,   // LLM drift: non-finite
+                Description = "match"
+            });
+
+        var created = await _service.DiscoverAsync(source.Id);
+
+        created.ShouldBeEmpty();
+        // No DocumentRelation insert attempted (would have persisted NaN before the fix).
+        await _relationRepository.DidNotReceive().InsertAsync(
+            Arg.Any<DocumentRelation>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task DiscoverAsync_Should_Clamp_Out_Of_Range_Confidence_From_LLM()
     {
         // R3 regression guard: LLM occasionally returns confidence > 1 or < 0 despite the
