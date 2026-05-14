@@ -145,8 +145,9 @@ public class RelationDiscoveryService_Tests
             new DocumentIdentifierEntry(DocumentIdentifierTypes.ContractNumber, "HT-TENANT")
         };
         _invoiceProvider.Lookup[(DocumentIdentifierTypes.ContractNumber, "HT-TENANT")] = new[] { peerDocId };
-        _relationRepository.GetListByDocumentIdAsync(sourceDocId, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentRelation>());
+        _relationRepository.GetLinkedPeerDocumentIdsAsync(
+                sourceDocId, Arg.Any<Guid?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Guid>());
 
         var created = await _service.DiscoverAsync(sourceDocId);
 
@@ -177,8 +178,9 @@ public class RelationDiscoveryService_Tests
             new DocumentIdentifierEntry(DocumentIdentifierTypes.ContractNumber, "HT-UOW-CHECK")
         };
         _invoiceProvider.Lookup[(DocumentIdentifierTypes.ContractNumber, "HT-UOW-CHECK")] = new[] { peerDocId };
-        _relationRepository.GetListByDocumentIdAsync(sourceDocId, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentRelation>());
+        _relationRepository.GetLinkedPeerDocumentIdsAsync(
+                sourceDocId, Arg.Any<Guid?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Guid>());
 
         await _service.DiscoverAsync(sourceDocId);
 
@@ -200,8 +202,9 @@ public class RelationDiscoveryService_Tests
         // Invoice peer also holds ContractNumber=HT-001 → cross-module match expected.
         _invoiceProvider.Lookup[(DocumentIdentifierTypes.ContractNumber, "HT-001")] = new[] { peerDocId };
 
-        _relationRepository.GetListByDocumentIdAsync(sourceDocId, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentRelation>());
+        _relationRepository.GetLinkedPeerDocumentIdsAsync(
+                sourceDocId, Arg.Any<Guid?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Guid>());
 
         var created = await _service.DiscoverAsync(sourceDocId);
 
@@ -229,11 +232,9 @@ public class RelationDiscoveryService_Tests
         _invoiceProvider.Lookup[(DocumentIdentifierTypes.ContractNumber, "HT-002")] = new[] { alreadyLinkedPeerId, freshPeerId };
 
         // alreadyLinkedPeerId is already related (Manual — user-confirmed) — must NOT be re-suggested.
-        _relationRepository.GetListByDocumentIdAsync(sourceDocId, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentRelation>
-            {
-                CreateExistingRelation(sourceDocId, alreadyLinkedPeerId, RelationSource.Manual)
-            });
+        _relationRepository.GetLinkedPeerDocumentIdsAsync(
+                sourceDocId, Arg.Any<Guid?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Guid> { alreadyLinkedPeerId });
 
         var created = await _service.DiscoverAsync(sourceDocId);
 
@@ -256,8 +257,9 @@ public class RelationDiscoveryService_Tests
         _invoiceProvider.Lookup[(DocumentIdentifierTypes.ContractNumber, "HT-003")] = new[] { peerDocId };
         _invoiceProvider.Lookup[(DocumentIdentifierTypes.PartyName, "上海某某有限公司")] = new[] { peerDocId };
 
-        _relationRepository.GetListByDocumentIdAsync(sourceDocId, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentRelation>());
+        _relationRepository.GetLinkedPeerDocumentIdsAsync(
+                sourceDocId, Arg.Any<Guid?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Guid>());
 
         var created = await _service.DiscoverAsync(sourceDocId);
 
@@ -278,8 +280,9 @@ public class RelationDiscoveryService_Tests
         // also holds the source document). Service must filter self.
         _contractProvider.Lookup[(DocumentIdentifierTypes.PartyName, "甲方公司")] = new[] { sourceDocId };
 
-        _relationRepository.GetListByDocumentIdAsync(sourceDocId, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentRelation>());
+        _relationRepository.GetLinkedPeerDocumentIdsAsync(
+                sourceDocId, Arg.Any<Guid?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Guid>());
 
         var created = await _service.DiscoverAsync(sourceDocId);
 
@@ -301,11 +304,9 @@ public class RelationDiscoveryService_Tests
         _invoiceProvider.Lookup[(DocumentIdentifierTypes.ContractNumber, "HT-IDEMPOTENT")]
             = new[] { alreadyAiLinkedPeer };
 
-        _relationRepository.GetListByDocumentIdAsync(sourceDocId, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentRelation>
-            {
-                CreateExistingRelation(sourceDocId, alreadyAiLinkedPeer, RelationSource.AiSuggested)
-            });
+        _relationRepository.GetLinkedPeerDocumentIdsAsync(
+                sourceDocId, Arg.Any<Guid?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Guid> { alreadyAiLinkedPeer });
 
         var created = await _service.DiscoverAsync(sourceDocId);
 
@@ -327,8 +328,9 @@ public class RelationDiscoveryService_Tests
         };
         _invoiceProvider.Lookup[(DocumentIdentifierTypes.InvoiceNumber, "INV-RESILIENT")] = new[] { peerDocId };
 
-        _relationRepository.GetListByDocumentIdAsync(sourceDocId, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentRelation>());
+        _relationRepository.GetLinkedPeerDocumentIdsAsync(
+                sourceDocId, Arg.Any<Guid?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Guid>());
 
         var created = await _service.DiscoverAsync(sourceDocId);
 
@@ -351,8 +353,9 @@ public class RelationDiscoveryService_Tests
         // Invoice provider succeeds for the same identifier — peer should still surface.
         _invoiceProvider.Lookup[(DocumentIdentifierTypes.ContractNumber, "HT-RESILIENT")] = new[] { peerDocId };
 
-        _relationRepository.GetListByDocumentIdAsync(sourceDocId, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentRelation>());
+        _relationRepository.GetLinkedPeerDocumentIdsAsync(
+                sourceDocId, Arg.Any<Guid?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Guid>());
 
         var created = await _service.DiscoverAsync(sourceDocId);
 
@@ -375,8 +378,9 @@ public class RelationDiscoveryService_Tests
         };
         _invoiceProvider.Lookup[(DocumentIdentifierTypes.InvoiceNumber, "INV-001")] = new[] { peerDocId };
 
-        _relationRepository.GetListByDocumentIdAsync(sourceDocId, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentRelation>());
+        _relationRepository.GetLinkedPeerDocumentIdsAsync(
+                sourceDocId, Arg.Any<Guid?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Guid>());
 
         var created = await _service.DiscoverAsync(sourceDocId);
 

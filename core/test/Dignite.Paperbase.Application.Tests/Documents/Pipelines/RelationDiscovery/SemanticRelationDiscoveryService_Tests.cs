@@ -162,12 +162,9 @@ public class SemanticRelationDiscoveryService_Tests
         SetupEmbedding();
         StageVectorHit(linkedPeer.Id, score: 0.85);
         // Pre-existing relation → must skip.
-        _relationRepository.GetListByDocumentIdAsync(source.Id, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentRelation>
-            {
-                new(Guid.NewGuid(), null, source.Id, linkedPeer.Id,
-                    "manual link", RelationSource.Manual)
-            });
+        _relationRepository.GetLinkedPeerDocumentIdsAsync(
+                source.Id, Arg.Any<Guid?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Guid> { linkedPeer.Id });
 
         var created = await _service.DiscoverAsync(source.Id);
 
@@ -397,6 +394,106 @@ public class SemanticRelationDiscoveryService_Tests
     }
 
     [Fact]
+    public async Task DiscoverAsync_Should_Clamp_Out_Of_Range_Confidence_From_LLM()
+    {
+        // R3 regression guard: LLM occasionally returns confidence > 1 or < 0 despite the
+        // prompt constraint. Without clamp, `new DocumentRelation(confidence: 1.5)` throws
+        // in ValidateConfidence → caught by outer `catch (Exception)` → silently logged as
+        // Error → user never sees this AiSuggested relation. Clamp + warn keeps the signal
+        // visible while preserving the aggregate invariant.
+        var source = CreateDocument(markdown: "合同内容");
+        var candidate = CreateDocument(markdown: "强相关发票");
+        SetupSource(source);
+        SetupCandidate(candidate);
+        SetupEmbedding();
+        StageVectorHit(candidate.Id, score: 0.9);
+        SetupNoExistingRelations(source.Id);
+
+        _inferenceAgent.EvaluateAsync(
+                Arg.Any<DocumentSnapshot>(), Arg.Any<DocumentSnapshot>(), Arg.Any<CancellationToken>())
+            .Returns(new RelationInferenceResult
+            {
+                IsRelated = true,
+                Confidence = 1.5,   // LLM drift: out of [0, 1]
+                Description = "match"
+            });
+
+        var created = await _service.DiscoverAsync(source.Id);
+
+        created.Count.ShouldBe(1);
+        created.Single().Confidence.ShouldBe(1.0);   // Clamped, not raw 1.5
+    }
+
+    [Fact]
+    public async Task DiscoverAsync_Should_Short_Circuit_After_Consecutive_LLM_Failures()
+    {
+        // R4 regression guard: when LLM provider is genuinely down (not a single transient
+        // hiccup), per-candidate try/catch alone would let foreach burn the full per-call
+        // timeout on every candidate. Consecutive-failure cutoff (default 2) bails out
+        // after the second contiguous failure, preventing Hangfire worker starvation.
+        _aiOptions.SemanticRelationDiscoveryConsecutiveFailureCutoff = 2;
+
+        var source = CreateDocument(markdown: "合同内容");
+        var c1 = CreateDocument(markdown: "候选1");
+        var c2 = CreateDocument(markdown: "候选2");
+        var c3 = CreateDocument(markdown: "候选3");
+        SetupSource(source);
+        SetupCandidate(c1);
+        SetupCandidate(c2);
+        SetupCandidate(c3);
+        SetupEmbedding();
+        _collection.StagedSearchResults.Enqueue(new[]
+        {
+            BuildHit(c1.Id, score: 0.9),
+            BuildHit(c2.Id, score: 0.85),
+            BuildHit(c3.Id, score: 0.8),
+        });
+        SetupNoExistingRelations(source.Id);
+
+        _inferenceAgent.EvaluateAsync(
+                Arg.Any<DocumentSnapshot>(), Arg.Any<DocumentSnapshot>(), Arg.Any<CancellationToken>())
+            .Returns<RelationInferenceResult>(_ => throw new InvalidOperationException("LLM provider down"));
+
+        var created = await _service.DiscoverAsync(source.Id);
+
+        created.ShouldBeEmpty();
+        // Exactly 2 candidates attempted before the circuit breaks; c3 never evaluated.
+        await _inferenceAgent.Received(2).EvaluateAsync(
+            Arg.Any<DocumentSnapshot>(), Arg.Any<DocumentSnapshot>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task DiscoverAsync_Should_Treat_Dismissed_Tombstones_As_Already_Linked()
+    {
+        // R2 regression guard: when a user dismisses an AI suggestion, the row is soft-deleted
+        // (IsDeleted=true). L3 must still treat that document as "already linked" so the same
+        // pair is not re-suggested next run. The contract is: SemanticRelationDiscoveryService
+        // calls GetLinkedPeerDocumentIdsAsync with includeDismissed=true so the repo bypasses
+        // the soft-delete filter — this test verifies that contract.
+        var source = CreateDocument(markdown: "合同内容");
+        var dismissedPeer = CreateDocument(markdown: "用户曾驳回的相似文档");
+        SetupSource(source);
+        SetupEmbedding();
+        StageVectorHit(dismissedPeer.Id, score: 0.9);
+
+        // Substitute returns the dismissed peer ONLY when includeDismissed=true is requested.
+        // If production code drops the flag (regression), the substitute returns null/empty
+        // for the wrong overload and the test fails — exactly the safety net we want.
+        _relationRepository.GetLinkedPeerDocumentIdsAsync(
+                source.Id, Arg.Any<Guid?>(), includeDismissed: true, Arg.Any<CancellationToken>())
+            .Returns(new List<Guid> { dismissedPeer.Id });
+
+        var created = await _service.DiscoverAsync(source.Id);
+
+        created.ShouldBeEmpty();
+        await _inferenceAgent.DidNotReceive().EvaluateAsync(
+            Arg.Any<DocumentSnapshot>(), Arg.Any<DocumentSnapshot>(), Arg.Any<CancellationToken>());
+        // Verify the call was made with includeDismissed=true (R2 contract).
+        await _relationRepository.Received(1).GetLinkedPeerDocumentIdsAsync(
+            source.Id, Arg.Any<Guid?>(), includeDismissed: true, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task DiscoverAsync_Should_Skip_Candidate_With_No_Markdown()
     {
         var source = CreateDocument(markdown: "合同内容");
@@ -430,8 +527,9 @@ public class SemanticRelationDiscoveryService_Tests
 
     private void SetupNoExistingRelations(Guid sourceId)
     {
-        _relationRepository.GetListByDocumentIdAsync(sourceId, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentRelation>());
+        _relationRepository.GetLinkedPeerDocumentIdsAsync(
+                sourceId, Arg.Any<Guid?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Guid>());
     }
 
     private void SetupEmbedding()

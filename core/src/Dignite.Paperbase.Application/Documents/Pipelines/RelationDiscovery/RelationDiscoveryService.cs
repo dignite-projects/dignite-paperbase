@@ -108,8 +108,10 @@ public class RelationDiscoveryService : DomainService
 
         // Phase 3: skip pairs that already have any relation (Manual/AiSuggested/ModuleAuto),
         // create AiSuggested for the rest. Skipping ALL existing relation kinds protects
-        // user-confirmed relations from being re-suggested as if new.
-        var alreadyLinked = await GetAlreadyLinkedPeersAsync(sourceDocumentId, cancellationToken);
+        // user-confirmed relations from being re-suggested as if new. R2: also skip dismissed
+        // tombstones (IsDeleted=true) so users who reject an AI suggestion don't see it
+        // resurface on the next run.
+        var alreadyLinked = await GetAlreadyLinkedPeersAsync(sourceDocumentId, sourceTenantId, cancellationToken);
         var created = new List<DocumentRelation>();
 
         foreach (var peer in peers)
@@ -215,18 +217,19 @@ public class RelationDiscoveryService : DomainService
 
     protected virtual async Task<HashSet<Guid>> GetAlreadyLinkedPeersAsync(
         Guid sourceDocumentId,
+        Guid? sourceTenantId,
         CancellationToken ct)
     {
-        var existing = await _relationRepository.GetListByDocumentIdAsync(sourceDocumentId, ct);
-        var linked = new HashSet<Guid>();
-        foreach (var relation in existing)
-        {
-            var peer = relation.SourceDocumentId == sourceDocumentId
-                ? relation.TargetDocumentId
-                : relation.SourceDocumentId;
-            linked.Add(peer);
-        }
-        return linked;
+        // R2 dismissal tombstone: includeDismissed=true so dismissed (soft-deleted) rows
+        // count as "already linked" and block re-suggestion. Tenant id passed explicitly
+        // because IgnoreQueryFilters disables both soft-delete AND tenant filters
+        // (EF Core all-or-nothing pre-EF10) — repo re-applies the tenant predicate.
+        var peerIds = await _relationRepository.GetLinkedPeerDocumentIdsAsync(
+            sourceDocumentId,
+            sourceTenantId,
+            includeDismissed: true,
+            ct);
+        return new HashSet<Guid>(peerIds);
     }
 
     /// <summary>

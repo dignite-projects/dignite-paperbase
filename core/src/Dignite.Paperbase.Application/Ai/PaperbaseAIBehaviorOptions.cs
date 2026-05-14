@@ -153,4 +153,22 @@ public class PaperbaseAIBehaviorOptions
     /// 低于此值的候选不创建 AiSuggested 关系。建议 0.7+。
     /// </summary>
     public double SemanticRelationDiscoveryConfidenceThreshold { get; set; } = 0.7;
+
+    /// <summary>
+    /// L3 单次 LLM 评判调用的硬超时（秒）。默认 20s——比 LLM provider 自身的默认 timeout
+    /// 短得多（OpenAI/Azure 默认通常 100s），避免单候选耗尽整个后台 worker 的可用时间。
+    ///
+    /// <para>
+    /// 配合 <see cref="SemanticRelationDiscoveryConsecutiveFailureCutoff"/>：连续 N 个候选
+    /// 超时/异常 → 视为 provider 不可用 → 跳过本文档剩余候选 → 让 PipelineRun 进 Failed
+    /// 而非把 Hangfire worker 堆在 L3 上拖垮其他 pipeline（classification / embedding 共享 worker pool）。
+    /// </para>
+    /// </summary>
+    public int SemanticRelationDiscoveryPerCallTimeoutSeconds { get; set; } = 20;
+
+    /// <summary>
+    /// L3 连续候选失败短路阈值。foreach 循环里连续 ≥N 个候选抛异常（含超时）即跳出，
+    /// 不再尝试本文档剩余候选。默认 2——单点抖动允许，连环故障即断电。
+    /// </summary>
+    public int SemanticRelationDiscoveryConsecutiveFailureCutoff { get; set; } = 2;
 }

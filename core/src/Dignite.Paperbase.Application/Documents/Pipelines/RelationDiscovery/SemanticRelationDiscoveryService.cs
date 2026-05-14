@@ -108,9 +108,11 @@ public class SemanticRelationDiscoveryService : DomainService
             return Array.Empty<DocumentRelation>();
         }
 
-        // Phase 3: filter peers already linked by ANY relation kind. Same rule as L2 — don't
-        // re-suggest what user already saw / dismissed / confirmed.
-        var alreadyLinked = await GetAlreadyLinkedAsync(sourceDocumentId, cancellationToken);
+        // Phase 3: filter peers already linked by ANY relation kind, INCLUDING dismissed
+        // (soft-deleted) tombstones. Same rule as L2 — don't re-suggest what user already
+        // saw / dismissed / confirmed. R2: dismissal-aware lookup avoids the "clear the bin,
+        // it fills back up next run" UX failure.
+        var alreadyLinked = await GetAlreadyLinkedAsync(sourceDocumentId, source.TenantId, cancellationToken);
         var freshCandidates = candidates.Where(id => !alreadyLinked.Contains(id)).ToList();
         if (freshCandidates.Count == 0)
         {
@@ -124,13 +126,35 @@ public class SemanticRelationDiscoveryService : DomainService
         var sourceSnapshot = new DocumentSnapshot(source.TenantId, source.DocumentTypeCode, source.Markdown);
         var created = new List<DocumentRelation>();
 
+        // Consecutive-failure short-circuit (codex review fix [high] R4 "Hangfire worker pool starvation"):
+        // continuous N candidates throwing (timeouts/HTTP errors/etc.) → bail out of remaining candidates.
+        // Single transient hiccup tolerated; sustained failure treated as provider outage.
+        var consecutiveFailures = 0;
+        var cutoff = Math.Max(1, _aiOptions.SemanticRelationDiscoveryConsecutiveFailureCutoff);
+
         foreach (var candidateId in freshCandidates)
         {
-            var relation = await EvaluateAndCreateAsync(
+            var (relation, failed) = await EvaluateAndCreateAsync(
                 sourceDocumentId, sourceSnapshot, candidateId, cancellationToken);
             if (relation != null)
             {
                 created.Add(relation);
+                consecutiveFailures = 0;
+            }
+            else if (failed)
+            {
+                if (++consecutiveFailures >= cutoff)
+                {
+                    Logger.LogError(
+                        "L3 SemanticRelationDiscovery: {Cutoff} consecutive candidate failures for source {DocumentId}; " +
+                        "treating LLM provider as unavailable and bailing out of remaining {Remaining} candidates.",
+                        cutoff, sourceDocumentId, freshCandidates.Count - (created.Count + consecutiveFailures));
+                    break;
+                }
+            }
+            else
+            {
+                consecutiveFailures = 0;
             }
         }
 
@@ -206,7 +230,13 @@ public class SemanticRelationDiscoveryService : DomainService
         return hitDocumentIds.ToList();
     }
 
-    protected virtual async Task<DocumentRelation?> EvaluateAndCreateAsync(
+    /// <summary>
+    /// Returns (relation, failed). `relation != null` → created and saved. `failed == true` →
+    /// transient LLM/provider error (caller increments consecutive-failure counter for R4
+    /// circuit breaker). Both null/false → skipped legitimately (no markdown / LLM said
+    /// IsRelated=false / confidence below threshold).
+    /// </summary>
+    protected virtual async Task<(DocumentRelation? Relation, bool Failed)> EvaluateAndCreateAsync(
         Guid sourceDocumentId,
         DocumentSnapshot sourceSnapshot,
         Guid candidateId,
@@ -215,30 +245,56 @@ public class SemanticRelationDiscoveryService : DomainService
         var candidate = await _documentRepository.FindAsync(candidateId, cancellationToken: ct);
         if (candidate == null || string.IsNullOrWhiteSpace(candidate.Markdown))
         {
-            return null;
+            return (null, false);
         }
 
         var candidateSnapshot = new DocumentSnapshot(candidate.TenantId, candidate.DocumentTypeCode, candidate.Markdown);
 
+        // Per-call timeout (codex review fix [high] R4): provider default timeouts are too generous
+        // (OpenAI/Azure ~100s) → 5 candidates × 100s = 8min single doc blocks worker pool. Linked CTS
+        // honors caller cancellation too. Throws TaskCanceledException on timeout, caught below.
         RelationInferenceResult inference;
+        using var timeoutCts = new CancellationTokenSource(
+            TimeSpan.FromSeconds(Math.Max(1, _aiOptions.SemanticRelationDiscoveryPerCallTimeoutSeconds)));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+
         try
         {
-            inference = await _inferenceAgent.EvaluateAsync(sourceSnapshot, candidateSnapshot, ct);
+            inference = await _inferenceAgent.EvaluateAsync(sourceSnapshot, candidateSnapshot, linkedCts.Token);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Caller cancellation — propagate, do not treat as provider failure.
+            throw;
         }
         catch (Exception ex)
         {
-            // Per-candidate LLM failure: log & skip. Other candidates still get evaluated.
+            // Per-candidate LLM failure (including timeout from linkedCts): log & skip. Other
+            // candidates still get evaluated up to the consecutive-failure cutoff (R4).
             Logger.LogError(ex,
                 "L3 SemanticRelationDiscovery: LLM evaluation failed for ({Source}, {Candidate}); skipping pair",
                 sourceDocumentId, candidateId);
             _telemetry.RecordL3LlmCall(RelationDiscoveryL3CallResult.Error);
-            return null;
+            return (null, true);
         }
 
-        if (!inference.IsRelated || inference.Confidence < _aiOptions.SemanticRelationDiscoveryConfidenceThreshold)
+        // Confidence clamp (codex review fix [high] R3): LLM occasionally returns out-of-range
+        // values despite the prompt's [0,1] constraint. Without clamping, `new DocumentRelation`
+        // throws in ValidateConfidence → caught by outer `catch (Exception)` → silently logged
+        // as Error → user never sees this AiSuggested relation that the LLM otherwise agreed with.
+        // Clamp + warn keeps the signal visible while preserving the aggregate invariant.
+        var clamped = Math.Clamp(inference.Confidence, 0d, 1d);
+        if (Math.Abs(clamped - inference.Confidence) > double.Epsilon)
+        {
+            Logger.LogWarning(
+                "L3 SemanticRelationDiscovery: LLM returned out-of-range confidence {Raw} for ({Source}, {Candidate}); clamped to {Clamped}",
+                inference.Confidence, sourceDocumentId, candidateId, clamped);
+        }
+
+        if (!inference.IsRelated || clamped < _aiOptions.SemanticRelationDiscoveryConfidenceThreshold)
         {
             _telemetry.RecordL3LlmCall(RelationDiscoveryL3CallResult.Rejected);
-            return null;
+            return (null, false);
         }
 
         var description = string.IsNullOrWhiteSpace(inference.Description)
@@ -255,7 +311,7 @@ public class SemanticRelationDiscoveryService : DomainService
             targetDocumentId: candidateId,
             description: description,
             source: RelationSource.AiSuggested,
-            confidence: inference.Confidence);
+            confidence: clamped);
 
         // autoSave: true (vs L2's autoSave: false). Reason: L3 mixes external LLM calls with
         // repository writes inside the loop. Wrapping all of L3 in an outer UoW would hold a
@@ -264,19 +320,23 @@ public class SemanticRelationDiscoveryService : DomainService
         // happen with NO ambient UoW, satisfying the rule.
         await _relationRepository.InsertAsync(relation, autoSave: true, ct);
         _telemetry.RecordL3LlmCall(RelationDiscoveryL3CallResult.Confirmed);
-        return relation;
+        return (relation, false);
     }
 
-    protected virtual async Task<HashSet<Guid>> GetAlreadyLinkedAsync(Guid sourceDocumentId, CancellationToken ct)
+    protected virtual async Task<HashSet<Guid>> GetAlreadyLinkedAsync(
+        Guid sourceDocumentId,
+        Guid? sourceTenantId,
+        CancellationToken ct)
     {
-        var existing = await _relationRepository.GetListByDocumentIdAsync(sourceDocumentId, ct);
-        var linked = new HashSet<Guid>();
-        foreach (var rel in existing)
-        {
-            var peer = rel.SourceDocumentId == sourceDocumentId ? rel.TargetDocumentId : rel.SourceDocumentId;
-            linked.Add(peer);
-        }
-        return linked;
+        // R2 dismissal tombstone: includeDismissed=true so dismissed (soft-deleted) rows
+        // count as "already linked" and block re-suggestion. Tenant id passed explicitly
+        // (Hangfire-safe — no ambient ICurrentTenant dependency).
+        var peerIds = await _relationRepository.GetLinkedPeerDocumentIdsAsync(
+            sourceDocumentId,
+            sourceTenantId,
+            includeDismissed: true,
+            ct);
+        return new HashSet<Guid>(peerIds);
     }
 
     private string TruncateForEmbedding(string markdown)

@@ -132,6 +132,12 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
         // Issue #123: capture pre-delete source/confidence so the funnel metric reflects the
         // ORIGINAL relation kind (a deleted AiSuggested = "user rejected the suggestion";
         // a deleted Manual = "user undid their own confirmation" — different signals).
+        //
+        // R2 dismissal tombstone: DocumentRelation is FullAuditedAggregateRoot which implements
+        // ISoftDelete — DeleteAsync sets IsDeleted=true rather than physically removing the row.
+        // L2/L3 RelationDiscovery's GetLinkedPeerDocumentIdsAsync(includeDismissed: true) reads
+        // dismissed rows back so the same pair never gets re-suggested. User-facing queries
+        // (GetListAsync, GetGraphAsync) honor the ambient soft-delete filter and exclude them.
         var existing = await _relationRepository.FindAsync(id);
         await _relationRepository.DeleteAsync(id);
 

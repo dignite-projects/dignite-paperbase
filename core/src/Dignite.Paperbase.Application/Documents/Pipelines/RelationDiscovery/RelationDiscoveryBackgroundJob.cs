@@ -1,8 +1,10 @@
 using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
+using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.Documents;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.MultiTenancy;
@@ -43,6 +45,7 @@ public class RelationDiscoveryBackgroundJob
     private readonly RelationDiscoveryTelemetryRecorder _telemetry;
     private readonly ICurrentTenant _currentTenant;
     private readonly IUnitOfWorkManager _unitOfWorkManager;
+    private readonly PaperbaseAIBehaviorOptions _aiOptions;
 
     public RelationDiscoveryBackgroundJob(
         IDocumentRepository documentRepository,
@@ -52,7 +55,8 @@ public class RelationDiscoveryBackgroundJob
         SemanticRelationDiscoveryService semanticDiscoveryService,
         RelationDiscoveryTelemetryRecorder telemetry,
         ICurrentTenant currentTenant,
-        IUnitOfWorkManager unitOfWorkManager)
+        IUnitOfWorkManager unitOfWorkManager,
+        IOptions<PaperbaseAIBehaviorOptions> aiOptions)
     {
         _documentRepository = documentRepository;
         _pipelineRunManager = pipelineRunManager;
@@ -62,6 +66,7 @@ public class RelationDiscoveryBackgroundJob
         _telemetry = telemetry;
         _currentTenant = currentTenant;
         _unitOfWorkManager = unitOfWorkManager;
+        _aiOptions = aiOptions.Value;
     }
 
     public override async Task ExecuteAsync(RelationDiscoveryJobArgs args)
@@ -172,22 +177,37 @@ public class RelationDiscoveryBackgroundJob
         }
         l2Stopwatch.Stop();
 
-        if (l2Count > 0)
-        {
-            // L2 found structured matches — that's strong signal; don't run L3 (expensive LLM)
-            // on top. L3 is the fallback for "structured matching found nothing".
-            return new DiscoveryOutcome(l2Count, false, 0, l2Stopwatch.Elapsed.TotalMilliseconds, 0);
-        }
-
-        // L3 fallback: vector recall + LLM evaluation. Disabled by default (operator opt-in).
+        // L3: always invoked when enabled, regardless of L2 outcome (codex review fix [high] R1
+        // "L2/L3 coverage decoupling"). L2 finds documents sharing exact identifiers (contract
+        // number, invoice number); L3 finds semantically-related documents WITHOUT shared
+        // identifiers (meeting notes referencing a contract, supplement agreements, etc.) — these
+        // are non-overlapping relation kinds. Letting L2 short-circuit L3 systematically blinded
+        // the system to L3-only relations whenever a document had any L2 hit through any provider.
+        // Duplicate pairs are filtered upstream by SemanticRelationDiscoveryService.GetAlreadyLinkedAsync,
+        // which already excludes any document already linked to the source by ANY DocumentRelation
+        // (including the AiSuggested rows L2 just wrote in this same job).
+        //
+        // Gate on EnableSemanticRelationDiscovery here (not inside SemanticDiscoveryService) so that
+        // L3Invoked telemetry reflects reality: true iff L3 was attempted, false iff disabled by config.
         // NOT wrapped in an outer UoW: SemanticRelationDiscoveryService uses autoSave: true on
         // each relation insert (per-call implicit UoW), so LLM calls between candidates run with
         // no ambient UoW — satisfies the "no DB connection during external work" rule.
+        if (!_aiOptions.EnableSemanticRelationDiscovery)
+        {
+            return new DiscoveryOutcome(
+                L2Created: l2Count,
+                L3Invoked: false,
+                L3Created: 0,
+                L2DurationMs: l2Stopwatch.Elapsed.TotalMilliseconds,
+                L3DurationMs: 0);
+        }
+
         var l3Stopwatch = Stopwatch.StartNew();
         var l3Created = await _semanticDiscoveryService.DiscoverAsync(documentId);
         l3Stopwatch.Stop();
+
         return new DiscoveryOutcome(
-            L2Created: 0,
+            L2Created: l2Count,
             L3Invoked: true,
             L3Created: l3Created.Count,
             L2DurationMs: l2Stopwatch.Elapsed.TotalMilliseconds,

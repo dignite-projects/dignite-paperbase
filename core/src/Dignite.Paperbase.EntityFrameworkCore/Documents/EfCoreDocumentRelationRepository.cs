@@ -70,4 +70,28 @@ public class EfCoreDocumentRelationRepository
             .Where(r => r.SourceDocumentId == documentId || r.TargetDocumentId == documentId)
             .ExecuteDeleteAsync(GetCancellationToken(cancellationToken));
     }
+
+    public virtual async Task<List<Guid>> GetLinkedPeerDocumentIdsAsync(
+        Guid documentId,
+        Guid? tenantId,
+        bool includeDismissed = false,
+        CancellationToken cancellationToken = default)
+    {
+        var dbContext = await GetDbContextAsync();
+        IQueryable<DocumentRelation> query = dbContext.Set<DocumentRelation>();
+
+        if (includeDismissed)
+        {
+            // R2: bypass soft-delete filter so dismissed (IsDeleted=true) rows still block
+            // re-suggestion. EF Core's IgnoreQueryFilters is all-or-nothing pre-EF10 — must
+            // re-apply tenant filter explicitly. Caller passes Document.TenantId (Hangfire-safe).
+            query = query.IgnoreQueryFilters().Where(r => r.TenantId == tenantId);
+        }
+
+        return await query
+            .Where(r => r.SourceDocumentId == documentId || r.TargetDocumentId == documentId)
+            .Select(r => r.SourceDocumentId == documentId ? r.TargetDocumentId : r.SourceDocumentId)
+            .Distinct()
+            .ToListAsync(GetCancellationToken(cancellationToken));
+    }
 }

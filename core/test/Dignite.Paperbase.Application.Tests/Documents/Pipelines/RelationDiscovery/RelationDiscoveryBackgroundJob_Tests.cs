@@ -25,6 +25,14 @@ public class RelationDiscoveryBackgroundJobTestModule : AbpModule
 {
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
+        // R1 decoupling fix verification: tests in this class exercise the wired-up
+        // L2→L3 flow assuming L3 is enabled. Override the production default (false).
+        // The "disabled" path is covered by SemanticRelationDiscoveryService_Tests directly.
+        Configure<PaperbaseAIBehaviorOptions>(opts =>
+        {
+            opts.EnableSemanticRelationDiscovery = true;
+        });
+
         context.Services.AddSingleton(Substitute.For<IDocumentRepository>());
         context.Services.AddSingleton(Substitute.For<IDocumentRelationRepository>());
 
@@ -163,9 +171,13 @@ public class RelationDiscoveryBackgroundJob_Tests
     }
 
     [Fact]
-    public async Task ExecuteAsync_Should_Skip_L3_When_L2_Found_Relations()
+    public async Task ExecuteAsync_Should_Invoke_L3_Even_When_L2_Found_Relations()
     {
-        // L2 found ≥1 relation → L3 (expensive LLM) must NOT be invoked.
+        // R1 decoupling fix: L2 and L3 cover non-overlapping relation kinds.
+        // L2 finding a structured match (same contract number) does NOT imply L3 has nothing
+        // to add — L3 looks for semantically-related documents WITHOUT shared identifiers
+        // (meeting notes referencing a contract, supplement agreements, etc.). The old
+        // "L2 hit → skip L3" gate systematically blinded the system to L3-only relations.
         var doc = CreateDocument();
         SetupDocumentRepository(doc);
 
@@ -183,8 +195,11 @@ public class RelationDiscoveryBackgroundJob_Tests
 
         await _job.ExecuteAsync(new RelationDiscoveryJobArgs { DocumentId = doc.Id });
 
-        await _semanticDiscoveryService.DidNotReceive().DiscoverAsync(
-            Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        // L3 MUST be invoked. Duplicate-pair filtering is the responsibility of
+        // SemanticRelationDiscoveryService.GetAlreadyLinkedAsync (excludes any document
+        // already linked to source by ANY DocumentRelation, including L2's fresh rows).
+        await _semanticDiscoveryService.Received(1).DiscoverAsync(
+            doc.Id, Arg.Any<CancellationToken>());
     }
 
     [Fact]
