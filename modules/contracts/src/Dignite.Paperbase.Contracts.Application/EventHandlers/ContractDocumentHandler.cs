@@ -180,17 +180,17 @@ public class ContractDocumentHandler :
 
         var sb = new StringBuilder(ContractAgentInstructions.SystemPrompt);
         sb.AppendLine();
-        sb.AppendLine("以下は人間が修正済みの抽出例です。同じ種類の誤りを避けてください。");
+        sb.AppendLine("Below are extractions that humans previously corrected. Avoid making the same kinds of mistakes.");
 
         foreach (var example in examples)
         {
             if (!string.IsNullOrWhiteSpace(example.SourceExcerpt))
             {
-                sb.AppendLine("入力抜粋:");
+                sb.AppendLine("Source excerpt:");
                 sb.AppendLine(example.SourceExcerpt);
             }
 
-            sb.AppendLine("修正済み JSON:");
+            sb.AppendLine("Corrected JSON:");
             sb.AppendLine(example.CorrectedJson);
         }
 
