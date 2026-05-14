@@ -7,10 +7,12 @@ using Dignite.Paperbase.Ai;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Volo.Abp.DependencyInjection;
+using Volo.Abp.Localization;
 
 namespace Dignite.Paperbase.Documents.Pipelines.Classification;
 
@@ -28,6 +30,7 @@ public class DocumentClassificationWorkflow : ITransientDependency
     /// </summary>
     private readonly IChatClient _chatClient;
     private readonly IPromptProvider _promptProvider;
+    private readonly IStringLocalizerFactory _stringLocalizerFactory;
     private readonly PaperbaseAIBehaviorOptions _options;
 
     public ILogger<DocumentClassificationWorkflow> Logger { get; set; }
@@ -36,10 +39,12 @@ public class DocumentClassificationWorkflow : ITransientDependency
     public DocumentClassificationWorkflow(
         [FromKeyedServices(PaperbaseAIConsts.StructuredChatClientKey)] IChatClient chatClient,
         IOptions<PaperbaseAIBehaviorOptions> options,
-        IPromptProvider promptProvider)
+        IPromptProvider promptProvider,
+        IStringLocalizerFactory stringLocalizerFactory)
     {
         _chatClient = chatClient;
         _promptProvider = promptProvider;
+        _stringLocalizerFactory = stringLocalizerFactory;
         _options = options.Value;
     }
 
@@ -58,8 +63,7 @@ public class DocumentClassificationWorkflow : ITransientDependency
             };
         }
 
-        // 候选集排序与数量上限由调用方（DocumentClassificationBackgroundJob）决定，
-        // 以保证 LLM 路径与 KeywordDocumentClassifier 兜底路径使用同一组候选。
+        // 候选集排序与数量上限由调用方（DocumentClassificationBackgroundJob）决定。
         var truncatedText = markdown;
         if (markdown.Length > _options.MaxTextLengthPerExtraction)
         {
@@ -70,12 +74,16 @@ public class DocumentClassificationWorkflow : ITransientDependency
             truncatedText = markdown[.._options.MaxTextLengthPerExtraction];
         }
 
-        var typeDescriptions = candidateTypes.Select(t =>
-            $"- TypeCode: {t.TypeCode}\n" +
-            $"  Name: {t.DisplayName}" +
-            (t.MatchKeywords.Count > 0
-                ? $"\n  Keywords: {string.Join(", ", t.MatchKeywords)}"
-                : string.Empty));
+        // DisplayName 是 ILocalizableString —— 在 _options.DefaultLanguage 下解析，
+        // 与系统 instructions 的语言保持一致（避免 prompt 中类型名与回复语言错位）。
+        List<string> typeDescriptions;
+        using (CultureHelper.Use(_options.DefaultLanguage))
+        {
+            typeDescriptions = candidateTypes.Select(t =>
+                $"- TypeCode: {t.TypeCode}\n" +
+                $"  Name: {t.DisplayName.Localize(_stringLocalizerFactory).Value}"
+            ).ToList();
+        }
 
         var userMessage = $$"""
                 ## Registered Document Types

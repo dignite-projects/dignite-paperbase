@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,11 +10,13 @@ using Dignite.Paperbase.Documents.Pipelines.Classification;
 using Dignite.Paperbase.Documents.Pipelines.Embedding;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.EventBus.Distributed;
+using Volo.Abp.Localization;
 using Volo.Abp.Modularity;
 using Xunit;
 
@@ -33,15 +34,17 @@ public class DocumentClassificationJobTestModule : AbpModule
         var workflow = Substitute.ForPartsOf<DocumentClassificationWorkflow>(
             Substitute.For<IChatClient>(),
             Options.Create(new PaperbaseAIBehaviorOptions()),
-            new DefaultPromptProvider());
+            new DefaultPromptProvider(),
+            Substitute.For<IStringLocalizerFactory>());
         context.Services.AddSingleton(workflow);
 
-        // 注册一个合同类型，阈值 0.75，含关键词"契約書"供关键词分类器使用
+        // 注册一个合同类型，阈值 0.75；DisplayName 用 FixedLocalizableString 避免测试依赖资源注册。
         context.Services.Configure<DocumentTypeOptions>(opts =>
         {
-            opts.Register(new DocumentTypeDefinition("contract.general", "合同")
+            opts.Register(new DocumentTypeDefinition(
+                "contract.general",
+                new FixedLocalizableString("合同"))
             {
-                MatchKeywords = new List<string> { "契約書" },
                 ConfidenceThreshold = 0.75
             });
         });
@@ -228,9 +231,11 @@ public class DocumentClassificationBackgroundJob_Tests
     }
 
     [Fact]
-    public async Task AiProviderTimeout_FallsBack_To_Keyword_Classifier_And_Succeeds()
+    public async Task Transient_AiProviderFailure_FailsRun_And_Rethrows_For_AbpRetry()
     {
-        // 文本包含关键词"契約書"，关键词分类器可命中
+        // transient 故障（网络/超时/取消）不在 Job 内兜底——异常冒泡后由 ABP BackgroundJob
+        // 框架按 MaxTryCount 重试。Job 在 rethrow 前必须先标记 Run 为 Failed，保留运营
+        // 侧可见性；ABP 重试下一次 BeginOrStartAsync 会复用同一 Run 并 MarkRunning 重置。
         var doc = CreateDocument("業務委託契約書。甲：A社。乙：B社。");
         SetupDocumentRepository(doc);
 
@@ -241,79 +246,29 @@ public class DocumentClassificationBackgroundJob_Tests
                 Arg.Any<CancellationToken>())
             .Returns<DocumentClassificationOutcome>(_ => throw new TimeoutException("AI service timeout"));
 
-        await _job.ExecuteAsync(new DocumentClassificationJobArgs { DocumentId = doc.Id });
+        // 异常必须冒泡——否则 ABP 收不到失败信号，不会重试
+        await Should.ThrowAsync<TimeoutException>(
+            async () => await _job.ExecuteAsync(new DocumentClassificationJobArgs { DocumentId = doc.Id }));
 
-        // 关键词分类器返回 confidence 0.9 > threshold 0.75 → 分类成功
+        // Run 应已被 FailRunAsync 标记 Failed
         var run = doc.GetLatestRun(PaperbasePipelines.Classification);
         run.ShouldNotBeNull();
-        run.Status.ShouldBe(PipelineRunStatus.Succeeded);
+        run.Status.ShouldBe(PipelineRunStatus.Failed);
 
-        await _eventBus.Received(1).PublishAsync(
-            Arg.Is<DocumentClassifiedEto>(e => e.DocumentTypeCode == "contract.general"),
-            Arg.Any<bool>());
-    }
-
-    [Fact]
-    public async Task AiProviderTimeout_KeywordNoMatch_FallsBackToLowConfidence()
-    {
-        // 文本不含任何已注册的关键词
-        var doc = CreateDocument("This is a quarterly report with no contract keywords.");
-        SetupDocumentRepository(doc);
-
-        _workflow
-            .RunAsync(
-                Arg.Any<IReadOnlyList<DocumentTypeDefinition>>(),
-                Arg.Any<string>(),
-                Arg.Any<CancellationToken>())
-            .Returns<DocumentClassificationOutcome>(_ => throw new TimeoutException("AI service timeout"));
-
-        await _job.ExecuteAsync(new DocumentClassificationJobArgs { DocumentId = doc.Id });
-
-        var run = doc.GetLatestRun(PaperbasePipelines.Classification);
-        run.ShouldNotBeNull();
-        run.Status.ShouldBe(PipelineRunStatus.Succeeded);
-        doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
-
+        // 不发布事件，不入队 Embedding——transient 故障下整条流水线不前进
         await _eventBus.DidNotReceive().PublishAsync(
             Arg.Any<DocumentClassifiedEto>(), Arg.Any<bool>());
+        await _backgroundJobManager.DidNotReceive().EnqueueAsync(
+            Arg.Any<DocumentEmbeddingJobArgs>(),
+            Arg.Any<BackgroundJobPriority>(),
+            Arg.Any<TimeSpan?>());
     }
 
     [Fact]
-    public async Task HttpRequestException_FallsBack_To_Keyword_Classifier()
+    public async Task JsonException_Routes_To_PendingReview()
     {
-        // HTTP 通信故障是 transient provider error，关键词兜底是合理替代。
-        // 旧实现用 ex.GetType().Name.Contains("HttpRequestException") 字符串匹配，
-        // 现在改为 typed catch (HttpRequestException) — 这个测试锁定新路径。
-        var doc = CreateDocument("業務委託契約書。甲：A社。乙：B社。");
-        SetupDocumentRepository(doc);
-
-        _workflow
-            .RunAsync(
-                Arg.Any<IReadOnlyList<DocumentTypeDefinition>>(),
-                Arg.Any<string>(),
-                Arg.Any<CancellationToken>())
-            .Returns<DocumentClassificationOutcome>(_ => throw new HttpRequestException("503 service unavailable"));
-
-        await _job.ExecuteAsync(new DocumentClassificationJobArgs { DocumentId = doc.Id });
-
-        // 关键词兜底命中 contract.general
-        var run = doc.GetLatestRun(PaperbasePipelines.Classification);
-        run.ShouldNotBeNull();
-        run.Status.ShouldBe(PipelineRunStatus.Succeeded);
-
-        await _eventBus.Received(1).PublishAsync(
-            Arg.Is<DocumentClassifiedEto>(e => e.DocumentTypeCode == "contract.general"),
-            Arg.Any<bool>());
-    }
-
-    [Fact]
-    public async Task JsonException_Routes_To_PendingReview_Even_When_Keyword_Would_Match()
-    {
-        // 关键回归测试：schema 漂移类异常（JsonException）必须直接走 PendingReview，
-        // 不能用关键词兜底替代——关键词命中只反映文本表面，无法弥补 LLM 语义判定失效。
-        // 文本故意包含已注册关键词 "契約書"，如果错误地走了关键词兜底路径，文档会被
-        // 高置信度分类成 contract.general，测试断言失败。正确实现下，文档落入
-        // PendingReview，TypeCode 为 null。
+        // Schema 漂移类异常不可重试——再调一次 LLM 大概率还是同样的坏输出。
+        // 直接走 PendingReview，由人工确认；ExecuteAsync 不重抛，避免空耗重试 quota。
         var doc = CreateDocument("業務委託契約書。甲：A社。乙：B社。");
         SetupDocumentRepository(doc);
 
@@ -330,7 +285,7 @@ public class DocumentClassificationBackgroundJob_Tests
         run.ShouldNotBeNull();
         run.Status.ShouldBe(PipelineRunStatus.Succeeded);
 
-        // 没有走关键词兜底——TypeCode 为 null，ReviewStatus 为 PendingReview
+        // TypeCode 为 null，ReviewStatus 为 PendingReview
         doc.DocumentTypeCode.ShouldBeNull();
         doc.ClassificationConfidence.ShouldBe(0);
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);

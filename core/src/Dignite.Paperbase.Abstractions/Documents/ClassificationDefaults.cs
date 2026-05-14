@@ -12,11 +12,6 @@ public static class ClassificationDefaults
     public const double DefaultConfidenceThreshold = 0.7;
 
     /// <summary>
-    /// 关键词分类器命中关键词时返回的固定置信度（AI Provider 失败的兜底路径）。
-    /// </summary>
-    public const double KeywordMatchConfidence = 0.9;
-
-    /// <summary>
     /// 人工确认（manual classification）写入的固定置信度。
     /// 注意：核心 Domain 项目不依赖 Abstractions，
     /// <c>DocumentPipelineRunManager.CompleteManualClassificationAsync</c> 中以字面量 1.0 出现；

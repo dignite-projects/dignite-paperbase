@@ -1,6 +1,6 @@
 using System;
-using System.Collections.Generic;
 using Volo.Abp;
+using Volo.Abp.Localization;
 
 namespace Dignite.Paperbase.Abstractions.Documents;
 
@@ -16,17 +16,22 @@ namespace Dignite.Paperbase.Abstractions.Documents;
 /// <para>
 /// 构造函数会校验 TypeCode 必须包含至少一个 <c>.</c> 且前后段非空。
 /// </para>
+/// <para>
+/// <b>DisplayName 为 <see cref="ILocalizableString"/>（延迟本地化）</b>：注册侧用
+/// <c>LocalizableString.Create&lt;TResource&gt;("Key")</c>，UI / prompt 消费侧通过
+/// <c>IStringLocalizerFactory</c> 按当前 culture 解析。这是 ABP 的标准模式
+/// （对齐 <c>PermissionDefinition.DisplayName</c> / <c>MenuItem.DisplayName</c> /
+/// <c>SettingDefinition.DisplayName</c>），定义对象本身长生命周期、不持有
+/// 已翻译字符串，确保多租户多语言下展示正确。
+/// </para>
 /// </remarks>
 public class DocumentTypeDefinition
 {
     /// <summary>文档类型唯一标识，须遵循 <c>&lt;owner-module&gt;.&lt;sub-type&gt;</c> 命名约定。</summary>
     public string TypeCode { get; set; } = default!;
 
-    /// <summary>显示名称（用于 UI 展示）</summary>
-    public string DisplayName { get; set; } = default!;
-
-    /// <summary>关键词列表，用于规则分类器匹配</summary>
-    public IList<string> MatchKeywords { get; set; } = new List<string>();
+    /// <summary>显示名称（用于 UI 展示与 LLM prompt）。运行时通过 <see cref="IStringLocalizerFactory"/> 解析。</summary>
+    public ILocalizableString DisplayName { get; set; } = default!;
 
     /// <summary>分类置信度阈值（低于此值进入 LowConfidence 队列）</summary>
     public double ConfidenceThreshold { get; set; } = ClassificationDefaults.DefaultConfidenceThreshold;
@@ -34,10 +39,10 @@ public class DocumentTypeDefinition
     /// <summary>类型匹配优先级（数字越大优先级越高）</summary>
     public int Priority { get; set; } = 0;
 
-    public DocumentTypeDefinition(string typeCode, string displayName)
+    public DocumentTypeDefinition(string typeCode, ILocalizableString displayName)
     {
         TypeCode = ValidateTypeCode(typeCode);
-        DisplayName = Check.NotNullOrWhiteSpace(displayName, nameof(displayName));
+        DisplayName = Check.NotNull(displayName, nameof(displayName));
     }
 
     /// <summary>

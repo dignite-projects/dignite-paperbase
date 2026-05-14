@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.Documents;
@@ -24,7 +23,6 @@ public class DocumentClassificationBackgroundJob
     private readonly DocumentPipelineRunAccessor _pipelineRunAccessor;
     private readonly DocumentPipelineJobScheduler _pipelineJobScheduler;
     private readonly DocumentClassificationWorkflow _workflow;
-    private readonly KeywordDocumentClassifier _keywordClassifier;
     private readonly IDistributedEventBus _distributedEventBus;
     private readonly DocumentTypeOptions _documentTypeOptions;
     private readonly PaperbaseAIBehaviorOptions _aiOptions;
@@ -36,7 +34,6 @@ public class DocumentClassificationBackgroundJob
         DocumentPipelineRunAccessor pipelineRunAccessor,
         DocumentPipelineJobScheduler pipelineJobScheduler,
         DocumentClassificationWorkflow workflow,
-        KeywordDocumentClassifier keywordClassifier,
         IDistributedEventBus distributedEventBus,
         IOptions<DocumentTypeOptions> documentTypeOptions,
         IOptions<PaperbaseAIBehaviorOptions> aiOptions,
@@ -47,7 +44,6 @@ public class DocumentClassificationBackgroundJob
         _pipelineRunAccessor = pipelineRunAccessor;
         _pipelineJobScheduler = pipelineJobScheduler;
         _workflow = workflow;
-        _keywordClassifier = keywordClassifier;
         _distributedEventBus = distributedEventBus;
         _documentTypeOptions = documentTypeOptions.Value;
         _aiOptions = aiOptions.Value;
@@ -65,7 +61,11 @@ public class DocumentClassificationBackgroundJob
         }
         catch (Exception ex)
         {
+            // 标记 Run 为 Failed 以保留运营侧可见性，并 rethrow 让 ABP BackgroundJob 框架按
+            // MaxTryCount 重试（LLM transient 故障是典型重试场景）。args.PipelineRunId 在
+            // 重试间稳定，下一次 BeginOrStartAsync 会复用同一 Run 并 MarkRunning 重置状态。
             await FailRunAsync(workItem.DocumentId, workItem.RunId, ex.Message);
+            throw;
         }
     }
 
@@ -85,33 +85,24 @@ public class DocumentClassificationBackgroundJob
 
     private async Task<DocumentClassificationOutcome> ClassifyAsync(Guid documentId, string markdown)
     {
-        // 候选集在此处一次确定（按 Priority 排序 + 截断），同时供 LLM 路径与
-        // 关键词兜底路径使用，避免两条路径结论指向不同子集。
+        // 候选集按 Priority 排序 + 截断，控制 prompt 体量。
         var candidates = _documentTypeOptions.Types
             .OrderByDescending(t => t.Priority)
             .Take(_aiOptions.MaxDocumentTypesInClassificationPrompt)
             .ToList();
 
-        // LLM 路径直接吃 Markdown（结构信号有助于分类）；
-        // 关键词兜底走纯文本投影（关键词只匹配字面，结构标记是噪音）。
+        // LLM 路径直接吃 Markdown（结构信号有助于分类）。
+        // transient 故障（网络/超时/取消）不在此处兜底——异常冒泡到 ExecuteAsync 走
+        // FailRunAsync，由 ABP BackgroundJob 框架按 MaxTryCount 重试；LLM 恢复后下一次
+        // 重试做完整 LLM 分类，避免低保真兜底把文档"提前结案"。
         try
         {
             return await _workflow.RunAsync(candidates, markdown);
         }
-        catch (Exception ex) when (IsTransientProviderError(ex))
-        {
-            // 网络/超时类故障：LLM 暂时不可用，关键词兜底是合理替代——
-            // 关键词命中即按兜底结果完成分类，未命中走 LowConfidence → PendingReview。
-            Logger.LogWarning(ex,
-                "AI classification provider unavailable for document {DocumentId}; falling back to keyword classifier.",
-                documentId);
-            return _keywordClassifier.Classify(candidates, MarkdownStripper.Strip(markdown));
-        }
         catch (Exception ex) when (IsSchemaDeserializationError(ex))
         {
-            // Schema 漂移：LLM 输出无法反序列化。这类问题不能用关键词兜底"修复"——
-            // 关键词命中只反映文本表面特征，不能替代被破坏的 LLM 语义判定。
-            // 直接走 PendingReview，由人工确认。
+            // Schema 漂移：LLM 输出无法反序列化。重试也救不回来——直接走 PendingReview，
+            // 由人工确认；避免把同一个坏输出反复重试空耗 quota。
             Logger.LogWarning(ex,
                 "AI classification response failed JSON deserialization for document {DocumentId}; routing to PendingReview.",
                 documentId);
@@ -165,20 +156,8 @@ public class DocumentClassificationBackgroundJob
     }
 
     /// <summary>
-    /// 网络/超时类瞬时故障：HTTP 通信失败、超时、操作取消。这类 LLM 不可用
-    /// 的情形下，关键词兜底是合理替代，因为产品语义上"分类未必基于深层语义
-    /// 理解"——关键词命中可信度足以推动流水线。
-    /// </summary>
-    private static bool IsTransientProviderError(Exception ex)
-        => ex is HttpRequestException
-            || ex is TimeoutException
-            || ex is OperationCanceledException
-            || ex.GetBaseException() is HttpRequestException
-            || ex.GetBaseException() is TimeoutException;
-
-    /// <summary>
-    /// LLM 输出 JSON 反序列化失败（包括 SDK 包装的内层异常）。这类问题
-    /// 必须走 PendingReview——schema 被破坏时关键词兜底无法替代语义判定。
+    /// LLM 输出 JSON 反序列化失败（包括 SDK 包装的内层异常）。这类问题不可重试——
+    /// schema 被破坏时再调一次 LLM 大概率还是同样的坏输出，应直接走 PendingReview。
     /// </summary>
     private static bool IsSchemaDeserializationError(Exception ex)
         => ex is JsonException || ex.GetBaseException() is JsonException;

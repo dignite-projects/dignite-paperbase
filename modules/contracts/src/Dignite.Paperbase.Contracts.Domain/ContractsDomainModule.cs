@@ -1,5 +1,7 @@
 using Dignite.Paperbase.Abstractions.Documents;
+using Dignite.Paperbase.Contracts.Localization;
 using Volo.Abp.Domain;
+using Volo.Abp.Localization;
 using Volo.Abp.Modularity;
 
 namespace Dignite.Paperbase.Contracts;
@@ -14,17 +16,10 @@ public class ContractsDomainModule : AbpModule
     {
         Configure<DocumentTypeOptions>(options =>
         {
-            options.Register(new DocumentTypeDefinition(ContractsDocumentTypes.General, "Contract")
+            options.Register(new DocumentTypeDefinition(
+                ContractsDocumentTypes.General,
+                LocalizableString.Create<ContractsResource>("DocumentType:Contract"))
             {
-                MatchKeywords =
-                {
-                    "契約書",
-                    "合意書",
-                    "甲",
-                    "乙",
-                    "契約期間",
-                    "署名"
-                },
                 ConfidenceThreshold = 0.80,
                 Priority = 10
             });
