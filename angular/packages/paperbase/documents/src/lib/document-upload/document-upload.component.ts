@@ -17,6 +17,7 @@ interface FileUploadState {
   name: string;
   done: boolean;
   error: boolean;
+  errorMessage?: string;
 }
 
 @Component({
@@ -34,6 +35,7 @@ export class DocumentUploadComponent {
 
   isDragOver = signal(false);
   isUploading = signal(false);
+  hasDoneWithErrors = signal(false);
   uploadingFiles = signal<FileUploadState[]>([]);
 
   onDragOver(event: DragEvent): void {
@@ -86,6 +88,7 @@ export class DocumentUploadComponent {
     if (valid.length === 0) return;
 
     this.isUploading.set(true);
+    this.hasDoneWithErrors.set(false);
     this.uploadingFiles.set(valid.map(f => ({ name: f.name, done: false, error: false })));
 
     const indexed = valid.map((file, idx) => ({ file, idx }));
@@ -94,18 +97,21 @@ export class DocumentUploadComponent {
         mergeMap(
           ({ file, idx }) =>
             this.documentService.upload(file).pipe(
-              map(() => ({ idx, success: true })),
-              catchError(() => of({ idx, success: false })),
+              map(() => ({ idx, success: true, errorMessage: undefined as string | undefined })),
+              catchError(err => {
+                const errorMessage: string | undefined = err?.error?.error?.message;
+                return of({ idx, success: false, errorMessage });
+              }),
             ),
           MAX_CONCURRENT_UPLOADS,
         ),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
-        next: ({ idx, success }) => {
+        next: ({ idx, success, errorMessage }) => {
           this.uploadingFiles.update(list =>
             list.map((item, j) =>
-              j === idx ? { ...item, done: success, error: !success } : item,
+              j === idx ? { ...item, done: success, error: !success, errorMessage } : item,
             ),
           );
         },
@@ -113,12 +119,16 @@ export class DocumentUploadComponent {
           this.isUploading.set(false);
           const hasError = this.uploadingFiles().some(f => f.error);
           if (hasError) {
-            this.toaster.warn('::Document:SomeUploadsFailed', '::Warning');
+            this.hasDoneWithErrors.set(true);
           } else {
             this.toaster.success('::Document:UploadedSuccessfully', '::Success');
+            this.router.navigate(['/documents']);
           }
-          this.router.navigate(['/documents']);
         },
       });
+  }
+
+  continueToDocuments(): void {
+    this.router.navigate(['/documents']);
   }
 }

@@ -48,6 +48,7 @@
     "Document:AreYouSureToPermanentlyDelete": "This operation cannot be undone. The document, its vectors, related blobs and ALL derived business records (including any manual corrections made on them) will be permanently removed. Continue?",
     "Document:UploadedSuccessfully": "Document uploaded successfully.",
     "Document:UploadFailed": "Upload failed. Please try again.",
+    "Document:ContinueToDocuments": "Continue to Documents",
     "Document:UnsupportedFileType": "Unsupported file type. Please upload an image or PDF.",
     "Document:FileTooLarge": "File is too large. Maximum size is 20 MB.",
     "Document:DropOrClick": "Drag & drop a file here, or click to select",
