@@ -12,6 +12,8 @@
     <PackageReference Include="Volo.Abp.Mapperly" />
     <PackageReference Include="Volo.Abp.Authorization" />
     <PackageReference Include="Volo.Abp.Ddd.Application" />
+    <PackageReference Include="Microsoft.Extensions.AI" />
+    <PackageReference Include="Microsoft.Agents.AI" />
     <ProjectReference Include="..\Dignite.Paperbase.Contracts.Application.Contracts\Dignite.Paperbase.Contracts.Application.Contracts.csproj" />
     <ProjectReference Include="..\Dignite.Paperbase.Contracts.Domain\Dignite.Paperbase.Contracts.Domain.csproj" />
   </ItemGroup>

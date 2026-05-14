@@ -10,9 +10,9 @@ using Shouldly;
 using Volo.Abp.Modularity;
 using Xunit;
 
-namespace Dignite.Paperbase.Contracts.Contracts;
+namespace Dignite.Paperbase.Contracts;
 
-[DependsOn(typeof(ContractsDomainTestModule))]
+[DependsOn(typeof(PaperbaseContractsDomainTestModule))]
 public class ContractIdentifierProviderTestModule : AbpModule
 {
     public override void ConfigureServices(ServiceConfigurationContext context)
@@ -24,7 +24,7 @@ public class ContractIdentifierProviderTestModule : AbpModule
 }
 
 public class ContractIdentifierProvider_Tests
-    : ContractsDomainTestBase<ContractIdentifierProviderTestModule>
+    : PaperbaseContractsDomainTestBase<ContractIdentifierProviderTestModule>
 {
     private readonly ContractIdentifierProvider _provider;
     private readonly IContractRepository _contractRepository;
@@ -209,7 +209,7 @@ public class ContractIdentifierProvider_Tests
 
         // ContractManager wraps the internal Contract constructor. Use it from tests
         // to honor the same construction path the production code uses.
-        return _contractManager.CreateAsync(documentId, ContractsDocumentTypes.General, fields)
+        return _contractManager.CreateAsync(documentId, PaperbaseContractsDocumentTypes.General, fields)
             .GetAwaiter().GetResult();
     }
 }

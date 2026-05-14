@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Contracts.Contracts;
+using Dignite.Paperbase.Contracts;
 using Dignite.Paperbase.Contracts.Dtos;
 using Shouldly;
 using Volo.Abp.Domain.Entities;
@@ -10,7 +10,7 @@ using Xunit;
 
 namespace Dignite.Paperbase.Contracts.EntityFrameworkCore.Contracts;
 
-public class ContractAppService_Tests : ContractsEntityFrameworkCoreTestBase
+public class ContractAppService_Tests : PaperbaseContractsEntityFrameworkCoreTestBase
 {
     private readonly IContractAppService _appService;
     private readonly ContractManager _contractManager;
@@ -317,7 +317,7 @@ public class ContractAppService_Tests : ContractsEntityFrameworkCoreTestBase
         // mirrors a real-world transition rather than fabricating an impossible state.
         var contract = await _contractManager.CreateAsync(
             documentId ?? Guid.NewGuid(),
-            ContractsDocumentTypes.General,
+            PaperbaseContractsDocumentTypes.General,
             new ContractFields
             {
                 Title = $"{counterpartyName}的合同",

@@ -144,7 +144,7 @@ namespace Dignite.Paperbase.Host.Migrations
                     b.ToTable("PaperbaseChatMessages", (string)null);
                 });
 
-            modelBuilder.Entity("Dignite.Paperbase.Contracts.Contracts.Contract", b =>
+            modelBuilder.Entity("Dignite.Paperbase.Contracts.Contract", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()

@@ -1,7 +1,7 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Contracts.Contracts;
+using Dignite.Paperbase.Contracts;
 using Dignite.Paperbase.Contracts.Permissions;
 using Microsoft.AspNetCore.Authorization;
 using Volo.Abp.MultiTenancy;
@@ -9,14 +9,14 @@ using Volo.Abp.MultiTenancy;
 namespace Dignite.Paperbase.Contracts.Chat;
 
 /// <summary>
-/// Shared infrastructure for <see cref="ContractsSkill"/>'s three scripts
+/// Shared infrastructure for <see cref="PaperbaseContractsSkill"/>'s three scripts
 /// (<c>search</c> / <c>get-detail</c> / <c>aggregate</c>). Centralises the
 /// fail-closed safety contract — auth check + explicit tenant predicate +
 /// bounded result set — so the scripts cannot diverge from it.
 ///
 /// <para>
 /// fail-closed safety contract — see <c>.claude/rules/doc-chat-anti-patterns.md</c>
-/// reverse example C: explicit <see cref="ContractsPermissions.Contracts.Default"/>
+/// reverse example C: explicit <see cref="PaperbaseContractsPermissions.Contracts.Default"/>
 /// permission check, explicit <c>TenantId</c> predicate (never rely on ambient ABP
 /// <c>DataFilter</c>), hard <see cref="MaxResultRows"/> upper bound.
 /// </para>
@@ -38,7 +38,7 @@ internal static class ContractSkillHelpers
     /// up to the chat agent as a 403-equivalent tool error.
     /// </summary>
     public static Task RequireContractsReadAsync(IAuthorizationService authorizationService)
-        => authorizationService.CheckAsync(ContractsPermissions.Contracts.Default);
+        => authorizationService.CheckAsync(PaperbaseContractsPermissions.Contracts.Default);
 
     /// <summary>
     /// Returns an <see cref="IQueryable{Contract}"/> already scoped to the current

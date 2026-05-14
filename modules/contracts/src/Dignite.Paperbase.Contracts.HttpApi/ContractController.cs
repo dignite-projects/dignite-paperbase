@@ -8,10 +8,10 @@ using Volo.Abp.Content;
 
 namespace Dignite.Paperbase.Contracts;
 
-[Area(ContractsRemoteServiceConsts.ModuleName)]
-[RemoteService(Name = ContractsRemoteServiceConsts.RemoteServiceName)]
+[Area(PaperbaseContractsRemoteServiceConsts.ModuleName)]
+[RemoteService(Name = PaperbaseContractsRemoteServiceConsts.RemoteServiceName)]
 [Route("api/paperbase/contracts")]
-public class ContractController : ContractsController, IContractAppService
+public class ContractController : PaperbaseContractsController, IContractAppService
 {
     private readonly IContractAppService _contractAppService;
 

@@ -12,7 +12,7 @@ namespace Dignite.Paperbase.Contracts.EntityFrameworkCore.Chat;
 
 /// <summary>
 /// Issue #149 — Codex adversarial review findings 1 &amp; 2: regression coverage for the
-/// parameter-defaults bug on <see cref="ContractsSkill"/>'s <c>search</c> and
+/// parameter-defaults bug on <see cref="PaperbaseContractsSkill"/>'s <c>search</c> and
 /// <c>aggregate</c> scripts. Both had optional-looking filter parameters declared
 /// without <c>= null</c> defaults, which <c>AIFunctionFactory</c> exposes as
 /// <em>required</em> in the generated JSON schema (the spec the model uses to validate
@@ -30,13 +30,13 @@ namespace Dignite.Paperbase.Contracts.EntityFrameworkCore.Chat;
 ///
 /// <para>
 /// Arch review C2 collapsed the three earlier skills (search-contracts /
-/// get-contract-detail / aggregate-contracts) into a single <see cref="ContractsSkill"/>
+/// get-contract-detail / aggregate-contracts) into a single <see cref="PaperbaseContractsSkill"/>
 /// with three scripts. These regression tests therefore target the consolidated
 /// skill's named scripts (<c>search</c> / <c>get-detail</c> / <c>aggregate</c>) rather
 /// than three separate <c>invoke</c> scripts.
 /// </para>
 /// </summary>
-public class ContractSkillScriptInvocation_Tests : ContractsEntityFrameworkCoreTestBase
+public class ContractSkillScriptInvocation_Tests : PaperbaseContractsEntityFrameworkCoreTestBase
 {
     private readonly IServiceProvider _serviceProvider;
 
@@ -127,7 +127,7 @@ public class ContractSkillScriptInvocation_Tests : ContractsEntityFrameworkCoreT
     // ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Invokes one of <see cref="ContractsSkill"/>'s named scripts through MAF's
+    /// Invokes one of <see cref="PaperbaseContractsSkill"/>'s named scripts through MAF's
     /// <see cref="AgentSkillScript.RunAsync"/> entry point — same code path that
     /// <c>AgentSkillsProvider</c>'s <c>run_skill_script</c> tool exercises when MAF
     /// dispatches a model-issued skill call. Drives a fresh skill instance per call
@@ -135,7 +135,7 @@ public class ContractSkillScriptInvocation_Tests : ContractsEntityFrameworkCoreT
     /// </summary>
     private async Task<JsonElement> InvokeScriptAsync(string scriptName, JsonElement args)
     {
-        var skill = new ContractsSkill();
+        var skill = new PaperbaseContractsSkill();
         var script = skill.Scripts!.Single(s => s.Name == scriptName);
         var raw = await WithUnitOfWorkAsync(async () =>
             await script.RunAsync(skill, args, _serviceProvider, CancellationToken.None));

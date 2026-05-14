@@ -11,8 +11,6 @@
 
   <ItemGroup>
     <PackageReference Include="Volo.Abp.Ddd.Domain"/>
-    <PackageReference Include="Microsoft.Extensions.AI" />
-    <PackageReference Include="Microsoft.Agents.AI" />
     <ProjectReference Include="..\Dignite.Paperbase.Contracts.Domain.Shared\Dignite.Paperbase.Contracts.Domain.Shared.csproj" />
     <ProjectReference Include="..\..\..\..\core\src\Dignite.Paperbase.Abstractions\Dignite.Paperbase.Abstractions.csproj" />
   </ItemGroup>

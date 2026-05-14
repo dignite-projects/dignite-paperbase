@@ -8,7 +8,7 @@ namespace Dignite.Paperbase.Contracts.Chat;
 
 /// <summary>
 /// Issue #149 follow-up: guard the ABP DI wiring that exposes
-/// <see cref="ContractsSkill"/> to <c>ChatAppService</c>. The skill relies on
+/// <see cref="PaperbaseContractsSkill"/> to <c>ChatAppService</c>. The skill relies on
 /// <c>[ExposeServices(typeof(AgentSkill))]</c> + <c>ITransientDependency</c> on the
 /// <see cref="AgentClassSkill{TSelf}"/> subclass so ABP auto-registers it as
 /// <see cref="AgentSkill"/>. If a future refactor drops one of those attributes (or
@@ -17,15 +17,15 @@ namespace Dignite.Paperbase.Contracts.Chat;
 /// silently degrade because the skill never reached the agent's <c>AgentSkillsProvider</c>.
 /// </summary>
 public class ContractSkillRegistration_Tests
-    : ContractsApplicationTestBase<ContractsApplicationTestModule>
+    : PaperbaseContractsApplicationTestBase<PaperbaseContractsApplicationTestModule>
 {
     [Fact]
     public void ContractsApplicationModule_Registers_ContractsSkill_As_AgentSkill()
     {
         var skills = GetRequiredService<IEnumerable<AgentSkill>>().ToList();
 
-        skills.ShouldContain(s => s is ContractsSkill,
-            "ContractsSkill must be auto-registered as AgentSkill via [ExposeServices(typeof(AgentSkill))] + ITransientDependency");
+        skills.ShouldContain(s => s is PaperbaseContractsSkill,
+            "PaperbaseContractsSkill must be auto-registered as AgentSkill via [ExposeServices(typeof(AgentSkill))] + ITransientDependency");
     }
 
     [Fact]
@@ -35,7 +35,7 @@ public class ContractSkillRegistration_Tests
         // (the skill name + Frontmatter description); per-script docstrings live inside
         // the SKILL.md instructions that load_skill returns.
         var contracts = GetRequiredService<IEnumerable<AgentSkill>>()
-            .OfType<ContractsSkill>()
+            .OfType<PaperbaseContractsSkill>()
             .ShouldHaveSingleItem();
 
         contracts.Frontmatter.Name.ShouldBe("contracts");

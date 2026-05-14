@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Contracts.Contracts;
+using Dignite.Paperbase.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp.Domain.Repositories.EntityFrameworkCore;
 using Volo.Abp.EntityFrameworkCore;
@@ -11,10 +11,10 @@ using Volo.Abp.EntityFrameworkCore;
 namespace Dignite.Paperbase.Contracts.EntityFrameworkCore;
 
 public class EfCoreContractRepository :
-    EfCoreRepository<IContractsDbContext, Contract, Guid>,
+    EfCoreRepository<IPaperbaseContractsDbContext, Contract, Guid>,
     IContractRepository
 {
-    public EfCoreContractRepository(IDbContextProvider<IContractsDbContext> dbContextProvider)
+    public EfCoreContractRepository(IDbContextProvider<IPaperbaseContractsDbContext> dbContextProvider)
         : base(dbContextProvider)
     {
     }

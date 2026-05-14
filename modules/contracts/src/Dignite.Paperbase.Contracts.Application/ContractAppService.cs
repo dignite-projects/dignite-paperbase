@@ -4,8 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Contracts.Contracts;
+using Dignite.Paperbase.Contracts;
 using Dignite.Paperbase.Contracts.Dtos;
+using Dignite.Paperbase.Contracts.Extraction;
 using Dignite.Paperbase.Contracts.Permissions;
 using Microsoft.AspNetCore.Authorization;
 using Volo.Abp.Application.Dtos;
@@ -13,7 +14,7 @@ using Volo.Abp.Content;
 
 namespace Dignite.Paperbase.Contracts;
 
-public class ContractAppService : ContractsAppService, IContractAppService
+public class ContractAppService : PaperbaseContractsAppService, IContractAppService
 {
     private readonly IContractRepository _contractRepository;
     private readonly ContractToContractDtoMapper _mapper;
@@ -52,7 +53,7 @@ public class ContractAppService : ContractsAppService, IContractAppService
             contracts.Select(_mapper.Map).ToList());
     }
 
-    [Authorize(ContractsPermissions.Contracts.Update)]
+    [Authorize(PaperbaseContractsPermissions.Contracts.Update)]
     public virtual async Task<ContractDto> UpdateAsync(Guid id, UpdateContractDto input)
     {
         var contract = await _contractRepository.GetAsync(id);
@@ -81,7 +82,7 @@ public class ContractAppService : ContractsAppService, IContractAppService
         return _mapper.Map(contract);
     }
 
-    [Authorize(ContractsPermissions.Contracts.Confirm)]
+    [Authorize(PaperbaseContractsPermissions.Contracts.Confirm)]
     public virtual async Task ConfirmAsync(Guid id)
     {
         var contract = await _contractRepository.GetAsync(id);
@@ -189,7 +190,7 @@ public class ContractAppService : ContractsAppService, IContractAppService
         };
     }
 
-    [Authorize(ContractsPermissions.Contracts.Export)]
+    [Authorize(PaperbaseContractsPermissions.Contracts.Export)]
     public virtual async Task<IRemoteStreamContent> ExportAsync(GetContractListInput input)
     {
         var query = await _contractRepository.GetQueryableAsync();

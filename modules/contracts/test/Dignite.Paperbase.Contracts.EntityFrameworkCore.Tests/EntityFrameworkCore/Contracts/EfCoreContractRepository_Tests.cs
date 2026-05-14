@@ -1,12 +1,12 @@
 using System;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Contracts.Contracts;
+using Dignite.Paperbase.Contracts;
 using Shouldly;
 using Xunit;
 
 namespace Dignite.Paperbase.Contracts.EntityFrameworkCore.Contracts;
 
-public class EfCoreContractRepository_Tests : ContractsEntityFrameworkCoreTestBase
+public class EfCoreContractRepository_Tests : PaperbaseContractsEntityFrameworkCoreTestBase
 {
     private readonly ContractManager _contractManager;
     private readonly IContractRepository _contractRepository;
@@ -24,7 +24,7 @@ public class EfCoreContractRepository_Tests : ContractsEntityFrameworkCoreTestBa
         var documentId = Guid.NewGuid();
         var contract = await _contractManager.CreateAsync(
             documentId,
-            ContractsDocumentTypes.General,
+            PaperbaseContractsDocumentTypes.General,
             CreateFields());
 
         await WithUnitOfWorkAsync(async () =>

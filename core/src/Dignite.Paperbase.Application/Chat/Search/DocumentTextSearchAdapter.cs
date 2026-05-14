@@ -24,7 +24,7 @@ namespace Dignite.Paperbase.Chat.Search;
 ///
 /// <para>
 /// Keyword-precise queries (合同号 / 产品编号 / 人名) are handled by business-module
-/// MAF Agent Skills (e.g. <c>ContractsSkill</c>'s <c>search</c> script) that query
+/// MAF Agent Skills (e.g. <c>PaperbaseContractsSkill</c>'s <c>search</c> script) that query
 /// SQL directly — the LLM routes structured-lookup intents to those skills before
 /// reaching this adapter. Vector retrieval therefore covers semantic similarity only; we
 /// intentionally do not enable MEVD's <c>IKeywordHybridSearchable</c> because its

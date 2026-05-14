@@ -31,16 +31,16 @@ public class PaperbaseHostRoleDataSeedContributor : IDataSeedContributor, ITrans
             PaperbasePermissions.Documents.Default,
             PaperbasePermissions.Documents.Upload,
             PaperbasePermissions.Documents.Export,
-            ContractsPermissions.Contracts.Default,
-            ContractsPermissions.Contracts.Update,
-            ContractsPermissions.Contracts.Confirm,
-            ContractsPermissions.Contracts.Export,
+            PaperbaseContractsPermissions.Contracts.Default,
+            PaperbaseContractsPermissions.Contracts.Update,
+            PaperbaseContractsPermissions.Contracts.Confirm,
+            PaperbaseContractsPermissions.Contracts.Export,
         });
 
         await SeedRoleAsync("Viewer", new[]
         {
             PaperbasePermissions.Documents.Default,
-            ContractsPermissions.Contracts.Default,
+            PaperbaseContractsPermissions.Contracts.Default,
         });
     }
 

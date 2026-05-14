@@ -1,12 +1,12 @@
 using System;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Contracts.Contracts;
+using Dignite.Paperbase.Contracts;
 using Shouldly;
 using Xunit;
 
 namespace Dignite.Paperbase.Contracts;
 
-public class ContractToContractDtoMapper_Tests : ContractsApplicationTestBase<ContractsApplicationTestModule>
+public class ContractToContractDtoMapper_Tests : PaperbaseContractsApplicationTestBase<PaperbaseContractsApplicationTestModule>
 {
     private readonly ContractManager _contractManager;
     private readonly ContractToContractDtoMapper _mapper;
@@ -24,7 +24,7 @@ public class ContractToContractDtoMapper_Tests : ContractsApplicationTestBase<Co
         var documentId = Guid.NewGuid();
         var contract = await _contractManager.CreateAsync(
             documentId,
-            ContractsDocumentTypes.General,
+            PaperbaseContractsDocumentTypes.General,
             CreateFields());
 
         // Act
@@ -33,7 +33,7 @@ public class ContractToContractDtoMapper_Tests : ContractsApplicationTestBase<Co
         // Assert
         dto.Id.ShouldBe(contract.Id);
         dto.DocumentId.ShouldBe(documentId);
-        dto.DocumentTypeCode.ShouldBe(ContractsDocumentTypes.General);
+        dto.DocumentTypeCode.ShouldBe(PaperbaseContractsDocumentTypes.General);
         dto.Title.ShouldBe("業務委託契約書");
         dto.CounterpartyName.ShouldBe("株式会社サンプル");
         dto.TotalAmount.ShouldBe(1200000m);

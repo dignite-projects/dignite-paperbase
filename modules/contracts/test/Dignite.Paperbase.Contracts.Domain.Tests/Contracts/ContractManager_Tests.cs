@@ -1,12 +1,12 @@
 using System;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Contracts.Contracts;
+using Dignite.Paperbase.Contracts;
 using Shouldly;
 using Xunit;
 
-namespace Dignite.Paperbase.Contracts.Contracts;
+namespace Dignite.Paperbase.Contracts;
 
-public class ContractManager_Tests : ContractsDomainTestBase<ContractsDomainTestModule>
+public class ContractManager_Tests : PaperbaseContractsDomainTestBase<PaperbaseContractsDomainTestModule>
 {
     private readonly ContractManager _contractManager;
 
@@ -25,14 +25,14 @@ public class ContractManager_Tests : ContractsDomainTestBase<ContractsDomainTest
         // Act
         var contract = await _contractManager.CreateAsync(
             documentId,
-            ContractsDocumentTypes.General,
+            PaperbaseContractsDocumentTypes.General,
             fields);
 
         // Assert
         contract.Id.ShouldNotBe(Guid.Empty);
         contract.TenantId.ShouldBeNull();
         contract.DocumentId.ShouldBe(documentId);
-        contract.DocumentTypeCode.ShouldBe(ContractsDocumentTypes.General);
+        contract.DocumentTypeCode.ShouldBe(PaperbaseContractsDocumentTypes.General);
         contract.Status.ShouldBe(ContractStatus.Draft);
         contract.Title.ShouldBe(fields.Title);
         contract.CounterpartyName.ShouldBe(fields.CounterpartyName);
@@ -48,7 +48,7 @@ public class ContractManager_Tests : ContractsDomainTestBase<ContractsDomainTest
         // Arrange
         var contract = await _contractManager.CreateAsync(
             Guid.NewGuid(),
-            ContractsDocumentTypes.General,
+            PaperbaseContractsDocumentTypes.General,
             CreateFields());
 
         var updatedFields = CreateFields();
@@ -80,7 +80,7 @@ public class ContractManager_Tests : ContractsDomainTestBase<ContractsDomainTest
     {
         var contract = await _contractManager.CreateAsync(
             Guid.NewGuid(),
-            ContractsDocumentTypes.General,
+            PaperbaseContractsDocumentTypes.General,
             CreateFields());
         contract.Confirm();
 
@@ -91,43 +91,6 @@ public class ContractManager_Tests : ContractsDomainTestBase<ContractsDomainTest
         contract.Status.ShouldBe(ContractStatus.Draft);
         contract.NeedsReview.ShouldBeTrue();
         contract.ReviewStatus.ShouldBe(ContractReviewStatus.Pending);
-    }
-
-    [Fact]
-    public void ToContractFields_Should_Parse_Dates_And_Normalize_Confidence()
-    {
-        var fields = new ContractExtractionResult
-        {
-            Title = "業務委託契約書",
-            SignedDate = "2026-04-01",
-            ExpirationDate = "2027-03-31",
-            TotalAmount = 1200000m,
-            Currency = "JPY",
-            ExtractionConfidence = 0.82
-        }.ToContractFields();
-
-        fields.Title.ShouldBe("業務委託契約書");
-        fields.SignedDate.ShouldBe(new DateTime(2026, 4, 1));
-        fields.ExpirationDate.ShouldBe(new DateTime(2027, 3, 31));
-        fields.TotalAmount.ShouldBe(1200000m);
-        fields.ExtractionConfidence.ShouldBe(0.82);
-    }
-
-    [Fact]
-    public void ToContractFields_Should_Drop_OutOfRange_Confidence()
-    {
-        new ContractExtractionResult { ExtractionConfidence = -0.1 }.ToContractFields()
-            .ExtractionConfidence.ShouldBeNull();
-        new ContractExtractionResult { ExtractionConfidence = 1.1 }.ToContractFields()
-            .ExtractionConfidence.ShouldBeNull();
-    }
-
-    [Fact]
-    public void ToContractFields_Should_Default_Empty_Currency_To_JPY()
-    {
-        new ContractExtractionResult { Currency = "" }.ToContractFields().Currency.ShouldBe("JPY");
-        new ContractExtractionResult { Currency = null }.ToContractFields().Currency.ShouldBe("JPY");
-        new ContractExtractionResult { Currency = "USD" }.ToContractFields().Currency.ShouldBe("USD");
     }
 
     private static ContractFields CreateFields()

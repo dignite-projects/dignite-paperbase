@@ -27,7 +27,7 @@ public class PaperbaseHostDbSchemaMigrator : ITransientDependency
             .MigrateAsync();
 
         await _serviceProvider
-            .GetRequiredService<ContractsDbContext>()
+            .GetRequiredService<PaperbaseContractsDbContext>()
             .Database
             .MigrateAsync();
     }

@@ -128,9 +128,9 @@ namespace Dignite.Paperbase.Host;
     // typeof(PaperbaseAzureDocumentIntelligenceModule), // 云方案（高精度），切换时同步在 .csproj 注释 / 启用 ProjectReference
 
     // Paperbase business modules
-    typeof(ContractsHttpApiModule),
-    typeof(ContractsApplicationModule),
-    typeof(ContractsEntityFrameworkCoreModule)
+    typeof(PaperbaseContractsHttpApiModule),
+    typeof(PaperbaseContractsApplicationModule),
+    typeof(PaperbaseContractsEntityFrameworkCoreModule)
 )]
 public class PaperbaseHostModule : AbpModule
 {
