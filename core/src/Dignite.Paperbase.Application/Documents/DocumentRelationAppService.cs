@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.Pipelines.RelationDiscovery;
@@ -33,13 +34,14 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
         var relations = await _relationRepository.GetListByDocumentIdAsync(documentId);
 
         // Issue #162: 过滤对端已软删除的关系。Document 软删除不级联到 DocumentRelation，
-        // 由查询时的对端存活性检查实现"软删 Document 在关系视图中隐身"。
-        // 对端查询走 ambient ISoftDelete 过滤，自动只返回未软删的 Document。
+        // 由查询时的对端存活性检查实现"软删 Document 在关系视图中隐身"。LoadAliveDocumentsAsync
+        // 走 GetQueryableAsync + 显式 TenantId 谓词（与 DocumentRelationsTool 同一 fail-closed
+        // 风格保持一致），ambient ISoftDelete 同时 honor。
         var peerIds = relations
             .Select(r => r.SourceDocumentId == documentId ? r.TargetDocumentId : r.SourceDocumentId)
             .Distinct()
             .ToList();
-        var alivePeerIds = (await _documentRepository.GetListByIdsAsync(peerIds))
+        var alivePeerIds = (await LoadAliveDocumentsAsync(peerIds))
             .Select(d => d.Id)
             .ToHashSet();
         var visible = relations
@@ -107,7 +109,9 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
             frontier = nextFrontier;
         }
 
-        var documents = await _documentRepository.GetListByIdsAsync(distances.Keys.ToList());
+        // Issue #162: 节点的存活性检查走 LoadAliveDocumentsAsync —— GetQueryableAsync + 显式
+        // TenantId 谓词，与 DocumentRelationsTool 同一 fail-closed 风格保持一致。
+        var documents = await LoadAliveDocumentsAsync(distances.Keys.ToList());
         var documentById = documents.ToDictionary(d => d.Id);
         documentById[rootDocument.Id] = rootDocument;
 
@@ -245,4 +249,29 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
         };
     }
 
+    /// <summary>
+    /// Issue #162: 加载存活 Document（未被软删）以驱动关系图的对端可见性过滤。
+    /// 显式 TenantId 谓词 + ambient ISoftDelete 双闸——与 chat 工具
+    /// <see cref="Chat.Tools.DocumentRelationsTool"/> 同一 fail-closed 风格保持一致，
+    /// 即便 ambient IMultiTenant filter 在某代码路径被 disable 也不漏跨租户 peer。
+    /// </summary>
+    protected virtual async Task<List<Document>> LoadAliveDocumentsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default)
+    {
+        if (ids.Count == 0)
+        {
+            return new List<Document>();
+        }
+
+        var queryable = await _documentRepository.GetQueryableAsync();
+        var tenantId = CurrentTenant.Id;
+        queryable = tenantId.HasValue
+            ? queryable.Where(d => d.TenantId == tenantId)
+            : queryable.Where(d => d.TenantId == null);
+
+        return await AsyncExecuter.ToListAsync(
+            queryable.Where(d => ids.Contains(d.Id)),
+            cancellationToken);
+    }
 }

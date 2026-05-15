@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Shouldly;
 using Volo.Abp.Modularity;
+using Volo.Abp.MultiTenancy;
 using Xunit;
 
 namespace Dignite.Paperbase.Documents;
@@ -29,12 +30,14 @@ public class DocumentRelationAppService_Tests
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentRelationAppService _relationAppService;
     private readonly IDocumentRelationRepository _relationRepository;
+    private readonly ICurrentTenant _currentTenant;
 
     public DocumentRelationAppService_Tests()
     {
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _relationRepository = GetRequiredService<IDocumentRelationRepository>();
         _relationAppService = GetRequiredService<IDocumentRelationAppService>();
+        _currentTenant = GetRequiredService<ICurrentTenant>();
     }
 
     [Fact]
@@ -255,6 +258,46 @@ public class DocumentRelationAppService_Tests
         result.Edges.ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// Issue #162 + 反例 B 守门：peer Document 跨租户场景。LoadAliveDocumentsAsync
+    /// 的显式 `Where(d => d.TenantId == tenantId)` 第二闸应丢弃 peer。若产品代码
+    /// 退化为依赖 ambient IMultiTenant filter，此测试必失败。
+    /// </summary>
+    [Fact]
+    public async Task GetGraphAsync_Should_Drop_Edge_When_Peer_Document_Belongs_To_Other_Tenant()
+    {
+        var tenantA = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var tenantB = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var rootId = Guid.NewGuid();
+        var crossTenantPeerId = Guid.NewGuid();
+        var documents = new List<Document>
+        {
+            CreateDocument(rootId, "root.pdf", tenantId: tenantA),
+            // peer Document 属于 TenantB —— 调用方将以 TenantA 进入
+            CreateDocument(crossTenantPeerId, "cross-tenant.pdf", tenantId: tenantB)
+        };
+        var relations = new List<DocumentRelation>
+        {
+            // 关系本身假定属于 TenantA（攻击场景：跨租户关系被某代码路径写入）
+            CreateRelation(rootId, crossTenantPeerId, tenantId: tenantA)
+        };
+
+        SetupRepositories(documents, relations);
+
+        DocumentRelationGraphDto result;
+        using (_currentTenant.Change(tenantA))
+        {
+            result = await _relationAppService.GetGraphAsync(new GetDocumentRelationGraphInput
+            {
+                RootDocumentId = rootId,
+                Depth = 1
+            });
+        }
+
+        result.Edges.ShouldBeEmpty();
+        result.Nodes.Select(n => n.DocumentId).ShouldBe(new[] { rootId });
+    }
+
     [Fact]
     public async Task GetListAsync_Should_Filter_Out_Relations_With_SoftDeleted_Peer()
     {
@@ -292,6 +335,16 @@ public class DocumentRelationAppService_Tests
         List<Document> documents,
         List<DocumentRelation> relations)
     {
+        // Issue #162: LoadAliveDocumentsAsync 走 GetQueryableAsync + 显式 TenantId 谓词，
+        // 替代原 GetListByIdsAsync。这里返回完整 documents 集合的 IQueryable —— 让产品代码
+        // 的 `Where(d => d.TenantId == tenantId)` + `Where(d => ids.Contains(d.Id))` 真正
+        // 执行；缺谓词的回归会让跨租户测试失败（断言 peer 被 drop）。
+        _documentRepository
+            .GetQueryableAsync()
+            .Returns(_ => documents.AsQueryable());
+
+        // GetListByIdsAsync 保留 mock 防御任何旧路径或其他测试路径残留依赖；
+        // 同样不带租户过滤，依赖被测代码显式申明。
         _documentRepository
             .GetListByIdsAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>())
             .Returns(callInfo =>
@@ -329,11 +382,12 @@ public class DocumentRelationAppService_Tests
         Guid sourceDocumentId,
         Guid targetDocumentId,
         string description = "测试关系说明",
-        RelationSource source = RelationSource.Manual)
+        RelationSource source = RelationSource.Manual,
+        Guid? tenantId = null)
     {
         return new DocumentRelation(
             Guid.NewGuid(),
-            tenantId: null,
+            tenantId: tenantId,
             sourceDocumentId,
             targetDocumentId,
             description,
@@ -344,11 +398,12 @@ public class DocumentRelationAppService_Tests
         Guid id,
         string originalFileName,
         string? extractedText = null,
-        string? documentTypeCode = null)
+        string? documentTypeCode = null,
+        Guid? tenantId = null)
     {
         var document = new Document(
             id,
-            tenantId: null,
+            tenantId: tenantId,
             originalFileBlobName: $"blobs/{originalFileName}",
             sourceType: SourceType.Digital,
             fileOrigin: new FileOrigin(

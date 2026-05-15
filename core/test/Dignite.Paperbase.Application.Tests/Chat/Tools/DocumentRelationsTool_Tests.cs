@@ -38,10 +38,12 @@ public class DocumentRelationsTool_Tests
 
     // Issue #162: tracks the seeded peer set so the substitute IDocumentRepository can
     // synthesize "alive Document" rows for them. SeedRelationsAsync auto-adds endpoints;
-    // tests that exercise the peer-soft-delete filter pre-set _alivePeerIds to a narrower
-    // set (a peer absent from _alivePeerIds simulates Document.IsDeleted = true).
+    // tests that exercise the peer-soft-delete filter pre-set _alivePeerStubs (key = peer
+    // document id, value = TenantId the stub should claim) to a narrower / cross-tenant
+    // set — a peer absent from the dictionary simulates Document.IsDeleted = true, while
+    // a peer present with a foreign TenantId simulates a cross-tenant attack scenario.
     private readonly HashSet<Guid> _seededPeerIds = new();
-    private HashSet<Guid>? _alivePeerIds;
+    private Dictionary<Guid, Guid?>? _alivePeerStubs;
 
     private static readonly Guid TenantA = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly Guid TenantB = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
@@ -57,19 +59,23 @@ public class DocumentRelationsTool_Tests
         // Issue #162: the chat tool consults IDocumentRepository to filter relations whose
         // peer has been soft-deleted. It goes through GetQueryableAsync + explicit TenantId
         // predicate (defense-in-depth, never rely on ambient IMultiTenant — see file header).
-        // We back the substitute with an in-memory IQueryable<Document> whose membership is
-        // controlled by _alivePeerIds (if a test set one) or by _seededPeerIds (default —
-        // every endpoint seeded by SeedRelationsAsync is treated as an alive Document). The
-        // synthetic Document's TenantId is bound to the calling tenant scope so the chat
-        // tool's `Where(d => d.TenantId == tenantId)` predicate keeps it. ABP's
-        // IAsyncQueryableExecuter consumes any IQueryable, so AsQueryable() is enough.
+        //
+        // We back the substitute with an in-memory IQueryable<Document>. The default path
+        // (when _alivePeerStubs is null) treats every seeded endpoint as an alive Document
+        // under the calling tenant — convenient for tests that don't care about peer-side
+        // TenantId. Tests that EXERCISE the peer TenantId predicate set _alivePeerStubs to
+        // pin specific peers' TenantId values, including foreign-tenant scenarios that
+        // must be filtered out by the chat tool's `Where(d => d.TenantId == tenantId)`.
+        // ABP's IAsyncQueryableExecuter consumes any IQueryable, so AsQueryable() is enough.
         _documentRepository
             .GetQueryableAsync()
             .Returns(_ =>
             {
-                var alive = _alivePeerIds ?? _seededPeerIds;
                 var callingTenantId = _currentTenant.Id;
-                return alive.Select(id => BuildAliveDocumentStub(id, callingTenantId)).AsQueryable();
+                IEnumerable<Document> stubs = _alivePeerStubs != null
+                    ? _alivePeerStubs.Select(kv => BuildAliveDocumentStub(kv.Key, kv.Value))
+                    : _seededPeerIds.Select(id => BuildAliveDocumentStub(id, callingTenantId));
+                return stubs.AsQueryable();
             });
     }
 
@@ -232,9 +238,9 @@ public class DocumentRelationsTool_Tests
 
     /// <summary>
     /// Issue #162: Document 软删除不级联到 DocumentRelation；用户可见路径在查询时
-    /// 过滤掉对端软删的关系。Chat 工具读 IDocumentRepository.GetListByIdsAsync —— 该
-    /// 调用走 ambient ISoftDelete 过滤，软删 Document 不在结果里。这里只 mark
-    /// `aliveTarget` 为存活，含 `deletedTarget` 的边应被丢弃。
+    /// 过滤掉对端软删的关系。Chat 工具读 IDocumentRepository.GetQueryableAsync —— 该
+    /// 调用走 ambient ISoftDelete 过滤，软删 Document 不在结果里。这里只把
+    /// `aliveTarget` 放进 stub 字典，含 `deletedTarget` 的边应被丢弃。
     /// </summary>
     [Fact]
     public async Task Drops_Relations_Whose_Peer_Document_Is_SoftDeleted()
@@ -242,7 +248,11 @@ public class DocumentRelationsTool_Tests
         var anchor = Guid.NewGuid();
         var aliveTarget = Guid.NewGuid();
         var deletedTarget = Guid.NewGuid();
-        _alivePeerIds = new HashSet<Guid> { anchor, aliveTarget };
+        _alivePeerStubs = new Dictionary<Guid, Guid?>
+        {
+            { aliveTarget, TenantA },
+            // deletedTarget 故意缺席 —— 模拟 ambient ISoftDelete 过滤掉软删 Document
+        };
 
         await SeedRelationsAsync(
             CreateRelation(TenantA, source: anchor, target: aliveTarget, kind: RelationSource.Manual),
@@ -259,11 +269,38 @@ public class DocumentRelationsTool_Tests
     public async Task Drops_All_Relations_When_Every_Peer_Is_SoftDeleted()
     {
         var anchor = Guid.NewGuid();
-        _alivePeerIds = new HashSet<Guid> { anchor };  // none of the peers alive
+        _alivePeerStubs = new Dictionary<Guid, Guid?>();   // none of the peers alive
 
         await SeedRelationsAsync(
             CreateRelation(TenantA, source: anchor, target: Guid.NewGuid(), kind: RelationSource.Manual),
             CreateRelation(TenantA, source: anchor, target: Guid.NewGuid(), kind: RelationSource.AiSuggested));
+
+        var payload = await InvokeAsync(TenantA, anchor);
+
+        payload.GetProperty("count").GetInt32().ShouldBe(0);
+        payload.GetProperty("relations").GetArrayLength().ShouldBe(0);
+    }
+
+    /// <summary>
+    /// Issue #162 + 反例 C 错误写法 2 守门：peer Document 跨租户场景。
+    /// 关系本身属于 TenantA（攻击场景下被某代码路径写入，或 ambient IMultiTenant
+    /// 在后台任务被 disable），但 peer Document 属于 TenantB。chat 工具新加的
+    /// 显式 `Where(d => d.TenantId == tenantId)` 第二闸应拦截。若产品代码忘记
+    /// 此谓词、退化为依赖 ambient filter，此测试必须失败。
+    /// </summary>
+    [Fact]
+    public async Task Peer_Predicate_Drops_Relations_Whose_Peer_Document_Belongs_To_Other_Tenant()
+    {
+        var anchor = Guid.NewGuid();
+        var crossTenantPeer = Guid.NewGuid();
+        _alivePeerStubs = new Dictionary<Guid, Guid?>
+        {
+            // peer Document 属于 TenantB —— chat 工具以 TenantA 调用，peer 谓词应丢弃
+            { crossTenantPeer, TenantB },
+        };
+
+        await SeedRelationsAsync(
+            CreateRelation(TenantA, source: anchor, target: crossTenantPeer, kind: RelationSource.Manual));
 
         var payload = await InvokeAsync(TenantA, anchor);
 
