@@ -173,12 +173,11 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     {
         var document = await _documentRepository.GetAsync(id);
 
-        // 级联软删除关系（DocumentRelation 实现 ISoftDelete，ABP 拦截为 UPDATE IsDeleted=1）
-        var relations = await _relationRepository.GetListByDocumentIdAsync(id);
-        if (relations.Count > 0)
-        {
-            await _relationRepository.DeleteManyAsync(relations);
-        }
+        // Issue #162: Document 软删除不级联到 DocumentRelation。
+        // DocumentRelation.IsDeleted=true 的唯一语义是"用户驳回 AI 建议"（R2 #158），
+        // 级联会和这一语义重叠：恢复 Document 时无法区分"驳回"和"级联软删"的关系。
+        // 用户可见路径（GetGraphAsync / GetListAsync / get-document-relations skill）
+        // 在查询时过滤掉指向软删 Document 的关系，Document 恢复后这些关系自动重新可见。
 
         // Slice E: 注册 after-commit 回调，UoW 提交后清理向量存储
         await _localEventBus.PublishAsync(
@@ -253,19 +252,9 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
 
             await _documentRepository.UpdateAsync(document);
 
-            // 级联恢复软删除的关系（边界 case：文档软删除前用户显式删过的关系也会被恢复，可接受）
-            var relations = await _relationRepository.GetListByDocumentIdAsync(id);
-            var deletedRelations = relations.Where(r => r.IsDeleted).ToList();
-            foreach (var relation in deletedRelations)
-            {
-                relation.IsDeleted = false;
-                relation.DeletionTime = null;
-                relation.DeleterId = null;
-            }
-            if (deletedRelations.Count > 0)
-            {
-                await _relationRepository.UpdateManyAsync(deletedRelations);
-            }
+            // Issue #162: Document 恢复不级联到 DocumentRelation —— 关系侧的 IsDeleted
+            // 只承载 R2 驳回语义，Document 删除/恢复完全靠查询时的对端存活过滤实现，
+            // Document 一旦恢复，原先与之相关的关系自动在用户视图中重新出现。
 
             await _distributedEventBus.PublishAsync(new DocumentRestoredEto
             {

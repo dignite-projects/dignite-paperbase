@@ -31,8 +31,24 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
     {
         await CheckPolicyAsync(PaperbasePermissions.DocumentRelations.Default);
         var relations = await _relationRepository.GetListByDocumentIdAsync(documentId);
+
+        // Issue #162: 过滤对端已软删除的关系。Document 软删除不级联到 DocumentRelation，
+        // 由查询时的对端存活性检查实现"软删 Document 在关系视图中隐身"。
+        // 对端查询走 ambient ISoftDelete 过滤，自动只返回未软删的 Document。
+        var peerIds = relations
+            .Select(r => r.SourceDocumentId == documentId ? r.TargetDocumentId : r.SourceDocumentId)
+            .Distinct()
+            .ToList();
+        var alivePeerIds = (await _documentRepository.GetListByIdsAsync(peerIds))
+            .Select(d => d.Id)
+            .ToHashSet();
+        var visible = relations
+            .Where(r => alivePeerIds.Contains(
+                r.SourceDocumentId == documentId ? r.TargetDocumentId : r.SourceDocumentId))
+            .ToList();
+
         return new ListResultDto<DocumentRelationDto>(
-            ObjectMapper.Map<List<DocumentRelation>, List<DocumentRelationDto>>(relations));
+            ObjectMapper.Map<List<DocumentRelation>, List<DocumentRelationDto>>(visible));
     }
 
     public virtual async Task<DocumentRelationGraphDto> GetGraphAsync(GetDocumentRelationGraphInput input)
@@ -95,15 +111,33 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
         var documentById = documents.ToDictionary(d => d.Id);
         documentById[rootDocument.Id] = rootDocument;
 
+        // Issue #162: 软删除的 Document 不在 documentById 中（GetListByIdsAsync 走 ambient
+        // ISoftDelete 过滤）。两步过滤：
+        // 1) 边：任一端 Document 缺失 → 丢弃，避免悬挂边渲染成 "untitled"。
+        // 2) 节点：除 root 外，只保留至少被一条存活边接触到的节点 —— 否则会把
+        //    "原本通过死亡中间节点才能到达的下游节点"渲染成无来由的孤岛节点。
+        var visibleEdges = edgesById.Values
+            .Where(e => documentById.ContainsKey(e.SourceDocumentId)
+                && documentById.ContainsKey(e.TargetDocumentId))
+            .ToList();
+
+        var reachableNodeIds = new HashSet<Guid> { rootDocument.Id };
+        foreach (var edge in visibleEdges)
+        {
+            reachableNodeIds.Add(edge.SourceDocumentId);
+            reachableNodeIds.Add(edge.TargetDocumentId);
+        }
+
         return new DocumentRelationGraphDto
         {
             RootDocumentId = input.RootDocumentId,
             Nodes = distances
+                .Where(x => reachableNodeIds.Contains(x.Key))
                 .OrderBy(x => x.Value)
                 .ThenBy(x => x.Key)
                 .Select(x => CreateNodeDto(x.Key, x.Value, documentById))
                 .ToList(),
-            Edges = edgesById.Values
+            Edges = visibleEdges
                 .OrderBy(e => e.CreationTime)
                 .ThenBy(e => e.Id)
                 .Select(CreateEdgeDto)

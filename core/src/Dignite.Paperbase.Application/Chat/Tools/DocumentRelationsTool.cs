@@ -121,11 +121,28 @@ public class DocumentRelationsTool : ITransientDependency
                 .Take(MaxResultRows),
             cancellationToken);
 
+        // Issue #162: 过滤掉对端 Document 已软删除的关系。Document 软删除不级联到
+        // DocumentRelation（关系侧的 IsDeleted 只承载 R2 驳回语义），由查询时的对端
+        // 存活性检查实现"软删 Document 在关系视图中隐身"。GetListByIdsAsync 走 ambient
+        // ISoftDelete 过滤，自动只返回未软删的 Document。
+        var documentRepository = serviceProvider.GetRequiredService<IDocumentRepository>();
+        var peerIds = relations
+            .Select(r => r.SourceDocumentId == documentId ? r.TargetDocumentId : r.SourceDocumentId)
+            .Distinct()
+            .ToList();
+        var alivePeerIds = (await documentRepository.GetListByIdsAsync(peerIds, cancellationToken))
+            .Select(d => d.Id)
+            .ToHashSet();
+        var visibleRelations = relations
+            .Where(r => alivePeerIds.Contains(
+                r.SourceDocumentId == documentId ? r.TargetDocumentId : r.SourceDocumentId))
+            .ToList();
+
         var payload = new
         {
             anchorDocumentId = documentId,
-            count = relations.Count,
-            relations = relations.Select(r => new
+            count = visibleRelations.Count,
+            relations = visibleRelations.Select(r => new
             {
                 id = r.Id,
                 sourceDocumentId = r.SourceDocumentId,

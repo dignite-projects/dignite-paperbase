@@ -181,6 +181,113 @@ public class DocumentRelationAppService_Tests
         result.Edges.Single().TargetDocumentId.ShouldBe(manualTargetId);
     }
 
+    /// <summary>
+    /// Issue #162: 对端 Document 软删除 → 关系仍存在于库中（未级联）但在图中不可见。
+    /// 软删 Document 不出现在 GetListByIdsAsync 结果里（ambient ISoftDelete 自动过滤），
+    /// GetGraphAsync 据此过滤掉对应的边和节点。
+    /// </summary>
+    [Fact]
+    public async Task GetGraphAsync_Should_Drop_Edge_To_SoftDeleted_Peer()
+    {
+        var rootId = Guid.NewGuid();
+        var aliveTargetId = Guid.NewGuid();
+        var deletedTargetId = Guid.NewGuid();
+        var documents = new List<Document>
+        {
+            CreateDocument(rootId, "root.pdf"),
+            CreateDocument(aliveTargetId, "alive.pdf")
+            // deletedTargetId 故意不出现在 documents 列表中 —— 模拟 ambient
+            // ISoftDelete 过滤掉了软删 Document
+        };
+        var relations = new List<DocumentRelation>
+        {
+            CreateRelation(rootId, aliveTargetId, source: RelationSource.Manual),
+            CreateRelation(rootId, deletedTargetId, source: RelationSource.Manual)
+        };
+
+        SetupRepositories(documents, relations);
+
+        var result = await _relationAppService.GetGraphAsync(new GetDocumentRelationGraphInput
+        {
+            RootDocumentId = rootId,
+            Depth = 1
+        });
+
+        result.Nodes.Select(n => n.DocumentId).ShouldBe(
+            new[] { rootId, aliveTargetId },
+            ignoreOrder: true);
+        result.Edges.Count.ShouldBe(1);
+        result.Edges.Single().TargetDocumentId.ShouldBe(aliveTargetId);
+    }
+
+    /// <summary>
+    /// Issue #162: 多跳路径上的中间节点软删 → 它和它后续的可达节点都不应在图中渲染。
+    /// 中间节点不在 documentById 里，对应边被丢弃；它后续的边的"源端"也不在
+    /// documentById 里，也被丢弃。结果：图退化为只剩 root 及 root 的存活直接邻居。
+    /// </summary>
+    [Fact]
+    public async Task GetGraphAsync_Should_Drop_Edges_Whose_Source_Is_SoftDeleted()
+    {
+        var rootId = Guid.NewGuid();
+        var deletedMiddleId = Guid.NewGuid();
+        var tailId = Guid.NewGuid();
+        var documents = new List<Document>
+        {
+            CreateDocument(rootId, "root.pdf"),
+            CreateDocument(tailId, "tail.pdf")
+            // deletedMiddleId 软删除 → 不出现在 documents 列表
+        };
+        var relations = new List<DocumentRelation>
+        {
+            CreateRelation(rootId, deletedMiddleId),
+            CreateRelation(deletedMiddleId, tailId)
+        };
+
+        SetupRepositories(documents, relations);
+
+        var result = await _relationAppService.GetGraphAsync(new GetDocumentRelationGraphInput
+        {
+            RootDocumentId = rootId,
+            Depth = 2
+        });
+
+        result.Nodes.Select(n => n.DocumentId).ShouldBe(new[] { rootId });
+        result.Edges.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GetListAsync_Should_Filter_Out_Relations_With_SoftDeleted_Peer()
+    {
+        var anchorId = Guid.NewGuid();
+        var alivePeerId = Guid.NewGuid();
+        var deletedPeerId = Guid.NewGuid();
+        var documents = new List<Document>
+        {
+            CreateDocument(anchorId, "anchor.pdf"),
+            CreateDocument(alivePeerId, "alive.pdf")
+            // deletedPeerId 软删 → 不出现
+        };
+        var relations = new List<DocumentRelation>
+        {
+            CreateRelation(anchorId, alivePeerId, source: RelationSource.Manual),
+            CreateRelation(deletedPeerId, anchorId, source: RelationSource.Manual)
+        };
+
+        SetupRepositories(documents, relations);
+        _relationRepository
+            .GetListByDocumentIdAsync(anchorId, Arg.Any<CancellationToken>())
+            .Returns(relations);
+
+        var result = await _relationAppService.GetListAsync(anchorId);
+
+        result.Items.Count.ShouldBe(1);
+        var visible = result.Items.Single();
+        var visiblePeer = visible.SourceDocumentId == anchorId
+            ? visible.TargetDocumentId
+            : visible.SourceDocumentId;
+        visiblePeer.ShouldBe(alivePeerId);
+    }
+
     private void SetupRepositories(
         List<Document> documents,
         List<DocumentRelation> relations)

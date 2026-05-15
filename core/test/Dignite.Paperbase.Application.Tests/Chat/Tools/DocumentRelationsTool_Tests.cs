@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Chat.Tools;
 using Dignite.Paperbase.Documents;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using NSubstitute;
 using Shouldly;
 using Volo.Abp.MultiTenancy;
 using Xunit;
@@ -31,7 +33,13 @@ public class DocumentRelationsTool_Tests
     private readonly DocumentRelationsTool _tool;
     private readonly IServiceProvider _serviceProvider;
     private readonly IDocumentRelationRepository _relationRepository;
+    private readonly IDocumentRepository _documentRepository;
     private readonly ICurrentTenant _currentTenant;
+
+    // Issue #162: per-test override of "which peer IDs the chat tool should treat as alive".
+    // Default (null) = treat every requested peer as alive (existing tests don't care about
+    // peer existence semantics). Tests that exercise the soft-delete filter assign a subset.
+    private HashSet<Guid>? _alivePeerIds;
 
     private static readonly Guid TenantA = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly Guid TenantB = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
@@ -41,7 +49,24 @@ public class DocumentRelationsTool_Tests
         _tool = GetRequiredService<DocumentRelationsTool>();
         _serviceProvider = GetRequiredService<IServiceProvider>();
         _relationRepository = GetRequiredService<IDocumentRelationRepository>();
+        _documentRepository = GetRequiredService<IDocumentRepository>();
         _currentTenant = GetRequiredService<ICurrentTenant>();
+
+        // Issue #162: the chat tool now consults IDocumentRepository.GetListByIdsAsync to
+        // filter relations whose peer has been soft-deleted. The substitute repo defaults to
+        // returning empty, which would make every relation disappear. Wire a callback that
+        // synthesizes Document stubs for whichever peer IDs the test wants treated as alive.
+        _documentRepository
+            .GetListByIdsAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                var requestedIds = ((IReadOnlyCollection<Guid>)callInfo[0]).ToList();
+                var alive = _alivePeerIds;
+                var liveIds = alive == null
+                    ? requestedIds
+                    : requestedIds.Where(alive.Contains).ToList();
+                return liveIds.Select(BuildAliveDocumentStub).ToList();
+            });
     }
 
     [Fact]
@@ -201,6 +226,47 @@ public class DocumentRelationsTool_Tests
         skill.Scripts[0].Name.ShouldBe("invoke");
     }
 
+    /// <summary>
+    /// Issue #162: Document 软删除不级联到 DocumentRelation；用户可见路径在查询时
+    /// 过滤掉对端软删的关系。Chat 工具读 IDocumentRepository.GetListByIdsAsync —— 该
+    /// 调用走 ambient ISoftDelete 过滤，软删 Document 不在结果里。这里只 mark
+    /// `aliveTarget` 为存活，含 `deletedTarget` 的边应被丢弃。
+    /// </summary>
+    [Fact]
+    public async Task Drops_Relations_Whose_Peer_Document_Is_SoftDeleted()
+    {
+        var anchor = Guid.NewGuid();
+        var aliveTarget = Guid.NewGuid();
+        var deletedTarget = Guid.NewGuid();
+        _alivePeerIds = new HashSet<Guid> { anchor, aliveTarget };
+
+        await SeedRelationsAsync(
+            CreateRelation(TenantA, source: anchor, target: aliveTarget, kind: RelationSource.Manual),
+            CreateRelation(TenantA, source: anchor, target: deletedTarget, kind: RelationSource.Manual));
+
+        var payload = await InvokeAsync(TenantA, anchor);
+
+        payload.GetProperty("count").GetInt32().ShouldBe(1);
+        payload.GetProperty("relations")[0]
+            .GetProperty("relatedDocumentId").GetGuid().ShouldBe(aliveTarget);
+    }
+
+    [Fact]
+    public async Task Drops_All_Relations_When_Every_Peer_Is_SoftDeleted()
+    {
+        var anchor = Guid.NewGuid();
+        _alivePeerIds = new HashSet<Guid> { anchor };  // none of the peers alive
+
+        await SeedRelationsAsync(
+            CreateRelation(TenantA, source: anchor, target: Guid.NewGuid(), kind: RelationSource.Manual),
+            CreateRelation(TenantA, source: anchor, target: Guid.NewGuid(), kind: RelationSource.AiSuggested));
+
+        var payload = await InvokeAsync(TenantA, anchor);
+
+        payload.GetProperty("count").GetInt32().ShouldBe(0);
+        payload.GetProperty("relations").GetArrayLength().ShouldBe(0);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // helpers
     // ─────────────────────────────────────────────────────────────────────────
@@ -245,4 +311,22 @@ public class DocumentRelationsTool_Tests
             }
         });
     }
+
+    /// <summary>
+    /// Synthesizes a minimal Document for peer-existence checks. The chat tool only
+    /// consults the returned IDs (filter set membership), so a bare-bones instance with
+    /// matching Id is enough to count as "alive" for the soft-delete filter.
+    /// </summary>
+    private static Document BuildAliveDocumentStub(Guid id)
+        => new(
+            id: id,
+            tenantId: null,
+            originalFileBlobName: $"blobs/{id:N}",
+            sourceType: SourceType.Digital,
+            fileOrigin: new FileOrigin(
+                uploadedByUserName: "test-user",
+                contentType: "application/octet-stream",
+                contentHash: $"{id:N}",
+                fileSize: 1,
+                originalFileName: $"{id:N}.bin"));
 }

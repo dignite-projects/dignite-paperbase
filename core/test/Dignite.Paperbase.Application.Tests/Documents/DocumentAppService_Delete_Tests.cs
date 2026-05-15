@@ -65,8 +65,6 @@ public class DocumentAppService_Delete_Tests
         var doc = CreateDocument();
         _documentRepository.GetAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(doc);
-        _relationRepository.GetListByDocumentIdAsync(doc.Id, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentRelation>());
 
         await _appService.DeleteAsync(doc.Id);
 
@@ -83,8 +81,6 @@ public class DocumentAppService_Delete_Tests
         var doc = CreateDocument();
         _documentRepository.GetAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(doc);
-        _relationRepository.GetListByDocumentIdAsync(doc.Id, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentRelation>());
 
         await _appService.DeleteAsync(doc.Id);
 
@@ -98,8 +94,6 @@ public class DocumentAppService_Delete_Tests
         var doc = CreateDocument();
         _documentRepository.GetAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(doc);
-        _relationRepository.GetListByDocumentIdAsync(doc.Id, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentRelation>());
 
         await _appService.DeleteAsync(doc.Id);
 
@@ -109,6 +103,29 @@ public class DocumentAppService_Delete_Tests
                 e.TenantId == doc.TenantId &&
                 e.DocumentTypeCode == doc.DocumentTypeCode),
             Arg.Any<bool>());
+    }
+
+    /// <summary>
+    /// Issue #162: Document 软删除不级联到 DocumentRelation —— 关系侧的 IsDeleted 只承载
+    /// "用户驳回 AI 建议"（R2 #158）一个语义。用户可见路径在查询时过滤掉对端软删的关系；
+    /// Document 一旦恢复，对应关系自动重新可见。所以 DeleteAsync / RestoreAsync 都不应
+    /// 触碰关系表。
+    /// </summary>
+    [Fact]
+    public async Task DeleteAsync_Does_Not_Cascade_To_DocumentRelation()
+    {
+        var doc = CreateDocument();
+        _documentRepository.GetAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(doc);
+
+        await _appService.DeleteAsync(doc.Id);
+
+        await _relationRepository.DidNotReceive()
+            .GetListByDocumentIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        await _relationRepository.DidNotReceive()
+            .DeleteManyAsync(Arg.Any<IEnumerable<DocumentRelation>>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        await _relationRepository.DidNotReceive()
+            .UpdateManyAsync(Arg.Any<IEnumerable<DocumentRelation>>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -121,8 +138,6 @@ public class DocumentAppService_Delete_Tests
 
         _documentRepository.GetAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(doc);
-        _relationRepository.GetListByDocumentIdAsync(doc.Id, Arg.Any<CancellationToken>())
-            .Returns(new List<DocumentRelation>());
 
         await _appService.RestoreAsync(doc.Id);
 
@@ -136,6 +151,29 @@ public class DocumentAppService_Delete_Tests
                 e.TenantId == doc.TenantId &&
                 e.DocumentTypeCode == doc.DocumentTypeCode),
             Arg.Any<bool>());
+    }
+
+    /// <summary>
+    /// Issue #162: 恢复 Document 不应触碰关系表 —— R2 驳回的关系必须保持驳回，
+    /// 软删 Document 关联的关系靠查询时的对端存活性自动重新可见，不需要写库。
+    /// </summary>
+    [Fact]
+    public async Task RestoreAsync_Does_Not_Cascade_To_DocumentRelation()
+    {
+        var doc = CreateDocument();
+        doc.IsDeleted = true;
+        doc.DeletionTime = DateTime.UtcNow;
+        doc.DeleterId = Guid.NewGuid();
+
+        _documentRepository.GetAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(doc);
+
+        await _appService.RestoreAsync(doc.Id);
+
+        await _relationRepository.DidNotReceive()
+            .GetListByDocumentIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        await _relationRepository.DidNotReceive()
+            .UpdateManyAsync(Arg.Any<IEnumerable<DocumentRelation>>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
