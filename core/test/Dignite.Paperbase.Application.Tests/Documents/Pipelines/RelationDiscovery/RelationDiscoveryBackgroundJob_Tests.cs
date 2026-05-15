@@ -43,7 +43,8 @@ public class RelationDiscoveryBackgroundJobTestModule : AbpModule
         context.Services.AddSingleton(Substitute.For<RelationDiscoveryService>(
             Array.Empty<IDocumentIdentifierProvider>(),
             Substitute.For<IDocumentRelationRepository>(),
-            Substitute.For<IDocumentRepository>()));
+            Substitute.For<IDocumentRepository>(),
+            new RelationDiscoveryTelemetryRecorder(NullLogger<RelationDiscoveryTelemetryRecorder>.Instance)));
 
         // Same treatment for L3 — substitute so this test stays focused on the job's lifecycle
         // and L2 → L3 fallback chaining; L3's own logic is covered by SemanticRelationDiscoveryService_Tests.

@@ -36,6 +36,43 @@ public class RelationDiscoveryTelemetryRecorder : ISingletonDependency
         "paperbase.relation_discovery.l2.created",
         description: "AiSuggested DocumentRelations created by L2 (structured fan-out) per run.");
 
+    /// <summary>
+    /// 硬伤三 visibility: how many identifiers each provider contributed for a given source
+    /// document. Tag <c>provider</c> is the provider type name. Use this to spot a provider
+    /// that suddenly stops producing identifiers (LLM extraction regressed, schema migration
+    /// dropped fields, etc.). Recorded once per (run, provider) pair regardless of count;
+    /// the histogram value is the count.
+    /// </summary>
+    private static readonly Histogram<long> L2IdentifiersByProvider = Meter.CreateHistogram<long>(
+        "paperbase.relation_discovery.l2.identifiers_by_provider",
+        description: "Number of identifiers emitted per provider per source document. Tags: provider.");
+
+    /// <summary>
+    /// 硬伤三 visibility: documents that produced zero identifiers across all providers.
+    /// A spike means either no business module owns these documents OR business-module
+    /// extraction is failing silently (LLM down, wrong fields, etc.). Either way it's the
+    /// "L2 looks dead" signal operators need.
+    /// </summary>
+    private static readonly Counter<long> L2OrphanDocuments = Meter.CreateCounter<long>(
+        "paperbase.relation_discovery.l2.orphan_documents",
+        description: "Documents that produced 0 identifiers (no module owns them, or extraction failed).");
+
+    /// <summary>
+    /// 硬伤三 visibility: high-ambiguity identifiers — an identifier value that matched
+    /// MORE than <see cref="HighAmbiguityPeerThreshold"/> peer documents in a single L2
+    /// run. Tag <c>type</c> identifies which DocumentIdentifierTypes value is ambiguous;
+    /// repeated hits over time identify identifier categories that should be excluded
+    /// (the way <c>ContractIdentifierProvider</c> already excludes PartyName).
+    /// </summary>
+    private static readonly Counter<long> L2HighAmbiguityIdentifiers = Meter.CreateCounter<long>(
+        "paperbase.relation_discovery.l2.high_ambiguity_identifiers",
+        description: "Identifier values that matched too many peers (>= threshold). Tags: type.");
+
+    /// <summary>Threshold for an identifier to be flagged as high-ambiguity. Aggressive on
+    /// purpose — once an identifier matches this many distinct peers in one run it's almost
+    /// certainly noise (e.g. LLM hallucinated a common word as a contract number).</summary>
+    public const int HighAmbiguityPeerThreshold = 10;
+
     private static readonly Counter<long> L3Invoked = Meter.CreateCounter<long>(
         "paperbase.relation_discovery.l3.invoked",
         description: "Times L3 (semantic + LLM fallback) was invoked because L2 found zero peers.");
@@ -186,6 +223,43 @@ public class RelationDiscoveryTelemetryRecorder : ISingletonDependency
         SuggestionRejected.Add(1,
             new KeyValuePair<string, object?>("source", originalSource.ToString()),
             new KeyValuePair<string, object?>("confidence_bucket", BucketConfidence(confidence)));
+    }
+
+    /// <summary>
+    /// 硬伤三: record per-provider identifier contribution. Called once per (run, provider)
+    /// pair. <paramref name="count"/> may be 0 — recording 0s lets dashboards see "this
+    /// provider exists but didn't fire for this document" vs "this provider isn't installed."
+    /// </summary>
+    public virtual void RecordIdentifiersByProvider(string providerName, int count)
+    {
+        L2IdentifiersByProvider.Record(count,
+            new KeyValuePair<string, object?>("provider", providerName));
+    }
+
+    /// <summary>
+    /// 硬伤三: a source document arrived at L2 with zero identifiers across all providers.
+    /// </summary>
+    public virtual void RecordOrphanDocument()
+    {
+        L2OrphanDocuments.Add(1);
+    }
+
+    /// <summary>
+    /// 硬伤三: a single (type, value) identifier matched too many peer documents in one
+    /// run — almost certainly noise (LLM hallucinated a generic phrase as an identifier,
+    /// or the type is over-broad). <paramref name="peerCount"/> recorded as a counter
+    /// increment of 1 with the type as tag; the count itself goes to the structured log
+    /// so operators can see the egregious values.
+    /// </summary>
+    public virtual void RecordHighAmbiguityIdentifier(string identifierType, string normalizedValue, int peerCount)
+    {
+        L2HighAmbiguityIdentifiers.Add(1,
+            new KeyValuePair<string, object?>("type", identifierType));
+        _logger.LogWarning(
+            "L2 RelationDiscovery: high-ambiguity identifier matched {PeerCount} peers (threshold {Threshold}). " +
+            "Type={IdentifierType} NormalizedValue={NormalizedValue}. Treat as noise candidate; " +
+            "consider excluding this type from the provider's SupportedIdentifierTypes.",
+            peerCount, HighAmbiguityPeerThreshold, identifierType, normalizedValue);
     }
 
     /// <summary>

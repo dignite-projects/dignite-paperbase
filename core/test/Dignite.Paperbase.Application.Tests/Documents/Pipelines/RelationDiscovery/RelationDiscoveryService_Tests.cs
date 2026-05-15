@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.Pipelines.RelationDiscovery;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Shouldly;
 using Volo.Abp.Modularity;
@@ -35,6 +36,11 @@ public class RelationDiscoveryServiceTestModule : AbpModule
         context.Services.AddSingleton<FakeInvoiceProvider>();
         context.Services.AddSingleton<IDocumentIdentifierProvider>(sp => sp.GetRequiredService<FakeContractProvider>());
         context.Services.AddSingleton<IDocumentIdentifierProvider>(sp => sp.GetRequiredService<FakeInvoiceProvider>());
+
+        // 硬伤三 substitute — tests can verify which telemetry events L2 emitted (per-provider
+        // contribution, orphan documents, high-ambiguity warnings).
+        context.Services.AddSingleton(Substitute.For<RelationDiscoveryTelemetryRecorder>(
+            NullLogger<RelationDiscoveryTelemetryRecorder>.Instance));
     }
 }
 
@@ -46,6 +52,7 @@ public class RelationDiscoveryService_Tests
     private readonly IDocumentRepository _documentRepository;
     private readonly FakeContractProvider _contractProvider;
     private readonly FakeInvoiceProvider _invoiceProvider;
+    private readonly RelationDiscoveryTelemetryRecorder _telemetry;
 
     public RelationDiscoveryService_Tests()
     {
@@ -56,6 +63,7 @@ public class RelationDiscoveryService_Tests
         // through IEnumerable<IDocumentIdentifierProvider> by the service.
         _contractProvider = GetRequiredService<FakeContractProvider>();
         _invoiceProvider = GetRequiredService<FakeInvoiceProvider>();
+        _telemetry = GetRequiredService<RelationDiscoveryTelemetryRecorder>();
 
         // Default: any document id resolves to a tenantless Document. Tests that exercise
         // tenant-stamping or "doc not found" override this via SetupSource / SetupSourceMissing.
@@ -387,6 +395,71 @@ public class RelationDiscoveryService_Tests
         created.Count.ShouldBe(1);
         // Verify contract provider's FindDocumentsAsync was NOT called for InvoiceNumber.
         _contractProvider.FindCalls.ShouldNotContain(c => c.Type == DocumentIdentifierTypes.InvoiceNumber);
+    }
+
+    [Fact]
+    public async Task DiscoverAsync_Should_Record_Orphan_When_Document_Has_No_Identifiers()
+    {
+        // 硬伤三 regression guard: a Document arriving at L2 with no identifiers fires the
+        // orphan-document telemetry. Operators use this to spot extraction regressions
+        // (a module that suddenly stops producing identifiers shows up as an orphan spike).
+        var sourceDocId = Guid.NewGuid();
+        SetupSource(sourceDocId);
+        // No Identifiers / no Lookup entries → no identifiers collected.
+
+        await _service.DiscoverAsync(sourceDocId);
+
+        _telemetry.Received(1).RecordOrphanDocument();
+    }
+
+    [Fact]
+    public async Task DiscoverAsync_Should_Record_Per_Provider_Identifier_Counts()
+    {
+        // 硬伤三 regression guard: each provider's contribution is reported separately,
+        // even when it produces zero identifiers. Lets dashboards break down "which
+        // business module is actually wiring identifiers into L2".
+        var sourceDocId = Guid.NewGuid();
+        SetupSource(sourceDocId);
+        _contractProvider.Identifiers[sourceDocId] = new[]
+        {
+            new DocumentIdentifierEntry(DocumentIdentifierTypes.ContractNumber, "HT-2024-007"),
+        };
+        // Invoice provider not given anything → should report 0 contribution.
+
+        await _service.DiscoverAsync(sourceDocId);
+
+        _telemetry.Received().RecordIdentifiersByProvider(nameof(FakeContractProvider), 1);
+        _telemetry.Received().RecordIdentifiersByProvider(nameof(FakeInvoiceProvider), 0);
+    }
+
+    [Fact]
+    public async Task DiscoverAsync_Should_Flag_High_Ambiguity_Identifier_When_Many_Peers_Match()
+    {
+        // 硬伤三 regression guard: an identifier that matches more than HighAmbiguityPeerThreshold
+        // distinct peers is treated as noise (LLM hallucinated a generic value as a contract
+        // number, or the identifier type is over-broad). Telemetry + warning log so operators
+        // can spot the type and exclude it from the provider's SupportedIdentifierTypes.
+        var sourceDocId = Guid.NewGuid();
+        SetupSource(sourceDocId);
+        _contractProvider.Identifiers[sourceDocId] = new[]
+        {
+            new DocumentIdentifierEntry(DocumentIdentifierTypes.ContractNumber, "noise-value"),
+        };
+        var noisyPeers = Enumerable.Range(0, RelationDiscoveryTelemetryRecorder.HighAmbiguityPeerThreshold + 2)
+            .Select(_ => Guid.NewGuid())
+            .ToArray();
+        _invoiceProvider.Lookup[(DocumentIdentifierTypes.ContractNumber, "noise-value")] = noisyPeers;
+
+        _relationRepository.GetLinkedPeerDocumentIdsAsync(
+                sourceDocId, Arg.Any<Guid?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Guid>());
+
+        await _service.DiscoverAsync(sourceDocId);
+
+        _telemetry.Received(1).RecordHighAmbiguityIdentifier(
+            DocumentIdentifierTypes.ContractNumber,
+            Arg.Any<string>(),                 // normalized value — doesn't matter for the assertion
+            Arg.Is<int>(n => n >= RelationDiscoveryTelemetryRecorder.HighAmbiguityPeerThreshold));
     }
 
     private static DocumentRelation CreateExistingRelation(Guid source, Guid target, RelationSource src)

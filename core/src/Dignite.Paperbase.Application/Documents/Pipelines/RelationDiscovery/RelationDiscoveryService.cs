@@ -46,6 +46,7 @@ public class RelationDiscoveryService : DomainService
     private readonly IEnumerable<IDocumentIdentifierProvider> _providers;
     private readonly IDocumentRelationRepository _relationRepository;
     private readonly IDocumentRepository _documentRepository;
+    private readonly RelationDiscoveryTelemetryRecorder _telemetry;
 
     // No ICurrentTenant injection (Issue #121): tenant flows through Document.TenantId
     // (loaded from the source document at the start of DiscoverAsync). Background jobs may
@@ -54,11 +55,13 @@ public class RelationDiscoveryService : DomainService
     public RelationDiscoveryService(
         IEnumerable<IDocumentIdentifierProvider> providers,
         IDocumentRelationRepository relationRepository,
-        IDocumentRepository documentRepository)
+        IDocumentRepository documentRepository,
+        RelationDiscoveryTelemetryRecorder telemetry)
     {
         _providers = providers;
         _relationRepository = relationRepository;
         _documentRepository = documentRepository;
+        _telemetry = telemetry;
     }
 
     /// <summary>
@@ -94,8 +97,9 @@ public class RelationDiscoveryService : DomainService
         if (sourceIdentifiers.Count == 0)
         {
             // No identifiers extracted yet — either business modules haven't finished extraction,
-            // or this document isn't owned by any module. v1 short-circuits; future re-queue
-            // logic can wake L2 once providers have data.
+            // or this document isn't owned by any module. 硬伤三 visibility: tag this as an
+            // orphan-document event so operators can spot extraction regressions.
+            _telemetry.RecordOrphanDocument();
             Logger.LogInformation(
                 "L2 RelationDiscovery: no identifiers found for {DocumentId}; skipping (no business module owns it, or extraction pending)",
                 sourceDocumentId);
@@ -158,17 +162,27 @@ public class RelationDiscoveryService : DomainService
         {
             // Provider isolation: one buggy module must not tank the whole L2 discovery.
             // OperationCanceledException re-thrown so cancellation is honored.
+            IReadOnlyList<DocumentIdentifierEntry> fromProvider;
             try
             {
-                var fromProvider = await provider.GetIdentifiersAsync(documentId, ct);
-                entries.AddRange(fromProvider);
+                fromProvider = await provider.GetIdentifiersAsync(documentId, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 Logger.LogError(ex,
                     "L2 RelationDiscovery: provider {Provider} threw in GetIdentifiersAsync({DocumentId}); skipping its contribution",
                     provider.GetType().FullName, documentId);
+                // 硬伤三: record 0 contribution so dashboards see "this provider exists but
+                // failed for this run" (vs "provider isn't installed", which produces no
+                // sample at all).
+                _telemetry.RecordIdentifiersByProvider(provider.GetType().Name, 0);
+                continue;
             }
+
+            entries.AddRange(fromProvider);
+            // 硬伤三: per-provider contribution counter, separate from total — useful for
+            // dashboards that want "which module is producing identifiers" breakdowns.
+            _telemetry.RecordIdentifiersByProvider(provider.GetType().Name, fromProvider.Count);
         }
 
         // 硬伤一 normalization: collapse "HT-2024-001" / "ht2024001" / "ＨＴ－２０２４－００１"
@@ -200,6 +214,12 @@ public class RelationDiscoveryService : DomainService
             var supportingProviders = _providers
                 .Where(p => p.SupportedIdentifierTypes.Contains(identifier.Type));
 
+            // 硬伤三: tally distinct peers this single (type, normalized-value) found across
+            // all providers in this run. If it exceeds the high-ambiguity threshold, emit a
+            // telemetry + WARN log so operators can find values like "001" or "项目" that
+            // collide with too many documents and should be filtered out at the provider.
+            var distinctPeersForIdentifier = new HashSet<Guid>();
+
             foreach (var provider in supportingProviders)
             {
                 IReadOnlyList<Guid> found;
@@ -221,12 +241,21 @@ public class RelationDiscoveryService : DomainService
                 {
                     if (peerId == sourceDocumentId) continue;          // Self-match
                     if (peerId == Guid.Empty) continue;                // Defensive
+
+                    distinctPeersForIdentifier.Add(peerId);
+
                     if (!seen.Add(peerId)) continue;                   // Already a peer via another identifier
 
                     // RawValue for description (user-recognizable form); NormalizedValue for any
                     // future provenance / debugging.
                     peers.Add(new PeerCandidate(peerId, identifier.Type, identifier.RawValue));
                 }
+            }
+
+            if (distinctPeersForIdentifier.Count >= RelationDiscoveryTelemetryRecorder.HighAmbiguityPeerThreshold)
+            {
+                _telemetry.RecordHighAmbiguityIdentifier(
+                    identifier.Type, identifier.NormalizedValue, distinctPeersForIdentifier.Count);
             }
         }
 
