@@ -17,7 +17,16 @@ public interface IDocumentRelationRepository : IRepository<DocumentRelation, Gui
         bool includeAiSuggested = true,
         CancellationToken cancellationToken = default);
 
-    Task HardDeleteByDocumentIdAsync(Guid documentId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 物理删除所有引用 <paramref name="documentId"/> 的关系（含 R2 驳回的软删行）。
+    /// 调用方必须显式传入 <paramref name="tenantId"/> —— 实现走 <c>IgnoreQueryFilters()</c>
+    /// 以扫到软删行，同时 ambient <c>IMultiTenant</c> filter 也被 bypass，所以必须用显式
+    /// tenant 谓词限定到当前租户。与 <see cref="GetLinkedPeerDocumentIdsAsync"/> 同一风格。
+    /// </summary>
+    Task HardDeleteByDocumentIdAsync(
+        Guid documentId,
+        Guid? tenantId,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Returns the IDs of all documents linked to <paramref name="documentId"/> (peers from either direction).

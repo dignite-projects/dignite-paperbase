@@ -186,8 +186,8 @@ public class DocumentRelationAppService_Tests
 
     /// <summary>
     /// Issue #162: 对端 Document 软删除 → 关系仍存在于库中（未级联）但在图中不可见。
-    /// 软删 Document 不出现在 GetListByIdsAsync 结果里（ambient ISoftDelete 自动过滤），
-    /// GetGraphAsync 据此过滤掉对应的边和节点。
+    /// 软删 Document 不出现在 LoadVisibleDocumentsAsync 结果里（显式 TenantId 谓词 +
+    /// ambient ISoftDelete 双闸），GetGraphAsync 据此过滤掉对应的边和节点。
     /// </summary>
     [Fact]
     public async Task GetGraphAsync_Should_Drop_Edge_To_SoftDeleted_Peer()
@@ -259,7 +259,7 @@ public class DocumentRelationAppService_Tests
     }
 
     /// <summary>
-    /// Issue #162 + 反例 B 守门：peer Document 跨租户场景。LoadAliveDocumentsAsync
+    /// Issue #162 + 反例 B 守门：peer Document 跨租户场景。LoadVisibleDocumentsAsync
     /// 的显式 `Where(d => d.TenantId == tenantId)` 第二闸应丢弃 peer。若产品代码
     /// 退化为依赖 ambient IMultiTenant filter，此测试必失败。
     /// </summary>

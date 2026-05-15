@@ -210,8 +210,10 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
             onUnitOfWorkComplete: false);
 
         // 硬删除关系（含已软删除的）—— DocumentRelation 已实现 ISoftDelete，
-        // 必须走 ExecuteDeleteAsync 才能真正物理删除
-        await _relationRepository.HardDeleteByDocumentIdAsync(id);
+        // 必须走 ExecuteDeleteAsync 才能真正物理删除。显式传入 document.TenantId，
+        // 与 GetLinkedPeerDocumentIdsAsync 同样不依赖 ambient filter（IgnoreQueryFilters
+        // 一并 bypass IMultiTenant，所以谓词必须显式）。
+        await _relationRepository.HardDeleteByDocumentIdAsync(id, document.TenantId);
 
         await _documentRepository.HardDeleteAsync(id);
 

@@ -62,11 +62,16 @@ public class EfCoreDocumentRelationRepository
 
     public virtual async Task HardDeleteByDocumentIdAsync(
         Guid documentId,
+        Guid? tenantId,
         CancellationToken cancellationToken = default)
     {
         var dbContext = await GetDbContextAsync();
+        // IgnoreQueryFilters() bypass ISoftDelete（要扫到 R2 驳回行）+ ambient IMultiTenant。
+        // 显式 TenantId 谓词限定到当前租户，与 GetLinkedPeerDocumentIdsAsync 同一风格 ——
+        // 防止"全局唯一 GUID 假设"在 PermanentDeleteAsync 出错路径上被攻破。
         await dbContext.Set<DocumentRelation>()
             .IgnoreQueryFilters()
+            .Where(r => r.TenantId == tenantId)
             .Where(r => r.SourceDocumentId == documentId || r.TargetDocumentId == documentId)
             .ExecuteDeleteAsync(GetCancellationToken(cancellationToken));
     }

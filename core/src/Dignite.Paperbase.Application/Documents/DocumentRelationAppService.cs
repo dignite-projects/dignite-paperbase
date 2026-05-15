@@ -115,8 +115,8 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
         var documentById = documents.ToDictionary(d => d.Id);
         documentById[rootDocument.Id] = rootDocument;
 
-        // Issue #162: 软删除的 Document 不在 documentById 中（GetListByIdsAsync 走 ambient
-        // ISoftDelete 过滤）。两步过滤：
+        // Issue #162: 软删除的 Document 不在 documentById 中（LoadVisibleDocumentsAsync
+        // 同时 honor 显式 TenantId 谓词 + ambient ISoftDelete 双闸）。两步过滤：
         // 1) 边：任一端 Document 缺失 → 丢弃，避免悬挂边渲染成 "untitled"。
         // 2) 节点：除 root 外，只保留至少被一条存活边接触到的节点 —— 否则会把
         //    "原本通过死亡中间节点才能到达的下游节点"渲染成无来由的孤岛节点。
