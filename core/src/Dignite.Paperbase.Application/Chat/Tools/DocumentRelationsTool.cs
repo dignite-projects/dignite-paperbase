@@ -123,15 +123,23 @@ public class DocumentRelationsTool : ITransientDependency
 
         // Issue #162: 过滤掉对端 Document 已软删除的关系。Document 软删除不级联到
         // DocumentRelation（关系侧的 IsDeleted 只承载 R2 驳回语义），由查询时的对端
-        // 存活性检查实现"软删 Document 在关系视图中隐身"。GetListByIdsAsync 走 ambient
-        // ISoftDelete 过滤，自动只返回未软删的 Document。
+        // 存活性检查实现"软删 Document 在关系视图中隐身"。
+        //
+        // 显式 TenantId 谓词 — defense-in-depth，与本方法上方 relations queryable
+        // 同一 fail-closed 风格保持一致。不依赖 ambient IMultiTenant（同 IDocumentRepository
+        // 已有的 ambient ISoftDelete 一起 honor，软删 Document 自然不入结果集）。
         var documentRepository = serviceProvider.GetRequiredService<IDocumentRepository>();
         var peerIds = relations
             .Select(r => r.SourceDocumentId == documentId ? r.TargetDocumentId : r.SourceDocumentId)
             .Distinct()
             .ToList();
-        var alivePeerIds = (await documentRepository.GetListByIdsAsync(peerIds, cancellationToken))
-            .Select(d => d.Id)
+        var documentQueryable = await documentRepository.GetQueryableAsync();
+        documentQueryable = tenantId.HasValue
+            ? documentQueryable.Where(d => d.TenantId == tenantId)
+            : documentQueryable.Where(d => d.TenantId == null);
+        var alivePeerIds = (await executer.ToListAsync(
+                documentQueryable.Where(d => peerIds.Contains(d.Id)).Select(d => d.Id),
+                cancellationToken))
             .ToHashSet();
         var visibleRelations = relations
             .Where(r => alivePeerIds.Contains(

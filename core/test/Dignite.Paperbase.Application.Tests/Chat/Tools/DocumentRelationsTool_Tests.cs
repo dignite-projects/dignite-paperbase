@@ -36,9 +36,11 @@ public class DocumentRelationsTool_Tests
     private readonly IDocumentRepository _documentRepository;
     private readonly ICurrentTenant _currentTenant;
 
-    // Issue #162: per-test override of "which peer IDs the chat tool should treat as alive".
-    // Default (null) = treat every requested peer as alive (existing tests don't care about
-    // peer existence semantics). Tests that exercise the soft-delete filter assign a subset.
+    // Issue #162: tracks the seeded peer set so the substitute IDocumentRepository can
+    // synthesize "alive Document" rows for them. SeedRelationsAsync auto-adds endpoints;
+    // tests that exercise the peer-soft-delete filter pre-set _alivePeerIds to a narrower
+    // set (a peer absent from _alivePeerIds simulates Document.IsDeleted = true).
+    private readonly HashSet<Guid> _seededPeerIds = new();
     private HashSet<Guid>? _alivePeerIds;
 
     private static readonly Guid TenantA = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
@@ -52,20 +54,22 @@ public class DocumentRelationsTool_Tests
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _currentTenant = GetRequiredService<ICurrentTenant>();
 
-        // Issue #162: the chat tool now consults IDocumentRepository.GetListByIdsAsync to
-        // filter relations whose peer has been soft-deleted. The substitute repo defaults to
-        // returning empty, which would make every relation disappear. Wire a callback that
-        // synthesizes Document stubs for whichever peer IDs the test wants treated as alive.
+        // Issue #162: the chat tool consults IDocumentRepository to filter relations whose
+        // peer has been soft-deleted. It goes through GetQueryableAsync + explicit TenantId
+        // predicate (defense-in-depth, never rely on ambient IMultiTenant — see file header).
+        // We back the substitute with an in-memory IQueryable<Document> whose membership is
+        // controlled by _alivePeerIds (if a test set one) or by _seededPeerIds (default —
+        // every endpoint seeded by SeedRelationsAsync is treated as an alive Document). The
+        // synthetic Document's TenantId is bound to the calling tenant scope so the chat
+        // tool's `Where(d => d.TenantId == tenantId)` predicate keeps it. ABP's
+        // IAsyncQueryableExecuter consumes any IQueryable, so AsQueryable() is enough.
         _documentRepository
-            .GetListByIdsAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
+            .GetQueryableAsync()
+            .Returns(_ =>
             {
-                var requestedIds = ((IReadOnlyCollection<Guid>)callInfo[0]).ToList();
-                var alive = _alivePeerIds;
-                var liveIds = alive == null
-                    ? requestedIds
-                    : requestedIds.Where(alive.Contains).ToList();
-                return liveIds.Select(BuildAliveDocumentStub).ToList();
+                var alive = _alivePeerIds ?? _seededPeerIds;
+                var callingTenantId = _currentTenant.Id;
+                return alive.Select(id => BuildAliveDocumentStub(id, callingTenantId)).AsQueryable();
             });
     }
 
@@ -308,6 +312,11 @@ public class DocumentRelationsTool_Tests
             foreach (var r in relations)
             {
                 await _relationRepository.InsertAsync(r, autoSave: true);
+                // Track endpoints so the substitute IDocumentRepository treats them as
+                // alive Documents by default — tests exercising the soft-delete filter
+                // override _alivePeerIds to a narrower set.
+                _seededPeerIds.Add(r.SourceDocumentId);
+                _seededPeerIds.Add(r.TargetDocumentId);
             }
         });
     }
@@ -315,12 +324,13 @@ public class DocumentRelationsTool_Tests
     /// <summary>
     /// Synthesizes a minimal Document for peer-existence checks. The chat tool only
     /// consults the returned IDs (filter set membership), so a bare-bones instance with
-    /// matching Id is enough to count as "alive" for the soft-delete filter.
+    /// matching Id + TenantId is enough to count as "alive" for the soft-delete filter
+    /// once the chat tool's explicit `Where(d => d.TenantId == tenantId)` runs.
     /// </summary>
-    private static Document BuildAliveDocumentStub(Guid id)
+    private static Document BuildAliveDocumentStub(Guid id, Guid? tenantId)
         => new(
             id: id,
-            tenantId: null,
+            tenantId: tenantId,
             originalFileBlobName: $"blobs/{id:N}",
             sourceType: SourceType.Digital,
             fileOrigin: new FileOrigin(
