@@ -32,10 +32,10 @@ namespace Dignite.Paperbase.Chat.Tools;
 /// </para>
 /// <para>
 /// fail-closed safety contract — see <c>.claude/rules/doc-chat-anti-patterns.md</c>
-/// reverse example C: explicit <c>Documents.Default</c> permission check, <strong>two</strong>
-/// explicit tenant predicates (relation-side + peer-Document-side after Issue #162; never
-/// rely on ambient ABP <c>DataFilter</c>), hard <see cref="MaxResultRows"/> upper bound,
-/// static-constant tool name &amp; description.
+/// reverse example C: explicit <c>Documents.Default</c> permission check, <strong>three</strong>
+/// explicit tenant predicates (anchor + relation-side + peer-Document-side after Issue
+/// #162/#164; never rely on ambient ABP <c>DataFilter</c>), hard <see cref="MaxResultRows"/>
+/// upper bound, static-constant tool name &amp; description.
 /// </para>
 /// </summary>
 public class DocumentRelationsTool : ITransientDependency
@@ -81,9 +81,11 @@ public class DocumentRelationsTool : ITransientDependency
     /// <remarks>
     /// fail-closed safety contract — see <c>.claude/rules/doc-chat-anti-patterns.md</c>
     /// reverse example C: explicit <see cref="PaperbasePermissions.Documents.Default"/>
-    /// permission check, two explicit tenant predicates (relation-side queryable + peer
-    /// Document queryable below; never rely on ambient ABP <c>DataFilter</c>),
-    /// hard <see cref="MaxResultRows"/> upper bound.
+    /// permission check, three explicit tenant predicates (anchor existence + relation-side
+    /// queryable + peer Document queryable; never rely on ambient ABP <c>DataFilter</c>),
+    /// hard <see cref="MaxResultRows"/> upper bound. Anchor missing in current tenant →
+    /// empty payload (NOT EntityNotFoundException — see Issue #164: an exception leaks
+    /// existence to the LLM-as-attack-vector path).
     /// </remarks>
     public virtual async Task<string> InvokeAsync(
         [Description("Anchor document ID to look up relations for. Returns documents linked to it (in either direction).")]
@@ -97,12 +99,35 @@ public class DocumentRelationsTool : ITransientDependency
         var repository = serviceProvider.GetRequiredService<IDocumentRelationRepository>();
         var executer = serviceProvider.GetRequiredService<IAsyncQueryableExecuter>();
         var currentTenant = serviceProvider.GetRequiredService<ICurrentTenant>();
+        var documentRepository = serviceProvider.GetRequiredService<IDocumentRepository>();
+
+        var tenantId = currentTenant.Id;
+
+        // Issue #164: anchor 归属断言 —— LLM 在被 prompt-injection 操纵时可能传入跨租户
+        // documentId。返回空 payload 而非抛异常 —— 抛 EntityNotFoundException 会让 LLM
+        // 看到 "该 ID 不存在 in your tenant" 的存在性信号，反而是攻击者的枚举辅助。空
+        // payload 才是真 fail-closed。
+        var anchorQueryable = await documentRepository.GetQueryableAsync();
+        anchorQueryable = tenantId.HasValue
+            ? anchorQueryable.Where(d => d.TenantId == tenantId)
+            : anchorQueryable.Where(d => d.TenantId == null);
+        var anchorExists = await executer.AnyAsync(
+            anchorQueryable.Where(d => d.Id == documentId),
+            cancellationToken);
+        if (!anchorExists)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                anchorDocumentId = documentId,
+                count = 0,
+                relations = Array.Empty<object>()
+            });
+        }
 
         var queryable = await repository.GetQueryableAsync();
 
         // Explicit tenant predicate — defense-in-depth against any code path that
         // disables ABP's ambient DataFilter (background jobs, non-HTTP contexts).
-        var tenantId = currentTenant.Id;
         queryable = tenantId.HasValue
             ? queryable.Where(r => r.TenantId == tenantId)
             : queryable.Where(r => r.TenantId == null);
@@ -130,7 +155,6 @@ public class DocumentRelationsTool : ITransientDependency
         // 显式 TenantId 谓词 — defense-in-depth，与本方法上方 relations queryable
         // 同一 fail-closed 风格保持一致。不依赖 ambient IMultiTenant（同 IDocumentRepository
         // 已有的 ambient ISoftDelete 一起 honor，软删 Document 自然不入结果集）。
-        var documentRepository = serviceProvider.GetRequiredService<IDocumentRepository>();
         var peerIds = relations
             .Select(r => r.SourceDocumentId == documentId ? r.TargetDocumentId : r.SourceDocumentId)
             .Distinct()

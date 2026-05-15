@@ -8,6 +8,7 @@ using Dignite.Paperbase.Documents.Pipelines.RelationDiscovery;
 using Dignite.Paperbase.Permissions;
 using Microsoft.AspNetCore.Authorization;
 using Volo.Abp.Application.Dtos;
+using Volo.Abp.Domain.Entities;
 
 namespace Dignite.Paperbase.Documents;
 
@@ -31,6 +32,15 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
     public virtual async Task<ListResultDto<DocumentRelationDto>> GetListAsync(Guid documentId)
     {
         await CheckPolicyAsync(PaperbasePermissions.DocumentRelations.Default);
+
+        // Issue #164: anchor 归属断言 —— 显式 TenantId 谓词（不依赖 ambient IMultiTenant）。
+        // 配合 CreateAsync 的 input validation 防御 "TenantA 关系引用 TenantB 文档" 的脏数据。
+        var anchorDocs = await LoadVisibleDocumentsAsync(new[] { documentId });
+        if (anchorDocs.Count == 0)
+        {
+            throw new EntityNotFoundException(typeof(Document), documentId);
+        }
+
         var relations = await _relationRepository.GetListByDocumentIdAsync(documentId);
 
         // Issue #162: 过滤对端已软删除的关系。Document 软删除不级联到 DocumentRelation，
@@ -70,7 +80,15 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
                 $"Depth must be between 1 and {MaxGraphDepth}.");
         }
 
-        var rootDocument = await _documentRepository.GetAsync(input.RootDocumentId);
+        // Issue #164: root 走 LoadVisibleDocumentsAsync 而非 GetAsync —— 显式 TenantId 谓词
+        // 拦截"调用方传入跨租户 root id"的攻击向量。GetAsync 走 ambient IMultiTenant filter，
+        // 在后台任务等 disable 路径下会泄露。
+        var rootDocs = await LoadVisibleDocumentsAsync(new[] { input.RootDocumentId });
+        if (rootDocs.Count == 0)
+        {
+            throw new EntityNotFoundException(typeof(Document), input.RootDocumentId);
+        }
+        var rootDocument = rootDocs[0];
         var distances = new Dictionary<Guid, int>
         {
             [input.RootDocumentId] = 0
@@ -152,6 +170,25 @@ public class DocumentRelationAppService : PaperbaseAppService, IDocumentRelation
     [Authorize(PaperbasePermissions.DocumentRelations.Create)]
     public virtual async Task<DocumentRelationDto> CreateAsync(CreateDocumentRelationInput input)
     {
+        // Issue #164: input validation —— 两端 Document 必须都属于当前租户。
+        // 走 LoadVisibleDocumentsAsync 的显式 TenantId 谓词，防止恶意调用方写入
+        // "TenantA 关系引用 TenantB 文档" 的脏数据，进而被 GetGraphAsync / GetListAsync /
+        // chat skill 读出，造成跨租户元数据泄露。Distinct 防自环导致的 LoadVisible 假阴性。
+        var endpointIds = new[] { input.SourceDocumentId, input.TargetDocumentId }
+            .Distinct()
+            .ToList();
+        var visibleEndpointIds = (await LoadVisibleDocumentsAsync(endpointIds))
+            .Select(d => d.Id)
+            .ToHashSet();
+        if (!visibleEndpointIds.Contains(input.SourceDocumentId))
+        {
+            throw new EntityNotFoundException(typeof(Document), input.SourceDocumentId);
+        }
+        if (!visibleEndpointIds.Contains(input.TargetDocumentId))
+        {
+            throw new EntityNotFoundException(typeof(Document), input.TargetDocumentId);
+        }
+
         var relation = new DocumentRelation(
             GuidGenerator.Create(),
             CurrentTenant.Id,

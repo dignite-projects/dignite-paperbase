@@ -82,7 +82,13 @@ public class DocumentRelationsTool_Tests
     [Fact]
     public async Task Returns_Empty_Payload_When_Anchor_Has_No_Relations()
     {
+        // anchor 存在于当前租户但没有任何关系 —— 走"正常空集"路径，与 #164 的
+        // "anchor 不存在" 空 payload 路径区分开。
         var anchor = Guid.NewGuid();
+        _alivePeerStubs = new Dictionary<Guid, Guid?>
+        {
+            { anchor, TenantA },
+        };
 
         var payload = await InvokeAsync(TenantA, anchor);
 
@@ -255,6 +261,7 @@ public class DocumentRelationsTool_Tests
         var deletedTarget = Guid.NewGuid();
         _alivePeerStubs = new Dictionary<Guid, Guid?>
         {
+            { anchor, TenantA },          // #164: anchor 必须存在才进入关系查询
             { aliveTarget, TenantA },
             // deletedTarget 故意缺席 —— 模拟 ambient ISoftDelete 过滤掉软删 Document
         };
@@ -274,7 +281,10 @@ public class DocumentRelationsTool_Tests
     public async Task Drops_All_Relations_When_Every_Peer_Is_SoftDeleted()
     {
         var anchor = Guid.NewGuid();
-        _alivePeerStubs = new Dictionary<Guid, Guid?>();   // none of the peers alive
+        _alivePeerStubs = new Dictionary<Guid, Guid?>
+        {
+            { anchor, TenantA },   // #164: anchor 存活，peer 全部缺席模拟全部软删
+        };
 
         await SeedRelationsAsync(
             CreateRelation(TenantA, source: anchor, target: Guid.NewGuid(), kind: RelationSource.Manual),
@@ -300,6 +310,7 @@ public class DocumentRelationsTool_Tests
         var crossTenantPeer = Guid.NewGuid();
         _alivePeerStubs = new Dictionary<Guid, Guid?>
         {
+            { anchor, TenantA },          // #164: anchor 存活，关系查询照常进行
             // peer Document 属于 TenantB —— chat 工具以 TenantA 调用，peer 谓词应丢弃
             { crossTenantPeer, TenantB },
         };
@@ -308,6 +319,66 @@ public class DocumentRelationsTool_Tests
             CreateRelation(TenantA, source: anchor, target: crossTenantPeer, kind: RelationSource.Manual));
 
         var payload = await InvokeAsync(TenantA, anchor);
+
+        payload.GetProperty("count").GetInt32().ShouldBe(0);
+        payload.GetProperty("relations").GetArrayLength().ShouldBe(0);
+    }
+
+    /// <summary>
+    /// Issue #164: anchor `documentId` 不存在于当前租户（被 prompt-injection 操纵的 LLM
+    /// 可能传任意 GUID），chat 工具必须返回**空 payload**而非抛 EntityNotFoundException
+    /// —— 抛异常会让 LLM 看到 "该 ID 在你的租户里不存在" 的信号，等同于存在性枚举辅助。
+    ///
+    /// 关键设计：让 peer 第二闸**放行**（peer 显式 stub 为存活 TenantA） —— 这样只有
+    /// anchor 第一闸缺失时才会让本测试失败。验证 anchor 谓词被独立测试驱动。
+    /// </summary>
+    [Fact]
+    public async Task Anchor_Predicate_Returns_Empty_Payload_When_Anchor_Document_Does_Not_Exist()
+    {
+        var phantomAnchor = Guid.NewGuid();
+        var alivePeer = Guid.NewGuid();
+        _alivePeerStubs = new Dictionary<Guid, Guid?>
+        {
+            // phantomAnchor 故意缺席 —— 模拟"调用方传入不存在的 anchor"
+            { alivePeer, TenantA },   // peer 存活：让第二闸放行，否则 anchor 谓词无法独立考验
+        };
+
+        await SeedRelationsAsync(
+            // 脏数据：数据库里有 TenantA 关系引用 phantomAnchor。若 anchor 第一闸缺失，
+            // 关系侧第一闸保留这条 (TenantA)，peer 第二闸放行 alivePeer → count = 1。
+            CreateRelation(TenantA, source: phantomAnchor, target: alivePeer, kind: RelationSource.Manual));
+
+        var payload = await InvokeAsync(TenantA, phantomAnchor);
+
+        payload.GetProperty("anchorDocumentId").GetGuid().ShouldBe(phantomAnchor);
+        payload.GetProperty("count").GetInt32().ShouldBe(0);
+        payload.GetProperty("relations").GetArrayLength().ShouldBe(0);
+    }
+
+    /// <summary>
+    /// Issue #164: anchor `documentId` 属于另一个租户（攻击场景：LLM 被诱骗传跨租户 ID
+    /// 探测元数据）。chat 工具的 anchor 第一闸 `Where(d => d.TenantId == tenantId)` 应丢弃，
+    /// 返回空 payload。删掉 anchor TenantId 谓词 → 此测试必失败。
+    ///
+    /// 同样让 peer 第二闸放行（alivePeer 是 TenantA），独立考验 anchor 谓词。
+    /// </summary>
+    [Fact]
+    public async Task Anchor_Predicate_Returns_Empty_Payload_When_Anchor_Document_Belongs_To_Other_Tenant()
+    {
+        var crossTenantAnchor = Guid.NewGuid();
+        var alivePeer = Guid.NewGuid();
+        _alivePeerStubs = new Dictionary<Guid, Guid?>
+        {
+            // anchor 在 TenantB —— chat 工具以 TenantA 调用，anchor 谓词应丢弃
+            { crossTenantAnchor, TenantB },
+            { alivePeer, TenantA },   // peer 在 TenantA，第二闸放行 —— 独立考验 anchor 谓词
+        };
+
+        await SeedRelationsAsync(
+            // 脏数据：TenantA 关系引用 TenantB anchor 与 TenantA peer
+            CreateRelation(TenantA, source: crossTenantAnchor, target: alivePeer, kind: RelationSource.Manual));
+
+        var payload = await InvokeAsync(TenantA, crossTenantAnchor);
 
         payload.GetProperty("count").GetInt32().ShouldBe(0);
         payload.GetProperty("relations").GetArrayLength().ShouldBe(0);

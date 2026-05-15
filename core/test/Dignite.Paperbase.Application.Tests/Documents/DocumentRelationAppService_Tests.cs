@@ -8,6 +8,7 @@ using Dignite.Paperbase.Documents;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Shouldly;
+using Volo.Abp.Domain.Entities;
 using Volo.Abp.Modularity;
 using Volo.Abp.MultiTenancy;
 using Xunit;
@@ -296,6 +297,124 @@ public class DocumentRelationAppService_Tests
 
         result.Edges.ShouldBeEmpty();
         result.Nodes.Select(n => n.DocumentId).ShouldBe(new[] { rootId });
+    }
+
+    /// <summary>
+    /// Issue #164: GetGraphAsync 接受调用方传入的 root id，被 prompt-injection 操纵的
+    /// 调用方（或后台任务 disable ambient filter）可能传入跨租户 id。本测试验证 root 走
+    /// LoadVisibleDocumentsAsync 的显式 TenantId 谓词后必抛 EntityNotFoundException
+    /// (HTTP 边界映射 404，与 GetAsync 一致行为)。
+    /// </summary>
+    [Fact]
+    public async Task GetGraphAsync_Should_Throw_When_Root_Document_Belongs_To_Other_Tenant()
+    {
+        var tenantA = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var tenantB = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var crossTenantRootId = Guid.NewGuid();
+        var documents = new List<Document>
+        {
+            CreateDocument(crossTenantRootId, "tenant-b-root.pdf", tenantId: tenantB)
+        };
+        SetupRepositories(documents, new List<DocumentRelation>());
+
+        using (_currentTenant.Change(tenantA))
+        {
+            await Should.ThrowAsync<EntityNotFoundException>(async () =>
+            {
+                await _relationAppService.GetGraphAsync(new GetDocumentRelationGraphInput
+                {
+                    RootDocumentId = crossTenantRootId,
+                    Depth = 1
+                });
+            });
+        }
+    }
+
+    /// <summary>
+    /// Issue #164: 同 GetGraphAsync —— GetListAsync 接受 anchor documentId，跨租户必抛。
+    /// </summary>
+    [Fact]
+    public async Task GetListAsync_Should_Throw_When_Anchor_Document_Belongs_To_Other_Tenant()
+    {
+        var tenantA = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var tenantB = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var crossTenantAnchor = Guid.NewGuid();
+        var documents = new List<Document>
+        {
+            CreateDocument(crossTenantAnchor, "tenant-b.pdf", tenantId: tenantB)
+        };
+        SetupRepositories(documents, new List<DocumentRelation>());
+
+        using (_currentTenant.Change(tenantA))
+        {
+            await Should.ThrowAsync<EntityNotFoundException>(async () =>
+            {
+                await _relationAppService.GetListAsync(crossTenantAnchor);
+            });
+        }
+    }
+
+    /// <summary>
+    /// Issue #164: CreateAsync 必须校验两端 Document 都属于当前租户，防止脏数据写入后
+    /// 被 GetGraphAsync / GetListAsync / chat skill 读出造成跨租户元数据泄露。
+    /// </summary>
+    [Fact]
+    public async Task CreateAsync_Should_Throw_When_Source_Document_Belongs_To_Other_Tenant()
+    {
+        var tenantA = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var tenantB = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var sourceId = Guid.NewGuid();   // 假冒来自 TenantB
+        var targetId = Guid.NewGuid();   // 合法 TenantA 文档
+        var documents = new List<Document>
+        {
+            CreateDocument(sourceId, "tenant-b.pdf", tenantId: tenantB),
+            CreateDocument(targetId, "tenant-a.pdf", tenantId: tenantA)
+        };
+        SetupRepositories(documents, new List<DocumentRelation>());
+
+        using (_currentTenant.Change(tenantA))
+        {
+            var exception = await Should.ThrowAsync<EntityNotFoundException>(async () =>
+            {
+                await _relationAppService.CreateAsync(new CreateDocumentRelationInput
+                {
+                    SourceDocumentId = sourceId,
+                    TargetDocumentId = targetId,
+                    Description = "attack relation"
+                });
+            });
+            // 错误明确指出哪个端越权
+            exception.Id.ShouldBe(sourceId);
+        }
+    }
+
+    [Fact]
+    public async Task CreateAsync_Should_Throw_When_Target_Document_Belongs_To_Other_Tenant()
+    {
+        var tenantA = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var tenantB = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var sourceId = Guid.NewGuid();
+        var targetId = Guid.NewGuid();
+        var documents = new List<Document>
+        {
+            CreateDocument(sourceId, "tenant-a.pdf", tenantId: tenantA),
+            CreateDocument(targetId, "tenant-b.pdf", tenantId: tenantB)
+        };
+        SetupRepositories(documents, new List<DocumentRelation>());
+
+        using (_currentTenant.Change(tenantA))
+        {
+            var exception = await Should.ThrowAsync<EntityNotFoundException>(async () =>
+            {
+                await _relationAppService.CreateAsync(new CreateDocumentRelationInput
+                {
+                    SourceDocumentId = sourceId,
+                    TargetDocumentId = targetId,
+                    Description = "attack relation"
+                });
+            });
+            exception.Id.ShouldBe(targetId);
+        }
     }
 
     [Fact]
