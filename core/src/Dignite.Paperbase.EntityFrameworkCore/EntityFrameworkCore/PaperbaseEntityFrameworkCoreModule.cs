@@ -1,5 +1,4 @@
-﻿using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Chat;
+using Dignite.Paperbase.Documents;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.EntityFrameworkCore;
 using Volo.Abp.Modularity;
@@ -19,8 +18,9 @@ public class PaperbaseEntityFrameworkCoreModule : AbpModule
             options.AddDefaultRepositories();
 
             options.AddRepository<Document, EfCoreDocumentRepository>();
-            options.AddRepository<DocumentRelation, EfCoreDocumentRelationRepository>();
-            options.AddRepository<ChatConversation, EfCoreChatConversationRepository>();
+            options.AddRepository<OutboxEvent, EfCoreOutboxEventRepository>();
+            options.AddRepository<TenantFieldDefinition, EfCoreTenantFieldDefinitionRepository>();
+            options.AddRepository<DocumentTenantField, EfCoreDocumentTenantFieldRepository>();
         });
     }
 }

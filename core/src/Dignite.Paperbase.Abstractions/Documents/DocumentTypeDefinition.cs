@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Volo.Abp;
 using Volo.Abp.Localization;
 
@@ -39,10 +40,32 @@ public class DocumentTypeDefinition
     /// <summary>类型匹配优先级（数字越大优先级越高）</summary>
     public int Priority { get; set; } = 0;
 
+    /// <summary>
+    /// Host 部署级字段定义集合——挂在该类型下的字段。
+    /// 每个文档分类到此类型后，<c>HostFieldExtractionWorkflow</c> 会按字段定义批量调用 LLM 抽取。
+    /// 字段定义集合是 mutable list：Host 可在 ConfigureServices 时通过 <c>AddField(...)</c> 累加。
+    /// </summary>
+    public IList<HostFieldDefinition> Fields { get; } = new List<HostFieldDefinition>();
+
     public DocumentTypeDefinition(string typeCode, ILocalizableString displayName)
     {
         TypeCode = ValidateTypeCode(typeCode);
         DisplayName = Check.NotNull(displayName, nameof(displayName));
+    }
+
+    /// <summary>
+    /// Fluent helper：注册一个 Host 字段定义。
+    /// 链式调用示例：
+    /// <code>
+    /// options.Register(new DocumentTypeDefinition("host.medical-record", L["MedicalRecord"])
+    ///     .AddField("department", "Extract the department name", FieldDataType.String)
+    ///     .AddField("admissionDate", "Extract admission date", FieldDataType.Date));
+    /// </code>
+    /// </summary>
+    public DocumentTypeDefinition AddField(string name, string prompt, FieldDataType dataType, bool required = false)
+    {
+        Fields.Add(new HostFieldDefinition(name, prompt, dataType, required));
+        return this;
     }
 
     /// <summary>

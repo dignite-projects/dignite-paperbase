@@ -1,4 +1,4 @@
-﻿using Dignite.Paperbase.Localization;
+using Dignite.Paperbase.Localization;
 using Volo.Abp.Authorization.Permissions;
 using Volo.Abp.Localization;
 
@@ -20,16 +20,6 @@ public class PaperbasePermissionDefinitionProvider : PermissionDefinitionProvide
 
         var pipelines = documents.AddChild(PaperbasePermissions.Documents.Pipelines.Default, L("Permission:Documents.Pipelines"));
         pipelines.AddChild(PaperbasePermissions.Documents.Pipelines.Retry, L("Permission:Documents.Pipelines.Retry"));
-
-        var chat = group.AddPermission(PaperbasePermissions.Chat.Default, L("Permission:Chat"));
-        chat.AddChild(PaperbasePermissions.Chat.Create, L("Permission:Chat.Create"));
-        chat.AddChild(PaperbasePermissions.Chat.SendMessage, L("Permission:Chat.SendMessage"));
-        chat.AddChild(PaperbasePermissions.Chat.Delete, L("Permission:Chat.Delete"));
-
-        var relations = group.AddPermission(PaperbasePermissions.DocumentRelations.Default, L("Permission:DocumentRelations"));
-        relations.AddChild(PaperbasePermissions.DocumentRelations.Create, L("Permission:DocumentRelations.Create"));
-        relations.AddChild(PaperbasePermissions.DocumentRelations.Delete, L("Permission:DocumentRelations.Delete"));
-        relations.AddChild(PaperbasePermissions.DocumentRelations.ConfirmRelation, L("Permission:DocumentRelations.ConfirmRelation"));
     }
 
     private static LocalizableString L(string name)

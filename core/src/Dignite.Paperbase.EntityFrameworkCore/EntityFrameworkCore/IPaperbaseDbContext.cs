@@ -1,5 +1,4 @@
-﻿using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Chat;
+using Dignite.Paperbase.Documents;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp.Data;
 using Volo.Abp.EntityFrameworkCore;
@@ -11,6 +10,7 @@ public interface IPaperbaseDbContext : IEfCoreDbContext
 {
     DbSet<Document> Documents { get; }
     DbSet<DocumentPipelineRun> DocumentPipelineRuns { get; }
-    DbSet<DocumentRelation> DocumentRelations { get; }
-    DbSet<ChatConversation> ChatConversations { get; }
+    DbSet<OutboxEvent> OutboxEvents { get; }
+    DbSet<TenantFieldDefinition> TenantFieldDefinitions { get; }
+    DbSet<DocumentTenantField> DocumentTenantFields { get; }
 }

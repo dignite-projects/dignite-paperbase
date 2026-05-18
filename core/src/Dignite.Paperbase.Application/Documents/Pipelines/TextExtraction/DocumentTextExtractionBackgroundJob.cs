@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Abstractions.TextExtraction;
 using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.Documents;
@@ -13,6 +14,7 @@ using Microsoft.Extensions.Options;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.BlobStoring;
 using Volo.Abp.DependencyInjection;
+using Volo.Abp.Settings;
 using Volo.Abp.Uow;
 
 namespace Dignite.Paperbase.Documents.Pipelines.TextExtraction;
@@ -28,12 +30,14 @@ public class DocumentTextExtractionBackgroundJob
     private readonly ITextExtractor _textExtractor;
     private readonly IBlobContainer<PaperbaseDocumentContainer> _blobContainer;
     private readonly IUnitOfWorkManager _unitOfWorkManager;
+    private readonly OutboxEventManager _outboxEventManager;
+    private readonly PaperbaseOcrOptions _ocrOptions;
+    private readonly ISettingProvider _settingProvider;
     /// <summary>
-    /// Document-title generation is single-shot, tool-free, prompt-unique — same shape as
-    /// <c>ChatAppService.TryGenerateAndApplyTitleAsync</c>. Reuses the host-registered
-    /// <see cref="PaperbaseAIConsts.TitleGeneratorChatClientKey"/> client (no
-    /// FunctionInvocation, no DistributedCache) so traces stay clean and hosts can
-    /// optionally point title generation at a smaller / cheaper model than the main chat.
+    /// Document-title generation is single-shot, tool-free, prompt-unique. Reuses the
+    /// host-registered <see cref="PaperbaseAIConsts.TitleGeneratorChatClientKey"/> client
+    /// (no FunctionInvocation, no DistributedCache) so traces stay clean and hosts can
+    /// optionally point title generation at a smaller / cheaper model.
     /// </summary>
     private readonly IChatClient _titleGeneratorChatClient;
     private readonly IPromptProvider _promptProvider;
@@ -47,6 +51,9 @@ public class DocumentTextExtractionBackgroundJob
         ITextExtractor textExtractor,
         IBlobContainer<PaperbaseDocumentContainer> blobContainer,
         IUnitOfWorkManager unitOfWorkManager,
+        OutboxEventManager outboxEventManager,
+        IOptions<PaperbaseOcrOptions> ocrOptions,
+        ISettingProvider settingProvider,
         [FromKeyedServices(PaperbaseAIConsts.TitleGeneratorChatClientKey)] IChatClient titleGeneratorChatClient,
         IPromptProvider promptProvider,
         IOptions<PaperbaseAIBehaviorOptions> behaviorOptions)
@@ -58,6 +65,9 @@ public class DocumentTextExtractionBackgroundJob
         _textExtractor = textExtractor;
         _blobContainer = blobContainer;
         _unitOfWorkManager = unitOfWorkManager;
+        _outboxEventManager = outboxEventManager;
+        _ocrOptions = ocrOptions.Value;
+        _settingProvider = settingProvider;
         _titleGeneratorChatClient = titleGeneratorChatClient;
         _promptProvider = promptProvider;
         _behaviorOptions = behaviorOptions.Value;
@@ -83,7 +93,7 @@ public class DocumentTextExtractionBackgroundJob
             var title = await TryGenerateTitleAsync(result.Markdown)
                 ?? MarkdownTitleExtractor.ExtractTitle(result.Markdown)
                 ?? FallbackTitleFromFileName(workItem.OriginalFileName);
-            await CompleteRunAsync(args.DocumentId, workItem.RunId, result.Markdown, title, actualSourceType);
+            await CompleteRunAsync(args.DocumentId, workItem.RunId, result, title, actualSourceType);
         }
         catch (Exception ex)
         {
@@ -112,7 +122,7 @@ public class DocumentTextExtractionBackgroundJob
     private async Task CompleteRunAsync(
         Guid documentId,
         Guid runId,
-        string markdown,
+        TextExtractionResult result,
         string? title,
         SourceType actualSourceType)
     {
@@ -124,11 +134,51 @@ public class DocumentTextExtractionBackgroundJob
                 document, runId, PaperbasePipelines.TextExtraction);
 
         await _pipelineRunManager.CompleteTextExtractionAsync(
-            document, run, markdown, title, actualSourceType);
+            document, run, result.Markdown, title, actualSourceType);
 
-        await _pipelineJobScheduler.QueueAsync(document, PaperbasePipelines.Classification);
+        // 发布 OCRCompletedEto——薄载荷，下游通过 REST 回拉 Markdown。
+        await _outboxEventManager.PublishAsync(
+            document.TenantId,
+            document.Id,
+            new OCRCompletedEto
+            {
+                DocumentId = document.Id,
+                TenantId = document.TenantId,
+                OcrConfidence = result.Confidence,
+                UsedOcr = result.UsedOcr
+            });
+
+        // OCR 置信度门槛检查（只对 UsedOcr=true 路径有意义；数字版抽取置信度默认 1.0 不会触发）
+        var threshold = await ResolveOcrThresholdAsync(document.TenantId);
+        if (result.UsedOcr && result.Confidence < threshold)
+        {
+            var reason = $"OCR confidence {result.Confidence:0.00} below threshold {threshold:0.00}";
+            document.MarkPendingOcrReview(reason);
+            await _documentRepository.UpdateAsync(document, autoSave: true);
+
+            Logger.LogInformation(
+                "Document {DocumentId} OCR confidence {Confidence:0.00} below threshold {Threshold:0.00}; routed to PendingReview.",
+                document.Id, result.Confidence, threshold);
+        }
+        else
+        {
+            await _pipelineJobScheduler.QueueAsync(document, PaperbasePipelines.Classification);
+        }
 
         await uow.CompleteAsync();
+    }
+
+    private async Task<double> ResolveOcrThresholdAsync(Guid? tenantId)
+    {
+        // per-tenant 覆盖（ABP Setting Management）优先；回落到部署级默认值。
+        // ABP ISettingProvider 自动按 CurrentTenant 解析——即使 tenantId 显式传入也只用于
+        // 日志/审计；ambient 上下文已经在调用方设置好。
+        var settingValue = await _settingProvider.GetOrNullAsync(PaperbaseOcrOptions.ConfidenceThresholdSettingName);
+        if (double.TryParse(settingValue, out var tenantThreshold))
+        {
+            return tenantThreshold;
+        }
+        return _ocrOptions.DefaultConfidenceThreshold;
     }
 
     private async Task<string?> TryGenerateTitleAsync(string markdown, CancellationToken cancellationToken = default)

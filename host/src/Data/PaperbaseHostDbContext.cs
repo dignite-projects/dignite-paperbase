@@ -1,4 +1,3 @@
-using Dignite.Paperbase.Contracts.EntityFrameworkCore;
 using Dignite.Paperbase.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp.EntityFrameworkCore;
@@ -15,7 +14,7 @@ namespace Dignite.Paperbase.Host.Data;
 
 public class PaperbaseHostDbContext : AbpDbContext<PaperbaseHostDbContext>
 {
-    
+
     public const string DbTablePrefix = "App";
     public const string DbSchema = null;
 
@@ -40,9 +39,5 @@ public class PaperbaseHostDbContext : AbpDbContext<PaperbaseHostDbContext>
 
         // Paperbase core module
         builder.ConfigurePaperbase();
-
-        // Business modules
-        builder.ConfigureContracts();
     }
 }
-

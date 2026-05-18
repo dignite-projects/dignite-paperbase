@@ -1,5 +1,4 @@
-﻿using Dignite.Paperbase.Documents;
-using Dignite.Paperbase.Chat;
+using Dignite.Paperbase.Documents;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp;
 using Volo.Abp.EntityFrameworkCore.Modeling;
@@ -24,6 +23,7 @@ public static class PaperbaseDbContextModelCreatingExtensions
             b.Property(x => x.ReviewStatus).IsRequired();
             b.Property(x => x.ClassificationReason);
             b.Property(x => x.Markdown);
+            b.Property(x => x.SystemFieldsJson);
             b.Property(x => x.Title).HasMaxLength(DocumentConsts.MaxTitleLength);
 
             b.OwnsOne(x => x.FileOrigin, fo =>
@@ -66,87 +66,64 @@ public static class PaperbaseDbContextModelCreatingExtensions
             b.HasIndex(x => new { x.DocumentId, x.PipelineCode, x.AttemptNumber });
         });
 
-        builder.Entity<DocumentRelation>(b =>
+        builder.Entity<OutboxEvent>(b =>
         {
-            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "DocumentRelations", PaperbaseDbProperties.DbSchema);
+            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "OutboxEvents", PaperbaseDbProperties.DbSchema);
             b.ConfigureByConvention();
 
-            b.Property(x => x.Description).IsRequired().HasMaxLength(DocumentRelationConsts.MaxDescriptionLength);
-            b.Property(x => x.Source).IsRequired();
+            b.Property(x => x.EventType).IsRequired().HasMaxLength(OutboxEventConsts.MaxEventTypeLength);
+            b.Property(x => x.Status).IsRequired();
+            b.Property(x => x.ScheduledAt).IsRequired();
 
-            b.HasIndex(x => x.SourceDocumentId);
-            b.HasIndex(x => x.TargetDocumentId);
-
-            // Issue #158 (Y2): defend against duplicate AiSuggested rows when the same Document's
-            // RelationDiscoveryJob is dispatched twice (event-bus duplicate delivery, Hangfire retry).
-            // Filtered unique index — only live rows are unique. R2 dismissal tombstones
-            // (IsDeleted=true) coexist with new live rows for the same pair (user dismiss then
-            // re-create is a legal flow). On concurrent insert race, the second insert throws
-            // DbUpdateException → caught by the L2 RelationDiscovery per-candidate try/catch
-            // → recorded as Error, contained.
+            // 去重 key：(TenantId, DocumentId, EventType)。OutboxEventManager 通过此索引快速查找现有记录。
+            // 唯一索引 + 软删除过滤：同一 key 只允许一条 live 记录（语义去重的存储基础）。
             //
-            // Filter uses unquoted column name (no `[IsDeleted]` / `"IsDeleted"`) for cross-provider
-            // compatibility: SQL Server, PostgreSQL, and SQLite all accept the unquoted form because
-            // `IsDeleted` is not a reserved keyword in any of them. Bracket form would silently fail
-            // on SQLite (filter never matches → effective non-uniqueness).
-            //
-            // <strong>Known limitation — host (single-tenant) deployment</strong>:
-            // SQL standard says NULL is not equal to NULL even within UNIQUE constraints. SQL Server
-            // (pre-2022), PostgreSQL (pre-15), and SQLite all enforce this — two rows with
-            // (TenantId=NULL, SourceDocumentId=X, TargetDocumentId=Y) are treated as distinct and
-            // BOTH inserts succeed. This means: in host (single-tenant) mode where all rows have
-            // TenantId=NULL, the DB-level uniqueness is NOT enforced. Multi-tenant deployments
-            // where every relation has a non-null TenantId are fully protected. The application-
-            // level dedup in L2/L3 (`GetLinkedPeerDocumentIdsAsync(includeDismissed: true)`) is the
-            // only line of defense for host-tenant rows; this catches the common case (serial
-            // re-runs) but not the rare concurrent race. If the host-tenant duplicate rate becomes
-            // a real problem, follow-up options: SQL Server 2022 `NULLS NOT DISTINCT`, PostgreSQL 15
-            // `NULLS NOT DISTINCT`, or a persisted computed column that COALESCEs TenantId to
-            // Guid.Empty for indexing.
-            b.HasIndex(x => new { x.TenantId, x.SourceDocumentId, x.TargetDocumentId })
+            // <strong>已知限制 — host (single-tenant) deployment</strong>：
+            // SQL standard 下 NULL 不等于 NULL，所以两条 (TenantId=NULL, DocumentId=X, EventType=Y)
+            // 的行都能 insert 成功。host 单租户场景下 DB 级唯一不强制；多租户部署（每条都有非空 TenantId）
+            // 完全受保护。应用层 OutboxEventManager.PublishAsync 内的 FindByKeyAsync 是单租户的兜底
+            // 保护，覆盖串行场景；罕见的并发竞争由 ABP 的 DbUpdateException → 上游重试覆盖。
+            b.HasIndex(x => new { x.TenantId, x.DocumentId, x.EventType })
                 .IsUnique()
                 .HasFilter("IsDeleted = 0");
+
+            // 二级索引：扫描 InFlight 事件供后台 worker 检查/重发（如果以后需要）。
+            b.HasIndex(x => new { x.Status, x.ScheduledAt });
         });
 
-        builder.Entity<ChatConversation>(b =>
+        builder.Entity<TenantFieldDefinition>(b =>
         {
-            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "ChatConversations", PaperbaseDbProperties.DbSchema);
+            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "TenantFieldDefinitions", PaperbaseDbProperties.DbSchema);
             b.ConfigureByConvention();
 
-            b.Property(x => x.Title).IsRequired().HasMaxLength(ChatConsts.MaxTitleLength);
-            // Issue #100: DocumentTypeCode / TopK / MinScore moved off the aggregate
-            // (per-turn intent-driven scope replaces the old conversation-level pinning).
-            // Migration Drop_ChatConversation_Scope_Columns drops the underlying columns.
-            b.HasMany(x => x.Messages)
-                .WithOne()
-                .HasForeignKey(m => m.ConversationId)
-                .OnDelete(DeleteBehavior.Cascade);
+            b.Property(x => x.DocumentTypeCode).IsRequired().HasMaxLength(TenantFieldConsts.MaxDocumentTypeCodeLength);
+            b.Property(x => x.Name).IsRequired().HasMaxLength(TenantFieldConsts.MaxNameLength);
+            b.Property(x => x.Prompt).IsRequired().HasMaxLength(TenantFieldConsts.MaxPromptLength);
+            b.Property(x => x.DataType).IsRequired();
 
-            b.HasIndex(x => new { x.TenantId, x.CreatorId, x.CreationTime });
-        });
-
-        builder.Entity<ChatMessage>(b =>
-        {
-            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "ChatMessages", PaperbaseDbProperties.DbSchema);
-            b.ConfigureByConvention();
-
-            b.Property(x => x.Content).IsRequired().HasMaxLength(ChatConsts.MaxMessageLength);
-            b.Property(x => x.CitationsJson);
-            b.Property(x => x.IsDegraded).IsRequired();
-            b.Property(x => x.Role).IsRequired();
-
-            b.HasIndex(x => new { x.ConversationId, x.CreationTime });
-
-            // Partial unique index: enforces per-conversation idempotency for user turns only.
-            // ClientTurnId is null for assistant messages, so a full unique index would conflict.
-            b.HasIndex(x => new { x.ConversationId, x.ClientTurnId })
+            // 唯一索引：每租户每类型下字段名唯一。软删除过滤；NULL-tenant 限制同 OutboxEvent。
+            b.HasIndex(x => new { x.TenantId, x.DocumentTypeCode, x.Name })
                 .IsUnique()
-                .HasFilter("[ClientTurnId] IS NOT NULL");
+                .HasFilter("IsDeleted = 0");
+
+            b.HasIndex(x => new { x.TenantId, x.DocumentTypeCode });
         });
 
-        // RAG chunk storage is external to the core EF model and is owned by the
-        // configured provider. The open-source host uses Qdrant through
-        // IDocumentKnowledgeIndex, so this DbContext stays free of vector-store
-        // mappings and provider packages.
+        builder.Entity<DocumentTenantField>(b =>
+        {
+            b.ToTable(PaperbaseDbProperties.DbTablePrefix + "DocumentTenantFields", PaperbaseDbProperties.DbSchema);
+            b.ConfigureByConvention();
+
+            b.Property(x => x.FieldName).IsRequired().HasMaxLength(TenantFieldConsts.MaxNameLength);
+            b.Property(x => x.Value).HasMaxLength(TenantFieldConsts.MaxValueLength);
+
+            // 唯一索引：每文档每字段名一行
+            b.HasIndex(x => new { x.TenantId, x.DocumentId, x.FieldName })
+                .IsUnique()
+                .HasFilter("IsDeleted = 0");
+
+            // keyword 搜索常用维度：值 + 字段名
+            b.HasIndex(x => new { x.TenantId, x.FieldName });
+        });
     }
 }

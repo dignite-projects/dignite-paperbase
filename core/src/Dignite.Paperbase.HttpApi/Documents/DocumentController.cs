@@ -73,6 +73,24 @@ public class DocumentController : PaperbaseController, IDocumentAppService
         return _documentAppService.ConfirmClassificationAsync(id, input);
     }
 
+    [HttpPost("{id}/reclassify")]
+    public virtual Task<DocumentDto> ReclassifyAsync(Guid id, [FromBody] ReclassifyDocumentInput input)
+    {
+        return _documentAppService.ReclassifyAsync(id, input);
+    }
+
+    [HttpPost("{id}/review/approve")]
+    public virtual Task<DocumentDto> ApproveReviewAsync(Guid id)
+    {
+        return _documentAppService.ApproveReviewAsync(id);
+    }
+
+    [HttpPost("{id}/review/reject")]
+    public virtual Task<DocumentDto> RejectReviewAsync(Guid id, [FromBody] RejectReviewInput input)
+    {
+        return _documentAppService.RejectReviewAsync(id, input);
+    }
+
     [HttpPost("{id}/retry-pipeline")]
     public virtual Task RetryPipelineAsync(Guid id, [FromBody] RetryPipelineInput input)
     {

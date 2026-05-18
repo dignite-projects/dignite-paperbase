@@ -7,7 +7,6 @@ using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.Documents;
 using Dignite.Paperbase.Documents.Pipelines.Classification;
-using Dignite.Paperbase.Documents.Pipelines.Embedding;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
@@ -28,6 +27,7 @@ public class DocumentClassificationJobTestModule : AbpModule
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
         context.Services.AddSingleton(Substitute.For<IDocumentRepository>());
+        context.Services.AddSingleton(Substitute.For<IOutboxEventRepository>());
         context.Services.AddSingleton(Substitute.For<IDistributedEventBus>());
         context.Services.AddSingleton(Substitute.For<IBackgroundJobManager>());
 
@@ -55,7 +55,7 @@ public class DocumentClassificationJobTestModule : AbpModule
 
 /// <summary>
 /// DocumentClassificationBackgroundJob 行为测试：验证分类结果如何驱动
-/// PipelineRun 状态流转、DocumentClassifiedEto 发布与 EmbeddingJob 入队。
+/// PipelineRun 状态流转和 DocumentClassifiedEto 发布。
 /// IChatClient 和 DocumentClassificationWorkflow 均使用 NSubstitute 替代，无真实 LLM 调用。
 /// </summary>
 public class DocumentClassificationBackgroundJob_Tests
@@ -65,7 +65,6 @@ public class DocumentClassificationBackgroundJob_Tests
     private readonly IDocumentRepository _documentRepository;
     private readonly DocumentClassificationWorkflow _workflow;
     private readonly IDistributedEventBus _eventBus;
-    private readonly IBackgroundJobManager _backgroundJobManager;
 
     public DocumentClassificationBackgroundJob_Tests()
     {
@@ -73,11 +72,10 @@ public class DocumentClassificationBackgroundJob_Tests
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _workflow = GetRequiredService<DocumentClassificationWorkflow>();
         _eventBus = GetRequiredService<IDistributedEventBus>();
-        _backgroundJobManager = GetRequiredService<IBackgroundJobManager>();
     }
 
     [Fact]
-    public async Task HighConfidence_Completes_Pipeline_Publishes_Event_Enqueues_Embedding()
+    public async Task HighConfidence_Completes_Pipeline_And_Publishes_Event()
     {
         var doc = CreateDocument("業務委託契約書の内容です。");
         SetupDocumentRepository(doc);
@@ -113,22 +111,10 @@ public class DocumentClassificationBackgroundJob_Tests
                 e.DocumentTypeCode == "contract.general" &&
                 e.ClassificationConfidence == 0.92),
             Arg.Any<bool>());
-
-        // 入队了 Embedding Job
-        var embeddingRun = doc.GetLatestRun(PaperbasePipelines.Embedding);
-        embeddingRun.ShouldNotBeNull();
-        embeddingRun.Status.ShouldBe(PipelineRunStatus.Pending);
-
-        await _backgroundJobManager.Received(1).EnqueueAsync(
-            Arg.Is<DocumentEmbeddingJobArgs>(a =>
-                a.DocumentId == doc.Id &&
-                a.PipelineRunId == embeddingRun.Id),
-            Arg.Any<BackgroundJobPriority>(),
-            Arg.Any<TimeSpan?>());
     }
 
     [Fact]
-    public async Task LowConfidence_Marks_PendingReview_No_Event_No_Embedding()
+    public async Task LowConfidence_Marks_PendingReview_No_Event()
     {
         var doc = CreateDocument("Some document text.");
         SetupDocumentRepository(doc);
@@ -151,18 +137,12 @@ public class DocumentClassificationBackgroundJob_Tests
         run.ShouldNotBeNull();
         run.Status.ShouldBe(PipelineRunStatus.Succeeded);
 
-        // DocumentTypeCode/ClassificationConfidence 不应被污染，ReviewStatus 应为 PendingReview
         doc.DocumentTypeCode.ShouldBeNull();
         doc.ClassificationConfidence.ShouldBe(0);
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
 
-        // 不发布事件，不入队 Embedding
         await _eventBus.DidNotReceive().PublishAsync(
             Arg.Any<DocumentClassifiedEto>(), Arg.Any<bool>());
-        await _backgroundJobManager.DidNotReceive().EnqueueAsync(
-            Arg.Any<DocumentEmbeddingJobArgs>(),
-            Arg.Any<BackgroundJobPriority>(),
-            Arg.Any<TimeSpan?>());
     }
 
     [Fact]
@@ -206,7 +186,7 @@ public class DocumentClassificationBackgroundJob_Tests
             .Returns(new DocumentClassificationOutcome
             {
                 TypeCode = "invoice.general",   // 未注册——白名单不应放行
-                ConfidenceScore = 0.95,         // 看似高置信度，但 TypeCode 非法
+                ConfidenceScore = 0.95,
                 Reason = "LLM hallucinated an unknown type"
             });
 
@@ -216,26 +196,17 @@ public class DocumentClassificationBackgroundJob_Tests
         run.ShouldNotBeNull();
         run.Status.ShouldBe(PipelineRunStatus.Succeeded);
 
-        // 不能写入未注册的 TypeCode，必须落入 PendingReview
         doc.DocumentTypeCode.ShouldBeNull();
         doc.ClassificationConfidence.ShouldBe(0);
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
 
-        // 不发布事件，不入队 Embedding
         await _eventBus.DidNotReceive().PublishAsync(
             Arg.Any<DocumentClassifiedEto>(), Arg.Any<bool>());
-        await _backgroundJobManager.DidNotReceive().EnqueueAsync(
-            Arg.Any<DocumentEmbeddingJobArgs>(),
-            Arg.Any<BackgroundJobPriority>(),
-            Arg.Any<TimeSpan?>());
     }
 
     [Fact]
     public async Task Transient_AiProviderFailure_FailsRun_And_Rethrows_For_AbpRetry()
     {
-        // transient 故障（网络/超时/取消）不在 Job 内兜底——异常冒泡后由 ABP BackgroundJob
-        // 框架按 MaxTryCount 重试。Job 在 rethrow 前必须先标记 Run 为 Failed，保留运营
-        // 侧可见性；ABP 重试下一次 BeginOrStartAsync 会复用同一 Run 并 MarkRunning 重置。
         var doc = CreateDocument("業務委託契約書。甲：A社。乙：B社。");
         SetupDocumentRepository(doc);
 
@@ -246,22 +217,15 @@ public class DocumentClassificationBackgroundJob_Tests
                 Arg.Any<CancellationToken>())
             .Returns<DocumentClassificationOutcome>(_ => throw new TimeoutException("AI service timeout"));
 
-        // 异常必须冒泡——否则 ABP 收不到失败信号，不会重试
         await Should.ThrowAsync<TimeoutException>(
             async () => await _job.ExecuteAsync(new DocumentClassificationJobArgs { DocumentId = doc.Id }));
 
-        // Run 应已被 FailRunAsync 标记 Failed
         var run = doc.GetLatestRun(PaperbasePipelines.Classification);
         run.ShouldNotBeNull();
         run.Status.ShouldBe(PipelineRunStatus.Failed);
 
-        // 不发布事件，不入队 Embedding——transient 故障下整条流水线不前进
         await _eventBus.DidNotReceive().PublishAsync(
             Arg.Any<DocumentClassifiedEto>(), Arg.Any<bool>());
-        await _backgroundJobManager.DidNotReceive().EnqueueAsync(
-            Arg.Any<DocumentEmbeddingJobArgs>(),
-            Arg.Any<BackgroundJobPriority>(),
-            Arg.Any<TimeSpan?>());
     }
 
     [Fact]
@@ -285,24 +249,17 @@ public class DocumentClassificationBackgroundJob_Tests
         run.ShouldNotBeNull();
         run.Status.ShouldBe(PipelineRunStatus.Succeeded);
 
-        // TypeCode 为 null，ReviewStatus 为 PendingReview
         doc.DocumentTypeCode.ShouldBeNull();
         doc.ClassificationConfidence.ShouldBe(0);
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.PendingReview);
 
-        // 不发布事件，不入队 Embedding
         await _eventBus.DidNotReceive().PublishAsync(
             Arg.Any<DocumentClassifiedEto>(), Arg.Any<bool>());
-        await _backgroundJobManager.DidNotReceive().EnqueueAsync(
-            Arg.Any<DocumentEmbeddingJobArgs>(),
-            Arg.Any<BackgroundJobPriority>(),
-            Arg.Any<TimeSpan?>());
     }
 
     [Fact]
     public async Task Wrapped_JsonException_Also_Routes_To_PendingReview()
     {
-        // SDK 把 JsonException 包在外层异常里也算 schema drift。
         var doc = CreateDocument("業務委託契約書。");
         SetupDocumentRepository(doc);
 

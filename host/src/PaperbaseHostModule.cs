@@ -1,6 +1,5 @@
+using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Ai;
-using Dignite.Paperbase.Contracts;
-using Dignite.Paperbase.Contracts.EntityFrameworkCore;
 using Dignite.Paperbase.Host.Data;
 using Dignite.Paperbase.EntityFrameworkCore;
 using Dignite.Paperbase.Host.HealthChecks;
@@ -8,8 +7,7 @@ using Dignite.Paperbase.Host.Localization;
 using Dignite.Paperbase.Localization;
 using Dignite.Paperbase.Ocr.PaddleOcr;
 using Dignite.Paperbase.TextExtraction;
-using Microsoft.SemanticKernel.Connectors.Qdrant;
-using Qdrant.Client;
+using Volo.Abp.Localization;
 using Dignite.Paperbase.TextExtraction.ElBrunoMarkItDown;
 using Microsoft.Extensions.AI;
 using Microsoft.EntityFrameworkCore;
@@ -46,7 +44,6 @@ using Volo.Abp.FeatureManagement;
 using Volo.Abp.FeatureManagement.EntityFrameworkCore;
 using Volo.Abp.Identity;
 using Volo.Abp.Identity.EntityFrameworkCore;
-using Volo.Abp.Localization;
 using Volo.Abp.Mapperly;
 using Volo.Abp.Modularity;
 using Volo.Abp.MultiTenancy;
@@ -124,13 +121,8 @@ namespace Dignite.Paperbase.Host;
     // Paperbase infrastructure modules
     typeof(PaperbaseTextExtractionModule),
     typeof(PaperbaseTextExtractionElBrunoMarkItDownModule),
-    typeof(PaperbasePaddleOcrModule),                  // 默认 OCR Provider（本地 sidecar，PP-StructureV3 走 CPU 即可，输出 Markdown）
+    typeof(PaperbasePaddleOcrModule)
     // typeof(PaperbaseAzureDocumentIntelligenceModule), // 云方案（高精度），切换时同步在 .csproj 注释 / 启用 ProjectReference
-
-    // Paperbase business modules
-    typeof(PaperbaseContractsHttpApiModule),
-    typeof(PaperbaseContractsApplicationModule),
-    typeof(PaperbaseContractsEntityFrameworkCoreModule)
 )]
 public class PaperbaseHostModule : AbpModule
 {
@@ -212,38 +204,34 @@ public class PaperbaseHostModule : AbpModule
         ConfigureVirtualFiles(hostingEnvironment);
         ConfigureEfCore(context);
         ConfigureAI(context, configuration);
-        ConfigureVectorStore(context, configuration);
+        ConfigureDocumentTypes();
         ConfigureOpenTelemetry(context, configuration);
     }
 
-    // Register Microsoft.Extensions.VectorData's Qdrant connector. Connection params come
-    // from PaperbaseVectorStore:Qdrant:* (host-only — IChatClient and IEmbeddingGenerator are
-    // wired separately in ConfigureAI). Chat-side options like CollectionName /
-    // EmbeddingDimension / MinScore live on PaperbaseVectorStoreOptions and are bound in
-    // PaperbaseApplicationModule.
-    private void ConfigureVectorStore(ServiceConfigurationContext context, IConfiguration configuration)
+    // Host 部署级文档类型注册——CLAUDE.md：Host 至少注册一个 fallback 通用类型，
+    // 承接 LLM 无法精确归类的文档；下游业务消费方按业务需要追加自己的 type。
+    // <para>TypeCode 必须遵循 "&lt;owner&gt;.&lt;sub-type&gt;" 约定（见 DocumentTypeDefinition）。
+    // Host 注册的类型用 "host." 前缀。</para>
+    private void ConfigureDocumentTypes()
     {
-        context.Services.AddSingleton<QdrantClient>(_ =>
+        Configure<DocumentTypeOptions>(options =>
         {
-            var endpoint = configuration["PaperbaseVectorStore:Qdrant:Endpoint"] ?? "http://localhost:6334";
-            var apiKey = configuration["PaperbaseVectorStore:Qdrant:ApiKey"];
-            var uri = new Uri(endpoint);
-            return new QdrantClient(
-                host: uri.Host,
-                port: uri.Port > 0 ? uri.Port : 6334,
-                https: string.Equals(uri.Scheme, "https", StringComparison.OrdinalIgnoreCase),
-                apiKey: string.IsNullOrWhiteSpace(apiKey) ? null : apiKey);
+            // Fallback 通用类型——置信度门槛较低，捕住无法归类的文档而非进 PendingReview。
+            options.Register(new DocumentTypeDefinition(
+                "host.general",
+                LocalizableString.Create<PaperbaseHostResource>("DocumentType:General"))
+            {
+                ConfidenceThreshold = 0.3,
+                Priority = 0  // 最低优先级，让具体业务类型优先匹配
+            });
         });
-
-        context.Services.AddQdrantVectorStore();
     }
-    
 
     private void ConfigureHealthChecks(ServiceConfigurationContext context)
     {
         context.Services.AddPaperbaseHealthChecks();
     }
-    
+
     private void ConfigureStudio(IHostEnvironment hostingEnvironment)
     {
         if (hostingEnvironment.IsProduction())
@@ -270,9 +258,9 @@ public class PaperbaseHostModule : AbpModule
         {
             options.StyleBundles.Configure(
                 LeptonXLiteThemeBundles.Styles.Global,
-                bundle => 
-                { 
-                    bundle.AddFiles("/global-styles.css"); 
+                bundle =>
+                {
+                    bundle.AddFiles("/global-styles.css");
                 }
             );
 
@@ -428,47 +416,12 @@ public class PaperbaseHostModule : AbpModule
             new System.ClientModel.ApiKeyCredential(configuration["PaperbaseAI:ApiKey"]!),
             new OpenAIClientOptions { Endpoint = new Uri(configuration["PaperbaseAI:Endpoint"]!) });
 
-        var chatBuilder = context.Services
-            .AddChatClient(_ => openAIClient
-                .GetChatClient(configuration["PaperbaseAI:ChatModelId"]!)
-                .AsIChatClient())
-            .UseFunctionInvocation(configure: invoker =>
-                invoker.MaximumIterationsPerRequest =
-                    configuration.GetValue("PaperbaseAI:MaxToolIterations", 10));
-
-        if (configuration.GetValue("PaperbaseAI:PromptCachingEnabled", defaultValue: true))
-            chatBuilder = chatBuilder.UseDistributedCache();
-
-        // OTel decorators emit the gen_ai.* semantic-convention signals (turn duration,
-        // token usage, execute_tool spans). Wire them inside the pipeline so a host that
-        // adds an OTel exporter automatically picks up the standard signals — Paperbase's
-        // own ChatTelemetryRecorder only adds project-specific deltas on top
-        // (turn.degraded counter, tool.result.size histogram, business audit log).
-        chatBuilder.UseOpenTelemetry();
-        chatBuilder.UseLogging();
-
-        // Summarizer chat client: separate keyed registration consumed by
-        // ChatCompactionStrategyFactory's SummarizationCompactionStrategy. Falls back to
-        // the primary ChatModelId when SummarizerModelId is unset so the factory always
-        // resolves a client even on hosts that don't configure compaction.
-        // No UseFunctionInvocation / UseDistributedCache (single-shot summary, no tools,
-        // negligible cache hit rate); OTel + Logging stay so summarizer cost is observable.
-        var summarizerModelId = configuration["PaperbaseAI:SummarizerModelId"]
-            ?? configuration["PaperbaseAI:ChatModelId"]!;
-        context.Services.AddKeyedChatClient(
-            PaperbaseAIConsts.SummarizerChatClientKey,
-            _ => openAIClient.GetChatClient(summarizerModelId).AsIChatClient())
-            .UseOpenTelemetry()
-            .UseLogging();
-
-        // Title-generator chat client: same shape as the summarizer — single-shot,
-        // tool-free, prompt-unique-per-call so distributed caching is a net negative.
-        // Consumed by ChatAppService.TryGenerateAndApplyTitleAsync and by
+        // Title-generator chat client: single-shot, tool-free, prompt-unique-per-call so
+        // distributed caching is a net negative. Consumed by
         // DocumentTextExtractionBackgroundJob.TryGenerateTitleAsync via
         // [FromKeyedServices(PaperbaseAIConsts.TitleGeneratorChatClientKey)]. Falls back
-        // to the primary ChatModelId when TitleGeneratorModelId is unset; a host that
-        // wants to cut cost can point this at a small fast model (e.g. Qwen3-8B) while
-        // keeping the main chat on a stronger one.
+        // to ChatModelId when TitleGeneratorModelId is unset; hosts that want to cut cost
+        // can point this at a small fast model (e.g. Qwen3-8B).
         var titleGeneratorModelId = configuration["PaperbaseAI:TitleGeneratorModelId"]
             ?? configuration["PaperbaseAI:ChatModelId"]!;
         context.Services.AddKeyedChatClient(
@@ -478,14 +431,13 @@ public class PaperbaseHostModule : AbpModule
             .UseLogging();
 
         // Structured-output chat client: shared by every single-shot RunAsync<T> caller
-        // (DocumentClassificationWorkflow, DocumentRerankWorkflow,
-        // ContractDocumentHandler.ExtractFieldsAsync). All three are tool-free and their
-        // prompts are document-content-derived (unique per call), so FunctionInvocation
-        // and DistributedCache are pure overhead. OTel + Logging stay so each structured
-        // call shows up as a clean chat <model> span (no phantom orchestrate_tools wrap).
-        // Falls back to ChatModelId when StructuredModelId is unset; production teams
-        // running tight token budgets can point this at a smaller / cheaper model that
-        // can still satisfy schema-bound output.
+        // (DocumentClassificationWorkflow and future field-extraction workflows). All are
+        // tool-free and prompts are document-content-derived (unique per call), so
+        // FunctionInvocation and DistributedCache are pure overhead. OTel + Logging stay
+        // so each structured call shows up as a clean chat <model> span. Falls back to
+        // ChatModelId when StructuredModelId is unset; production teams running tight
+        // token budgets can point this at a smaller / cheaper model that can still
+        // satisfy schema-bound output.
         var structuredModelId = configuration["PaperbaseAI:StructuredModelId"]
             ?? configuration["PaperbaseAI:ChatModelId"]!;
         context.Services.AddKeyedChatClient(
@@ -493,20 +445,11 @@ public class PaperbaseHostModule : AbpModule
             _ => openAIClient.GetChatClient(structuredModelId).AsIChatClient())
             .UseOpenTelemetry()
             .UseLogging();
-
-        context.Services
-            .AddEmbeddingGenerator(_ => openAIClient
-                .GetEmbeddingClient(configuration["PaperbaseAI:EmbeddingModelId"]!)
-                .AsIEmbeddingGenerator())
-            .UseOpenTelemetry()
-            .UseLogging();
     }
 
-    // OTel export pipeline. MAF (CompactionTelemetry / Microsoft.Agents.AI), Microsoft.Extensions.AI
-    // (gen_ai.* spans from the chat-client UseOpenTelemetry decorators above), and Paperbase's own
-    // ChatTelemetryRecorder / RelationDiscoveryTelemetryRecorder all emit signals. Without an
-    // exporter wired here they are silently dropped. See plan doc § "启发点 2：接通 OpenTelemetry
-    // 导出管道" and Issue #142 for the full rationale.
+    // OTel export pipeline. MAF (Microsoft.Agents.AI) and Microsoft.Extensions.AI (gen_ai.*
+    // spans from the chat-client UseOpenTelemetry decorators above) emit signals. Without an
+    // exporter wired here they are silently dropped.
     private void ConfigureOpenTelemetry(ServiceConfigurationContext context, IConfiguration configuration)
     {
         var section = configuration.GetSection("OpenTelemetry");
@@ -529,18 +472,10 @@ public class PaperbaseHostModule : AbpModule
         otel.WithTracing(tracing =>
         {
             tracing
-                // MAF spans incl. CompactionTelemetry's compaction.compact / compaction.summarize.
-                // The actual ActivitySource name MAF uses is the Experimental.* prefixed form
-                // (OpenTelemetryConsts.DefaultSourceName = "Experimental.Microsoft.Agents.AI").
-                // The unprefixed form is registered too in case Microsoft drops the Experimental
-                // prefix in a future stable release.
                 .AddSource("Experimental.Microsoft.Agents.AI")
                 .AddSource("Microsoft.Agents.AI")
-                // gen_ai.* spans from the chat-client / embedding-client UseOpenTelemetry
-                // decorators. Same Experimental.* convention as MAF.
                 .AddSource("Experimental.Microsoft.Extensions.AI")
                 .AddSource("Microsoft.Extensions.AI")
-                // Future ActivitySources under the project's namespace (wildcard supported by OTel).
                 .AddSource("Dignite.Paperbase.*")
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation();
@@ -559,11 +494,7 @@ public class PaperbaseHostModule : AbpModule
         otel.WithMetrics(metrics =>
         {
             metrics
-                // Paperbase-owned Meters: Dignite.Paperbase.Chat,
-                // Dignite.Paperbase.Documents.RelationDiscovery, Dignite.Paperbase.Contracts,
-                // plus future siblings.
                 .AddMeter("Dignite.Paperbase.*")
-                // MAF / ME.AI Meters — same Experimental.* prefix convention as traces.
                 .AddMeter("Experimental.Microsoft.Agents.AI")
                 .AddMeter("Microsoft.Agents.AI")
                 .AddMeter("Experimental.Microsoft.Extensions.AI")

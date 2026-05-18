@@ -5,13 +5,6 @@
     "Permission:Documents": "ドキュメント",
     "Permission:Documents.Upload": "ドキュメントのアップロード",
     "Permission:Documents.Delete": "ドキュメントの削除",
-    "Permission:Documents.Export": "ドキュメントのエクスポート",
-    "Permission:DocumentRelations": "ドキュメント関係",
-    "Permission:DocumentRelations.Create": "ドキュメント関係の作成",
-    "Permission:DocumentRelations.Delete": "ドキュメント関係の削除",
-    "Permission:Chat": "ドキュメントチャット",
-    "Permission:Chat.Create": "チャット会話の作成",
-    "Permission:Chat.SendMessage": "メッセージ送信",
-    "Permission:Chat.Delete": "チャット会話の削除"
+    "Permission:Documents.Export": "ドキュメントのエクスポート"
   }
 }

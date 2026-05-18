@@ -9,7 +9,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.DependencyInjection;
-using Volo.Abp.EventBus.Distributed;
 using Volo.Abp.Uow;
 
 namespace Dignite.Paperbase.Documents.Pipelines.Classification;
@@ -21,9 +20,8 @@ public class DocumentClassificationBackgroundJob
     private readonly IDocumentRepository _documentRepository;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly DocumentPipelineRunAccessor _pipelineRunAccessor;
-    private readonly DocumentPipelineJobScheduler _pipelineJobScheduler;
     private readonly DocumentClassificationWorkflow _workflow;
-    private readonly IDistributedEventBus _distributedEventBus;
+    private readonly OutboxEventManager _outboxEventManager;
     private readonly DocumentTypeOptions _documentTypeOptions;
     private readonly PaperbaseAIBehaviorOptions _aiOptions;
     private readonly IUnitOfWorkManager _unitOfWorkManager;
@@ -32,9 +30,8 @@ public class DocumentClassificationBackgroundJob
         IDocumentRepository documentRepository,
         DocumentPipelineRunManager pipelineRunManager,
         DocumentPipelineRunAccessor pipelineRunAccessor,
-        DocumentPipelineJobScheduler pipelineJobScheduler,
         DocumentClassificationWorkflow workflow,
-        IDistributedEventBus distributedEventBus,
+        OutboxEventManager outboxEventManager,
         IOptions<DocumentTypeOptions> documentTypeOptions,
         IOptions<PaperbaseAIBehaviorOptions> aiOptions,
         IUnitOfWorkManager unitOfWorkManager)
@@ -42,9 +39,8 @@ public class DocumentClassificationBackgroundJob
         _documentRepository = documentRepository;
         _pipelineRunManager = pipelineRunManager;
         _pipelineRunAccessor = pipelineRunAccessor;
-        _pipelineJobScheduler = pipelineJobScheduler;
         _workflow = workflow;
-        _distributedEventBus = distributedEventBus;
+        _outboxEventManager = outboxEventManager;
         _documentTypeOptions = documentTypeOptions.Value;
         _aiOptions = aiOptions.Value;
         _unitOfWorkManager = unitOfWorkManager;
@@ -127,15 +123,8 @@ public class DocumentClassificationBackgroundJob
             ?? await _pipelineRunAccessor.BeginOrStartAsync(
                 document, runId, PaperbasePipelines.Classification);
 
-        var shouldQueueEmbedding = await ApplyClassificationResultAsync(document, run, outcome);
-        if (shouldQueueEmbedding)
-        {
-            await _pipelineJobScheduler.QueueAsync(document, PaperbasePipelines.Embedding);
-        }
-        else
-        {
-            await _documentRepository.UpdateAsync(document, autoSave: true);
-        }
+        await ApplyClassificationResultAsync(document, run, outcome);
+        await _documentRepository.UpdateAsync(document, autoSave: true);
 
         await uow.CompleteAsync();
     }
@@ -162,7 +151,7 @@ public class DocumentClassificationBackgroundJob
     private static bool IsSchemaDeserializationError(Exception ex)
         => ex is JsonException || ex.GetBaseException() is JsonException;
 
-    private async Task<bool> ApplyClassificationResultAsync(
+    private async Task ApplyClassificationResultAsync(
         Document document,
         DocumentPipelineRun run,
         DocumentClassificationOutcome outcome)
@@ -178,16 +167,19 @@ public class DocumentClassificationBackgroundJob
             await _pipelineRunManager.CompleteClassificationAsync(
                 document, run, typeDef.TypeCode, outcome.ConfidenceScore);
 
-            await _distributedEventBus.PublishAsync(new DocumentClassifiedEto
-            {
-                DocumentId = document.Id,
-                TenantId = document.TenantId,
-                DocumentTypeCode = typeDef.TypeCode,
-                ClassificationConfidence = outcome.ConfidenceScore,
-                Markdown = document.Markdown
-            });
+            await _outboxEventManager.PublishAsync(
+                document.TenantId,
+                document.Id,
+                new DocumentClassifiedEto
+                {
+                    DocumentId = document.Id,
+                    TenantId = document.TenantId,
+                    DocumentTypeCode = typeDef.TypeCode,
+                    ClassificationConfidence = outcome.ConfidenceScore,
+                    Markdown = document.Markdown
+                });
 
-            return true;
+            return;
         }
 
         var candidates = outcome.Candidates
@@ -196,7 +188,6 @@ public class DocumentClassificationBackgroundJob
 
         await _pipelineRunManager.CompleteClassificationWithLowConfidenceAsync(
             document, run, outcome.Reason, candidates);
-        return false;
     }
 
     private sealed record ClassificationWorkItem(

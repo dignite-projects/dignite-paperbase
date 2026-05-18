@@ -1,14 +1,11 @@
 using System;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents.Pipelines.Classification;
-using Dignite.Paperbase.Documents.Pipelines.Embedding;
-using Dignite.Paperbase.Documents.Pipelines.RelationDiscovery;
 using Dignite.Paperbase.Documents.Pipelines.TextExtraction;
 using Microsoft.Extensions.Logging;
 using Volo.Abp;
 using Volo.Abp.BackgroundJobs;
 using Volo.Abp.DependencyInjection;
-using Volo.Abp.MultiTenancy;
 
 namespace Dignite.Paperbase.Documents.Pipelines;
 
@@ -21,25 +18,20 @@ public class DocumentPipelineJobScheduler : ITransientDependency
     private readonly IDocumentRepository _documentRepository;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly IBackgroundJobManager _backgroundJobManager;
-    private readonly ICurrentTenant _currentTenant;
 
     public DocumentPipelineJobScheduler(
         IDocumentRepository documentRepository,
         DocumentPipelineRunManager pipelineRunManager,
-        IBackgroundJobManager backgroundJobManager,
-        ICurrentTenant currentTenant)
+        IBackgroundJobManager backgroundJobManager)
     {
         _documentRepository = documentRepository;
         _pipelineRunManager = pipelineRunManager;
         _backgroundJobManager = backgroundJobManager;
-        _currentTenant = currentTenant;
     }
 
     /// <summary>
     /// Queues a pipeline run for the document. Optional <paramref name="delay"/> controls
-    /// how long the background job waits before being picked up; used by RelationDiscovery
-    /// to give sibling DocumentClassifiedEto handlers time to write their typed records
-    /// before L2 fans out (codex review fix [high] "L2 can run before module extraction").
+    /// how long the background job waits before being picked up.
     /// </summary>
     public virtual async Task<DocumentPipelineRun> QueueAsync(
         Document document,
@@ -75,25 +67,6 @@ public class DocumentPipelineJobScheduler : ITransientDependency
                 {
                     DocumentId = documentId,
                     PipelineRunId = pipelineRunId
-                },
-                delay: effectiveDelay),
-            PaperbasePipelines.Embedding => _backgroundJobManager.EnqueueAsync(
-                new DocumentEmbeddingJobArgs
-                {
-                    DocumentId = documentId,
-                    PipelineRunId = pipelineRunId
-                },
-                delay: effectiveDelay),
-            PaperbasePipelines.RelationDiscovery => _backgroundJobManager.EnqueueAsync(
-                new RelationDiscoveryJobArgs
-                {
-                    DocumentId = documentId,
-                    PipelineRunId = pipelineRunId,
-                    // Stamp tenant id from ambient context so the background job can restore it
-                    // explicitly (codex review fix [high] "Tenant context dropped"). Caller
-                    // (RelationDiscoveryEventHandler) wraps QueueAsync in
-                    // CurrentTenant.Change(eventData.TenantId) for this to be correct.
-                    TenantId = _currentTenant.Id
                 },
                 delay: effectiveDelay),
             _ => throw new BusinessException(PaperbaseErrorCodes.UnknownPipelineCode)

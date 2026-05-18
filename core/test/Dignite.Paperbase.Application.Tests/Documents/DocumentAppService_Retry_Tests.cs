@@ -2,7 +2,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Documents.Pipelines.Classification;
-using Dignite.Paperbase.Documents.Pipelines.Embedding;
 using Dignite.Paperbase.Documents.Pipelines.TextExtraction;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
@@ -12,7 +11,6 @@ using Volo.Abp.BackgroundJobs;
 using Volo.Abp.BlobStoring;
 using Volo.Abp.Domain.Entities;
 using Volo.Abp.EventBus.Distributed;
-using Volo.Abp.EventBus.Local;
 using Volo.Abp.Modularity;
 using Volo.Abp.MultiTenancy;
 using Xunit;
@@ -25,16 +23,15 @@ public class DocumentAppServiceRetryTestModule : AbpModule
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
         context.Services.AddSingleton(Substitute.For<IDocumentRepository>());
-        context.Services.AddSingleton(Substitute.For<IDocumentRelationRepository>());
+        context.Services.AddSingleton(Substitute.For<IOutboxEventRepository>());
         context.Services.AddSingleton(Substitute.For<IBlobContainer<PaperbaseDocumentContainer>>());
         context.Services.AddSingleton(Substitute.For<IBackgroundJobManager>());
         context.Services.AddSingleton(Substitute.For<IDistributedEventBus>());
-        context.Services.AddSingleton(Substitute.For<ILocalEventBus>());
     }
 }
 
 /// <summary>
-/// Issue #94 守护：<see cref="DocumentAppService.RetryPipelineAsync"/> 必须按
+/// <see cref="DocumentAppService.RetryPipelineAsync"/> 必须按
 /// "仅 Failed 可重试 / Pending 与 Running 视为并发护栏 / Succeeded 与 Skipped 拒绝 /
 /// 未知 PipelineCode 拒绝"的规则放行，先创建 Pending Run，再把对应 BackgroundJob 入队。
 /// </summary>
@@ -100,24 +97,6 @@ public class DocumentAppService_Retry_Tests
     }
 
     [Fact]
-    public async Task RetryPipelineAsync_Enqueues_Embedding_Job_When_Failed()
-    {
-        var doc = CreateDocument();
-        var run = await _pipelineRunManager.StartAsync(doc, PaperbasePipelines.Embedding);
-        await _pipelineRunManager.FailAsync(doc, run, errorMessage: "vector store down");
-        StubGet(doc);
-
-        await _appService.RetryPipelineAsync(
-            doc.Id,
-            new RetryPipelineInput { PipelineCode = PaperbasePipelines.Embedding });
-
-        await _backgroundJobManager.Received(1).EnqueueAsync(
-            Arg.Is<DocumentEmbeddingJobArgs>(a => a.DocumentId == doc.Id),
-            Arg.Any<BackgroundJobPriority>(),
-            Arg.Any<TimeSpan?>());
-    }
-
-    [Fact]
     public async Task RetryPipelineAsync_Throws_When_Latest_Run_Is_Succeeded()
     {
         var doc = CreateDocument();
@@ -141,14 +120,14 @@ public class DocumentAppService_Retry_Tests
     public async Task RetryPipelineAsync_Throws_When_Latest_Run_Is_Skipped()
     {
         var doc = CreateDocument();
-        var run = await _pipelineRunManager.StartAsync(doc, PaperbasePipelines.Embedding);
+        var run = await _pipelineRunManager.StartAsync(doc, PaperbasePipelines.Classification);
         await _pipelineRunManager.SkipAsync(doc, run, reason: "document too short");
         StubGet(doc);
 
         var ex = await Should.ThrowAsync<BusinessException>(async () =>
             await _appService.RetryPipelineAsync(
                 doc.Id,
-                new RetryPipelineInput { PipelineCode = PaperbasePipelines.Embedding }));
+                new RetryPipelineInput { PipelineCode = PaperbasePipelines.Classification }));
 
         ex.Code.ShouldBe(PaperbaseErrorCodes.PipelineNotRetryable);
     }
@@ -208,9 +187,6 @@ public class DocumentAppService_Retry_Tests
     [Fact]
     public async Task RetryPipelineAsync_Throws_EntityNotFound_When_Cross_Tenant()
     {
-        // Doc belongs to tenant A; caller is tenant B. The explicit assertion in
-        // RetryPipelineAsync must fail closed with EntityNotFoundException, never
-        // returning the document or letting the retry through.
         var docTenant = Guid.NewGuid();
         var callerTenant = Guid.NewGuid();
         var doc = CreateDocument(tenantId: docTenant);
@@ -235,10 +211,6 @@ public class DocumentAppService_Retry_Tests
     [Fact]
     public async Task RetryPipelineAsync_Throws_BusinessException_When_Document_Soft_Deleted()
     {
-        // Soft-deleted documents would normally be hidden by ABP's ambient ISoftDelete
-        // filter, but defense-in-depth requires an explicit check: a stub repository
-        // (or any code path that disables the filter) must not be able to retry a
-        // recycled document.
         var doc = CreateDocument();
         var run = await _pipelineRunManager.StartAsync(doc, PaperbasePipelines.TextExtraction);
         await _pipelineRunManager.FailAsync(doc, run, errorMessage: "boom");
@@ -266,7 +238,7 @@ public class DocumentAppService_Retry_Tests
         var run1 = await _pipelineRunManager.StartAsync(doc, PaperbasePipelines.TextExtraction);
         await _pipelineRunManager.FailAsync(doc, run1, errorMessage: "timeout");
 
-        // Attempt 2 — also fail (simulate the BackgroundJob outcome)
+        // Attempt 2 — also fail
         var run2 = await _pipelineRunManager.StartAsync(doc, PaperbasePipelines.TextExtraction);
         await _pipelineRunManager.FailAsync(doc, run2, errorMessage: "timeout again");
         run2.AttemptNumber.ShouldBe(2);
@@ -289,10 +261,6 @@ public class DocumentAppService_Retry_Tests
             .Returns(doc);
     }
 
-    // Default tenantId=null aligns with the host-mode test base where
-    // CurrentTenant.Id is also null. The cross-tenant tests pass an explicit
-    // tenantId AND wrap the call site in CurrentTenant.Change to exercise the
-    // explicit tenant assertion in RetryPipelineAsync.
     private static Document CreateDocument(Guid? tenantId = null)
     {
         return new Document(

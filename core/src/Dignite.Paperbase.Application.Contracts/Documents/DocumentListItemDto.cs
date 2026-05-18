@@ -13,7 +13,6 @@ public class DocumentListItemDto : EntityDto<Guid>
     public DocumentLifecycleStatus LifecycleStatus { get; set; }
     public DocumentReviewStatus ReviewStatus { get; set; }
     public double ClassificationConfidence { get; set; }
-    public bool HasEmbedding { get; set; }
 
     /// <summary>
     /// 展示标题；迁移前的历史文档可能为 null，UI 需回退到 <see cref="FileOriginDto.OriginalFileName"/>。
