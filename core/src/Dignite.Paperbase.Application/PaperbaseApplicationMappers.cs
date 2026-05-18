@@ -1,4 +1,3 @@
-using Dignite.Paperbase.Chat;
 using Dignite.Paperbase.Documents;
 using Riok.Mapperly.Abstractions;
 using Volo.Abp.Mapperly;
@@ -37,35 +36,4 @@ public partial class DocumentToDocumentListItemDtoMapper : MapperBase<Document, 
 {
     public override partial DocumentListItemDto Map(Document source);
     public override partial void Map(Document source, DocumentListItemDto destination);
-}
-
-[Mapper(RequiredMappingStrategy = RequiredMappingStrategy.Target)]
-public partial class DocumentRelationToDocumentRelationDtoMapper : MapperBase<DocumentRelation, DocumentRelationDto>
-{
-    public override partial DocumentRelationDto Map(DocumentRelation source);
-    public override partial void Map(DocumentRelation source, DocumentRelationDto destination);
-}
-
-[Mapper(RequiredMappingStrategy = RequiredMappingStrategy.Target)]
-public partial class ChatConversationToChatConversationDtoMapper
-    : MapperBase<ChatConversation, ChatConversationDto>
-{
-    public override partial ChatConversationDto Map(ChatConversation source);
-    public override partial void Map(ChatConversation source, ChatConversationDto destination);
-}
-
-[Mapper(RequiredMappingStrategy = RequiredMappingStrategy.Target)]
-public partial class ChatConversationToChatConversationListItemDtoMapper
-    : MapperBase<ChatConversation, ChatConversationListItemDto>
-{
-    public override partial ChatConversationListItemDto Map(ChatConversation source);
-    public override partial void Map(ChatConversation source, ChatConversationListItemDto destination);
-}
-
-[Mapper(RequiredMappingStrategy = RequiredMappingStrategy.Target)]
-public partial class ChatMessageToChatMessageDtoMapper
-    : MapperBase<ChatMessage, ChatMessageDto>
-{
-    public override partial ChatMessageDto Map(ChatMessage source);
-    public override partial void Map(ChatMessage source, ChatMessageDto destination);
 }

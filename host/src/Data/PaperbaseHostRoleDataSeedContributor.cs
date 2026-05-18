@@ -1,5 +1,4 @@
 using System.Threading.Tasks;
-using Dignite.Paperbase.Contracts.Permissions;
 using Dignite.Paperbase.Permissions;
 using Volo.Abp.Data;
 using Volo.Abp.DependencyInjection;
@@ -26,21 +25,16 @@ public class PaperbaseHostRoleDataSeedContributor : IDataSeedContributor, ITrans
 
     public virtual async Task SeedAsync(DataSeedContext context)
     {
-        await SeedRoleAsync("ContractManager", new[]
+        await SeedRoleAsync("DocumentManager", new[]
         {
             PaperbasePermissions.Documents.Default,
             PaperbasePermissions.Documents.Upload,
             PaperbasePermissions.Documents.Export,
-            PaperbaseContractsPermissions.Contracts.Default,
-            PaperbaseContractsPermissions.Contracts.Update,
-            PaperbaseContractsPermissions.Contracts.Confirm,
-            PaperbaseContractsPermissions.Contracts.Export,
         });
 
         await SeedRoleAsync("Viewer", new[]
         {
             PaperbasePermissions.Documents.Default,
-            PaperbaseContractsPermissions.Contracts.Default,
         });
     }
 

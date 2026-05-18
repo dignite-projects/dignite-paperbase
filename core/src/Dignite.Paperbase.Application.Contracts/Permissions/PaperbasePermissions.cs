@@ -1,4 +1,4 @@
-﻿using Volo.Abp.Reflection;
+using Volo.Abp.Reflection;
 
 namespace Dignite.Paperbase.Permissions;
 
@@ -21,22 +21,6 @@ public class PaperbasePermissions
             public const string Default = Documents.Default + ".Pipelines";
             public const string Retry = Default + ".Retry";
         }
-    }
-
-    public static class Chat
-    {
-        public const string Default = GroupName + ".Chat";
-        public const string Create = Default + ".Create";
-        public const string SendMessage = Default + ".SendMessage";
-        public const string Delete = Default + ".Delete";
-    }
-
-    public static class DocumentRelations
-    {
-        public const string Default = GroupName + ".DocumentRelations";
-        public const string Create = Default + ".Create";
-        public const string Delete = Default + ".Delete";
-        public const string ConfirmRelation = Default + ".ConfirmRelation";
     }
 
     public static string[] GetAll()

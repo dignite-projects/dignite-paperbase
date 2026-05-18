@@ -1,6 +1,6 @@
 using Dignite.Paperbase.Abstractions;
 using Dignite.Paperbase.Ai;
-using Dignite.Paperbase.Vectors;
+using Dignite.Paperbase.Documents;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.Application;
 using Volo.Abp.BackgroundJobs;
@@ -25,6 +25,6 @@ public class PaperbaseApplicationModule : AbpModule
 
         var configuration = context.Services.GetConfiguration();
         Configure<PaperbaseAIBehaviorOptions>(configuration.GetSection("PaperbaseAIBehavior"));
-        Configure<PaperbaseVectorStoreOptions>(configuration.GetSection("PaperbaseVectorStore"));
+        Configure<PaperbaseOcrOptions>(configuration.GetSection("PaperbaseOcr"));
     }
 }

@@ -69,19 +69,20 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
     /// </summary>
     public virtual string? ClassificationReason { get; private set; }
 
+    /// <summary>
+    /// 系统通用字段 + Host 字段抽取结果（JSON 序列化）。
+    /// 由 <c>HostFieldExtractionWorkflow</c> 在分类完成后写入；schema 由 Host 注册的
+    /// <see cref="Dignite.Paperbase.Abstractions.Documents.DocumentTypeDefinition.Fields"/> 决定。
+    /// 租户字段（#169 B 机制）走独立的 <c>DocumentTenantField</c> 实体，不混入此 JSON。
+    /// </summary>
+    public virtual string? SystemFieldsJson { get; private set; }
+
     // --- 聚合内的 PipelineRun 集合 ---
 
     private readonly List<DocumentPipelineRun> _pipelineRuns = new();
     public virtual IReadOnlyCollection<DocumentPipelineRun> PipelineRuns => _pipelineRuns.AsReadOnly();
 
     // --- 派生访问器 ---
-
-    /// <summary>
-    /// 文档是否已完成向量化。
-    /// false 时文档暂不可被向量检索命中，不影响分类和字段提取。
-    /// </summary>
-    public bool HasEmbedding
-        => GetLatestRun(PaperbasePipelines.Embedding)?.Status == PipelineRunStatus.Succeeded;
 
     /// <summary>根据 PipelineCode 查询最近一次 Run（按 AttemptNumber 降序）。</summary>
     public DocumentPipelineRun? GetLatestRun(string pipelineCode)
@@ -143,6 +144,15 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
         SourceType = sourceType;
     }
 
+    /// <summary>
+    /// 写入系统通用 + Host 字段抽取的 JSON 结果。<see cref="HostFieldExtractionWorkflow"/> 完成后调用。
+    /// 同一文档允许覆写（重分类后可重跑抽取）。
+    /// </summary>
+    public void SetSystemFieldsJson(string? json)
+    {
+        SystemFieldsJson = string.IsNullOrWhiteSpace(json) ? null : json;
+    }
+
     // 高置信度路径：ClassificationReason 必须为 null，与 RequestClassificationReview 路径区分。
     internal void ApplyAutomaticClassificationResult(
         string documentTypeCode,
@@ -171,6 +181,35 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
         ClassificationConfidence = 1.0;
         ReviewStatus = DocumentReviewStatus.Reviewed;
         ClassificationReason = null;
+    }
+
+    /// <summary>
+    /// OCR 置信度低于门槛时调用——文档进待人工审核队列，下游流水线暂停推进。
+    /// ClassificationReason 复用为通用 review 原因字段（OCR 不达标 / LLM 分类失败均可写入）。
+    /// </summary>
+    public void MarkPendingOcrReview(string reason)
+    {
+        ReviewStatus = DocumentReviewStatus.PendingReview;
+        ClassificationReason = reason;
+    }
+
+    /// <summary>
+    /// 操作员通过审核——清除 PendingReview 标记。
+    /// 下游 pipeline 由 AppService 在调用此方法之后按业务决定是否重新调度。
+    /// </summary>
+    public void ApproveReview()
+    {
+        ReviewStatus = DocumentReviewStatus.Reviewed;
+        ClassificationReason = null;
+    }
+
+    /// <summary>
+    /// 操作员拒绝审核——文档落到 Failed 生命周期状态；ReviewStatus 保留以便审计。
+    /// </summary>
+    public void RejectReview(string? reason = null)
+    {
+        ClassificationReason = reason ?? ClassificationReason;
+        TransitionLifecycle(DocumentLifecycleStatus.Failed);
     }
 
     internal void TransitionLifecycle(DocumentLifecycleStatus newStatus)

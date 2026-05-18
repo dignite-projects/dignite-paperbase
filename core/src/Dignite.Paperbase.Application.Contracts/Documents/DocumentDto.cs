@@ -16,7 +16,6 @@ public class DocumentDto : EntityDto<Guid>
     public DocumentReviewStatus ReviewStatus { get; set; }
     public double ClassificationConfidence { get; set; }
     public string? ClassificationReason { get; set; }
-    public bool HasEmbedding { get; set; }
 
     /// <summary>
     /// 展示标题（文本提取流水线 Run 成功后写入）。

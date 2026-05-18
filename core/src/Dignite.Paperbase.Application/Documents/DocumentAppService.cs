@@ -11,45 +11,35 @@ using Dignite.Paperbase.Documents.Pipelines;
 using Dignite.Paperbase.Permissions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging;
-using Dignite.Paperbase.Documents.Events;
 using Volo.Abp;
 using Volo.Abp.Application.Dtos;
 using Volo.Abp.BlobStoring;
 using Volo.Abp.Content;
 using Volo.Abp.Data;
 using Volo.Abp.Domain.Entities;
-using Volo.Abp.Domain.Repositories;
-using Volo.Abp.EventBus.Distributed;
-using Volo.Abp.EventBus.Local;
 
 namespace Dignite.Paperbase.Documents;
 
 public class DocumentAppService : PaperbaseAppService, IDocumentAppService
 {
     private readonly IDocumentRepository _documentRepository;
-    private readonly IDocumentRelationRepository _relationRepository;
     private readonly IBlobContainer<PaperbaseDocumentContainer> _blobContainer;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly DocumentPipelineJobScheduler _pipelineJobScheduler;
-    private readonly IDistributedEventBus _distributedEventBus;
-    private readonly ILocalEventBus _localEventBus;
+    private readonly OutboxEventManager _outboxEventManager;
 
     public DocumentAppService(
         IDocumentRepository documentRepository,
-        IDocumentRelationRepository relationRepository,
         IBlobContainer<PaperbaseDocumentContainer> blobContainer,
         DocumentPipelineRunManager pipelineRunManager,
         DocumentPipelineJobScheduler pipelineJobScheduler,
-        IDistributedEventBus distributedEventBus,
-        ILocalEventBus localEventBus)
+        OutboxEventManager outboxEventManager)
     {
         _documentRepository = documentRepository;
-        _relationRepository = relationRepository;
         _blobContainer = blobContainer;
         _pipelineRunManager = pipelineRunManager;
         _pipelineJobScheduler = pipelineJobScheduler;
-        _distributedEventBus = distributedEventBus;
-        _localEventBus = localEventBus;
+        _outboxEventManager = outboxEventManager;
     }
 
     public virtual async Task<DocumentDto> GetAsync(Guid id)
@@ -149,6 +139,18 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
 
         await _documentRepository.InsertAsync(document, autoSave: true);
 
+        await _outboxEventManager.PublishAsync(
+            document.TenantId,
+            document.Id,
+            new DocumentUploadedEto
+            {
+                DocumentId = document.Id,
+                TenantId = document.TenantId,
+                FileName = fileName,
+                FileSize = fileSize,
+                ContentType = contentType
+            });
+
         await _pipelineJobScheduler.QueueAsync(document, PaperbasePipelines.TextExtraction);
 
         return ObjectMapper.Map<Document, DocumentDto>(document);
@@ -173,26 +175,18 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     {
         var document = await _documentRepository.GetAsync(id);
 
-        // Issue #162: Document 软删除不级联到 DocumentRelation。
-        // DocumentRelation.IsDeleted=true 的唯一语义是"用户驳回 AI 建议"（R2 #158），
-        // 级联会和这一语义重叠：恢复 Document 时无法区分"驳回"和"级联软删"的关系。
-        // 用户可见路径（GetGraphAsync / GetListAsync / get-document-relations skill）
-        // 在查询时过滤掉指向软删 Document 的关系，Document 恢复后这些关系自动重新可见。
-
-        // Slice E: 注册 after-commit 回调，UoW 提交后清理向量存储
-        await _localEventBus.PublishAsync(
-            new DocumentDeletingEvent(id, document.TenantId),
-            onUnitOfWorkComplete: false);
-
         await _documentRepository.DeleteAsync(id);
 
-        // 通知业务模块：Document 进入回收站，应将派生数据置为可恢复的归档状态
-        await _distributedEventBus.PublishAsync(new DocumentDeletedEto
-        {
-            DocumentId = document.Id,
-            TenantId = document.TenantId,
-            DocumentTypeCode = document.DocumentTypeCode
-        });
+        // 通知下游消费方：Document 进入回收站，应将派生数据置为可恢复的归档状态
+        await _outboxEventManager.PublishAsync(
+            document.TenantId,
+            document.Id,
+            new DocumentDeletedEto
+            {
+                DocumentId = document.Id,
+                TenantId = document.TenantId,
+                DocumentTypeCode = document.DocumentTypeCode
+            });
     }
 
     [Authorize(PaperbasePermissions.Documents.PermanentDelete)]
@@ -203,17 +197,6 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         {
             document = await _documentRepository.GetAsync(id, includeDetails: true);
         }
-
-        // 注册 after-commit 回调，UoW 提交后清理向量存储
-        await _localEventBus.PublishAsync(
-            new DocumentDeletingEvent(id, document.TenantId),
-            onUnitOfWorkComplete: false);
-
-        // 硬删除关系（含已软删除的）—— DocumentRelation 已实现 ISoftDelete，
-        // 必须走 ExecuteDeleteAsync 才能真正物理删除。显式传入 document.TenantId，
-        // 与 GetLinkedPeerDocumentIdsAsync 同样不依赖 ambient filter（IgnoreQueryFilters
-        // 一并 bypass IMultiTenant，所以谓词必须显式）。
-        await _relationRepository.HardDeleteByDocumentIdAsync(id, document.TenantId);
 
         await _documentRepository.HardDeleteAsync(id);
 
@@ -228,13 +211,16 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
                 document.OriginalFileBlobName, id);
         }
 
-        // 通知业务模块：Document 已不可恢复，应物理删除派生数据
-        await _distributedEventBus.PublishAsync(new DocumentPermanentlyDeletedEto
-        {
-            DocumentId = document.Id,
-            TenantId = document.TenantId,
-            DocumentTypeCode = document.DocumentTypeCode
-        });
+        // 通知下游消费方：Document 已不可恢复，应物理删除派生数据
+        await _outboxEventManager.PublishAsync(
+            document.TenantId,
+            document.Id,
+            new DocumentPermanentlyDeletedEto
+            {
+                DocumentId = document.Id,
+                TenantId = document.TenantId,
+                DocumentTypeCode = document.DocumentTypeCode
+            });
     }
 
     [Authorize(PaperbasePermissions.Documents.Restore)]
@@ -254,16 +240,15 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
 
             await _documentRepository.UpdateAsync(document);
 
-            // Issue #162: Document 恢复不级联到 DocumentRelation —— 关系侧的 IsDeleted
-            // 只承载 R2 驳回语义，Document 删除/恢复完全靠查询时的对端存活过滤实现，
-            // Document 一旦恢复，原先与之相关的关系自动在用户视图中重新出现。
-
-            await _distributedEventBus.PublishAsync(new DocumentRestoredEto
-            {
-                DocumentId = document.Id,
-                TenantId = document.TenantId,
-                DocumentTypeCode = document.DocumentTypeCode
-            });
+            await _outboxEventManager.PublishAsync(
+                document.TenantId,
+                document.Id,
+                new DocumentRestoredEto
+                {
+                    DocumentId = document.Id,
+                    TenantId = document.TenantId,
+                    DocumentTypeCode = document.DocumentTypeCode
+                });
         }
     }
 
@@ -285,8 +270,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     /// 重试单条 pipeline。当前仅 <see cref="PipelineRunStatus.Failed"/> 可重试；
     /// Pending/Running 抛 <c>PipelineRetryInProgress</c>，Succeeded/Skipped 抛 <c>PipelineNotRetryable</c>。
     /// 重试先创建 Pending Run，再把带 PipelineRunId 的 BackgroundJob 入队。
-    /// 链式重放语义（隐式）：重试 <c>text-extraction</c> → 成功后链触发 <c>classification</c> → <c>embedding</c>；
-    /// 重试 <c>classification</c> → 链触发 <c>embedding</c>；重试 <c>embedding</c> 是叶子。
+    /// 链式重放语义（隐式）：重试 <c>text-extraction</c> → 成功后链触发 <c>classification</c>。
     /// </summary>
     [Authorize(PaperbasePermissions.Documents.Pipelines.Retry)]
     public virtual async Task RetryPipelineAsync(Guid id, RetryPipelineInput input)
@@ -300,7 +284,6 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         var document = await _documentRepository.GetAsync(id, includeDetails: true);
 
         // 显式租户断言 + 软删除门：不依赖 ambient DataFilter。
-        // 反例参考 .claude/rules/doc-chat-anti-patterns.md 反例 B。
         if (document.TenantId != CurrentTenant.Id)
         {
             Logger.LogWarning(
@@ -345,21 +328,70 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     [Authorize(PaperbasePermissions.Documents.ConfirmClassification)]
     public virtual async Task<DocumentDto> ConfirmClassificationAsync(Guid id, ConfirmClassificationInput input)
     {
+        return await ApplyManualClassificationAsync(id, input.DocumentTypeCode);
+    }
+
+    [Authorize(PaperbasePermissions.Documents.ConfirmClassification)]
+    public virtual async Task<DocumentDto> ReclassifyAsync(Guid id, ReclassifyDocumentInput input)
+    {
+        return await ApplyManualClassificationAsync(id, input.DocumentTypeCode);
+    }
+
+    [Authorize(PaperbasePermissions.Documents.ConfirmClassification)]
+    public virtual async Task<DocumentDto> ApproveReviewAsync(Guid id)
+    {
+        var document = await _documentRepository.GetAsync(id, includeDetails: true);
+
+        if (document.ReviewStatus != DocumentReviewStatus.PendingReview)
+        {
+            // 幂等：不在 PendingReview 状态下返回当前快照，不抛
+            return ObjectMapper.Map<Document, DocumentDto>(document);
+        }
+
+        document.ApproveReview();
+        await _documentRepository.UpdateAsync(document, autoSave: true);
+
+        // 如果分类已经做完且文档类型已定，downstream 流水线（字段抽取）由订阅
+        // DocumentClassifiedEto 的下游消费方触发；这里不重发事件，避免重复。
+        // 如果分类尚未完成（如 OCR-only review），AppService 可由操作员通过手动重试
+        // RetryPipelineAsync(PaperbasePipelines.Classification) 继续流水线。
+
+        return ObjectMapper.Map<Document, DocumentDto>(document);
+    }
+
+    [Authorize(PaperbasePermissions.Documents.ConfirmClassification)]
+    public virtual async Task<DocumentDto> RejectReviewAsync(Guid id, RejectReviewInput input)
+    {
+        var document = await _documentRepository.GetAsync(id, includeDetails: true);
+        document.RejectReview(input.Reason);
+        await _documentRepository.UpdateAsync(document, autoSave: true);
+        return ObjectMapper.Map<Document, DocumentDto>(document);
+    }
+
+    /// <summary>
+    /// Confirm 与 Reclassify 共享实现：写入 TypeCode + Reviewed 状态，
+    /// 发布 DocumentClassifiedEto 让下游消费方重跑字段抽取。
+    /// </summary>
+    protected virtual async Task<DocumentDto> ApplyManualClassificationAsync(Guid id, string documentTypeCode)
+    {
         var document = await _documentRepository.GetAsync(id, includeDetails: true);
         var run = await _pipelineRunManager.QueueAsync(document, PaperbasePipelines.Classification);
         await _pipelineRunManager.BeginAsync(document, run);
 
-        await _pipelineRunManager.CompleteManualClassificationAsync(document, run, input.DocumentTypeCode);
-        await _distributedEventBus.PublishAsync(new DocumentClassifiedEto
-        {
-            DocumentId = document.Id,
-            TenantId = document.TenantId,
-            DocumentTypeCode = input.DocumentTypeCode,
-            ClassificationConfidence = 1.0,
-            Markdown = document.Markdown
-        });
+        await _pipelineRunManager.CompleteManualClassificationAsync(document, run, documentTypeCode);
+        await _outboxEventManager.PublishAsync(
+            document.TenantId,
+            document.Id,
+            new DocumentClassifiedEto
+            {
+                DocumentId = document.Id,
+                TenantId = document.TenantId,
+                DocumentTypeCode = documentTypeCode,
+                ClassificationConfidence = 1.0,
+                Markdown = document.Markdown
+            });
 
-        await _pipelineJobScheduler.QueueAsync(document, PaperbasePipelines.Embedding);
+        await _documentRepository.UpdateAsync(document, autoSave: true);
 
         return ObjectMapper.Map<Document, DocumentDto>(document);
     }

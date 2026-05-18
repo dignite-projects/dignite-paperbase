@@ -125,54 +125,6 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
     }
 
     // ────────────────────────────────────────────────────────────────────────────
-    // Scenario 4: non-key pipeline (Embedding) fails → still Ready
-    // ────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task NonKey_Pipeline_Failure_Does_Not_Prevent_Ready()
-    {
-        var doc = CreateDocument();
-
-        // Complete both key pipelines
-        var textRun = await _manager.StartAsync(doc, PaperbasePipelines.TextExtraction);
-        await _manager.CompleteAsync(doc, textRun);
-
-        var classRun = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
-        await _manager.CompleteClassificationAsync(doc, classRun, "contract.general", 0.92);
-
-        doc.LifecycleStatus.ShouldBe(DocumentLifecycleStatus.Ready);
-
-        // Fail non-key pipeline
-        var embeddingRun = await _manager.StartAsync(doc, PaperbasePipelines.Embedding);
-        await _manager.FailAsync(doc, embeddingRun, errorMessage: "vector store unavailable");
-
-        // LifecycleStatus must remain Ready — Embedding is not a key pipeline
-        doc.LifecycleStatus.ShouldBe(DocumentLifecycleStatus.Ready);
-        doc.HasEmbedding.ShouldBeFalse();
-    }
-
-    // ────────────────────────────────────────────────────────────────────────────
-    // Scenario 5: skip a non-key pipeline — does not block Ready
-    // ────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task Skipping_NonKey_Pipeline_Does_Not_Block_Ready()
-    {
-        var doc = CreateDocument();
-
-        var textRun = await _manager.StartAsync(doc, PaperbasePipelines.TextExtraction);
-        await _manager.CompleteAsync(doc, textRun);
-
-        var classRun = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
-        await _manager.CompleteClassificationAsync(doc, classRun, "contract.general", 0.92);
-
-        var embeddingRun = await _manager.StartAsync(doc, PaperbasePipelines.Embedding);
-        await _manager.SkipAsync(doc, embeddingRun, reason: "document too short");
-
-        doc.LifecycleStatus.ShouldBe(DocumentLifecycleStatus.Ready);
-    }
-
-    // ────────────────────────────────────────────────────────────────────────────
     // Scenario 6: CompleteClassificationWithLowConfidenceAsync completes Run and
     //             sets ReviewStatus to PendingReview (low-confidence signal is on
     //             Document.ReviewStatus, not on the Run)
