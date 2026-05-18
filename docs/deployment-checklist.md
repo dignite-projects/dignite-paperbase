@@ -35,7 +35,7 @@ Verifies the default OCR provider after a sidecar upgrade, model swap, or fresh-
 
 ### Downstream pipeline
 
-- [ ] End-to-end: scan upload → TextExtraction → Embedding → Qdrant chunks split on Markdown headings (verify chunk boundaries align with `## ` / `### ` markers, not arbitrary character offsets)
+- [ ] End-to-end: scan upload → TextExtraction → Classification → Host / tenant field extraction → `DocumentReadyEto` published (verify the published Markdown preserves heading / table structure so downstream RAG consumers can chunk on `## ` / `### ` markers, not arbitrary character offsets)
 
 ### Provider switch-back
 

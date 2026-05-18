@@ -26,9 +26,8 @@ namespace Dignite.Paperbase.Documents.Pipelines.FieldExtraction;
 /// <list type="bullet">
 ///   <item>事件携带的 TenantId 显式设入 CurrentTenant，避免 ambient 漏失</item>
 ///   <item>查询 TenantFieldDefinition 走显式 TenantId 谓词，不依赖 ambient DataFilter</item>
-///   <item>租户 Prompt 是用户控制文本，扔进 LLM 前应经 PromptBoundary——当前 workflow 内部
-///         构 system prompt 时直接用 prompt 文本，这是已知 prompt injection 表面，
-///         后续应加 PromptBoundary 包装（#169 后续增强）。</item>
+///   <item>租户 Prompt 是用户控制文本，由共享的 <see cref="HostFieldExtractionWorkflow"/>
+///         在构建 system prompt 时统一经 <c>PromptBoundary.WrapField</c> 包裹</item>
 /// </list>
 /// </para>
 /// </summary>

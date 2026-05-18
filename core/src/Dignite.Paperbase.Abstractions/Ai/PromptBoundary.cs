@@ -19,10 +19,10 @@ namespace Dignite.Paperbase.Ai;
 /// </para>
 ///
 /// <para>
-/// 放在 <c>Dignite.Paperbase.Abstractions</c> 而非 <c>core/Application</c>，是因为业务模块
-/// 的 MAF 技能（<see cref="Microsoft.Agents.AI.AgentClassSkill{TSelf}"/> 子类）的 script 实现
-/// 需要对返回值中的用户派生字段（合同 summary / partyAName、票据备注…）调用 <see cref="WrapField"/>。
-/// 业务模块只依赖 Abstractions，不依赖 Application。
+/// 放在 <c>Dignite.Paperbase.Abstractions</c> 而非 <c>core/Application</c>，是因为：
+/// (1) Application 层的字段抽取 workflow（Host 字段 / 租户字段）需要包裹用户派生 prompt；
+/// (2) 下游业务消费方（在自己仓库实现 <c>IExtractionValidator&lt;T&gt;</c>）需要包裹 LLM
+/// 输出的用户派生自由文本字段。两类消费方都只依赖 Abstractions，不依赖 Application。
 /// </para>
 /// </summary>
 public static class PromptBoundary
@@ -46,14 +46,17 @@ public static class PromptBoundary
         => $"<anchor>\n{Encode(text)}\n</anchor>";
 
     /// <summary>
-    /// 包裹业务模块 MAF 技能（<see cref="Microsoft.Agents.AI.AgentClassSkill{TSelf}"/> 子类）
-    /// 的 script 返回值中的**用户派生自由文本字段**——典型如 LLM 字段抽取写入的 <c>summary</c> /
-    /// <c>title</c> / <c>partyAName</c>。这些字段的最终来源是用户上传的文档，攻击者
-    /// 可以在文档里嵌入 "Ignore previous instructions ..." 之类的 indirect prompt
-    /// injection，因此序列化进 tool result JSON 前必须包裹。
+    /// 包裹**用户派生自由文本字段**——典型场景：
+    /// <list type="bullet">
+    ///   <item>字段抽取 workflow 在 system prompt 中拼接 Host / 租户配置的字段提取指令文本</item>
+    ///   <item>下游消费方 validator 把 LLM 抽取出的 <c>summary</c> / <c>title</c> / 当事方名称等
+    ///         字段值序列化进 tool result / 后续 LLM 调用前</item>
+    /// </list>
+    /// 这些字段的最终来源是用户上传的文档或租户配置，攻击者可以在文档里嵌入
+    /// "Ignore previous instructions ..." 之类的 indirect prompt injection，必须包裹。
     ///
     /// <para>
-    /// 包裹粒度由 Contributor 自行决定：
+    /// 包裹粒度：
     /// <list type="bullet">
     ///   <item>结构化字段（IDs、日期、金额、枚举、布尔）——裸值，不包裹。</item>
     ///   <item>用户派生自由文本字段——必须包裹。</item>
@@ -63,8 +66,7 @@ public static class PromptBoundary
     /// </para>
     ///
     /// <para>
-    /// 接受 <c>null</c> 输入并原样返回 <c>null</c>——业务模块的可空字段（合同 <c>Summary</c>、
-    /// <c>GoverningLaw</c> 等）可以无脑链式调用，无需 caller 处理 null。
+    /// 接受 <c>null</c> 输入并原样返回 <c>null</c>——可空字段可以无脑链式调用，无需 caller 处理 null。
     /// </para>
     /// </summary>
     public static string? WrapField(string? text)

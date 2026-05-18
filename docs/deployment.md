@@ -1,30 +1,33 @@
 # Deployment
 
-This page covers what a host operator needs to configure to run Paperbase: the relational database, the vector database (Qdrant), authentication signing certificates, and the Docker layout. For per-feature configuration (OCR, AI provider, embedding, chat), see the matching feature doc.
+This page covers what a host operator needs to configure to run Paperbase: the relational database, the authentication signing certificate, the OCR sidecar, and the Docker layout. For per-feature configuration (OCR, AI provider) see the matching feature doc.
+
+> **Channel positioning**: Paperbase outputs Markdown + structured metadata to downstream consumers (RAG platforms, business systems, MCP clients). It does **not** ship a vector database, embedding pipeline, or chat platform — those belong on the downstream side. See `CLAUDE.md` → "OUT of scope".
 
 ## Topology
 
 ```text
 Paperbase Host (ASP.NET Core)
-  ├─► PostgreSQL — relational application database (entities, audit, identity, OpenIddict)
-  ├─► Qdrant     — vector + payload storage for document chunks (paperbase_document_chunks)
-  └─► OCR sidecar (PaddleOCR) or Azure Document Intelligence — text extraction
+  ├─► SQL Server — relational application database (entities, audit, identity, OpenIddict, OutboxEvent)
+  └─► OCR sidecar (PaddleOCR) — or Azure Document Intelligence (cloud) — text extraction
+                                                                                                    
+                  ↓ exports                                                                         
+   REST API / MCP server / DistributedEventBus / Webhook — downstream consumers (RAG / business systems)
 ```
 
-The relational database holds all Paperbase business entities. Qdrant holds chunk embeddings and the payload fields used for filtered RAG search. There is no separate "RAG database" — Paperbase used to ship one and it has been retired in favor of Qdrant.
+All Paperbase state lives in the single SQL Server database. Markdown + event payloads flow out to downstream consumers; downstream consumers are responsible for their own storage (vector DB / business aggregates / search index).
 
 ## Connection strings
 
-Only the relational database goes through ASP.NET Core connection strings. Qdrant is configured via [`PaperbaseVectorStore`](vectors.md), and the OCR backend is configured per provider (see [text-extraction.md](text-extraction.md)).
+Paperbase uses SQL Server as the only persistence backend.
 
 ```json
 "ConnectionStrings": {
-  "Default": "Host=db-main;Port=5432;Database=paperbase;Username=paperbase_app;Password=__SET_FROM_SECRETS__",
-  "Paperbase": "Host=db-main;Port=5432;Database=paperbase;Username=paperbase_app;Password=__SET_FROM_SECRETS__"
+  "Default": "Server=YOUR_DB_SERVER;Database=Paperbase;User ID=YOUR_USER;Password=__SET_FROM_SECRETS__;TrustServerCertificate=true"
 }
 ```
 
-Both names point at the same database in the open-source host — `Default` is consumed by ABP modules that hard-code that name, `Paperbase` is the project's named connection. Production deployments should source the password from the platform's secret store, not from `appsettings.Production.json`.
+Production deployments should source the password from the platform's secret store (Azure Key Vault, AWS Secrets Manager, env vars injected by the orchestrator, etc.), not from `appsettings.Production.json`.
 
 ## Authentication and signing certificate
 
@@ -62,9 +65,29 @@ ABP stores some configuration values (e.g. tenant connection strings) encrypted 
 
 `appsettings.Development.json` is git-ignored; `appsettings.Production.json` should be created at deploy time and never committed.
 
+## OCR sidecar
+
+Paperbase ships two OCR options:
+
+- **PaddleOCR** (default) — local sidecar, CPU, never leaves the network. Runs as a Docker container; see [text-extraction.md → PaddleOCR](text-extraction.md#paddleocr-local-sidecar).
+- **Azure Document Intelligence** — cloud option for production workloads that can leave the network. See [text-extraction.md → Azure Document Intelligence](text-extraction.md#azure-document-intelligence-cloud).
+
+Host module wires exactly one via `[DependsOn(...)]` + matching `<ProjectReference>` in `host/src/Dignite.Paperbase.Host.csproj`.
+
+## AI provider
+
+The two keyed `IChatClient` registrations (title generator + structured) and their model id selection are covered in [ai-provider.md](ai-provider.md). Provider wiring is host-only — credentials never reach the Application or Domain layer.
+
+> **CLAUDE.md constraint**: LLM provider + API key are configured at the host deployment layer, **not** exposed for end-user configuration. Letting business users fill API keys is a product-philosophy mistake (they are not technical users).
+
 ## Docker
 
-The host ships with a Docker Compose layout that wires PostgreSQL, Qdrant, and the PaddleOCR sidecar.
+The deployment Docker Compose layout in `host/etc/docker/docker-compose.yml` wires:
+
+- `paperbase-web` — Angular SPA
+- `paperbase-api` — ASP.NET Core API
+- `db-migrator` — runs `dotnet run --migrate-database` once at startup
+- `sql-server` — SQL Server (Azure SQL Edge image for local-equivalent dev)
 
 ```bash
 # Build images locally
@@ -80,28 +103,18 @@ cd host/etc/docker
 ./stop-docker.ps1
 ```
 
-For local development without the full Docker stack, you can run each piece separately:
+For local development without the full image build, see [local-development.md](local-development.md) — it runs the API via `dotnet run` against a local SQL Server (LocalDB or container) and only spins up the PaddleOCR / observability sidecars via `host/docker-compose.yml`.
+
+## Migrations
+
+EF Core migrations live under `host/src/Migrations/`. Apply them with:
 
 ```bash
-# Database — use the pgvector image (pgvector is required for some optional indexes)
-docker run -d --name paperbase-db -p 5432:5432 -e POSTGRES_PASSWORD=postgres pgvector/pgvector:pg17
-
-# Qdrant
-docker run -d --name paperbase-qdrant -p 6334:6334 qdrant/qdrant:v1.10.0
-
-# PaddleOCR sidecar (only if using the local OCR option)
-docker compose up paddleocr     # from the repository root
+cd host/src
+dotnet run -- --migrate-database
 ```
 
-## Migration boundary between PostgreSQL and Qdrant
-
-PostgreSQL has standard EF Core migrations (under `host/src/Migrations/`). Qdrant has none — the collection and its payload indexes are reconciled lazily by MEVD's `EnsureCollectionExistsAsync` the first time `DocumentChunkCollectionProvider.GetAsync` is called.
-
-Implications:
-
-- **Schema rollback differs.** A bad EF migration can be reverted with `dotnet ef database update <previous>`. A bad Qdrant payload-index change requires either deleting the collection or dropping/re-adding the affected index manually.
-- **Embedding-model changes are downtime.** Qdrant collections are dimension-locked. Switching the embedding model means recreating the collection — see [embedding.md → Switching the embedding model](embedding.md#switching-the-embedding-model).
-- **Document delete is after-commit.** The Application-layer event handler pages through `VectorStoreCollection.GetAsync(filter) + DeleteAsync(keys)` only after the relational transaction commits, avoiding stranded points if the relational write later rolls back.
+Or use ABP's `Dignite.Paperbase.DbMigrator` console runner if your deployment topology calls for a separate migration step (it also seeds initial admin / OpenIddict client data).
 
 ## Verifying a release
 
@@ -109,7 +122,8 @@ When deploying to a new environment, upgrading critical dependencies, or shippin
 
 ## See also
 
+- [Local development setup](local-development.md) — running on a developer laptop
 - [Text extraction](text-extraction.md) — choosing and configuring an OCR provider
-- [AI provider](ai-provider.md) — wiring `IChatClient` and `IEmbeddingGenerator`
-- [Vector store](vectors.md) — Qdrant schema, payload indexes, dense-only retrieval rationale
+- [AI provider](ai-provider.md) — wiring the two keyed `IChatClient` registrations
 - [Deployment checklist](deployment-checklist.md) — release smoke tests
+- [Observability](observability.md) — OpenTelemetry export targets

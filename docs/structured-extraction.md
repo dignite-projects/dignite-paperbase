@@ -1,8 +1,8 @@
 # Structured Extraction
 
-Business modules turn classified documents into typed records (Contract, Invoice, …) by asking an LLM to produce a structured JSON object. Paperbase provides a reusable **agent middleware** for validating that output and retrying with feedback when the LLM gets it wrong — backed by a stable telemetry surface so dashboards can answer "how often does this fail?" per rule.
+**Audience: downstream business consumers.** Paperbase is a channel layer — it does not host business modules in this repo. Downstream consumers (in their own repositories) turn classified documents into typed records (Contract, Invoice, …) by asking an LLM to produce a structured JSON object. Paperbase exposes a reusable **agent middleware** in `core/src/Dignite.Paperbase.Abstractions/Agents/` for validating that output and retrying with feedback when the LLM gets it wrong — backed by a stable telemetry surface so dashboards can answer "how often does this fail?" per rule.
 
-This page covers the contract that every extraction validator follows and how to plug a new one in. The reference implementation is `modules/contracts/.../EventHandlers/ContractExtractionValidator.cs`.
+This page covers the contract that every extraction validator follows and how a downstream consumer plugs a new one in. The example below uses an illustrative `Contracts` consumer module to show the wiring; the example code is not shipped in this repository.
 
 ## The pattern at a glance
 
@@ -25,7 +25,7 @@ write to aggregate
 ContractsTelemetryRecorder.RecordExtraction(...)  ← final-result snapshot
 ```
 
-The middleware is in `core/src/Dignite.Paperbase.Abstractions/Agents/StructuredExtractionRetryMiddleware.cs`. It uses MAF 1.x's official agent-builder middleware surface (`agent.AsBuilder().Use(runFunc, runStreamingFunc).Build()`) — the same shape MAF itself uses internally for cross-cutting concerns like `ClientHeadersAgent`. Not an `AIContextProvider`: those inject extra context into the LLM, which is exactly the wrong shape for "produce a clean structured object". See [`.claude/rules/doc-chat-anti-patterns.md`](../.claude/rules/doc-chat-anti-patterns.md) reverse example A for the failure mode this prevents.
+The middleware is in `core/src/Dignite.Paperbase.Abstractions/Agents/StructuredExtractionRetryMiddleware.cs`. It uses MAF 1.x's official agent-builder middleware surface (`agent.AsBuilder().Use(runFunc, runStreamingFunc).Build()`) — the same shape MAF itself uses internally for cross-cutting concerns like `ClientHeadersAgent`. Not an `AIContextProvider`: those inject extra context into the LLM, which is exactly the wrong shape for "produce a clean structured object". See [`.claude/rules/llm-call-anti-patterns.md`](../.claude/rules/llm-call-anti-patterns.md) reverse example A for the failure mode this prevents.
 
 ## Why this exists
 
@@ -80,7 +80,7 @@ The `RuleCode` is what shows up as the `rule` tag on the `paperbase.{module}.ext
 
 ## Wiring up a new module
 
-Below is the contracts module as the worked example. Roughly four files.
+Below is an illustrative `Contracts` consumer module as the worked example — the example code lives in the consumer's own repository, not in this repo. Roughly four files.
 
 ### 1. Validator (in `*.Contracts.Domain/EventHandlers/`)
 
@@ -259,7 +259,7 @@ The middleware-validator-domain-guard layering is intentional: each layer protec
 
 Three layers of tests cover the pattern:
 
-- **Validator unit tests** — pure-function assertions on the rules and rule codes. See `modules/contracts/test/.../EventHandlers/ContractExtractionValidator_Tests.cs`.
+- **Validator unit tests** — pure-function assertions on the rules and rule codes. Live in the consumer module's own test project (e.g. `Your.Consumer.Tests/EventHandlers/YourExtractionValidator_Tests.cs`).
 - **Middleware unit tests** — Substitute<IChatClient> producing canned JSON sequences; assert call count, feedback injection, retry exhaustion. See `core/test/Dignite.Paperbase.Application.Tests/Agents/StructuredExtractionRetryMiddleware_Tests.cs`.
 - **Domain guard** — exception assertions on `Contract.ApplyFields` with the existing aggregate test pattern.
 

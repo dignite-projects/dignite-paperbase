@@ -1,6 +1,8 @@
 # Document Classification
 
-When a document finishes [text extraction](text-extraction.md), Paperbase classifies it against a registered set of `DocumentTypeDefinition`s — for example "Contract", "Invoice", "Receipt". The resulting `DocumentTypeCode` is the routing signal that triggers business modules: a `Contract` event handler picks up its own `DocumentClassifiedEto` and runs domain field extraction, an invoice module does the same for invoices, and so on.
+When a document finishes [text extraction](text-extraction.md), Paperbase classifies it against a registered set of `DocumentTypeDefinition`s. The Host deployer registers the types they care about (e.g. `host.general`, `host.contract`, `host.invoice`); tenants can also register their own private types. Paperbase ships **no built-in types** — every type is owned by the deployer or tenant, never by Paperbase itself.
+
+The resulting `DocumentTypeCode` is the routing signal that drives the next channel stages — Host field extraction (#168) for type-bound Host fields and tenant field extraction (#169) for tenant-defined fields — and is also broadcast via `DocumentClassifiedEto` over `DistributedEventBus` so downstream business consumers (in their own repositories) can subscribe and persist their own derived records.
 
 This page covers the classification pipeline as a *feature*: how it works, how to tune it, and what happens when the LLM is unhappy. For low-level orchestration code see `core/src/Dignite.Paperbase.Application/Documents/Pipelines/Classification/`.
 
@@ -12,7 +14,7 @@ Document.Markdown ──► DocumentClassificationBackgroundJob ──► Docume
                                                                          │
                                                                          ▼
                                             ConfidenceScore ≥ Type.ConfidenceThreshold ?
-                                                ├─ yes ─► DocumentClassifiedEto + enqueue embedding
+                                                ├─ yes ─► DocumentClassifiedEto + enqueue Host / tenant field extraction
                                                 └─ no  ─► PendingReview (human triage)
 
                               transient LLM error          ──► rethrow → ABP Job retry (MaxTryCount)
@@ -26,24 +28,29 @@ Two design properties matter:
 
 ## Registering document types
 
-Each business module that wants its documents classified registers types via `DocumentTypeOptions`:
+Host deployers register the types their deployment recognizes (per CLAUDE.md "Host 部署类型") inside `PaperbaseHostModule.ConfigureServices`:
 
 ```csharp
 Configure<DocumentTypeOptions>(options =>
 {
     options.Register(new DocumentTypeDefinition(
-        ContractsDocumentTypes.General,
-        LocalizableString.Create<ContractsResource>("DocumentType:Contract"))
+        "host.general",
+        LocalizableString.Create<PaperbaseResource>("DocumentType:HostGeneral"))
     {
         ConfidenceThreshold = 0.80,
         Priority = 10
     });
+
+    // Hosts add more types as their deployment grows (e.g. host.contract / host.invoice).
+    // Paperbase ships none — the deployer owns this list end-to-end.
 });
 ```
 
+Tenants register their own private types at runtime through the operator UI / admin API (per CLAUDE.md "租户级类型"); those flow into the same registry under the tenant scope.
+
 | Field | Used by |
 |---|---|
-| `TypeCode` | Business module's event handler matches on this. Must follow `<owner-module>.<sub-type>`. |
+| `TypeCode` | Downstream consumers (DistributedEventBus subscribers) match on this code; Host / tenant field-definition tables also key on it. Convention: `<owner>.<sub-type>` (e.g. `host.general`, `tenant-acme.case-file`). |
 | `DisplayName` (`ILocalizableString`) | Sent to the LLM as the candidate name. Resolved through `IStringLocalizerFactory` under `PaperbaseAIBehavior:DefaultLanguage`. UI also reads it under the user's current culture. |
 | `Priority` | Higher = appears earlier in the LLM prompt; tie-break when truncated to `MaxDocumentTypesInClassificationPrompt`. |
 | `ConfidenceThreshold` | LLM result must clear this to auto-classify; below it the document goes to `PendingReview`. |
@@ -68,7 +75,7 @@ The prompt language follows `PaperbaseAIBehavior:DefaultLanguage` (see [ai-provi
 
 | Outcome | Pipeline state | What happens next |
 |---|---|---|
-| LLM result, confidence ≥ threshold | `DocumentPipelineRun` completes | `DocumentClassifiedEto` published; embedding job enqueued; business modules wake up |
+| LLM result, confidence ≥ threshold | `DocumentPipelineRun` completes | `DocumentClassifiedEto` published; Host & tenant field extraction enqueued; downstream `DistributedEventBus` subscribers (in their own repos) receive the event |
 | LLM result, confidence < threshold | `PendingReview` | `PipelineRunExtraPropertyNames.ClassificationCandidates` is populated for the UI ([pipeline-runs.md](pipeline-runs.md)) |
 | LLM unreachable (transient) | `Failed`, exception rethrown | ABP retries the job per `BackgroundJobOptions.JobTypes` `MaxTryCount`. Next attempt does a fresh LLM classification once the provider recovers. |
 | LLM returned malformed JSON | `PendingReview` | No retry — a human resolves the type code in the UI |
@@ -76,6 +83,5 @@ The prompt language follows `PaperbaseAIBehavior:DefaultLanguage` (see [ai-provi
 ## See also
 
 - [Text extraction](text-extraction.md) — produces the `Document.Markdown` consumed here
-- [Embedding pipeline](embedding.md) — the next stage triggered on successful classification
-- [Relation discovery](relation-discovery.md) — also subscribes to `DocumentClassifiedEto`; queues a discovery run to find relations to other documents
+- [Structured extraction](structured-extraction.md) — the validator + retry middleware contract that downstream consumers use when reacting to `DocumentClassifiedEto`
 - [Pipeline runs](pipeline-runs.md) — the `Candidates` payload schema for the review UI

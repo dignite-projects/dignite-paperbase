@@ -15,15 +15,13 @@ Do not wrap an entire background job `ExecuteAsync` in one long `[UnitOfWork]` w
 - blob or file IO
 - OCR
 - LLM or AI provider calls
-- embedding generation
-- vector-store operations such as Qdrant upsert
 - HTTP calls or other network IO
 - long CPU-bound processing
 
 Use short unit-of-work phases instead:
 
 1. Begin phase: load the required aggregate(s), create or mark execution state as running, save, and commit.
-2. External phase: perform slow IO, AI, vector-store, network, or CPU-bound work outside any ambient UoW.
+2. External phase: perform slow IO, AI, network, or CPU-bound work outside any ambient UoW.
 3. Complete phase: reload the aggregate(s), apply success/failure/skipped state, save, and commit.
 
 This avoids holding database connections, locks, or transactions while external work is running. Long ambient UoW scopes can block normal HTTP reads and cause SQL command timeouts even for simple primary-key queries.

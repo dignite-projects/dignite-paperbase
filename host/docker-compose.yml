@@ -1,17 +1,4 @@
 services:
-  qdrant:
-    image: qdrant/qdrant:v1.15.4
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant_data:/qdrant/storage
-    healthcheck:
-      test: ["CMD-SHELL", "test -f /qdrant/storage/.qdrant-initialized || exit 0"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   paddleocr:
     build:
       context: ./paddleocr-server
@@ -51,6 +38,5 @@ services:
       DASHBOARD__OTLP__AUTHMODE: "Unsecured"
 
 volumes:
-  qdrant_data:
   paddleocr_models:
   hf_cache:

@@ -125,7 +125,7 @@ tools: Read, Grep, Glob, Bash
 
 ### 🟢 已检查并合规
 - 三层依赖方向
-- 虚方法（modules/contracts/...）
+- 虚方法（可复用 core 模块的 ApplicationService / Workflow）
 - 多租户隔离
 - ...
 

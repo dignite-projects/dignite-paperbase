@@ -91,7 +91,11 @@ public class HostFieldExtractionWorkflow : ITransientDependency
         sb.AppendLine("Fields to extract:");
         foreach (var f in fields)
         {
-            sb.AppendLine($"- \"{f.Name}\" ({f.DataType}, {(f.Required ? "required" : "optional")}): {f.Prompt}");
+            // f.Prompt is admin/tenant-supplied free-form text — wrap with PromptBoundary
+            // so downstream BoundaryRule treats it as data, never instructions.
+            // f.Name is a JSON key (used to parse the response), validated at domain layer
+            // to be alphanumeric/identifier-shaped; safe to render unwrapped.
+            sb.AppendLine($"- \"{f.Name}\" ({f.DataType}, {(f.Required ? "required" : "optional")}): {PromptBoundary.WrapField(f.Prompt)}");
         }
         return sb.ToString();
     }

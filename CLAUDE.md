@@ -23,7 +23,7 @@
 - **core/** - Paperbase 通道实现（ABP 应用程序栈），遵循 `.claude/rules/abp-core.md`
 - **host/** - 宿主应用：配置 OCR / Markdown / LLM provider；唯一可配置中间件的位置
 - **docs/** - 面向运维 / 配置 / API 的文档；设计决策走 GitHub Issues，不在 docs/ 下落地
-- **modules/** - **不在 Paperbase 范畴**。下游业务消费方（合同管理 / 发票管理等）在自己的仓库实现，通过订阅 EventBus / 调用 MCP server / REST 接入。该目录下尚存的 `contracts/` 是迁移期遗留，按 [#165](https://github.com/dignite-projects/dignite-paperbase/issues/165) 计划剥离为下游参考实现
+- **modules/** - **不在 Paperbase 范畴**。下游业务消费方（合同管理 / 发票管理等）在自己的仓库实现，通过订阅 EventBus / 调用 MCP server / REST 接入
 
 ## 架构设计
 
@@ -71,8 +71,6 @@ Paperbase 采用**两层架构**（业务层不在 Paperbase 范畴）：
 4. 业务记录是 Paperbase Document 的"派生投影"——`Document` 仍是 truth source
 
 **Paperbase 不亲自做下游的事**——不预置业务 schema（合同金额 / 发票号 / 税额等）、不写业务系统专属连接器、不实现业务工作流（审批 / 续签）。
-
-> `modules/contracts/` 目录在迁移期内仍可能存在，按 [#165](https://github.com/dignite-projects/dignite-paperbase/issues/165) 剥离为独立参考实现项目。改动 Paperbase 时，**不要**以现存 `modules/contracts/` 的耦合方式作为未来扩展的范本
 
 ### 第三层：Host（宿主应用）
 
@@ -255,8 +253,6 @@ Paperbase 是通道，Markdown 是出口的**唯一文本载荷**。遇到取舍
 - **Description / Instructions 编译期常量**：任何 LLM-facing description / instructions 都必须是**编译期常量**或纯静态字符串字面量，**禁止**运行时拼接用户控制的字符串
 - **多租户隔离**：所有 `Document` / 衍生字段查询路径必须显式按 `CurrentTenant.Id` 过滤
 
-具体反例与正确写法见 `.claude/rules/doc-chat-anti-patterns.md`（虽然原文件取材自历史 chat 路径，其中 fail-closed / PromptBoundary / 租户断言模式适用于所有内部 LLM 路径）。
-
 ## 处理规则
 
 1. 在 core 中开发时，严格遵循 `.claude/rules/` 中的规则
@@ -266,16 +262,3 @@ Paperbase 是通道，Markdown 是出口的**唯一文本载荷**。遇到取舍
 4. **改动前先判断是否需要 Issue**：涉及通道边界（OCR 流水线 / 出口契约 / 字段架构 / 文档类型 Tier 体系 / Markdown-first / 安全约定）、影响模块边界、或属于 Slice 任务的改动，**先停下，告知用户开 GitHub Issue 后再动手**；纯实现细节的 fix（如 bug fix、措辞修正）直接用 commit message 记录即可
 5. **分析必须果断**：给结论时先抛**判定**再给**理由**，不要列"可能 A / 也许 B / 取决于你"的菜单把判断推回给用户。两条路都可行时，按项目既定偏好（通道哲学、不重复造轮、瞄准当下与未来）选一条并说明取舍；只有真正无法靠 `grep` / `Read` 在 30 秒内自查的才允许保留不确定性。禁止 hedging 词："可能"、"也许"、"取决于具体情况"、"两种都可以"——除非确实不知道
 6. **下游消费方相关问题**：业务模块（合同 / 发票管理等）不属于 Paperbase 范畴。涉及下游消费方实现的讨论，明确指出属于 out-of-scope，Paperbase 只保证出口契约稳定
-
-## 迁移期遗留代码（不要作为新代码范本）
-
-按 [#175](https://github.com/dignite-projects/dignite-paperbase/issues/175) 的依赖项，以下代码在通道定位下属于**待剥离 / 待移除**，**不要**用它们作为新代码或扩展点的设计范本：
-
-| 路径 | 状态 | 跟踪 Issue |
-|------|------|-----------|
-| `modules/contracts/` | 业务模块整体剥离为下游参考实现 | [#165](https://github.com/dignite-projects/dignite-paperbase/issues/165) |
-| `core/src/Dignite.Paperbase.Application/Chat/` | ChatAppService / RAG 问答路径全部移除 | [#166](https://github.com/dignite-projects/dignite-paperbase/issues/166) |
-| `core/src/Dignite.Paperbase.Abstractions/Chat/` | 评估是否还需要（业务模块 chat 共享常量在通道定位下不再适用） | [#166](https://github.com/dignite-projects/dignite-paperbase/issues/166) |
-| `core/src/Dignite.Paperbase.KnowledgeIndex*/` | 向量化与向量存储不在通道范畴（下游 RAG 基础设施） | 与 [#166](https://github.com/dignite-projects/dignite-paperbase/issues/166) 联动 |
-
-完整剥离与清理计划见 [#165–#175 系列 Issue](https://github.com/dignite-projects/dignite-paperbase/issues?q=is%3Aissue+165..175)。

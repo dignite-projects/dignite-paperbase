@@ -1,14 +1,14 @@
 # Text Extraction
 
-Every document uploaded to Paperbase passes through a text-extraction stage that converts the raw bytes into **Markdown**. The Markdown then drives every downstream AI capability — classification, embedding, document chat, and business-module field extraction.
+Every document uploaded to Paperbase passes through a text-extraction stage that converts the raw bytes into **Markdown**. The Markdown then drives the channel's internal pipeline — classification, Host field extraction, tenant field extraction (B 机制), and title generation — and is the only text payload Paperbase exposes to downstream consumers (RAG platforms, business systems, MCP clients) via REST / EventBus / MCP.
 
 ## Markdown-first contract
 
 Paperbase is an AI-native platform. Markdown is the **single text payload** of the pipeline. But what Markdown contributes depends on whether the source document has structure — be honest about both cases:
 
-**With structure — real signal.** For contracts, reports, CSV, DOCX with headings, layout-aware OCR output (PP-StructureV3, Azure DI `prebuilt-document`): headings, tables and lists are not formatting decoration — they are semantic signals that vector chunkers (header-path injection) and LLMs (system prompt: "input is Markdown") rely on. Use them in full.
+**With structure — real signal.** For contracts, reports, CSV, DOCX with headings, layout-aware OCR output (PP-StructureV3, Azure DI `prebuilt-document`): headings, tables and lists are not formatting decoration — they are semantic signals that downstream RAG chunkers (header-path injection) and Paperbase's own LLM prompts (system prompt: "input is Markdown") rely on. Use them in full.
 
-**Without structure — container, not signal.** For OCR loose paragraphs, plain `.txt`, PP-OCRv4 line dumps, single-line notes: the Markdown wrapper is a **container name**, not a signal upgrade — `string.Join("\n\n", paragraphs)` and the plain text it wraps are byte-for-byte indistinguishable. We still route this through the Markdown contract so downstream chunkers / prompts / chat / business-module extractors stay on one shape. The wrapper buys uniformity, not LLM comprehension.
+**Without structure — container, not signal.** For OCR loose paragraphs, plain `.txt`, PP-OCRv4 line dumps, single-line notes: the Markdown wrapper is a **container name**, not a signal upgrade — `string.Join("\n\n", paragraphs)` and the plain text it wraps are byte-for-byte indistinguishable. We still route this through the Markdown contract so internal pipelines (classification / Host & tenant field extraction / title generation) and downstream consumers (RAG / business systems) stay on one shape. The wrapper buys uniformity, not LLM comprehension.
 
 Contract obligations regardless of structure:
 
@@ -120,6 +120,6 @@ Custom OCR provider projects only need to reference `Dignite.Paperbase.Ocr` — 
 
 ## See also
 
-- [Embedding pipeline](embedding.md) — what `Document.Markdown` flows into next
 - [Classification pipeline](classification.md) — how the LLM consumes the Markdown
+- [AI provider](ai-provider.md) — provider wiring for the keyed chat clients used by classification / field extraction / title generation
 - [Deployment checklist](deployment-checklist.md) — verifying OCR after a sidecar upgrade
