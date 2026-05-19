@@ -1,6 +1,6 @@
 # Document Classification
 
-When a document finishes [text extraction](text-extraction.md), Paperbase classifies it against a registered set of `DocumentTypeDefinition`s. The Host deployer registers the types they care about (e.g. `host.general`, `host.contract`, `host.invoice`); tenants can also register their own private types. Paperbase ships **no built-in types** — every type is owned by the deployer or tenant, never by Paperbase itself.
+When a document finishes [text extraction](text-extraction.md), Paperbase classifies it against `DocumentType` rows that belong to the same layer as the document (Host documents → `TenantId IS NULL` rows; tenant documents → matching tenant rows). The Host deployer creates their types through the admin UI (`IDocumentTypeAppService`); tenants do the same for their own private types. Paperbase ships **no built-in types** and **does not register types in Module startup** — every type is owned by the deployer or tenant, never by Paperbase itself.
 
 The resulting `DocumentTypeCode` is the routing signal that drives the next channel stages — Host field extraction (#168) for type-bound Host fields and tenant field extraction (#169) for tenant-defined fields — and is also broadcast via `DocumentClassifiedEto` over `DistributedEventBus` so downstream business consumers (in their own repositories) can subscribe and persist their own derived records.
 
@@ -28,30 +28,12 @@ Two design properties matter:
 
 ## Registering document types
 
-Host deployers register the types their deployment recognizes (per CLAUDE.md "Host 部署类型") inside `PaperbaseHostModule.ConfigureServices`:
-
-```csharp
-Configure<DocumentTypeOptions>(options =>
-{
-    options.Register(new DocumentTypeDefinition(
-        "host.general",
-        LocalizableString.Create<PaperbaseResource>("DocumentType:HostGeneral"))
-    {
-        ConfidenceThreshold = 0.80,
-        Priority = 10
-    });
-
-    // Hosts add more types as their deployment grows (e.g. host.contract / host.invoice).
-    // Paperbase ships none — the deployer owns this list end-to-end.
-});
-```
-
-Tenants register their own private types at runtime through the operator UI / admin API (per CLAUDE.md "租户级类型"); those flow into the same registry under the tenant scope.
+Both Host deployers and tenants create their `DocumentType` rows through the admin UI (`IDocumentTypeAppService`). Host admins (logged in with `CurrentTenant.Id IS NULL`) create Host-layer types; tenant admins create their own tenant-layer types. There is **no Module-startup registration path** — Paperbase Core ships with no built-in types, and there's no inheritance: a Host type never auto-applies to tenant documents.
 
 | Field | Used by |
 |---|---|
-| `TypeCode` | Downstream consumers (DistributedEventBus subscribers) match on this code; Host / tenant field-definition tables also key on it. Convention: `<owner>.<sub-type>` (e.g. `host.general`, `tenant-acme.case-file`). |
-| `DisplayName` (`ILocalizableString`) | Sent to the LLM as the candidate name. Resolved through `IStringLocalizerFactory` under `PaperbaseAIBehavior:DefaultLanguage`. UI also reads it under the user's current culture. |
+| `TypeCode` | Downstream consumers (DistributedEventBus subscribers) match on this code; `FieldDefinition` rows also key on it. Convention: `<owner>.<sub-type>` (e.g. `host.general`, `tenant-acme.case-file`). |
+| `DisplayName` (`string`) | Sent to the LLM as the candidate name. Stored as a plain string on the entity — the admin UI presents it directly without any `IStringLocalizerFactory` lookup, since each tenant edits their own row. |
 | `Priority` | Higher = appears earlier in the LLM prompt; tie-break when truncated to `MaxDocumentTypesInClassificationPrompt`. |
 | `ConfidenceThreshold` | LLM result must clear this to auto-classify; below it the document goes to `PendingReview`. |
 

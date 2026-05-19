@@ -1,17 +1,14 @@
 # Observability
 
-Paperbase emits OpenTelemetry traces and metrics from three sources and ships them through a single host-configured export pipeline. This page covers what's emitted, how to wire it up locally, and how to point it at a production backend.
+Paperbase emits OpenTelemetry traces and metrics from the MAF + `Microsoft.Extensions.AI` stack it consumes, and ships them through a single host-configured export pipeline. This page covers what's emitted, how to wire it up locally, and how to point it at a production backend.
 
 ## What's emitted
 
 | Source | Type | Highlights |
 |---|---|---|
 | **`Microsoft.Agents.AI`** | Traces, Metrics | MAF's built-in `CompactionTelemetry` (`compaction.compact`, `compaction.summarize` spans with `Strategy / Triggered / BeforeTokens / AfterTokens / DurationMs` tags), `compaction.provider.invoke` lifecycle, plus token-usage / tool-call metrics. |
-| **`Microsoft.Extensions.AI`** | Traces, Metrics | `chat-client.GetResponseAsync` and `execute_tool {tool_name}` spans with GenAI semantic-convention tags (model id, prompt / completion tokens, finish reason). Emitted automatically by the `.UseOpenTelemetry()` decorators wired on every chat client + embedding generator in `PaperbaseHostModule.ConfigureAI`. |
-| **`Dignite.Paperbase.*`** | Metrics | Project-specific counters and histograms. The major Meters today: |
-| ↳ `Dignite.Paperbase.Chat` | | `paperbase.chat.turn.degraded` (counter), `paperbase.chat.tool.result.size` (histogram). |
-| ↳ `Dignite.Paperbase.Documents.RelationDiscovery` | | `paperbase.relation_discovery.runs.total`, `.l2.created`, `.l3.invoked`, `.l3.llm_calls`, `.l3.created`, `.duration`, `.suggestion.confirmed` / `.rejected`. |
-| ↳ `Dignite.Paperbase.Contracts` | | `paperbase.contracts.extraction.attempts` (counter, tags `document_type_code`, `success`), `.extraction.validation_errors` (counter, tags `rule`, `document_type_code`), `.extraction.confidence` (histogram). See [structured-extraction.md](structured-extraction.md) for what drives the values. |
+| **`Microsoft.Extensions.AI`** | Traces, Metrics | `chat-client.GetResponseAsync` and `execute_tool {tool_name}` spans with GenAI semantic-convention tags (model id, prompt / completion tokens, finish reason). Emitted automatically by the `.UseOpenTelemetry()` decorators wired on every chat client in `PaperbaseHostModule.ConfigureAI`. |
+| **`Dignite.Paperbase.*`** | Metrics (reserved) | Wildcard reservation only — Paperbase Core does **not** register custom Meters today (every LLM stage is internal: classification / field extraction / title generation, all observable through the `Microsoft.Extensions.AI` instrumentation above). The wildcard is a future-proof entry point so downstream business modules that name their Meter `Dignite.Paperbase.<module-name>` get picked up automatically without host-side changes. |
 
 A new business module that adds its own Meter automatically lands in the pipeline as long as the Meter name starts with `Dignite.Paperbase.` — the host registers a wildcard `AddMeter("Dignite.Paperbase.*")`.
 
@@ -79,14 +76,14 @@ The repo defaults to **launchSettings.json**: contributors who clone, `docker co
 # Start the host
 dotnet run --project host/src/Dignite.Paperbase.Host.csproj
 
-# Hit any endpoint or send a chat turn, then open the dashboard
+# Upload a document via the API or operator UI, then open the dashboard
 start http://localhost:18888
 ```
 
 Expected sightings:
 
-- **Traces** tab — an ASP.NET Core request span containing nested `chat-client.GetResponseAsync` spans and any `execute_tool {tool_name}` children. If `ChatCompaction:Enabled = true`, you'll also see `compaction.compact` spans with token-delta tags.
-- **Metrics** tab — `paperbase.chat.turn.degraded` and `paperbase.contracts.extraction.attempts` counters tick on each turn / contract upload.
+- **Traces** tab — an ASP.NET Core request span containing nested `chat-client.GetResponseAsync` spans (for classification / field extraction / title generation) and any `execute_tool {tool_name}` children.
+- **Metrics** tab — MAF + `Microsoft.Extensions.AI` token-usage / tool-call counters tick on each LLM invocation; `compaction.*` spans appear if MAF compaction triggers.
 - **Structured Logs** tab — Serilog logs with `TraceId` correlations to the spans on the left.
 
 ### First-start delay
@@ -121,7 +118,7 @@ MAF and `Microsoft.Extensions.AI` currently publish their ActivitySources and Me
 
 The prefix will be dropped once the spec stabilizes. `PaperbaseHostModule.ConfigureOpenTelemetry` registers both the prefixed and unprefixed names so the pipeline keeps working through that rename.
 
-**Symptom of forgetting the prefix**: Aspire Dashboard shows the bare `HTTP POST api.siliconflow.cn:443` (or other provider) spans from `System.Net.Http` instrumentation, but no wrapping `chat-client.GetResponseAsync` parent and no `execute_tool {tool_name}` children. The OpenTelemetry SDK silently drops spans from unregistered sources — no exception, no warning. If you see only HTTP leaf spans for a Chat request, this is the first thing to check.
+**Symptom of forgetting the prefix**: Aspire Dashboard shows the bare `HTTP POST api.siliconflow.cn:443` (or other provider) spans from `System.Net.Http` instrumentation, but no wrapping `chat-client.GetResponseAsync` parent and no `execute_tool {tool_name}` children. The OpenTelemetry SDK silently drops spans from unregistered sources — no exception, no warning. If you see only HTTP leaf spans for an LLM call, this is the first thing to check.
 
 ## Pointing at a different OTLP backend
 
@@ -143,31 +140,16 @@ OpenTelemetry__Otlp__Endpoint=http://otel-collector:4317
 
 Production deployments should set the endpoint via env var or Kubernetes ConfigMap — never commit a production OTLP URL to `appsettings.json`.
 
-## Chat tool / skill audit naming
-
-`ChatToolAuditEntry.ToolName` (the audit-log key under `Chat.ToolCalls`) and the per-turn `ToolCallSummary` dictionary use the following naming scheme — relevant when building dashboards or alerts off the audit log:
-
-| Audit `ToolName` shape | Source | `GroundingSource` contribution |
-|---|---|---|
-| `search_paperbase_documents` | The platform's direct vector-search AIFunction | `Vector` |
-| `skill:<skill-name>/<script-name>` | A MAF skill script invocation (e.g. `skill:contracts/search`, `skill:document-inspection/outline`) — derived by `ChatToolFactory.AuditedChatFunction.DeriveSkillAwareToolName` from the LLM's `run_skill_script` arguments | `Structured` |
-| `load_skill` | MAF skill-system meta-tool (LLM loaded a skill's full SKILL.md) | **filtered out** — preparatory reading, not grounding evidence |
-| `read_skill_resource` | MAF skill-system meta-tool (LLM read a skill resource) | **filtered out** — same reason |
-
-So a Grafana / Elasticsearch query aggregating "all contract-related skill activity" should match `ToolName LIKE 'skill:contracts/%'` rather than `LIKE 'search_contracts%'` (which was the pre-#149 shape and now matches nothing).
-
-The `skill:` prefix is a stable string format implemented by `ChatToolFactory.AuditedChatFunction.DeriveSkillAwareToolName`; tested by `ChatTelemetryRecorder_Tests.DeriveSkillAwareToolName_*`. A structured `SkillName` / `ScriptName` pair on `ChatToolAuditEntry` is tracked as a follow-up (see issue tracker for "structured skill identity").
-
 ## Tagging policy and cardinality
 
-All Paperbase-owned Meters follow the same rule: **tags are low-cardinality enums or bounded sets**.
+Downstream modules that introduce Meters under `Dignite.Paperbase.*` should follow the same rule: **tags are low-cardinality enums or bounded sets**.
 
 | Allowed as tag | Not allowed as tag |
 |---|---|
-| `document_type_code` (bounded by `DocumentTypeDefinition`) | `tenant_id` (multi-tenant cardinality blowup) |
+| `document_type_code` (bounded by tenant-scoped `DocumentType` rows) | `tenant_id` (multi-tenant cardinality blowup) |
 | `success` (`true` / `false`) | `user_id` |
-| `rule` (one of the static `ContractExtractionValidator.RuleCodes.*`) | `document_id` |
-| `stage` / `strategy` (compaction layer names) | Free-text from the model or user |
+| `pipeline_code` (one of the static `PaperbasePipelines.*`) | `document_id` |
+| `stage` / `strategy` (MAF compaction layer names) | Free-text from the model or user |
 
 Per-tenant / per-user drill-down belongs in traces and structured logs — those are sampled, while metrics are aggregated by tag and would explode storage and dashboard latency.
 
@@ -175,7 +157,7 @@ When adding a new tag to an existing metric, audit the cardinality first. A tag 
 
 ## Tests
 
-A test must not register the production OTel pipeline. The `PaperbaseHostModule.ConfigureOpenTelemetry` short-circuits when `Enabled = false` (the default), so test hosts that don't set `OpenTelemetry:Enabled = true` skip the export entirely. Tests that need to *capture* metric emissions instead use `MeterListener` directly — see `core/test/Dignite.Paperbase.Application.Tests/Documents/Pipelines/RelationDiscovery/RelationDiscoveryTelemetryRecorder_Tests.cs` for the pattern.
+A test must not register the production OTel pipeline. The `PaperbaseHostModule.ConfigureOpenTelemetry` short-circuits when `Enabled = false` (the default), so test hosts that don't set `OpenTelemetry:Enabled = true` skip the export entirely. Tests that need to *capture* metric emissions instead use `System.Diagnostics.Metrics.MeterListener` directly — subscribe to the specific Meter name in test setup, drain measurements in assertions.
 
 ## Adding a Meter from a new module
 

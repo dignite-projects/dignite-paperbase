@@ -16,7 +16,8 @@ export interface FileOriginDto {
   scannedAt?: string;
 }
 
-export interface ClassificationCandidate {
+// Mirrors C# Dignite.Paperbase.Documents.PipelineRunCandidate (Domain.Shared).
+export interface PipelineRunCandidate {
   typeCode: string;
   confidenceScore: number;
 }
@@ -30,8 +31,11 @@ export interface DocumentPipelineRunDto extends ExtensibleObject {
   startedAt: string;
   completedAt?: string;
   statusMessage?: string;
-  // Pipeline-specific outputs. Known keys:
-  //  - "Candidates": ClassificationCandidate[] — top-K classification candidates
+  // Top-K classification candidates surfaced from the low-confidence path —
+  // strong-typed projection of ExtraProperties["Candidates"]. null when there
+  // is no low-confidence outcome to review. Prefer this over reading
+  // extraProperties by key.
+  candidates?: PipelineRunCandidate[] | null;
   extraProperties?: Record<string, unknown>;
 }
 

@@ -14,42 +14,43 @@ Candidates
 
 This payload is written when classification finishes with low confidence. It exists so the Angular UI can show the top candidate document types to a reviewer.
 
-The server does not currently consume this payload for business decisions after writing it. Treat it as a UI-facing JSON payload schema, not as a domain rule source.
+The server does not currently consume this payload for business decisions after writing it. Treat it as a UI-facing payload, not a domain rule source.
+
+### Two-channel exposure
+
+The payload is exposed to clients through **two** channels — both backed by the same `ExtraProperties["Candidates"]` storage:
+
+1. **`DocumentPipelineRunDto.Candidates`** — strong-typed property of type `IReadOnlyList<PipelineRunCandidate>?` (or `PipelineRunCandidate[] | null` in TypeScript). **Prefer this.** abp generate-proxy emits the matching TS interface so Angular gets IDE autocomplete.
+2. **`DocumentPipelineRunDto.ExtraProperties["Candidates"]`** — the generic `ExtraProperties` bag still carries the same array. Kept for the generic per-pipeline payload contract; do not read by key when the strong-typed property is available.
 
 ### JSON Shape
 
-The payload is a JSON array. Each item follows the `PipelineRunCandidate` schema:
+The payload is a JSON array. Each item follows the `PipelineRunCandidate` schema (defined in `Dignite.Paperbase.Documents` under Domain.Shared):
 
 ```json
 [
-  {
-    "TypeCode": "contract.general",
-    "ConfidenceScore": 0.64
-  },
-  {
-    "TypeCode": "invoice.standard",
-    "ConfidenceScore": 0.31
-  }
+  { "typeCode": "contract.general", "confidenceScore": 0.64 },
+  { "typeCode": "invoice.standard", "confidenceScore": 0.31 }
 ]
 ```
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `TypeCode` | `string` | Candidate document type code |
-| `ConfidenceScore` | `number` | Classification confidence, expected in the `0.0` to `1.0` range |
+| `typeCode` | `string` | Candidate document type code |
+| `confidenceScore` | `number` | Classification confidence, expected in the `0.0` to `1.0` range |
 
 ### Server-Side Notes
 
-When writing the payload, use `PipelineRunCandidate`:
+Writing happens inside `DocumentPipelineRunManager.CompleteClassificationWithLowConfidenceAsync`:
 
 ```csharp
 run.SetProperty(
     PipelineRunExtraPropertyNames.ClassificationCandidates,
-    candidates);
+    candidates);   // IReadOnlyList<PipelineRunCandidate>
 ```
 
-After EF Core persistence, ABP restores non-primitive `ExtraProperties` values as `System.Text.Json.JsonElement`. Do not rely on `GetProperty<List<PipelineRunCandidate>>()` for this payload. If server-side code ever needs to read it, read the non-generic property value and parse the JSON explicitly.
+Reading on the server normally goes through `DocumentPipelineRunToDocumentPipelineRunDtoMapper`: it wraps Mapperly's generated `Map`, calls a private `ExtractCandidates` after the partial mapping completes, and assigns the deserialized list to `DocumentPipelineRunDto.Candidates`. The extractor handles both the raw `IReadOnlyList<PipelineRunCandidate>` (same UoW, before persistence) and the `System.Text.Json.JsonElement` (after EF Core round-trip — ABP restores non-primitive entries as `JsonElement`, so `GetProperty<List<PipelineRunCandidate>>()` will *not* work; the extractor parses the JSON explicitly). The DTO's `Candidates` property is `{ get; set; }` so HTTP / STJ round-trips through `HttpApi.Client` work without going back through `ExtraProperties`.
 
 ### Angular Notes
 
-The value is exposed through `DocumentPipelineRunDto.ExtraProperties` under the `Candidates` key. Angular code should treat it as an array with `TypeCode` and `ConfidenceScore` fields and should tolerate the key being absent when a run has no low-confidence candidate list.
+Use `run.candidates` directly. Treat `null` as "no low-confidence candidate list" — do not coalesce to an empty array if you need to distinguish "no review needed" from "reviewed and resolved without candidates".

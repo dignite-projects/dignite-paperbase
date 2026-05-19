@@ -25,14 +25,16 @@ public class FieldDefinitionAppService : PaperbaseAppService, IFieldDefinitionAp
 
     public virtual async Task<List<FieldDefinitionDto>> GetByDocumentTypeAsync(string documentTypeCode)
     {
-        // 返回当前租户视图：Host 字段 + 当前租户字段
+        // 仅当前租户层字段（CLAUDE.md "两层 mutually exclusive 不混"）——
+        // 字段抽取由 Document.TenantId 决定唯一一层，不混合 Host + tenant。
         var list = await _repository.GetByDocumentTypeAsync(CurrentTenant.Id, documentTypeCode);
         return ObjectMapper.Map<List<FieldDefinition>, List<FieldDefinitionDto>>(list);
     }
 
     public virtual async Task<List<FieldDefinitionDto>> GetDeletedByDocumentTypeAsync(string documentTypeCode)
     {
-        // 仅当前租户层的软删除字段；Host 字段不参与租户级回收站。
+        // 当前层回收站：Host admin（CurrentTenant.Id IS NULL）看 Host 字段；租户 admin 看自己租户。
+        // Host 与 tenant 各自独立宇宙，不跨层。
         using (DataFilter.Disable<ISoftDelete>())
         {
             var queryable = await _repository.GetQueryableAsync();
@@ -49,7 +51,7 @@ public class FieldDefinitionAppService : PaperbaseAppService, IFieldDefinitionAp
 
     public virtual async Task<FieldDefinitionDto> CreateAsync(CreateFieldDefinitionDto input)
     {
-        // 仅创建当前租户私有字段；Host 字段（TenantId IS NULL）通过 IDataSeedContributor 维护。
+        // 严格单层创建：Host admin 创建 TenantId IS NULL 字段；租户 admin 创建自己租户字段。
         // 关闭 ISoftDelete 过滤——同 (TenantId, DocumentTypeCode, Name) 即使处于软删除态也算占用，
         // 避免后续恢复时与新记录冲突。
         FieldDefinition? existing;
@@ -82,7 +84,7 @@ public class FieldDefinitionAppService : PaperbaseAppService, IFieldDefinitionAp
     {
         var entity = await _repository.GetAsync(id);
 
-        // 跨租户防御 + 禁止改 Host 字段（TenantId IS NULL）
+        // 跨层防御：只能改自己所在层（Host admin 改 TenantId IS NULL；租户 admin 改 TenantId == 自己）。
         if (entity.TenantId != CurrentTenant.Id)
         {
             throw new EntityNotFoundException(typeof(FieldDefinition), id);
@@ -119,11 +121,16 @@ public class FieldDefinitionAppService : PaperbaseAppService, IFieldDefinitionAp
                 return ObjectMapper.Map<FieldDefinition, FieldDefinitionDto>(entity);
             }
 
-            // 父类型必须存在且活跃——否则恢复字段语义错位（孤儿字段无意义）。
+            // 父类型必须存在且活跃——严格单层匹配（与 FieldExtractionEventHandler 一致：
+            // 字段抽取按 Document.TenantId 精确查同层字段，不跨层）。
             // 父类型仍处于已删除态时，应走 IDocumentTypeAppService.RestoreAsync 的级联路径。
-            var parent = await _documentTypeRepository.FindByTypeCodeAsync(
-                CurrentTenant.Id, entity.DocumentTypeCode);
-            if (parent == null || parent.IsDeleted)
+            var parentQueryable = await _documentTypeRepository.GetQueryableAsync();
+            var parentActive = await AsyncExecuter.AnyAsync(
+                parentQueryable.Where(t =>
+                    t.TenantId == entity.TenantId &&
+                    t.TypeCode == entity.DocumentTypeCode &&
+                    !t.IsDeleted));
+            if (!parentActive)
             {
                 throw new BusinessException(PaperbaseErrorCodes.FieldDefinitionParentTypeMissing)
                     .WithData("DocumentTypeCode", entity.DocumentTypeCode)

@@ -5,7 +5,23 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Dignite.Paperbase.Host.Migrations
 {
-    /// <inheritdoc />
+    /// <summary>
+    /// issue #188：drop 自造 <c>PaperbaseOutboxEvents</c>（never-true "in-flight 替换"实现），
+    /// 改用 ABP 内置 transactional outbox（<c>AbpEventInbox</c> / <c>AbpEventOutbox</c>）。
+    /// <para>
+    /// <b>部署 runbook</b>：
+    /// <list type="number">
+    ///   <item>apply 前停 host 5–10s 让旧表的 outbox sender 循环排空（实际旧表无下游 ack，仅作仪式性等待）。</item>
+    ///   <item>apply migration。</item>
+    ///   <item>重启 host。ABP <c>OutboxSenderJob</c> / <c>InboxProcessorJob</c> 自动开始扫描新表。</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// <b>⚠️ 不可安全回滚</b>：<c>Down()</c> drop <c>AbpEventInbox</c> / <c>AbpEventOutbox</c> 会丢失
+    /// 这两张表中所有未投递事件；同时重建的 <c>PaperbaseOutboxEvents</c> 为空表。
+    /// 生产 rollback 必须走手动 DR 流程，而非 EF migration revert。
+    /// </para>
+    /// </summary>
     public partial class Drop_OutboxEvent_Use_AbpEventBoxes : Migration
     {
         /// <inheritdoc />
@@ -68,6 +84,17 @@ namespace Dignite.Paperbase.Host.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            // 与上方 XML doc 一致：drop AbpEventInbox/Outbox 会丢失所有未投递事件，
+            // 同时重建的 PaperbaseOutboxEvents 是空表——这是单向不可逆变更。
+            // 把 runbook 升格为代码强制，避免误执行 `dotnet ef database update <prev>` 触发数据丢失。
+            // 如需手动 DR，请直接执行下方 schema 重建 SQL（保留作 historical reference）。
+            throw new NotSupportedException(
+                "Drop_OutboxEvent_Use_AbpEventBoxes is intentionally non-reversible. " +
+                "Reverting drops AbpEventInbox/AbpEventOutbox losing all in-flight events. " +
+                "Use a manual DR procedure instead of `ef database update <previous>`. " +
+                "See migration XML doc for runbook.");
+
+#pragma warning disable CS0162 // Unreachable code — kept as historical reference for manual DR.
             migrationBuilder.DropTable(
                 name: "AbpEventInbox");
 
@@ -111,6 +138,7 @@ namespace Dignite.Paperbase.Host.Migrations
                 columns: new[] { "TenantId", "DocumentId", "EventType" },
                 unique: true,
                 filter: "IsDeleted = 0");
+#pragma warning restore CS0162
         }
     }
 }

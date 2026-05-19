@@ -37,7 +37,14 @@ public interface IDocumentAppService : IApplicationService
 
     /// <summary>
     /// 操作员通过待审核文档（OCR confidence 不达标或分类无法确认导致进队）。
-    /// 通过后下游 pipeline 由调用方按业务决定是否重新调度。
+    /// <para>
+    /// 通过后自动推进流水线，兑现 CLAUDE.md "操作员手动确认通过 → 触发 <c>DocumentReadyEto</c>" 承诺：
+    /// <list type="bullet">
+    ///   <item>若 classification 尚未跑（OCR review 场景）→ schedule classification pipeline，完成后自然到 Ready</item>
+    ///   <item>若 classification 已跑且 <c>DocumentTypeCode</c> 非空 → 即时 RecomputeLifecycle 到 Ready 发 <c>DocumentReadyEto</c></item>
+    ///   <item>若 classification 已跑但 <c>DocumentTypeCode</c> 仍空 → 应走 <see cref="ReclassifyAsync"/> 而非本方法</item>
+    /// </list>
+    /// </para>
     /// </summary>
     Task<DocumentDto> ApproveReviewAsync(Guid id);
 

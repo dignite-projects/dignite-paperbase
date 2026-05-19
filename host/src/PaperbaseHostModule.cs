@@ -1,4 +1,3 @@
-using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Ai;
 using Dignite.Paperbase.Host.Data;
 using Dignite.Paperbase.EntityFrameworkCore;
@@ -207,7 +206,6 @@ public class PaperbaseHostModule : AbpModule
         ConfigureEfCore(context);
         ConfigureDistributedEventBus();
         ConfigureAI(context, configuration);
-        ConfigureDocumentTypes();
         ConfigureOpenTelemetry(context, configuration);
     }
 
@@ -227,25 +225,6 @@ public class PaperbaseHostModule : AbpModule
             options.Inboxes.Configure(config =>
             {
                 config.UseDbContext<Data.PaperbaseHostDbContext>();
-            });
-        });
-    }
-
-    // Host 部署级文档类型注册——CLAUDE.md：Host 至少注册一个 fallback 通用类型，
-    // 承接 LLM 无法精确归类的文档；下游业务消费方按业务需要追加自己的 type。
-    // <para>TypeCode 必须遵循 "&lt;owner&gt;.&lt;sub-type&gt;" 约定（见 DocumentTypeDefinition）。
-    // Host 注册的类型用 "host." 前缀。</para>
-    private void ConfigureDocumentTypes()
-    {
-        Configure<DocumentTypeOptions>(options =>
-        {
-            // Fallback 通用类型——置信度门槛较低，捕住无法归类的文档而非进 PendingReview。
-            options.Register(new DocumentTypeDefinition(
-                "host.general",
-                LocalizableString.Create<PaperbaseHostResource>("DocumentType:General"))
-            {
-                ConfidenceThreshold = 0.3,
-                Priority = 0  // 最低优先级，让具体业务类型优先匹配
             });
         });
     }

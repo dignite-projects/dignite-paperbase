@@ -28,7 +28,7 @@ public class DocumentClassificationJobTestModule : AbpModule
         context.Services.AddSingleton(Substitute.For<IDistributedEventBus>());
         context.Services.AddSingleton(Substitute.For<IBackgroundJobManager>());
 
-        // 字段架构 v2：候选集来自 IDocumentTypeRepository（DB），不再从 DocumentTypeOptions 进程内读
+        // 字段架构 v2：候选集来自 IDocumentTypeRepository（DB），按 Document.TenantId 精确匹配单层
         var contractType = new DocumentType(
             Guid.NewGuid(),
             tenantId: null,
@@ -38,7 +38,7 @@ public class DocumentClassificationJobTestModule : AbpModule
             priority: 0);
 
         var typeRepo = Substitute.For<IDocumentTypeRepository>();
-        typeRepo.GetVisibleAsync(Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+        typeRepo.GetByTenantAsync(Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
             .Returns(new List<DocumentType> { contractType });
         typeRepo.FindByTypeCodeAsync(Arg.Any<Guid?>(), "contract.general", Arg.Any<CancellationToken>())
             .Returns(contractType);

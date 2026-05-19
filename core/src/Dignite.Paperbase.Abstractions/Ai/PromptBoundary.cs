@@ -14,7 +14,7 @@ namespace Dignite.Paperbase.Ai;
 /// <para>
 /// 这并不是完整的 prompt injection 防御——LLM 仍然可能被诱导忽略规则。
 /// 真正的防御组合：(1) 包裹分隔符 + (2) 明确的 system prompt 边界声明 +
-/// (3) 关键决策的服务端校验（如分类 typeCode 必须在 DocumentTypeOptions 注册表中）。
+/// (3) 关键决策的服务端校验（如分类 typeCode 必须在 DocumentType 表中按 Document.TenantId 层匹配存在）。
 /// 本类只负责 (1)。
 /// </para>
 ///

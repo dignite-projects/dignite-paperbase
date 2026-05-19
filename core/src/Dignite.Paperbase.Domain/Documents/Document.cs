@@ -170,6 +170,8 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
     /// <summary>
     /// 写入字段抽取结果到 <see cref="ExtractedFields"/>。
     /// <see cref="FieldExtractionEventHandler"/> 在分类完成后调用；重分类时可覆写；null 或空字典清空。
+    /// 原子状态变更，无需经 DomainService 中转（与 <see cref="SetMarkdown"/> 等
+    /// 必须与 pipeline 完成事务组合调用的 internal setter 不同）。
     /// </summary>
     public void SetExtractedFields(IReadOnlyDictionary<string, JsonElement>? fields)
     {
@@ -211,6 +213,10 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
     /// <summary>
     /// OCR 置信度低于门槛时调用——文档进待人工审核队列，下游流水线暂停推进。
     /// ClassificationReason 复用为通用 review 原因字段（OCR 不达标 / LLM 分类失败均可写入）。
+    /// <para>
+    /// 原子状态变更，无需经 DomainService 中转（与 <see cref="SetMarkdown"/> 等
+    /// 必须与 pipeline 完成事务组合调用的 internal setter 不同）。
+    /// </para>
     /// </summary>
     public void MarkPendingOcrReview(string reason)
     {
@@ -219,8 +225,12 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
     }
 
     /// <summary>
-    /// 操作员通过审核——清除 PendingReview 标记。
-    /// 下游 pipeline 由 AppService 在调用此方法之后按业务决定是否重新调度。
+    /// 操作员通过审核——清除 PendingReview 标记。下游 pipeline 推进 / lifecycle 重新派生
+    /// 由 AppService 编排（参见 <see cref="DocumentPipelineRunManager.RecomputeLifecycleAsync"/>）。
+    /// <para>
+    /// 原子状态变更，无需经 DomainService 中转（与 <see cref="SetMarkdown"/> 等
+    /// 必须与 pipeline 完成事务组合调用的 internal setter 不同）。
+    /// </para>
     /// </summary>
     public void ApproveReview()
     {
@@ -230,6 +240,12 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
 
     /// <summary>
     /// 操作员拒绝审核——文档落到 Failed 生命周期状态；ReviewStatus 保留以便审计。
+    /// <para>
+    /// <b>lifecycle 派生规则的合法例外</b>：通常 <see cref="LifecycleStatus"/> 由
+    /// <see cref="DocumentPipelineRunManager"/> 从 pipeline run 状态派生（见类首注释 line 32-35），
+    /// 此处直接 <see cref="TransitionLifecycle"/> 到 Failed 是 review 终态语义的合法越权：
+    /// 拒绝即终态，无需等待 pipeline run 推进。
+    /// </para>
     /// </summary>
     public void RejectReview(string? reason = null)
     {

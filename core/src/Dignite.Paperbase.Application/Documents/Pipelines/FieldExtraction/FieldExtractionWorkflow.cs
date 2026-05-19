@@ -62,10 +62,16 @@ public class FieldExtractionWorkflow : ITransientDependency
             ? markdown[.._behaviorOptions.MaxTextLengthPerExtraction]
             : markdown;
 
-        var systemPrompt = BuildSystemPrompt(fields);
+        // system role 保持**编译期常量** —— 防 prompt injection（CLAUDE.md "## 安全约定 / Description / Instructions 编译期常量"）。
+        // 字段 schema（含租户用户输入的 f.Name / f.Prompt）放进 user role 第一条 message，
+        // 让模型把"指令"与"用户数据"分开看待——配合 PromptBoundary.WrapField + BoundaryRule。
+        // FieldDefinition.Name 在实体层已强制白名单 [A-Za-z0-9_-]{1,64}（参见 FieldDefinitionConsts.NamePattern），
+        // 不会含换行 / 引号 / Markdown 控制字符；f.Prompt 长度受 MaxPromptLength 上限保护。
+        var schemaMessage = BuildSchemaUserMessage(fields);
         var messages = new List<ChatMessage>
         {
-            new(ChatRole.System, systemPrompt + "\n\n" + PromptBoundary.BoundaryRule),
+            new(ChatRole.System, SystemInstructions + "\n\n" + PromptBoundary.BoundaryRule),
+            new(ChatRole.User, schemaMessage),
             new(ChatRole.User, PromptBoundary.WrapDocument(truncated))
         };
 
@@ -80,18 +86,26 @@ public class FieldExtractionWorkflow : ITransientDependency
         return ParseJsonToDictionary(rawJson, fields);
     }
 
-    private static string BuildSystemPrompt(IReadOnlyList<FieldExtractionDescriptor> fields)
+    /// <summary>
+    /// 编译期常量 system instructions。**不允许**拼接任何运行时字符串。
+    /// </summary>
+    private const string SystemInstructions =
+        "You extract structured fields from a Markdown document. " +
+        "The first user message lists the fields to extract (schema). " +
+        "The second user message contains the document body. " +
+        "Return JSON only with one key per requested field. " +
+        "When a field cannot be confidently extracted, set its value to null. " +
+        "The input document is provided as Markdown — treat headings, tables, and lists as semantic structure signals.";
+
+    private static string BuildSchemaUserMessage(IReadOnlyList<FieldExtractionDescriptor> fields)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("You extract structured fields from a Markdown document. ");
-        sb.AppendLine("Return JSON only with one key per requested field. ");
-        sb.AppendLine("When a field cannot be confidently extracted, set its value to null. ");
-        sb.AppendLine("The input document is provided as Markdown — treat headings, tables, and lists as semantic structure signals.");
-        sb.AppendLine();
         sb.AppendLine("Fields to extract:");
         foreach (var f in fields)
         {
-            // f.Prompt 可能来自 Host 编译期常量或租户用户输入 —— 统一 wrap，BoundaryRule 把它当数据
+            // f.Name 已经在 FieldDefinition 实体层经白名单 regex 校验，仅含 [A-Za-z0-9_-]。
+            // f.Prompt 来自 Host 编译期常量或租户用户输入 —— 经 PromptBoundary.WrapField 显式标记为数据，
+            // BoundaryRule 让模型把它当指令以外的内容看待。
             sb.AppendLine($"- \"{f.Name}\" ({f.DataType}, {(f.IsRequired ? "required" : "optional")}): {PromptBoundary.WrapField(f.Prompt)}");
         }
         return sb.ToString();
@@ -131,7 +145,8 @@ public class FieldExtractionWorkflow : ITransientDependency
             }
 
             // 不在 Workflow 内做类型转换 —— JsonElement 是值的中间形态，
-            // 持久化到 Document.System.HostExtracted / Document.TenantFields 都是 Dictionary<string, JsonElement>。
+            // 持久化到 Document.ExtractedFields（Dictionary<string, JsonElement>）单桶——
+            // 按 Document.TenantId 决定本文档跑哪层 FieldDefinition，结果落同一桶。
             // 消费侧（REST API / 业务模块）按 FieldDefinition.DataType 反序列化。
             // 这与 v1 在 Workflow 内做 typed coercion 不同：保留原始 JsonElement 避免双重转换 + 损失精度。
             result[field.Name] = prop;

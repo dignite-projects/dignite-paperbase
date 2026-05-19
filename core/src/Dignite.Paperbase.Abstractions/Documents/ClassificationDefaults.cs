@@ -6,7 +6,7 @@ namespace Dignite.Paperbase.Abstractions.Documents;
 public static class ClassificationDefaults
 {
     /// <summary>
-    /// <see cref="DocumentTypeDefinition.ConfidenceThreshold"/> 的默认阈值。
+    /// <c>DocumentType.ConfidenceThreshold</c> 的默认阈值。
     /// 低于此值（且类型未在白名单中）进入 LowConfidence 路径。
     /// </summary>
     public const double DefaultConfidenceThreshold = 0.7;

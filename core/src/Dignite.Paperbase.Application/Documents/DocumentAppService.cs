@@ -24,6 +24,7 @@ namespace Dignite.Paperbase.Documents;
 public class DocumentAppService : PaperbaseAppService, IDocumentAppService
 {
     private readonly IDocumentRepository _documentRepository;
+    private readonly IDocumentTypeRepository _documentTypeRepository;
     private readonly IBlobContainer<PaperbaseDocumentContainer> _blobContainer;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly DocumentPipelineJobScheduler _pipelineJobScheduler;
@@ -31,12 +32,14 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
 
     public DocumentAppService(
         IDocumentRepository documentRepository,
+        IDocumentTypeRepository documentTypeRepository,
         IBlobContainer<PaperbaseDocumentContainer> blobContainer,
         DocumentPipelineRunManager pipelineRunManager,
         DocumentPipelineJobScheduler pipelineJobScheduler,
         IDistributedEventBus distributedEventBus)
     {
         _documentRepository = documentRepository;
+        _documentTypeRepository = documentTypeRepository;
         _blobContainer = blobContainer;
         _pipelineRunManager = pipelineRunManager;
         _pipelineJobScheduler = pipelineJobScheduler;
@@ -93,6 +96,16 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     [Authorize(PaperbasePermissions.Documents.Upload)]
     public virtual async Task<DocumentDto> UploadAsync(UploadDocumentInput input)
     {
+        // 前置检查：当前层至少要有一个 DocumentType（CLAUDE.md "两层文档类型体系" 单层精确匹配）。
+        // Host 启动期 seed 入口已删除（HostDocumentTypeDataSeedContributor / DocumentTypeOptions），
+        // DocumentType 现在只能通过 IDocumentTypeAppService 运行时创建——所以新部署 / 新租户必须先建类型才能上传。
+        // 不做这个 fail-fast 检查的话，上传成功 → 分类候选集为空 → 文档永远卡 PendingReview。
+        var hasType = (await _documentTypeRepository.GetByTenantAsync(CurrentTenant.Id)).Any();
+        if (!hasType)
+        {
+            throw new BusinessException(PaperbaseErrorCodes.NoDocumentTypesConfigured);
+        }
+
         var fileName = input.File.FileName ?? "document";
         var contentType = input.File.ContentType ?? "application/octet-stream";
         var extension = Path.GetExtension(fileName);
@@ -346,12 +359,29 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
         }
 
         document.ApproveReview();
-        await _documentRepository.UpdateAsync(document, autoSave: true);
 
-        // 如果分类已经做完且文档类型已定，downstream 流水线（字段抽取）由订阅
-        // DocumentClassifiedEto 的下游消费方触发；这里不重发事件，避免重复。
-        // 如果分类尚未完成（如 OCR-only review），AppService 可由操作员通过手动重试
-        // RetryPipelineAsync(PaperbasePipelines.Classification) 继续流水线。
+        // 兑现 CLAUDE.md "OCR 置信度门槛" 承诺："操作员手动确认通过 → 触发 DocumentReadyEto"。
+        // 两类待审核场景：
+        //   (a) OCR confidence 不达标 → classification 尚未跑：schedule classification pipeline，
+        //       让它正常推进，完成后由 DeriveLifecycle 跃到 Ready 自动发 DocumentReadyEto。
+        //   (b) classification 已跑且有 DocumentTypeCode：直接 RecomputeLifecycle 让它进 Ready。
+        //       注：分类置信度低 + DocumentTypeCode null 的场景应走 ReclassifyAsync 而非 ApproveAsync——
+        //       走到这里时 RecomputeLifecycle 判定 Processing（type 空不满足 Ready），不发事件，符合预期。
+        var hasClassificationRun = document.GetLatestRun(PaperbasePipelines.Classification) != null;
+        if (!hasClassificationRun)
+        {
+            // QueueAsync 内已 _documentRepository.UpdateAsync(document, autoSave: true)，
+            // 同一 document 实例的 ApproveReview() 状态变更随 scheduler 内的 save 一起落库；
+            // 此分支无需再写一次。
+            await _pipelineJobScheduler.QueueAsync(document, PaperbasePipelines.Classification);
+        }
+        else
+        {
+            // RecomputeLifecycleAsync 仅修改 document 状态（in-memory），不写 DB——
+            // 必须在这里显式 UpdateAsync 才能把 ApproveReview + RecomputeLifecycle 的变更落库。
+            await _pipelineRunManager.RecomputeLifecycleAsync(document);
+            await _documentRepository.UpdateAsync(document, autoSave: true);
+        }
 
         return ObjectMapper.Map<Document, DocumentDto>(document);
     }
@@ -372,10 +402,21 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
     protected virtual async Task<DocumentDto> ApplyManualClassificationAsync(Guid id, string documentTypeCode)
     {
         var document = await _documentRepository.GetAsync(id, includeDetails: true);
+
+        // typeCode 校验责任在 AppService（不再走 manager 内部 EnsureRegisteredTypeCodeAsync）：
+        // 按 Document.TenantId 精确单层匹配（CLAUDE.md "两层 mutually exclusive"）；
+        // 不存在则 fail-fast，避免写入"业务模块订阅者认不出的 typeCode"。
+        var typeDef = await _documentTypeRepository.FindByTypeCodeAsync(document.TenantId, documentTypeCode);
+        if (typeDef == null)
+        {
+            throw new BusinessException(PaperbaseErrorCodes.InvalidDocumentTypeCode)
+                .WithData(nameof(documentTypeCode), documentTypeCode);
+        }
+
         var run = await _pipelineRunManager.QueueAsync(document, PaperbasePipelines.Classification);
         await _pipelineRunManager.BeginAsync(document, run);
 
-        await _pipelineRunManager.CompleteManualClassificationAsync(document, run, documentTypeCode);
+        await _pipelineRunManager.CompleteManualClassificationAsync(document, run, typeDef);
         await _distributedEventBus.PublishAsync(
             new DocumentClassifiedEto
             {

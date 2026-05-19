@@ -15,6 +15,10 @@ public class PaperbaseOcrOptions
     /// <summary>
     /// per-tenant 覆盖时使用的 ABP Setting key。在多租户场景下，租户可通过 Setting Management
     /// API 设置自己的门槛（运营运维需求：高保真合同租户可拉到 0.95；信息密度低的草稿租户调到 0.7）。
+    /// <para>
+    /// 必须是 <c>const</c>：这是 ABP Setting 表的行键 + appsettings 配置节绑定 key。
+    /// 任何运行时改动都会让已写入 DB 的 setting 行按旧 key 存、新代码按新 key 读，全部读不到。
+    /// </para>
     /// </summary>
     public const string ConfidenceThresholdSettingName = "Paperbase.Ocr.ConfidenceThreshold";
 }

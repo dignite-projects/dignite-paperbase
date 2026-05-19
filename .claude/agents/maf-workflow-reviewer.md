@@ -92,7 +92,7 @@ tools: Read, Grep, Glob, Bash
 ### 2.5 不变量与边界
 
 - 🔴 **Workflow 直接修改 `Document` 状态**——Workflow 应当**返回值类型 outcome**，由 BackgroundJob / EventHandler 经 `DocumentPipelineRunManager` 统一更新聚合根。如果发现 Workflow 内部注入 `IDocumentRepository` 并写回 Document，是硬违规（破坏 CLAUDE.md "编排在 Application" 的约定）
-- 🔴 **业务字段写回到 `Document` 顶层 typed 列**——`Document` 是纯基础设施聚合根，不允许放业务专属 typed 列（合同金额、发票号、有效期等独立 column 形态）。字段架构 v2 下租户字段抽取结果统一写入 `Document.TenantFields: Dictionary<string, JsonElement>?`（动态键 JSON 列），不破坏 Document 边界；Host 字段写入 `Document.HostExtractedFields` 同理。如果发现 workflow 试图为业务字段单加 Document 顶层 typed property，是硬违规。参见 `abp-document-boundary-check` 技能
+- 🔴 **业务字段写回到 `Document` 顶层 typed 列**——`Document` 是纯基础设施聚合根，不允许放业务专属 typed 列（合同金额、发票号、有效期等独立 column 形态）。字段架构 v2 下字段抽取结果（不论 Host 字段还是租户字段）统一写入 `Document.ExtractedFields: Dictionary<string, JsonElement>?`（动态键 JSON 列）——按 `Document.TenantId` 决定本文档跑哪层 FieldDefinition，结果落同一桶（CLAUDE.md "两层 mutually exclusive"），不破坏 Document 边界。如果发现 workflow 试图为业务字段单加 Document 顶层 typed property，是硬违规。参见 `abp-document-boundary-check` 技能
 
 ### 2.6 成本与缓存
 

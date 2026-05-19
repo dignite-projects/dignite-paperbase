@@ -40,3 +40,31 @@ Verifies the default OCR provider after a sidecar upgrade, model swap, or fresh-
 ### Provider switch-back
 
 - [ ] Switch back to Azure DI by uncommenting `PaperbaseAzureDocumentIntelligenceModule` in `PaperbaseHostModule` + matching `ProjectReference` in `host/src/Dignite.Paperbase.Host.csproj` + restoring the `AzureDocumentIntelligence` config block → cloud OCR path still passes acceptance
+
+---
+
+## Field architecture v2 — Host startup seed removed
+
+Verifies upgrade + new-deployment behavior after `HostDocumentTypeDataSeedContributor` / `DocumentTypeOptions` / startup-time `host.general` registration were removed. From this version onward `DocumentType` and `FieldDefinition` are managed **exclusively at runtime** via `IDocumentTypeAppService` / `IFieldDefinitionAppService`.
+
+CLAUDE.md "两层文档类型体系" enforces **strict per-layer isolation** (Host docs match `TenantId IS NULL` types; tenant docs match `TenantId = current` types). There is no cross-layer union and no fallback type.
+
+### Fresh deployment bring-up (new environment, empty DB)
+
+- [ ] After first `dotnet run --project host/src/Dignite.Paperbase.Host.DbMigrator` (or `dotnet ef database update`), `PaperbaseDocumentTypes` is **empty** — no automatic seed
+- [ ] Attempting to upload a document before any `DocumentType` exists in the current scope (`CurrentTenant.Id`) throws `BusinessException(Paperbase:NoDocumentTypesConfigured)`; document is **not** persisted to the DB nor written to blob storage
+- [ ] Host admin (`CurrentTenant.Id IS NULL`) signs in → `IDocumentTypeAppService.CreateAsync` creates a row with `TenantId = NULL`; subsequent host-scope upload succeeds and classification candidate set is non-empty
+- [ ] Tenant admin signs in (different tenant) → `GetVisibleAsync` returns **only that tenant's rows**, not the host rows; tenant must create its own type(s) before tenants can upload
+- [ ] Cross-tenant isolation: tenant A admin cannot see / edit / delete tenant B rows or host rows even via direct API calls
+
+### Upgrade from earlier deploy (DB already has historical `host.general` row from old seed)
+
+- [ ] Apply migration — historical `host.general` row remains in `PaperbaseDocumentTypes` (no destructive cleanup); existing host documents whose `Document.DocumentTypeCode = "host.general"` continue to classify correctly because `EnsureRegisteredTypeCodeAsync` still finds the row
+- [ ] Host admin can edit / delete the historical `host.general` row through the admin UI; if deleted, host-scope uploads will start hitting `NoDocumentTypesConfigured` until another host type is created
+- [ ] Tenant uploads are unaffected by the historical host row (single-layer matching: `Document.TenantId != NULL` never reads host rows)
+
+### Soft-deleted DocumentType / FieldDefinition behavior
+
+- [ ] Deleting a `DocumentType` with active documents → behavior matches `Paperbase:DocumentTypeInUse` policy (verify expected error code surfaces in admin UI)
+- [ ] Restoring a soft-deleted `FieldDefinition` whose parent `DocumentType` is also deleted → `Paperbase:FieldDefinitionParentTypeMissing` blocks the restore; parent must be restored first
+- [ ] After restoring a soft-deleted `DocumentType`, classification candidate set picks it up immediately (no admin restart needed)

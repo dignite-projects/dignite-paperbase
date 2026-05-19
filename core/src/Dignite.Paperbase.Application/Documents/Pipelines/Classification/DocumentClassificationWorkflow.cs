@@ -70,10 +70,13 @@ public class DocumentClassificationWorkflow : ITransientDependency
         }
 
         // 字段架构 v2：DocumentType.DisplayName 是 DB-resolved string，
-        // 由 HostDocumentTypeDataSeedContributor 在种子化时按默认 culture 解析 ILocalizableString 后存入。
+        // Host admin / 租户 admin 通过 admin UI 直接输入 string——是用户控制文本，
+        // 必须经 PromptBoundary.WrapField 包裹（CLAUDE.md "## 安全约定 / PromptBoundary"），
+        // 防止恶意 admin 通过 DisplayName 注入指令（"Ignore previous instructions..."）。
+        // TypeCode 已经走实体层 ValidateTypeCode 强校验为 <owner>.<sub-type> 形式，安全。
         var typeDescriptions = candidateTypes.Select(t =>
             $"- TypeCode: {t.TypeCode}\n" +
-            $"  Name: {t.DisplayName}"
+            $"  Name: {PromptBoundary.WrapField(t.DisplayName)}"
         ).ToList();
 
         var userMessage = $$"""
@@ -135,11 +138,7 @@ public class DocumentClassificationWorkflow : ITransientDependency
                 // 候选项的 confidence 仅用于 UI 展示与 Run 持久化（PipelineRunCandidate 是纯
                 // record，不做 Check.Range），越界不会破坏聚合根；这里 Clamp 保证展示侧不出
                 // 现 1.5 之类的脏数据。
-                outcome.Candidates.Add(new TypeCandidateOutcome
-                {
-                    TypeCode = c.TypeCode,
-                    ConfidenceScore = ClampConfidence(c.Confidence)
-                });
+                outcome.Candidates.Add(new PipelineRunCandidate(c.TypeCode, ClampConfidence(c.Confidence)));
             }
         }
 
@@ -203,11 +202,5 @@ public class DocumentClassificationOutcome
     public string? TypeCode { get; set; }
     public double ConfidenceScore { get; set; }
     public string? Reason { get; set; }
-    public List<TypeCandidateOutcome> Candidates { get; } = new();
-}
-
-public class TypeCandidateOutcome
-{
-    public string TypeCode { get; set; } = default!;
-    public double ConfidenceScore { get; set; }
+    public List<PipelineRunCandidate> Candidates { get; } = new();
 }

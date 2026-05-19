@@ -16,13 +16,18 @@ public class EfCoreDocumentTypeRepository
     public EfCoreDocumentTypeRepository(IDbContextProvider<PaperbaseDbContext> dbContextProvider)
         : base(dbContextProvider) { }
 
-    public async Task<List<DocumentType>> GetVisibleAsync(
+    public async Task<List<DocumentType>> GetByTenantAsync(
         Guid? tenantId,
         CancellationToken cancellationToken = default)
     {
         var dbSet = await GetDbSetAsync();
-        return await dbSet
-            .Where(t => t.TenantId == null || t.TenantId == tenantId)
+        // 解读 X + 没有继承关系：按 tenantId 精确匹配单层。NULL-safe equality 用分支避免
+        // EF Core 对 nullable Guid? == nullable Guid? 翻译歧义。
+        var query = tenantId.HasValue
+            ? dbSet.Where(t => t.TenantId == tenantId.Value)
+            : dbSet.Where(t => t.TenantId == null);
+
+        return await query
             .OrderByDescending(t => t.Priority)
             .ThenBy(t => t.TypeCode)
             .ToListAsync(GetCancellationToken(cancellationToken));
@@ -34,8 +39,10 @@ public class EfCoreDocumentTypeRepository
         CancellationToken cancellationToken = default)
     {
         var dbSet = await GetDbSetAsync();
-        return await dbSet.FirstOrDefaultAsync(
-            t => (t.TenantId == null || t.TenantId == tenantId) && t.TypeCode == typeCode,
-            GetCancellationToken(cancellationToken));
+        var query = tenantId.HasValue
+            ? dbSet.Where(t => t.TenantId == tenantId.Value && t.TypeCode == typeCode)
+            : dbSet.Where(t => t.TenantId == null && t.TypeCode == typeCode);
+
+        return await query.FirstOrDefaultAsync(GetCancellationToken(cancellationToken));
     }
 }

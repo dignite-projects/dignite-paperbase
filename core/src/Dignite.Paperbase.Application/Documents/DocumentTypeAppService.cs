@@ -29,15 +29,17 @@ public class DocumentTypeAppService : PaperbaseAppService, IDocumentTypeAppServi
 
     public virtual async Task<List<DocumentTypeDto>> GetVisibleAsync()
     {
-        // 返回当前租户可见的合集：Host 类型 + 当前租户私有类型
-        var list = await _repository.GetVisibleAsync(CurrentTenant.Id);
+        // 当前层文档类型（Host admin 看 TenantId IS NULL 行；租户 admin 看自己租户行）。
+        // 解读 X + 没有继承关系：不做 Host ∪ Tenant union。
+        var list = await _repository.GetByTenantAsync(CurrentTenant.Id);
         return ObjectMapper.Map<List<DocumentType>, List<DocumentTypeDto>>(list);
     }
 
     public virtual async Task<List<DocumentTypeDto>> GetDeletedAsync()
     {
         // 显式 TenantId 谓词（不依赖 ambient DataFilter）+ 关闭 ISoftDelete 看到已删除行。
-        // 仅当前租户私有类型；Host 类型不参与租户级回收站。
+        // 当前层回收站：Host admin（CurrentTenant.Id IS NULL）看 Host 类型；租户 admin 看自己租户。
+        // Host 与 tenant 各自独立宇宙，不跨层。
         using (DataFilter.Disable<ISoftDelete>())
         {
             var queryable = await _repository.GetQueryableAsync();
@@ -51,9 +53,11 @@ public class DocumentTypeAppService : PaperbaseAppService, IDocumentTypeAppServi
 
     public virtual async Task<DocumentTypeDto> CreateAsync(CreateDocumentTypeDto input)
     {
-        // 防止租户复用 Host 已注册的 TypeCode；同时关闭 ISoftDelete 过滤，
-        // 让软删除记录也参与判重——否则在"删除→重建同 TypeCode→恢复旧记录"路径上会触发
-        // 唯一索引冲突或两行同 TypeCode 同时活跃。
+        // 严格单层判重——TypeCode 是 per-layer 命名空间，Host 与 tenant 各自独立，
+        // 跨层同 TypeCode 是合法的两行（由 TenantId 区分）。下游消费方按
+        // (TenantId, DocumentTypeCode) 元组消费。
+        // 关闭 ISoftDelete 过滤，让软删除记录也参与判重——否则"删除→重建同 TypeCode→
+        // 恢复旧记录"路径会触发唯一索引冲突或两行同 (TenantId, TypeCode) 活跃。
         DocumentType? existing;
         using (DataFilter.Disable<ISoftDelete>())
         {
@@ -81,7 +85,7 @@ public class DocumentTypeAppService : PaperbaseAppService, IDocumentTypeAppServi
     {
         var entity = await _repository.GetAsync(id);
 
-        // 跨租户防御 + 禁止改 Host 类型（TenantId IS NULL）
+        // 跨层防御：只能改自己所在层（Host admin 改 TenantId IS NULL；租户 admin 改 TenantId == 自己）。
         if (entity.TenantId != CurrentTenant.Id)
         {
             throw new EntityNotFoundException(typeof(DocumentType), id);

@@ -77,12 +77,12 @@ public class DocumentClassificationBackgroundJob
 
         var document = await _documentRepository.GetAsync(args.DocumentId, includeDetails: true);
 
-        // 候选集组装：当前租户可见的类型（Host + 当前租户私有），按 Priority DESC + 截断
-        // 字段架构 v2：从 IDocumentTypeRepository.GetVisibleAsync 读 DB，替代 v1 进程内 DocumentTypeOptions.Types
+        // 候选集组装：按 Document.TenantId 匹配单层文档类型（解读 X + 没有继承关系）。
+        // Host 文档用 TenantId IS NULL 类型；租户文档用对应租户类型；按 Priority DESC + 截断。
         List<DocumentType> candidates;
         using (_currentTenant.Change(document.TenantId))
         {
-            var visible = await _documentTypeRepository.GetVisibleAsync(document.TenantId);
+            var visible = await _documentTypeRepository.GetByTenantAsync(document.TenantId);
             candidates = visible
                 .Take(_aiOptions.MaxDocumentTypesInClassificationPrompt)
                 .ToList();
@@ -99,21 +99,27 @@ public class DocumentClassificationBackgroundJob
 
     private async Task<DocumentClassificationOutcome> ClassifyAsync(ClassificationWorkItem workItem)
     {
-        try
+        // 防御性深度：LLM 调用本身不查 DB（无跨租户泄漏风险），但保持 ambient tenant 与
+        // FieldExtractionEventHandler 一致——未来若 workflow 内增 telemetry / cache / 二次查询，
+        // 不会因为 ambient context 漂移而绕过隔离。
+        using (_currentTenant.Change(workItem.TenantId))
         {
-            return await _workflow.RunAsync(workItem.Candidates, workItem.Markdown);
-        }
-        catch (Exception ex) when (IsSchemaDeserializationError(ex))
-        {
-            Logger.LogWarning(ex,
-                "AI classification response failed JSON deserialization for document {DocumentId}; routing to PendingReview.",
-                workItem.DocumentId);
-            return new DocumentClassificationOutcome
+            try
             {
-                TypeCode = null,
-                ConfidenceScore = 0,
-                Reason = "AI response could not be parsed (schema drift)."
-            };
+                return await _workflow.RunAsync(workItem.Candidates, workItem.Markdown);
+            }
+            catch (Exception ex) when (IsSchemaDeserializationError(ex))
+            {
+                Logger.LogWarning(ex,
+                    "AI classification response failed JSON deserialization for document {DocumentId}; routing to PendingReview.",
+                    workItem.DocumentId);
+                return new DocumentClassificationOutcome
+                {
+                    TypeCode = null,
+                    ConfidenceScore = 0,
+                    Reason = "AI response could not be parsed (schema drift)."
+                };
+            }
         }
     }
 
@@ -157,7 +163,7 @@ public class DocumentClassificationBackgroundJob
         DocumentPipelineRun run,
         DocumentClassificationOutcome outcome)
     {
-        // 字段架构 v2：从 DB 查 type definition（替代 v1 DocumentTypeOptions.Types lookup）
+        // 字段架构 v2：从 DB 查 type definition（按 Document.TenantId 精确匹配单层）
         DocumentType? typeDef = null;
         if (!string.IsNullOrEmpty(outcome.TypeCode))
         {
@@ -170,7 +176,7 @@ public class DocumentClassificationBackgroundJob
         if (typeDef != null && outcome.ConfidenceScore >= typeDef.ConfidenceThreshold)
         {
             await _pipelineRunManager.CompleteClassificationAsync(
-                document, run, typeDef.TypeCode, outcome.ConfidenceScore);
+                document, run, typeDef, outcome.ConfidenceScore);
 
             await _distributedEventBus.PublishAsync(
                 new DocumentClassifiedEto
@@ -186,12 +192,8 @@ public class DocumentClassificationBackgroundJob
             return;
         }
 
-        var candidates = outcome.Candidates
-            .Select(c => new PipelineRunCandidate(c.TypeCode, c.ConfidenceScore))
-            .ToList();
-
         await _pipelineRunManager.CompleteClassificationWithLowConfidenceAsync(
-            document, run, outcome.Reason, candidates);
+            document, run, outcome.Reason, outcome.Candidates);
     }
 
     private sealed record ClassificationWorkItem(

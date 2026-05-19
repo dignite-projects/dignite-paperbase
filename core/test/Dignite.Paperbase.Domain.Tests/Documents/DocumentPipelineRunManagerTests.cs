@@ -37,6 +37,14 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
             fileOrigin: fileOrigin);
     }
 
+    private static DocumentType CreateContractType() => new(
+        id: Guid.NewGuid(),
+        tenantId: null,
+        typeCode: "contract.general",
+        displayName: "Contract",
+        confidenceThreshold: 0.7,
+        priority: 0);
+
     // ────────────────────────────────────────────────────────────────────────────
     // Scenario 1: all key pipelines succeed → Ready
     // ────────────────────────────────────────────────────────────────────────────
@@ -69,7 +77,7 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
 
         // Classification
         var classRun = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
-        await _manager.CompleteClassificationAsync(doc, classRun, "contract.general", 0.92);
+        await _manager.CompleteClassificationAsync(doc, classRun, CreateContractType(), 0.92);
 
         doc.LifecycleStatus.ShouldBe(DocumentLifecycleStatus.Ready);
     }
@@ -178,7 +186,7 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
 
         // 人工确认
         var run2 = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
-        await _manager.CompleteManualClassificationAsync(doc, run2, "contract.general");
+        await _manager.CompleteManualClassificationAsync(doc, run2, CreateContractType());
 
         doc.DocumentTypeCode.ShouldBe("contract.general");
         doc.ClassificationConfidence.ShouldBe(1.0);
@@ -205,7 +213,7 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
 
         // 重试自动分类成功 → 高置信度路径必须清空 ClassificationReason
         var run2 = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
-        await _manager.CompleteClassificationAsync(doc, run2, "contract.general", 0.95);
+        await _manager.CompleteClassificationAsync(doc, run2, CreateContractType(), 0.95);
 
         doc.ReviewStatus.ShouldBe(DocumentReviewStatus.None);
         doc.DocumentTypeCode.ShouldBe("contract.general");
@@ -224,7 +232,7 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
 
         // 第一次：高置信度分类成功
         var run1 = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
-        await _manager.CompleteClassificationAsync(doc, run1, "contract.general", 0.92);
+        await _manager.CompleteClassificationAsync(doc, run1, CreateContractType(), 0.92);
 
         doc.DocumentTypeCode.ShouldBe("contract.general");
         doc.ClassificationConfidence.ShouldBe(0.92);
@@ -242,36 +250,9 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
     }
 
     // ────────────────────────────────────────────────────────────────────────────
-    // Scenario 10: Manager rejects typeCode that is not registered in DocumentTypeOptions
+    // Scenario 10：typeCode 合法性校验已移到 AppService（先 load DocumentType 不存在则 throw），
+    //              manager 不再做 DB 查询。原 Scenario 10 两个测试相关性已转移到 Application.Tests。
     // ────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task CompleteManualClassification_Throws_When_TypeCode_Not_Registered()
-    {
-        var doc = CreateDocument();
-        var run = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
-
-        var ex = await Should.ThrowAsync<BusinessException>(async () =>
-        {
-            await _manager.CompleteManualClassificationAsync(doc, run, "not.registered.type");
-        });
-
-        ex.Code.ShouldBe(PaperbaseErrorCodes.InvalidDocumentTypeCode);
-    }
-
-    [Fact]
-    public async Task CompleteClassification_Throws_When_TypeCode_Not_Registered()
-    {
-        var doc = CreateDocument();
-        var run = await _manager.StartAsync(doc, PaperbasePipelines.Classification);
-
-        var ex = await Should.ThrowAsync<BusinessException>(async () =>
-        {
-            await _manager.CompleteClassificationAsync(doc, run, "not.registered.type", 0.95);
-        });
-
-        ex.Code.ShouldBe(PaperbaseErrorCodes.InvalidDocumentTypeCode);
-    }
 
     // ────────────────────────────────────────────────────────────────────────────
     // Scenario 11: TextExtraction completion persists Markdown + Title atomically;

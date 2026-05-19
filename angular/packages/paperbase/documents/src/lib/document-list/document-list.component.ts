@@ -17,7 +17,6 @@ import type { PagedResultDto } from '@abp/ng.core';
 import { ConfirmationService, ToasterService } from '@abp/ng.theme.shared';
 import { Confirmation } from '@abp/ng.theme.shared';
 import {
-  ClassificationCandidate,
   DocumentDto,
   DocumentLifecycleStatus,
   DocumentPipelineRunDto,
@@ -25,6 +24,7 @@ import {
   DocumentService,
   GetDocumentListInput,
   PAPERBASE_PERMISSIONS,
+  PipelineRunCandidate,
 } from '@dignite/paperbase';
 import { from, of } from 'rxjs';
 import { catchError, map, mergeMap } from 'rxjs/operators';
@@ -199,9 +199,9 @@ export class DocumentListComponent implements OnInit {
     return doc.reviewStatus === DocumentReviewStatus.PendingReview;
   }
 
-  getCandidates(doc: DocumentDto): ClassificationCandidate[] {
+  getCandidates(doc: DocumentDto): PipelineRunCandidate[] {
     const run = this.getLatestClassificationRun(doc);
-    const fromRun = run?.extraProperties?.['Candidates'] as ClassificationCandidate[] | undefined;
+    const fromRun = run?.candidates;
     if (fromRun && fromRun.length > 0) return fromRun;
     return doc.documentTypeCode ? [{ typeCode: doc.documentTypeCode, confidenceScore: 1 }] : [];
   }

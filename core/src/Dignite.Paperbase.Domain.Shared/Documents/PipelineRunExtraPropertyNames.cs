@@ -9,7 +9,11 @@ public static class PipelineRunExtraPropertyNames
     /// <summary>
     /// 分类流水线 top-K 候选结果。
     /// 写入时使用 <see cref="PipelineRunCandidate"/> 作为 JSON payload schema；
-    /// 持久化并通过 API 暴露时约定为 JSON array，主要供 Angular 端展示。
+    /// 读取侧通过 <see cref="DocumentPipelineRunDto.Candidates"/> 强类型暴露。
+    /// <para>
+    /// 必须是 <c>const</c>：这是 JSON 列的持久化 key 字面量。
+    /// 任何运行时改动都会让历史 <c>ExtraProperties["Candidates"]</c> 读不回。
+    /// </para>
     /// </summary>
     public const string ClassificationCandidates = "Candidates";
 }

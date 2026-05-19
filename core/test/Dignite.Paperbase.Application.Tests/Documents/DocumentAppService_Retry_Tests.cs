@@ -23,6 +23,7 @@ public class DocumentAppServiceRetryTestModule : AbpModule
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
         context.Services.AddSingleton(Substitute.For<IDocumentRepository>());
+        context.Services.AddSingleton(Substitute.For<IDocumentTypeRepository>());
         context.Services.AddSingleton(Substitute.For<IBlobContainer<PaperbaseDocumentContainer>>());
         context.Services.AddSingleton(Substitute.For<IBackgroundJobManager>());
         context.Services.AddSingleton(Substitute.For<IDistributedEventBus>());

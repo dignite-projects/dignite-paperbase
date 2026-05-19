@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -19,8 +20,14 @@ namespace Dignite.Paperbase.Documents.Pipelines.FieldExtraction;
 /// <c>Document.ExtractedFields</c>（单一 Dictionary，源由 Document.TenantId 决定，
 /// 不分桶不存在跨层命名冲突）。统一发布 <see cref="FieldsExtractedEto"/>。
 /// <para>
-/// 安全约束（CLAUDE.md）：显式恢复事件携带的 TenantId 上下文；显式 TenantId 谓词查询；
-/// 跨租户断言（防 ambient filter 被 disable）。
+/// 安全约束（CLAUDE.md "## 安全约定"）：显式恢复事件携带的 TenantId 上下文；显式 TenantId 谓词查询；
+/// 跨租户断言（防 ambient filter 被 disable）；reclassify race 断言（防 stale 事件用旧 schema 污染）。
+/// </para>
+/// <para>
+/// UoW 三段式（<c>.claude/rules/background-jobs.md</c>）：handler 上 <c>[UnitOfWork(IsDisabled = true)]</c>
+/// 关掉 ambient UoW；读 FieldDefinition / LLM 调用 / 写 Document + publish 三阶段各自 begin
+/// <c>requiresNew</c> 短 UoW——LLM 外部调用永远不被任何长事务包住，避免在高并发下 DB 连接 /
+/// 锁 / transaction 跨整个 LLM 调用窗口而触发 SQL command timeout。
 /// </para>
 /// </summary>
 public class FieldExtractionEventHandler
@@ -55,7 +62,8 @@ public class FieldExtractionEventHandler
         _logger = logger;
     }
 
-    public async Task HandleEventAsync(DocumentClassifiedEto eventData)
+    [UnitOfWork(IsDisabled = true)]
+    public virtual async Task HandleEventAsync(DocumentClassifiedEto eventData)
     {
         if (string.IsNullOrWhiteSpace(eventData.DocumentTypeCode))
         {
@@ -66,25 +74,47 @@ public class FieldExtractionEventHandler
         // 上下文中 ICurrentTenant 不一定自动还原。
         using (_currentTenant.Change(eventData.TenantId))
         {
-            // 解读 X：按 Document 所属租户精确查单层字段定义
-            var definitions = await _fieldDefinitionRepository.GetForExtractionAsync(
-                eventData.TenantId, eventData.DocumentTypeCode);
+            // 阶段 1：短 UoW 只读字段定义（按 Document.TenantId 精确匹配单层）。
+            // 显式 dispose 让该 UoW 完全退出，再进入阶段 2 的外部 LLM 调用。
+            List<FieldDefinition> definitions;
+            using (var readUow = _unitOfWorkManager.Begin(requiresNew: true))
+            {
+                definitions = await _fieldDefinitionRepository.GetForExtractionAsync(
+                    eventData.TenantId, eventData.DocumentTypeCode);
+                await readUow.CompleteAsync();
+            }
 
+            // 空字段路径：显式短 UoW 包 publish 让 ABP transactional outbox 接住事件，
+            // 避免裸 publish 走非事务路径导致事件可能丢失。
             if (definitions.Count == 0)
             {
-                // 该 (TenantId, DocumentTypeCode) 下无字段定义——直接发空事件让下游 DocumentReady 推进。
-                // 单一事件场景无需 UoW 包裹（ABP outbox 在调用方 UoW 内会自动入队；
-                // 这里无 DB 写入，进 outbox 不是必需，at-least-once 直发即可）。
+                using var publishUow = _unitOfWorkManager.Begin(requiresNew: true);
                 await PublishFieldsExtractedAsync(eventData, fieldCount: 0);
+                await publishUow.CompleteAsync();
                 return;
             }
 
             var descriptors = definitions.Select(d => new FieldExtractionDescriptor(
                 d.Name, d.Prompt, d.DataType, d.IsRequired)).ToList();
 
+            // 阶段 2：外部 LLM 调用，**不在任何 UoW 内**（background-jobs.md 硬约束）。
+            // handler 上 [UnitOfWork(IsDisabled = true)] 关掉了 ambient UoW；
+            // 阶段 1 的 readUow 已 dispose；到这里 _unitOfWorkManager.Current 应为 null。
+            // 一旦不为 null 说明上述假设被未来改动打穿，立即 log 警告以暴露隐患。
+            if (_unitOfWorkManager.Current != null)
+            {
+                _logger.LogWarning(
+                    "FieldExtractionEventHandler entered external LLM call with ambient UoW present (doc={DocumentId}). " +
+                    "This violates background-jobs.md (external work must not run inside a long-lived UoW). " +
+                    "Check [UnitOfWork(IsDisabled = true)] on HandleEventAsync and readUow dispose ordering.",
+                    eventData.DocumentId);
+            }
+
             var extracted = await _workflow.ExtractAsync(descriptors, eventData.Markdown ?? string.Empty);
 
-            using var uow = _unitOfWorkManager.Begin(requiresNew: true);
+            // 阶段 3：短 UoW 写 Document + publish FieldsExtractedEto——
+            // 两件事在同一 UoW 内由 ABP outbox 原子持久化，避免"字段写入成功但事件丢失"。
+            using var writeUow = _unitOfWorkManager.Begin(requiresNew: true);
 
             var document = await _documentRepository.FindAsync(eventData.DocumentId, includeDetails: false);
             if (document == null)
@@ -95,7 +125,7 @@ public class FieldExtractionEventHandler
                 return;
             }
 
-            // 跨租户断言（防 ambient DataFilter 被 disable 的路径）
+            // 跨租户断言（防 ambient DataFilter 被 disable 的路径）。
             if (document.TenantId != eventData.TenantId)
             {
                 _logger.LogWarning(
@@ -104,7 +134,21 @@ public class FieldExtractionEventHandler
                 return;
             }
 
-            // 非空字段写入 ExtractedFields（单层，无分桶）
+            // Reclassify race 断言（at-least-once 投递 + 单调时间戳幂等的本地化实现）：
+            // 若 Document 当前的 DocumentTypeCode 已与事件携带的 TypeCode 不一致，说明事件
+            // 在飞行期间操作员 reclassify 过，本事件已 stale。继续抽取会用旧 schema 污染
+            // ExtractedFields（出现"TypeCode=invoice 但 ExtractedFields 来自 contract schema"
+            // 的脏状态）。安全做法：丢弃本事件，等新分类事件触发新一轮抽取。
+            if (!string.Equals(document.DocumentTypeCode, eventData.DocumentTypeCode, StringComparison.Ordinal))
+            {
+                _logger.LogInformation(
+                    "Stale DocumentClassifiedEto: event typeCode={EventTypeCode} document typeCode={DocTypeCode} doc={DocumentId}. " +
+                    "Likely reclassified between publish and consume; discarding to avoid writing fields against an outdated schema.",
+                    eventData.DocumentTypeCode, document.DocumentTypeCode, eventData.DocumentId);
+                return;
+            }
+
+            // 非空字段写入 ExtractedFields（单层，无分桶）。
             var fields = new Dictionary<string, JsonElement>();
             foreach (var d in descriptors)
             {
@@ -122,7 +166,7 @@ public class FieldExtractionEventHandler
             // 的写入原子地一起持久化——避免"字段写入成功但事件丢失"。
             await PublishFieldsExtractedAsync(eventData, fields.Count);
 
-            await uow.CompleteAsync();
+            await writeUow.CompleteAsync();
 
             _logger.LogInformation(
                 "Field extraction for document {DocumentId} produced {NonNullCount}/{TotalCount} non-null values.",

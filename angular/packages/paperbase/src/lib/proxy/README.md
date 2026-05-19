@@ -18,9 +18,11 @@ Notable hand edits (do **not** lose these if you ever regenerate):
 - `documents/models.ts`
   - `DocumentDto.classificationConfidence`, `DocumentReviewStatus`, `pipelineRuns`
     promoted to required to match what the UI actually reads
-  - `DocumentPipelineRunDto.extraProperties` added (carries top-K classification
-    candidates under the `Candidates` key)
-  - `ClassificationCandidate` added
+  - `DocumentPipelineRunDto.extraProperties` retained (generic ExtraProperties
+    bag for future per-pipeline payloads)
+  - `DocumentPipelineRunDto.candidates` + `PipelineRunCandidate` mirror the
+    backend strong-typed projection of `ExtraProperties["Candidates"]`. Read
+    `run.candidates` — do not cast `extraProperties['Candidates']` by hand.
 
 If you decide to re-run `abp generate-proxy -t ng`, do it into a scratch location
 and diff the output against this folder before merging — the generator currently

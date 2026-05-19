@@ -2,9 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Documents;
-using Microsoft.Extensions.Options;
 using Volo.Abp;
 using Volo.Abp.Data;
 using Volo.Abp.Domain.Services;
@@ -15,14 +13,17 @@ namespace Dignite.Paperbase.Documents;
 /// 流水线执行记录的统一入口。
 /// 负责创建 Run、驱动状态流转、在每次状态变化后重新派生 Document.LifecycleStatus。
 /// 所有向 Document 写入流水线结果的代码都必须通过此服务。
+/// <para>
+/// 设计选择：本 manager <b>不查 DB</b>——typeCode 校验责任在 AppService（调用方负责
+/// 通过 <c>IDocumentTypeRepository.FindByTypeCodeAsync</c> 加载 <see cref="DocumentType"/>
+/// 并传给本 manager）。这避免热路径重复查 DB（BackgroundJob 已 load 一次，manager 再查一次浪费），
+/// 并让 Domain 层 manager 纯净不依赖 Repository。
+/// </para>
 /// </summary>
 public class DocumentPipelineRunManager : DomainService
 {
-    private readonly DocumentTypeOptions _documentTypeOptions;
-
-    public DocumentPipelineRunManager(IOptions<DocumentTypeOptions> documentTypeOptions)
+    public DocumentPipelineRunManager()
     {
-        _documentTypeOptions = documentTypeOptions.Value;
     }
 
     public virtual Task<DocumentPipelineRun> QueueAsync(
@@ -129,15 +130,19 @@ public class DocumentPipelineRunManager : DomainService
     /// 记录分类结果并完成 Run（高置信度路径）。
     /// <see cref="Document.ClassificationReason"/> 在此路径下固定为 null；
     /// AI 的分类理由仅在低置信度路径（<see cref="CompleteClassificationWithLowConfidenceAsync"/>）写入。
+    /// <para>
+    /// 调用方负责传入已加载的 <paramref name="typeDef"/>（来自 <c>IDocumentTypeRepository.FindByTypeCodeAsync</c>），
+    /// manager 不再查 DB；调用方必须确保 <c>typeDef.TenantId == document.TenantId</c>（单层精确匹配）。
+    /// </para>
     /// </summary>
     public virtual Task CompleteClassificationAsync(
         Document document,
         DocumentPipelineRun run,
-        string typeCode,
+        DocumentType typeDef,
         double confidenceScore)
     {
-        EnsureRegisteredTypeCode(typeCode);
-        document.ApplyAutomaticClassificationResult(typeCode, confidenceScore);
+        Check.NotNull(typeDef, nameof(typeDef));
+        document.ApplyAutomaticClassificationResult(typeDef.TypeCode, confidenceScore);
         return CompleteAsync(document, run);
     }
 
@@ -171,31 +176,18 @@ public class DocumentPipelineRunManager : DomainService
     /// 人工覆盖信号由 <see cref="Document.ReviewStatus"/> = Reviewed 表达。
     /// 该字面量与 Abstractions 层 <c>ClassificationDefaults.ManualClassificationConfidence</c>
     /// 同步维护（Domain 不依赖 Abstractions，故此处硬编码）。
+    /// <para>
+    /// 调用方负责传入已加载的 <paramref name="typeDef"/>；manager 不再查 DB。
+    /// </para>
     /// </summary>
     public virtual Task CompleteManualClassificationAsync(
         Document document,
         DocumentPipelineRun run,
-        string typeCode)
+        DocumentType typeDef)
     {
-        EnsureRegisteredTypeCode(typeCode);
-        document.ConfirmClassification(typeCode);
+        Check.NotNull(typeDef, nameof(typeDef));
+        document.ConfirmClassification(typeDef.TypeCode);
         return CompleteAsync(document, run);
-    }
-
-    /// <summary>
-    /// 强制 typeCode 必须存在于已注册的 <see cref="DocumentTypeOptions"/>。
-    /// 这是 Document 聚合的契约不变量：任何写入到 <c>DocumentTypeCode</c> 的值
-    /// 必须可被业务模块（订阅 <c>DocumentClassifiedEto</c> 的消费者）识别。
-    /// </summary>
-    protected virtual void EnsureRegisteredTypeCode(string typeCode)
-    {
-        Check.NotNullOrWhiteSpace(typeCode, nameof(typeCode));
-
-        if (!_documentTypeOptions.Types.Any(t => t.TypeCode == typeCode))
-        {
-            throw new BusinessException(PaperbaseErrorCodes.InvalidDocumentTypeCode)
-                .WithData(nameof(typeCode), typeCode);
-        }
     }
 
     public virtual Task SkipAsync(
@@ -212,6 +204,22 @@ public class DocumentPipelineRunManager : DomainService
 
         DeriveLifecycle(document);
 
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 在 pipeline run 之外触发 lifecycle 重新派生——典型场景是操作员人工审核通过
+    /// （<see cref="Document.ApproveReview"/>）后，需要让已经全部 Succeeded 的关键流水线
+    /// 即时跃迁到 <see cref="DocumentLifecycleStatus.Ready"/>，从而触发 <c>DocumentReadyEto</c>。
+    /// <para>
+    /// 这是把 line 32-35 "lifecycle 由 DocumentPipelineRunManager 派生" 契约落到 AppService
+    /// 可调用入口的方式：AppService 不直接调 <see cref="Document.TransitionLifecycle"/>（internal），
+    /// 而是经由本 manager 统一派生。
+    /// </para>
+    /// </summary>
+    public virtual Task RecomputeLifecycleAsync(Document document)
+    {
+        DeriveLifecycle(document);
         return Task.CompletedTask;
     }
 
