@@ -330,6 +330,7 @@ public class FieldExtractionEventHandler_Tests
             tenantId: tenantId,
             documentTypeCode: documentTypeCode,
             name: name,
+            displayName: name,
             prompt: $"Extract the {name}.",
             dataType: FieldDataType.String);
 }

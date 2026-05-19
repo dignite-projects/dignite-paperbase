@@ -3,6 +3,7 @@ namespace Dignite.Paperbase.Documents;
 public static class FieldDefinitionConsts
 {
     public static int MaxNameLength { get; set; } = 64;
+    public static int MaxDisplayNameLength { get; set; } = 128;
     public static int MaxPromptLength { get; set; } = 1024;
     public static int MaxDocumentTypeCodeLength { get; set; } = 128;
 

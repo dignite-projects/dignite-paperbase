@@ -7,6 +7,10 @@ namespace Dignite.Paperbase.Documents;
 public class UpdateFieldDefinitionDto
 {
     [Required]
+    [DynamicStringLength(typeof(FieldDefinitionConsts), nameof(FieldDefinitionConsts.MaxDisplayNameLength))]
+    public string DisplayName { get; set; } = default!;
+
+    [Required]
     [DynamicStringLength(typeof(FieldDefinitionConsts), nameof(FieldDefinitionConsts.MaxPromptLength))]
     public string Prompt { get; set; } = default!;
 

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text.RegularExpressions;
 using Dignite.Paperbase.Abstractions.Documents;
 using Volo.Abp;
@@ -20,11 +21,22 @@ namespace Dignite.Paperbase.Documents;
 /// 父类型必须存在于同层（同 TenantId）；不存在"租户字段挂在 Host 类型上"的关系。
 /// </para>
 /// <para>
+/// <see cref="Name"/> 与 <see cref="DisplayName"/> 的职责分离（对齐 <see cref="DocumentType"/> 的
+/// <c>TypeCode</c> + <c>DisplayName</c>）：
+/// <list type="bullet">
+///   <item><see cref="Name"/>：机器标识符，ASCII 白名单，<strong>immutable</strong>——作为 LLM prompt JSON schema key、
+///   <c>Document.ExtractedFields</c> 的字典 key、下游消费方依赖的契约 ID；rename 破坏向后兼容</item>
+///   <item><see cref="DisplayName"/>：人类可读展示名，Unicode，<strong>可改</strong>——仅 UI / API 文档使用，
+///   <strong>不进 LLM prompt</strong>（避免 prompt injection 面 + Name+Prompt 已足够告诉模型抽什么）</item>
+/// </list>
+/// </para>
+/// <para>
 /// 安全约束（CLAUDE.md "## 安全约定"）：
 /// <list type="bullet">
 ///   <item>所有查询路径显式 TenantId 谓词</item>
 ///   <item><see cref="Prompt"/> 是用户控制文本，LLM 抽取时由 Workflow 经 <c>PromptBoundary.WrapField</c> 包裹</item>
 ///   <item><see cref="Name"/> 受 <see cref="FieldDefinitionConsts.NamePattern"/> 白名单约束——字面拼进 LLM prompt 的 JSON schema，必须无 prompt injection 控制字符</item>
+///   <item><see cref="DisplayName"/> 经 IsControl 拦截作为深度防御 hygiene（即使不进 prompt，UI 渲染也不应承受换行/制表符等控制字符）</item>
 /// </list>
 /// </para>
 /// </summary>
@@ -45,6 +57,13 @@ public class FieldDefinition : FullAuditedAggregateRoot<Guid>, IMultiTenant
     /// </summary>
     public virtual string Name { get; private set; } = default!;
 
+    /// <summary>
+    /// 显示名称（人类可读，运行时直接展示）。Unicode 允许（中日文 / 空格 / 标点），但 IsControl 拦截。
+    /// 与 <see cref="Name"/> 的对比：<see cref="Name"/> 是 immutable 程序标识符，<see cref="DisplayName"/>
+    /// 是可改的 UI 文案。<strong>不进 LLM prompt</strong>。
+    /// </summary>
+    public virtual string DisplayName { get; private set; } = default!;
+
     /// <summary>LLM 抽取指令——告诉模型从文档中找什么值。</summary>
     public virtual string Prompt { get; private set; } = default!;
 
@@ -61,6 +80,7 @@ public class FieldDefinition : FullAuditedAggregateRoot<Guid>, IMultiTenant
         Guid? tenantId,
         string documentTypeCode,
         string name,
+        string displayName,
         string prompt,
         FieldDataType dataType,
         int displayOrder = 0,
@@ -70,14 +90,16 @@ public class FieldDefinition : FullAuditedAggregateRoot<Guid>, IMultiTenant
         TenantId = tenantId;
         DocumentTypeCode = Check.NotNullOrWhiteSpace(documentTypeCode, nameof(documentTypeCode), FieldDefinitionConsts.MaxDocumentTypeCodeLength);
         Name = ValidateName(name);
+        DisplayName = ValidateDisplayName(displayName);
         Prompt = Check.NotNullOrWhiteSpace(prompt, nameof(prompt), FieldDefinitionConsts.MaxPromptLength);
         DataType = dataType;
         DisplayOrder = displayOrder;
         IsRequired = isRequired;
     }
 
-    public void Update(string prompt, FieldDataType dataType, int displayOrder, bool isRequired)
+    public void Update(string displayName, string prompt, FieldDataType dataType, int displayOrder, bool isRequired)
     {
+        DisplayName = ValidateDisplayName(displayName);
         Prompt = Check.NotNullOrWhiteSpace(prompt, nameof(prompt), FieldDefinitionConsts.MaxPromptLength);
         DataType = dataType;
         DisplayOrder = displayOrder;
@@ -94,5 +116,24 @@ public class FieldDefinition : FullAuditedAggregateRoot<Guid>, IMultiTenant
                 .WithData("pattern", FieldDefinitionConsts.NamePattern);
         }
         return name;
+    }
+
+    /// <summary>
+    /// DisplayName 是 admin 通过 UI 输入的用户控制文本。当前**不进 LLM prompt**（与 <see cref="DocumentType.DisplayName"/>
+    /// 进 prompt 的处理路径不同），此处 IsControl 拦截是深度防御 hygiene——
+    /// 防止 UI 渲染 / 日志输出承受换行 / 制表符 / null byte 等控制字符。
+    /// 允许 Unicode 字母数字 / 标点 / 空格（支持中日文 displayName）。
+    /// </summary>
+    private static string ValidateDisplayName(string displayName)
+    {
+        Check.NotNullOrWhiteSpace(displayName, nameof(displayName), FieldDefinitionConsts.MaxDisplayNameLength);
+
+        if (displayName.Any(c => char.IsControl(c)))
+        {
+            throw new BusinessException(PaperbaseErrorCodes.InvalidFieldDefinitionDisplayName)
+                .WithData("displayName", displayName);
+        }
+
+        return displayName;
     }
 }

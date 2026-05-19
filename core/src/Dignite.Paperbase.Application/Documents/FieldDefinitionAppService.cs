@@ -71,6 +71,7 @@ public class FieldDefinitionAppService : PaperbaseAppService, IFieldDefinitionAp
             CurrentTenant.Id,
             input.DocumentTypeCode,
             input.Name,
+            input.DisplayName,
             input.Prompt,
             input.DataType,
             input.DisplayOrder,
@@ -90,7 +91,7 @@ public class FieldDefinitionAppService : PaperbaseAppService, IFieldDefinitionAp
             throw new EntityNotFoundException(typeof(FieldDefinition), id);
         }
 
-        entity.Update(input.Prompt, input.DataType, input.DisplayOrder, input.IsRequired);
+        entity.Update(input.DisplayName, input.Prompt, input.DataType, input.DisplayOrder, input.IsRequired);
         await _repository.UpdateAsync(entity, autoSave: true);
         return ObjectMapper.Map<FieldDefinition, FieldDefinitionDto>(entity);
     }

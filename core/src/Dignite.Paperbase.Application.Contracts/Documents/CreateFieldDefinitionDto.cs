@@ -15,6 +15,10 @@ public class CreateFieldDefinitionDto
     public string Name { get; set; } = default!;
 
     [Required]
+    [DynamicStringLength(typeof(FieldDefinitionConsts), nameof(FieldDefinitionConsts.MaxDisplayNameLength))]
+    public string DisplayName { get; set; } = default!;
+
+    [Required]
     [DynamicStringLength(typeof(FieldDefinitionConsts), nameof(FieldDefinitionConsts.MaxPromptLength))]
     public string Prompt { get; set; } = default!;
 

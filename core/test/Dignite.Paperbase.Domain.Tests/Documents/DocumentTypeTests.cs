@@ -47,13 +47,39 @@ public class DocumentTypeTests
             .Code.ShouldBe(PaperbaseErrorCodes.InvalidDocumentTypeDisplayName);
     }
 
-    [Fact]
-    public void Should_Reject_TypeCode_Without_Dot()
+    [Theory]
+    [InlineData("contract")]              // 单段，无 . 也合法（v2 移除强制 . 后）
+    [InlineData("host.contract")]         // 两段
+    [InlineData("host.case-file")]        // 短横线
+    [InlineData("host.case_file")]        // 下划线
+    [InlineData("host.legal.contract")]   // 多段
+    [InlineData("Host.Contract")]         // 大小写混合
+    [InlineData("a")]                     // 最短
+    public void Should_Accept_Valid_TypeCode(string typeCode)
     {
-        Should.Throw<ArgumentException>(() => new DocumentType(
+        var type = new DocumentType(
             Guid.NewGuid(), null,
-            typeCode: "nodothere",
+            typeCode: typeCode,
+            displayName: "Contract");
+        type.TypeCode.ShouldBe(typeCode);
+    }
+
+    [Theory]
+    [InlineData(".host")]                 // 首字符 .
+    [InlineData("host.")]                 // 尾字符 .
+    [InlineData("host..contract")]        // 连续 .
+    [InlineData("host contract")]         // 空格
+    [InlineData("host\ncontract")]        // 控制字符
+    [InlineData("合同")]                  // Unicode
+    [InlineData("host\"contract")]        // 引号
+    [InlineData("host;sql")]              // 分号
+    public void Should_Reject_TypeCode_With_Invalid_Chars(string typeCode)
+    {
+        var ex = Should.Throw<BusinessException>(() => new DocumentType(
+            Guid.NewGuid(), null,
+            typeCode: typeCode,
             displayName: "Contract"));
+        ex.Code.ShouldBe(PaperbaseErrorCodes.InvalidDocumentTypeCodeFormat);
     }
 
     private static DocumentType CreateDocumentType(string displayName) =>

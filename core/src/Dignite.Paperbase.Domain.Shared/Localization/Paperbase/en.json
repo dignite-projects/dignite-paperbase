@@ -111,6 +111,7 @@
     "Permission:Documents.Pipelines.Retry": "Retry Failed Pipelines",
 
     "Paperbase:InvalidDocumentTypeCode": "Invalid document type code: '{documentTypeCode}'.",
+    "Paperbase:InvalidDocumentTypeCodeFormat": "Document type code '{typeCode}' is not allowed. Must match pattern '{pattern}' (letters, digits, underscore, hyphen segments, optionally separated by '.'; no leading/trailing/consecutive '.').",
     "Paperbase:DocumentTypeCodeAlreadyExists": "Document type code '{TypeCode}' is already in use (including soft-deleted records). Use a different code, or restore the existing one.",
     "Paperbase:DocumentTypeInUse": "Document type '{TypeCode}' is still referenced by one or more documents. Reclassify those documents before deleting this type.",
     "Paperbase:DocumentTypeRestoreConflict": "Cannot restore document type '{TypeCode}': another active document type with the same code already exists.",
@@ -118,6 +119,7 @@
     "Paperbase:FieldDefinitionRestoreConflict": "Cannot restore field '{Name}' on document type '{DocumentTypeCode}': another active field with the same name already exists.",
     "Paperbase:FieldDefinitionParentTypeMissing": "Cannot restore field '{Name}': the parent document type '{DocumentTypeCode}' is missing or still deleted. Restore the document type first.",
     "Paperbase:InvalidFieldDefinitionName": "Field name '{name}' is invalid. Names must match pattern '{pattern}' (letters, digits, underscore, hyphen; 1-64 chars).",
+    "Paperbase:InvalidFieldDefinitionDisplayName": "Field display name '{displayName}' contains control characters (newlines, tabs, etc.), which are not allowed.",
     "Paperbase:InvalidDocumentTypeDisplayName": "Document type display name '{displayName}' contains control characters (newlines, tabs, etc.), which are not allowed.",
     "Paperbase:NoDocumentTypesConfigured": "No document types are configured for this scope. Create at least one document type before uploading documents (Host admin via 'host.*' types; tenant admin via tenant-scoped types).",
     "Paperbase:MarkdownIsImmutable": "Extracted markdown has already been set and cannot be changed.",

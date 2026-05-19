@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Dignite.Paperbase.Abstractions.Documents;
 using Volo.Abp;
 using Volo.Abp.Domain.Entities.Auditing;
@@ -16,8 +17,11 @@ namespace Dignite.Paperbase.Documents;
 /// Host 与 tenant 各自独立宇宙——分类候选集按 Document.TenantId 严格匹配单层，不存在跨层 union。
 /// 跨层同 TypeCode 是合法的两行（由 TenantId 区分），下游消费方按 (TenantId, TypeCode) 元组消费。
 /// <para>
-/// TypeCode 格式：<c>&lt;owner-module&gt;.&lt;sub-type&gt;</c>，由 <see cref="ValidateTypeCode"/> 强制；
-/// 唯一约束 <c>(TenantId, TypeCode)</c>。例：<c>host.general</c>、<c>host.contract</c>、<c>tenant.case-file</c>。
+/// TypeCode 字符集白名单 <see cref="DocumentTypeConsts.TypeCodePattern"/>：字母 / 数字 / 下划线 / 短横线段，
+/// 可选 <c>.</c> 分隔多段（单段 <c>contract</c> 也合法，多段 <c>host.contract</c> 也合法；不允许首尾或连续 <c>.</c>）。
+/// 不再强制含 <c>.</c>——v1 的 <c>&lt;owner&gt;.&lt;sub-type&gt;</c> namespace 约定在 v2"全部 admin CRUD 自管"
+/// 模型下没有技术功能（不参与租户隔离、不参与 module 注册防冲突），保留 <c>.</c> 作为可选 convention 即可。
+/// 唯一约束 <c>(TenantId, TypeCode)</c>。例：<c>host.general</c>、<c>contract</c>、<c>tenant.case-file</c>。
 /// </para>
 /// <para>
 /// <see cref="DisplayName"/> 是普通字符串列，运行时直接展示（不再走 seed-time ILocalizableString 解析）。
@@ -29,6 +33,10 @@ namespace Dignite.Paperbase.Documents;
 /// </summary>
 public class DocumentType : FullAuditedAggregateRoot<Guid>, IMultiTenant
 {
+    private static readonly Regex TypeCodeRegex = new(
+        DocumentTypeConsts.TypeCodePattern,
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     public virtual Guid? TenantId { get; private set; }
 
     public virtual string TypeCode { get; private set; } = default!;
@@ -68,33 +76,25 @@ public class DocumentType : FullAuditedAggregateRoot<Guid>, IMultiTenant
     }
 
     /// <summary>
-    /// <para>
-    /// TypeCode 形状约束：必须含 <c>.</c> 分隔符且首尾不为 <c>.</c>（owner-module . sub-type 形态）。
-    /// 当前实现**只**检查这一约束，未强制字符白名单；可接受的输入字符集等同于"非空白 + 长度上限"。
-    /// </para>
+    /// TypeCode 白名单校验：字符集 <see cref="DocumentTypeConsts.TypeCodePattern"/>
+    /// （字母 / 数字 / 下划线 / 短横线段，可选 <c>.</c> 分隔，首尾不为 <c>.</c>，不允许连续 <c>.</c>）+ 长度上限。
     /// <para>
     /// ⚠️ <strong>Prompt injection 边界</strong>：<see cref="TypeCode"/> 在
     /// <c>DocumentClassificationWorkflow</c> 内**裸拼**进 LLM 系统提示（不经
-    /// <c>PromptBoundary.WrapField</c> 包裹）。当前安全性依赖：
-    /// <list type="bullet">
-    ///   <item>TypeCode 由 admin 在 UI 配置（非租户终端用户可控）</item>
-    ///   <item>形状约束 <c>&lt;owner&gt;.&lt;sub-type&gt;</c> 与 admin 实际使用的字符集（小写字母数字 + <c>.</c> + <c>-</c>）足够窄</item>
-    /// </list>
-    /// 如未来需要放宽字符集（例如允许空格、Unicode、多段 <c>.</c>），<strong>必须</strong>在放宽前
-    /// 同步评估 prompt injection 面，要么收紧白名单 regex，要么在 Workflow 内对 TypeCode 也走
-    /// <c>PromptBoundary.WrapField</c>。详见 <c>.claude/rules/llm-call-anti-patterns.md</c>。
+    /// <c>PromptBoundary.WrapField</c> 包裹）。白名单 regex 保证字符集不含换行 / 引号 / 控制字符等
+    /// prompt injection 注入向量；若未来需要放宽字符集，必须同步评估并选择"收紧 regex"或"在 Workflow
+    /// 内对 TypeCode 也走 PromptBoundary"二选一。详见 <c>.claude/rules/llm-call-anti-patterns.md</c>。
     /// </para>
     /// </summary>
     private static string ValidateTypeCode(string typeCode)
     {
         Check.NotNullOrWhiteSpace(typeCode, nameof(typeCode), DocumentTypeConsts.MaxTypeCodeLength);
 
-        var dotIndex = typeCode.IndexOf('.');
-        if (dotIndex <= 0 || dotIndex == typeCode.Length - 1)
+        if (!TypeCodeRegex.IsMatch(typeCode))
         {
-            throw new ArgumentException(
-                $"TypeCode must follow the '<owner-module>.<sub-type>' convention (e.g. 'host.general'). Got: '{typeCode}'.",
-                nameof(typeCode));
+            throw new BusinessException(PaperbaseErrorCodes.InvalidDocumentTypeCodeFormat)
+                .WithData("typeCode", typeCode)
+                .WithData("pattern", DocumentTypeConsts.TypeCodePattern);
         }
 
         return typeCode;

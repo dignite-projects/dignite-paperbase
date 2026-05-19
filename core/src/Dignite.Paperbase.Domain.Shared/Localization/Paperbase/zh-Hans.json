@@ -5,6 +5,7 @@
     "SamplePageMessage": "Paperbase 模块的示例页面",
 
     "Paperbase:InvalidDocumentTypeCode": "文档类型代码无效：'{documentTypeCode}'。",
+    "Paperbase:InvalidDocumentTypeCodeFormat": "文档类型代码 '{typeCode}' 不符合格式 '{pattern}'：仅允许字母 / 数字 / 下划线 / 短横线段，可选用 '.' 分隔多段；不允许首尾或连续 '.'。",
     "Paperbase:DocumentTypeCodeAlreadyExists": "文档类型代码 '{TypeCode}' 已被占用（包括已软删除的记录）。请使用其他代码，或先恢复已存在的同名类型。",
     "Paperbase:DocumentTypeInUse": "文档类型 '{TypeCode}' 仍被一个或多个文档引用，请先重新分类这些文档再删除该类型。",
     "Paperbase:DocumentTypeRestoreConflict": "无法恢复文档类型 '{TypeCode}'：已存在另一个未删除的同代码类型。",
@@ -12,6 +13,7 @@
     "Paperbase:FieldDefinitionRestoreConflict": "无法恢复字段 '{Name}'：文档类型 '{DocumentTypeCode}' 下已存在另一个未删除的同名字段。",
     "Paperbase:FieldDefinitionParentTypeMissing": "无法恢复字段 '{Name}'：父文档类型 '{DocumentTypeCode}' 不存在或仍处于已删除状态，请先恢复该类型。",
     "Paperbase:InvalidFieldDefinitionName": "字段名 '{name}' 不合法。名称只能包含字母 / 数字 / 下划线 / 短横线，长度 1-64 字符。",
+    "Paperbase:InvalidFieldDefinitionDisplayName": "字段显示名 '{displayName}' 包含换行 / 制表符等控制字符，不允许使用。",
     "Paperbase:InvalidDocumentTypeDisplayName": "文档类型显示名 '{displayName}' 包含换行 / 制表符等控制字符，不允许使用。",
     "Paperbase:NoDocumentTypesConfigured": "当前作用域下未配置任何文档类型。上传文档前请先创建至少一个文档类型（Host admin 创建 'host.*' 类型；租户 admin 创建租户专属类型）。",
     "Paperbase:MarkdownIsImmutable": "已写入提取的 Markdown 内容，不允许修改。",
