@@ -11,7 +11,7 @@ using Volo.Abp.DependencyInjection;
 
 namespace Dignite.Paperbase.Ocr.AzureDocumentIntelligence;
 
-public class AzureDocumentIntelligenceOcrProvider : IOcrProvider, IOcrProbeProvider, ITransientDependency
+public class AzureDocumentIntelligenceOcrProvider : IOcrProvider, ITransientDependency
 {
     private readonly AzureDocumentIntelligenceOptions _options;
 
@@ -23,7 +23,7 @@ public class AzureDocumentIntelligenceOcrProvider : IOcrProvider, IOcrProbeProvi
     public virtual async Task<OcrResult> RecognizeAsync(Stream fileStream, OcrOptions options)
     {
         var modelId = ResolveModelId(options.OcrProfileCode);
-        var analyzeResult = await AnalyzeAsync(fileStream, modelId, pages: null, cancellationToken: default);
+        var analyzeResult = await AnalyzeAsync(fileStream, modelId, cancellationToken: default);
 
         var markdown = BuildMarkdown(analyzeResult);
         var confidence = CalculateConfidence(analyzeResult);
@@ -43,35 +43,9 @@ public class AzureDocumentIntelligenceOcrProvider : IOcrProvider, IOcrProbeProvi
         };
     }
 
-    public virtual async Task<OcrProbeResult> ProbeAsync(
-        Stream fileStream,
-        OcrProbeOptions options,
-        CancellationToken cancellationToken = default)
-    {
-        var pages = options.MaxPages > 0 ? $"1-{options.MaxPages}" : null;
-        var modelId = ResolveModelId(options.RequestedOcrProfileCode);
-        var analyzeResult = await AnalyzeAsync(fileStream, modelId, pages, cancellationToken);
-        var markdown = BuildMarkdown(analyzeResult);
-        var confidence = CalculateConfidence(analyzeResult);
-        var pageCount = analyzeResult.Pages?.Count ?? 0;
-
-        return new OcrProbeResult
-        {
-            Markdown = markdown,
-            Confidence = confidence,
-            DetectedLanguage = analyzeResult.Languages?.FirstOrDefault()?.Locale,
-            PageCount = pageCount,
-            ProviderName = "AzureDocumentIntelligence",
-            ProviderModelName = modelId,
-            ProviderVersion = typeof(DocumentIntelligenceClient).Assembly.GetName().Version?.ToString(),
-            QualitySignals = OcrQualitySignalBuilder.FromMarkdown(markdown, confidence, pageCount)
-        };
-    }
-
     private async Task<AnalyzeResult> AnalyzeAsync(
         Stream fileStream,
         string modelId,
-        string? pages,
         CancellationToken cancellationToken)
     {
         var client = new DocumentIntelligenceClient(
@@ -89,8 +63,7 @@ public class AzureDocumentIntelligenceOcrProvider : IOcrProvider, IOcrProbeProvi
         {
             // 启用 Markdown 输出（需 api-version 2024-11-30+，SDK 1.0+）。
             // analyzeResult.Content 直接是带标题/表格/列表的 Markdown。
-            OutputContentFormat = DocumentContentFormat.Markdown,
-            Pages = pages
+            OutputContentFormat = DocumentContentFormat.Markdown
         };
 
         var operation = await client.AnalyzeDocumentAsync(WaitUntil.Completed, analyzeOptions, cancellationToken);

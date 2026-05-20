@@ -13,7 +13,7 @@ using Volo.Abp.DependencyInjection;
 
 namespace Dignite.Paperbase.Ocr.PaddleOcr;
 
-public class PaddleOcrProvider : IOcrProvider, IOcrProbeProvider, ITransientDependency
+public class PaddleOcrProvider : IOcrProvider, ITransientDependency
 {
     private readonly PaddleOcrOptions _options;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -35,7 +35,6 @@ public class PaddleOcrProvider : IOcrProvider, IOcrProbeProvider, ITransientDepe
             options.ContentType,
             modelName,
             options.OcrProfileCode,
-            maxPages: null,
             cancellationToken: default);
 
         var markdown = BuildMarkdown(result);
@@ -55,44 +54,12 @@ public class PaddleOcrProvider : IOcrProvider, IOcrProbeProvider, ITransientDepe
         };
     }
 
-    public virtual async Task<OcrProbeResult> ProbeAsync(
-        Stream fileStream,
-        OcrProbeOptions options,
-        CancellationToken cancellationToken = default)
-    {
-        var modelName = ResolveModelName(options.RequestedOcrProfileCode);
-        var result = await SendAsync(
-            fileStream,
-            options.LanguageHints,
-            options.ContentType,
-            modelName,
-            options.RequestedOcrProfileCode,
-            options.MaxPages,
-            cancellationToken);
-
-        var markdown = BuildMarkdown(result);
-        var confidence = CalculateConfidence(result);
-
-        return new OcrProbeResult
-        {
-            Markdown = markdown,
-            Confidence = confidence,
-            DetectedLanguage = result.DetectedLanguage,
-            PageCount = result.PageCount,
-            ProviderName = result.ProviderName ?? "PaddleOCR",
-            ProviderModelName = result.ProviderModelName ?? modelName,
-            ProviderVersion = result.ProviderVersion,
-            QualitySignals = OcrQualitySignalBuilder.FromMarkdown(markdown, confidence, result.PageCount)
-        };
-    }
-
     private async Task<PaddleOcrResponse> SendAsync(
         Stream fileStream,
         IList<string> languageHints,
         string contentType,
         string modelName,
         string? ocrProfileCode,
-        int? maxPages,
         CancellationToken cancellationToken)
     {
         var languages = languageHints.Count > 0
@@ -112,8 +79,6 @@ public class PaddleOcrProvider : IOcrProvider, IOcrProbeProvider, ITransientDepe
         content.Add(new StringContent(modelName), "model_name");
         if (!string.IsNullOrWhiteSpace(ocrProfileCode))
             content.Add(new StringContent(ocrProfileCode), "ocr_profile_code");
-        if (maxPages is > 0)
-            content.Add(new StringContent(maxPages.Value.ToString()), "max_pages");
 
         var client = _httpClientFactory.CreateClient(PaperbasePaddleOcrModule.HttpClientName);
         var response = await client.PostAsync($"{_options.Endpoint.TrimEnd('/')}/ocr", content, cancellationToken);

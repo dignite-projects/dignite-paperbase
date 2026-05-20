@@ -9,7 +9,4 @@ public class PaperbaseOcrOptions
 
     /// <summary>Default requested OCR profile. Normal uploads should enter through <c>auto</c>.</summary>
     public string DefaultOcrProfileCode { get; set; } = OcrProfileCodes.Auto;
-
-    /// <summary>Maximum pages a provider should sample during a probe.</summary>
-    public int ProbeMaxPages { get; set; } = 2;
 }

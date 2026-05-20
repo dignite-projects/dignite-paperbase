@@ -6,21 +6,15 @@ namespace Dignite.Paperbase.TextExtraction.OcrProfiles;
 
 public class DefaultOcrQualityScorer : IOcrQualityScorer, ITransientDependency
 {
+    // 全量 OCR 已完成，此处只决定"要不要再花一次定向重试"，故低置信触发线放得较宽松。
     private const double LowConfidenceThreshold = 0.72;
     private const double BetterScoreMargin = 0.03;
+    private const int StructureMarkerThreshold = 3;
 
-    public virtual OcrQualityAssessment Score(
-        OcrResult result,
-        OcrProfileResolution resolution,
-        OcrProbeResult? probeResult)
+    public virtual OcrQualityAssessment Score(OcrResult result, string currentProfileCode)
     {
-        var signals = OcrProfileSignalMapper.FromOcrResult(result);
-        var probeSignals = OcrProfileSignalMapper.FromProbe(probeResult);
-
-        signals.TableMarkerCount = Math.Max(signals.TableMarkerCount, probeSignals.TableMarkerCount);
-        signals.FormLikeLineCount = Math.Max(signals.FormLikeLineCount, probeSignals.FormLikeLineCount);
-        signals.LowScanQualityScore = MaxNullable(signals.LowScanQualityScore, probeSignals.LowScanQualityScore);
-        signals.StructuralComplexityScore = MaxNullable(signals.StructuralComplexityScore, probeSignals.StructuralComplexityScore);
+        var signals = result.QualitySignals
+            ?? OcrQualitySignalBuilder.FromMarkdown(result.Markdown, result.Confidence, result.PageCount);
 
         var confidenceScore = signals.Confidence ?? 0;
         var textScore = signals.HasMeaningfulText ? 0.20 : 0;
@@ -28,7 +22,7 @@ public class DefaultOcrQualityScorer : IOcrQualityScorer, ITransientDependency
         var score = Math.Clamp((confidenceScore * 0.70) + textScore + lengthScore, 0, 1);
 
         var diagnosis = Diagnose(signals);
-        var retryProfile = ResolveRetryProfile(diagnosis, resolution.EffectiveProfileCode);
+        var retryProfile = ResolveRetryProfile(diagnosis, currentProfileCode);
         var isLowQuality = !signals.HasMeaningfulText || confidenceScore < LowConfidenceThreshold;
 
         return new OcrQualityAssessment
@@ -37,8 +31,7 @@ public class DefaultOcrQualityScorer : IOcrQualityScorer, ITransientDependency
             IsLowQuality = isLowQuality,
             DiagnosisCode = diagnosis,
             TargetedRetryProfileCode = isLowQuality ? retryProfile : null,
-            Reason = BuildReason(isLowQuality, diagnosis, retryProfile),
-            Signals = OcrProfileSignalMapper.ToSnapshot(signals, score, diagnosis, retryProfile)
+            Signals = signals
         };
     }
 
@@ -69,17 +62,13 @@ public class DefaultOcrQualityScorer : IOcrQualityScorer, ITransientDependency
             return OcrQualityDiagnosisCodes.EmptyText;
         }
 
-        if (signals.LowScanQualityScore is >= 0.60)
-        {
-            return OcrQualityDiagnosisCodes.LowQualityScan;
-        }
-
-        if (signals.TableMarkerCount >= 3 && signals.TableMarkerCount >= signals.FormLikeLineCount)
+        if (signals.TableMarkerCount >= StructureMarkerThreshold &&
+            signals.TableMarkerCount >= signals.FormLikeLineCount)
         {
             return OcrQualityDiagnosisCodes.TableStructure;
         }
 
-        if (signals.FormLikeLineCount >= 3)
+        if (signals.FormLikeLineCount >= StructureMarkerThreshold)
         {
             return OcrQualityDiagnosisCodes.FormKeyValue;
         }
@@ -96,7 +85,6 @@ public class DefaultOcrQualityScorer : IOcrQualityScorer, ITransientDependency
     {
         var target = diagnosis switch
         {
-            OcrQualityDiagnosisCodes.LowQualityScan => OcrProfileCodes.LowQualityScan,
             OcrQualityDiagnosisCodes.TableStructure => OcrProfileCodes.TableHeavy,
             OcrQualityDiagnosisCodes.FormKeyValue => OcrProfileCodes.FormKeyValue,
             OcrQualityDiagnosisCodes.EmptyText => OcrProfileCodes.HighAccuracy,
@@ -105,32 +93,5 @@ public class DefaultOcrQualityScorer : IOcrQualityScorer, ITransientDependency
         };
 
         return target == currentProfile ? null : target;
-    }
-
-    private static string BuildReason(bool isLowQuality, string diagnosis, string? retryProfile)
-    {
-        if (!isLowQuality)
-        {
-            return "OCR quality accepted; no automatic retry needed.";
-        }
-
-        return retryProfile == null
-            ? $"OCR quality is low ({diagnosis}) but no different targeted retry profile is available."
-            : $"OCR quality is low ({diagnosis}); retry once with {retryProfile}.";
-    }
-
-    private static double? MaxNullable(double? left, double? right)
-    {
-        if (!left.HasValue)
-        {
-            return right;
-        }
-
-        if (!right.HasValue)
-        {
-            return left;
-        }
-
-        return Math.Max(left.Value, right.Value);
     }
 }

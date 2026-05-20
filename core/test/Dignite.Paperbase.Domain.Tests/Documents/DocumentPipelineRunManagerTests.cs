@@ -1,6 +1,5 @@
 using System;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Abstractions.TextExtraction;
 using Dignite.Paperbase.Documents;
 using Shouldly;
 using Volo.Abp;
@@ -274,50 +273,6 @@ public class DocumentPipelineRunManagerTests : PaperbaseDomainTestBase<Paperbase
         doc.SourceType.ShouldBe(SourceType.Digital);
         doc.OcrConfidence.ShouldBe(0.97);
         run.Status.ShouldBe(PipelineRunStatus.Succeeded);
-    }
-
-    [Fact]
-    public async Task CompleteTextExtraction_Persists_Ocr_Profile_Metadata()
-    {
-        var doc = CreateDocument();
-        var run = await _manager.StartAsync(doc, PaperbasePipelines.TextExtraction);
-
-        await _manager.CompleteTextExtractionAsync(
-            doc,
-            run,
-            markdown: "# OCR",
-            title: "OCR",
-            ocrConfidence: 0.88,
-            sourceType: SourceType.Physical,
-            ocrMetadata: new OcrExtractionMetadata
-            {
-                RequestedProfileCode = "auto",
-                EffectiveProfileCode = "table-heavy",
-                ResolutionReason = "Auto resolved from table signals.",
-                ProviderName = "TestProvider",
-                ProviderModelName = "TestModel",
-                ProviderVersion = "1.0",
-                QualitySignals = new OcrQualitySignalSnapshot
-                {
-                    Confidence = 0.88,
-                    QualityScore = 0.92,
-                    PageCount = 1,
-                    MarkdownLength = 10,
-                    HasMeaningfulText = true,
-                    TableMarkerCount = 3,
-                    DiagnosisCode = "table-structure"
-                }
-            });
-
-        doc.OcrMetadata.ShouldNotBeNull();
-        doc.OcrMetadata.RequestedProfileCode.ShouldBe("auto");
-        doc.OcrMetadata.EffectiveProfileCode.ShouldBe("table-heavy");
-        doc.OcrMetadata.ResolutionReason.ShouldBe("Auto resolved from table signals.");
-        doc.OcrMetadata.ProviderName.ShouldBe("TestProvider");
-        doc.OcrMetadata.ProviderModelName.ShouldBe("TestModel");
-        doc.OcrMetadata.ProviderVersion.ShouldBe("1.0");
-        doc.OcrMetadata.QualitySignals.ShouldNotBeNull();
-        doc.OcrMetadata.QualitySignals.TableMarkerCount.ShouldBe(3);
     }
 
     [Fact]

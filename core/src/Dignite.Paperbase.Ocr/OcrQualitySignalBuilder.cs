@@ -15,7 +15,6 @@ public static class OcrQualitySignalBuilder
         var tableMarkers = lines.Count(line => line.Count(c => c == '|') >= 2);
         var formLikeLines = lines.Count(IsFormLikeLine);
         var hasMeaningfulText = value.Any(c => char.IsLetterOrDigit(c));
-        var structuralSignals = tableMarkers + formLikeLines;
 
         return new OcrQualitySignals
         {
@@ -24,10 +23,7 @@ public static class OcrQualitySignalBuilder
             MarkdownLength = value.Length,
             HasMeaningfulText = hasMeaningfulText,
             TableMarkerCount = tableMarkers,
-            FormLikeLineCount = formLikeLines,
-            StructuralComplexityScore = lines.Length == 0
-                ? 0
-                : Math.Clamp((double)structuralSignals / lines.Length, 0, 1)
+            FormLikeLineCount = formLikeLines
         };
     }
 

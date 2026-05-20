@@ -1,6 +1,5 @@
 using System.IO;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Paperbase.Abstractions.TextExtraction;
 using Dignite.Paperbase.Ocr;
@@ -19,13 +18,11 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
 {
     private readonly ITextExtractor _extractor;
     private readonly IOcrProvider _ocrProvider;
-    private readonly IOcrProbeProvider _ocrProbeProvider;
 
     public DefaultTextExtractor_Tests()
     {
         _extractor = GetRequiredService<ITextExtractor>();
         _ocrProvider = GetRequiredService<IOcrProvider>();
-        _ocrProbeProvider = GetRequiredService<IOcrProbeProvider>();
     }
 
     [Fact]
@@ -44,15 +41,8 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
         result.Markdown.ShouldBe("fake ocr markdown");
         result.Confidence.ShouldBe(0.95);
         result.UsedOcr.ShouldBeTrue();
-        result.OcrMetadata.ShouldNotBeNull();
-        result.OcrMetadata.RequestedProfileCode.ShouldBe(OcrProfileCodes.Auto);
-        result.OcrMetadata.EffectiveProfileCode.ShouldBe(OcrProfileCodes.General);
-        result.OcrMetadata.QualitySignals.ShouldNotBeNull();
 
-        await _ocrProbeProvider.Received(1).ProbeAsync(
-            Arg.Any<Stream>(),
-            Arg.Is<OcrProbeOptions>(o => o.RequestedOcrProfileCode == OcrProfileCodes.Auto),
-            Arg.Any<CancellationToken>());
+        // auto 直接进 general 全量识别，无事前 probe。
         await _ocrProvider.Received(1).RecognizeAsync(
             Arg.Any<Stream>(),
             Arg.Is<OcrOptions>(o => o.OcrProfileCode == OcrProfileCodes.General));
@@ -75,7 +65,6 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
         result.UsedOcr.ShouldBeFalse();
         // 数字版抽取无 OCR 概念——Confidence 为 null，不应兜底成 1.0。
         result.Confidence.ShouldBeNull();
-        result.OcrMetadata.ShouldBeNull();
     }
 
     [Fact]
@@ -113,23 +102,12 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
 
         result.UsedOcr.ShouldBeTrue();
         result.Markdown.ShouldBe("fake ocr markdown");
-        result.Markdown.ShouldNotBe("probe markdown");
     }
 
     [Fact]
     public async Task Should_Retry_Once_With_Targeted_Profile_When_Quality_Is_Low()
     {
-        _ocrProbeProvider.ProbeAsync(
-                Arg.Any<Stream>(),
-                Arg.Any<OcrProbeOptions>(),
-                Arg.Any<CancellationToken>())
-            .Returns(new OcrProbeResult
-            {
-                Markdown = "ordinary probe text",
-                Confidence = 0.96,
-                PageCount = 1
-            });
-
+        // 首次 general 识别得到低置信表格结果 → 诊断 table-structure → 定向重试 table-heavy → 取更优结果。
         _ocrProvider.RecognizeAsync(Arg.Any<Stream>(), Arg.Any<OcrOptions>())
             .Returns(
                 new OcrResult
@@ -155,12 +133,6 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
         var result = await _extractor.ExtractAsync(stream, ctx);
 
         result.Markdown.ShouldContain("good");
-        result.OcrMetadata.ShouldNotBeNull();
-        result.OcrMetadata.RequestedProfileCode.ShouldBe(OcrProfileCodes.Auto);
-        result.OcrMetadata.EffectiveProfileCode.ShouldBe(OcrProfileCodes.TableHeavy);
-        result.OcrMetadata.QualitySignals.ShouldNotBeNull();
-        result.OcrMetadata.QualitySignals.AutomaticRetryAttempted.ShouldBeTrue();
-        result.OcrMetadata.QualitySignals.AutomaticRetrySelected.ShouldBeTrue();
 
         await _ocrProvider.Received(1).RecognizeAsync(
             Arg.Any<Stream>(),
@@ -173,17 +145,6 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
     [Fact]
     public async Task Should_Not_Select_Empty_Retry_Result_Over_Meaningful_Text()
     {
-        _ocrProbeProvider.ProbeAsync(
-                Arg.Any<Stream>(),
-                Arg.Any<OcrProbeOptions>(),
-                Arg.Any<CancellationToken>())
-            .Returns(new OcrProbeResult
-            {
-                Markdown = "ordinary probe text",
-                Confidence = 0.96,
-                PageCount = 1
-            });
-
         _ocrProvider.RecognizeAsync(Arg.Any<Stream>(), Arg.Any<OcrOptions>())
             .Returns(
                 new OcrResult
@@ -208,12 +169,8 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
 
         var result = await _extractor.ExtractAsync(stream, ctx);
 
+        // 重试结果为空 → 不优于首次有意义文本 → 保留首次 general 结果。
         result.Markdown.ShouldContain("kept");
-        result.OcrMetadata.ShouldNotBeNull();
-        result.OcrMetadata.EffectiveProfileCode.ShouldBe(OcrProfileCodes.General);
-        result.OcrMetadata.QualitySignals.ShouldNotBeNull();
-        result.OcrMetadata.QualitySignals.AutomaticRetryAttempted.ShouldBeTrue();
-        result.OcrMetadata.QualitySignals.AutomaticRetrySelected.ShouldBeFalse();
 
         await _ocrProvider.Received(1).RecognizeAsync(
             Arg.Any<Stream>(),
@@ -224,7 +181,7 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
     }
 
     [Fact]
-    public async Task Should_Skip_Probe_For_Explicit_Profile()
+    public async Task Should_Use_Explicit_Profile_Without_Auto_Resolution()
     {
         var stream = new MemoryStream(new byte[] { 0xFF, 0xD8 });
         var ctx = new TextExtractionContext
@@ -236,13 +193,14 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
 
         var result = await _extractor.ExtractAsync(stream, ctx);
 
-        result.OcrMetadata.ShouldNotBeNull();
-        result.OcrMetadata.RequestedProfileCode.ShouldBe(OcrProfileCodes.HighAccuracy);
-        result.OcrMetadata.EffectiveProfileCode.ShouldBe(OcrProfileCodes.HighAccuracy);
-        await _ocrProbeProvider.DidNotReceive().ProbeAsync(
+        result.UsedOcr.ShouldBeTrue();
+        // 显式 profile 直接生效，不经 auto→general。
+        await _ocrProvider.Received(1).RecognizeAsync(
             Arg.Any<Stream>(),
-            Arg.Any<OcrProbeOptions>(),
-            Arg.Any<CancellationToken>());
+            Arg.Is<OcrOptions>(o => o.OcrProfileCode == OcrProfileCodes.HighAccuracy));
+        await _ocrProvider.DidNotReceive().RecognizeAsync(
+            Arg.Any<Stream>(),
+            Arg.Is<OcrOptions>(o => o.OcrProfileCode == OcrProfileCodes.General));
     }
 
     [DependsOn(
@@ -252,6 +210,8 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
     {
         public override void ConfigureServices(ServiceConfigurationContext context)
         {
+            // 取消 probe 后 OCR provider 只需实现 IOcrProvider；orchestrator 信任 provider，
+            // 结构信号事后从全量结果派生。
             var fakeOcr = Substitute.For<IOcrProvider>();
             fakeOcr.RecognizeAsync(Arg.Any<Stream>(), Arg.Any<OcrOptions>())
                 .Returns(new OcrResult
@@ -261,21 +221,7 @@ public class DefaultTextExtractor_Tests : AbpIntegratedTest<DefaultTextExtractor
                     PageCount = 1
                 });
 
-            context.Services.AddSingleton(fakeOcr);
-
-            var fakeProbe = Substitute.For<IOcrProbeProvider>();
-            fakeProbe.ProbeAsync(
-                    Arg.Any<Stream>(),
-                    Arg.Any<OcrProbeOptions>(),
-                    Arg.Any<CancellationToken>())
-                .Returns(new OcrProbeResult
-                {
-                    Markdown = "probe markdown",
-                    Confidence = 0.95,
-                    PageCount = 1
-                });
-
-            context.Services.AddSingleton(fakeProbe);
+            context.Services.AddSingleton<IOcrProvider>(fakeOcr);
         }
     }
 }

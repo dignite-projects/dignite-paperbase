@@ -1,4 +1,4 @@
-using Dignite.Paperbase.Abstractions.TextExtraction;
+using Dignite.Paperbase.Ocr;
 
 namespace Dignite.Paperbase.TextExtraction.OcrProfiles;
 
@@ -8,6 +8,5 @@ public class OcrQualityAssessment
     public bool IsLowQuality { get; set; }
     public string DiagnosisCode { get; set; } = OcrQualityDiagnosisCodes.None;
     public string? TargetedRetryProfileCode { get; set; }
-    public string Reason { get; set; } = string.Empty;
-    public OcrQualitySignalSnapshot Signals { get; set; } = new();
+    public OcrQualitySignals Signals { get; set; } = new();
 }

@@ -17,27 +17,21 @@ namespace Dignite.Paperbase.TextExtraction;
 public class DefaultTextExtractor : ITextExtractor, ITransientDependency
 {
     private readonly IOcrProvider _ocrProvider;
-    private readonly IOcrProbeProvider? _ocrProbeProvider;
     private readonly IMarkdownTextProvider _markdownProvider;
     private readonly PaperbaseOcrOptions _ocrOptions;
-    private readonly IOcrProfileResolver _profileResolver;
     private readonly IOcrQualityScorer _qualityScorer;
 
     public ILogger<DefaultTextExtractor> Logger { get; set; } = NullLogger<DefaultTextExtractor>.Instance;
 
     public DefaultTextExtractor(
         IOcrProvider ocrProvider,
-        IEnumerable<IOcrProbeProvider> ocrProbeProviders,
         IMarkdownTextProvider markdownProvider,
         IOptions<PaperbaseOcrOptions> ocrOptions,
-        IOcrProfileResolver profileResolver,
         IOcrQualityScorer qualityScorer)
     {
         _ocrProvider = ocrProvider;
-        _ocrProbeProvider = ocrProvider as IOcrProbeProvider ?? ocrProbeProviders.FirstOrDefault();
         _markdownProvider = markdownProvider;
         _ocrOptions = ocrOptions.Value;
-        _profileResolver = profileResolver;
         _qualityScorer = qualityScorer;
     }
 
@@ -85,66 +79,42 @@ public class DefaultTextExtractor : ITextExtractor, ITransientDependency
             : (IList<string>)_ocrOptions.DefaultLanguageHints;
         var requestedProfile = OcrProfileCodes.Normalize(ctx.OcrProfileCode ?? _ocrOptions.DefaultOcrProfileCode);
 
-        var probeResult = requestedProfile == OcrProfileCodes.Auto
-            ? await TryProbeAsync(seekable, ctx, languageHints, requestedProfile, cancellationToken)
-            : null;
+        // auto 不是真实 provider profile，只是编排入口：先信任 provider，以 general 跑一次全量 OCR，
+        // 再由首次结果的质量信号经 scorer 决定是否值得换更专精的 profile 重试一次。
+        // 不做事前 probe——结构信号事后从全量 Markdown 派生即可，无需为单页文档付双倍 OCR 成本。
+        var initialProfile = requestedProfile == OcrProfileCodes.Auto
+            ? OcrProfileCodes.General
+            : requestedProfile;
 
-        var resolution = _profileResolver.Resolve(new OcrProfileResolutionContext
-        {
-            TextExtractionContext = ctx,
-            RequestedProfileCode = requestedProfile,
-            ProbeResult = probeResult
-        });
-
-        var initialResult = await RecognizeAsync(seekable, ctx, languageHints, resolution.EffectiveProfileCode);
-        var initialAssessment = _qualityScorer.Score(initialResult, resolution, probeResult);
+        var initialResult = await RecognizeAsync(seekable, ctx, languageHints, initialProfile);
+        var initialAssessment = _qualityScorer.Score(initialResult, initialProfile);
 
         var finalResult = initialResult;
-        var finalAssessment = initialAssessment;
-        var finalProfile = resolution.EffectiveProfileCode;
-        var retryAttempted = false;
+        var finalProfile = initialProfile;
         var retrySelected = false;
-        var reason = resolution.Reason;
 
+        // 质量评分低且诊断明确时，用针对性 profile 重试一次，保留更好的全量结果。
         if (initialAssessment.IsLowQuality &&
             !string.IsNullOrWhiteSpace(initialAssessment.TargetedRetryProfileCode))
         {
-            retryAttempted = true;
             var retryProfile = initialAssessment.TargetedRetryProfileCode!;
             var retryResult = await RecognizeAsync(seekable, ctx, languageHints, retryProfile);
-            var retryResolution = new OcrProfileResolution
-            {
-                RequestedProfileCode = resolution.RequestedProfileCode,
-                EffectiveProfileCode = retryProfile,
-                Reason = $"Automatic retry with targeted OCR profile '{retryProfile}'.",
-                FeatureSnapshot = resolution.FeatureSnapshot
-            };
-            var retryAssessment = _qualityScorer.Score(retryResult, retryResolution, probeResult);
+            var retryAssessment = _qualityScorer.Score(retryResult, retryProfile);
 
             if (_qualityScorer.IsBetter(retryAssessment, initialAssessment))
             {
                 finalResult = retryResult;
-                finalAssessment = retryAssessment;
                 finalProfile = retryProfile;
                 retrySelected = true;
-                reason = $"{resolution.Reason} Automatic retry selected '{retryProfile}' because it scored better.";
-            }
-            else
-            {
-                reason = $"{resolution.Reason} Automatic retry with '{retryProfile}' was discarded because the first full OCR result scored better.";
             }
         }
 
-        finalAssessment.Signals.AutomaticRetryAttempted = retryAttempted;
-        finalAssessment.Signals.AutomaticRetrySelected = retrySelected;
-
-        var providerName = finalResult.ProviderName ?? _ocrProvider.GetType().Name;
-
         Logger.LogDebug(
-            "OCR extraction completed using {Provider} with requested profile {RequestedProfile} and effective profile {EffectiveProfile}.",
-            providerName,
-            resolution.RequestedProfileCode,
-            finalProfile);
+            "OCR completed using {Provider}: requested {RequestedProfile}, effective {EffectiveProfile}, retried {Retried}.",
+            finalResult.ProviderName ?? _ocrProvider.GetType().Name,
+            requestedProfile,
+            finalProfile,
+            retrySelected);
 
         return new TextExtractionResult
         {
@@ -152,55 +122,8 @@ public class DefaultTextExtractor : ITextExtractor, ITransientDependency
             Confidence = finalResult.Confidence,
             DetectedLanguage = finalResult.DetectedLanguage,
             PageCount = finalResult.PageCount,
-            UsedOcr = true,
-            OcrMetadata = new OcrExtractionMetadata
-            {
-                RequestedProfileCode = resolution.RequestedProfileCode,
-                EffectiveProfileCode = finalProfile,
-                ResolutionReason = reason,
-                ProviderName = providerName,
-                ProviderModelName = finalResult.ProviderModelName,
-                ProviderVersion = finalResult.ProviderVersion,
-                QualitySignals = finalAssessment.Signals
-            }
+            UsedOcr = true
         };
-    }
-
-    private async Task<OcrProbeResult?> TryProbeAsync(
-        Stream seekable,
-        TextExtractionContext ctx,
-        IList<string> languageHints,
-        string requestedProfile,
-        CancellationToken cancellationToken)
-    {
-        if (_ocrProbeProvider == null)
-        {
-            return null;
-        }
-
-        try
-        {
-            seekable.Position = 0;
-            return await _ocrProbeProvider.ProbeAsync(
-                seekable,
-                new OcrProbeOptions
-                {
-                    ContentType = ctx.ContentType ?? string.Empty,
-                    LanguageHints = languageHints,
-                    RequestedOcrProfileCode = requestedProfile,
-                    MaxPages = _ocrOptions.ProbeMaxPages
-                },
-                cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "OCR probe failed; falling back to general OCR profile resolution.");
-            return null;
-        }
     }
 
     private async Task<OcrResult> RecognizeAsync(

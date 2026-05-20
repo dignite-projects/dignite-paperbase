@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Text.Json;
-using Dignite.Paperbase.Abstractions.TextExtraction;
 using Dignite.Paperbase.Documents;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
@@ -27,17 +26,6 @@ public static class PaperbaseDbContextModelCreatingExtensions
             (a, b) => JsonSerializer.Serialize(a, (JsonSerializerOptions?)null) == JsonSerializer.Serialize(b, (JsonSerializerOptions?)null),
             v => v == null ? 0 : JsonSerializer.Serialize(v, (JsonSerializerOptions?)null).GetHashCode(),
             v => v == null ? null : JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(JsonSerializer.Serialize(v, (JsonSerializerOptions?)null), (JsonSerializerOptions?)null));
-
-    private static readonly ValueConverter<OcrQualitySignalSnapshot?, string?> OcrQualitySignalsConverter =
-        new(
-            v => v == null ? null : JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-            v => string.IsNullOrEmpty(v) ? null : JsonSerializer.Deserialize<OcrQualitySignalSnapshot>(v, (JsonSerializerOptions?)null));
-
-    private static readonly ValueComparer<OcrQualitySignalSnapshot?> OcrQualitySignalsComparer =
-        new(
-            (a, b) => JsonSerializer.Serialize(a, (JsonSerializerOptions?)null) == JsonSerializer.Serialize(b, (JsonSerializerOptions?)null),
-            v => v == null ? 0 : JsonSerializer.Serialize(v, (JsonSerializerOptions?)null).GetHashCode(),
-            v => v == null ? null : JsonSerializer.Deserialize<OcrQualitySignalSnapshot>(JsonSerializer.Serialize(v, (JsonSerializerOptions?)null), (JsonSerializerOptions?)null));
 
     public static void ConfigurePaperbase(this ModelBuilder builder)
     {
@@ -82,34 +70,6 @@ public static class PaperbaseDbContextModelCreatingExtensions
                 fo.Property(x => x.ContentHash)
                     .IsRequired()
                     .HasMaxLength(FileOriginConsts.MaxContentHashLength);
-            });
-
-            // OCR 元数据值对象（OwnsOne）。HasColumnName 锁定 #191 已建的原列名，
-            // 使本次形态重构（顶层标量 → 值对象）对 DB schema 零变更——纯 C# 侧收拢，不触发列 rename。
-            b.OwnsOne(x => x.OcrMetadata, om =>
-            {
-                om.Property(x => x.RequestedProfileCode)
-                    .HasColumnName("RequestedOcrProfileCode")
-                    .HasMaxLength(DocumentConsts.MaxOcrProfileCodeLength);
-                om.Property(x => x.EffectiveProfileCode)
-                    .HasColumnName("EffectiveOcrProfileCode")
-                    .HasMaxLength(DocumentConsts.MaxOcrProfileCodeLength);
-                om.Property(x => x.ResolutionReason)
-                    .HasColumnName("OcrProfileResolutionReason")
-                    .HasMaxLength(DocumentConsts.MaxOcrProfileResolutionReasonLength);
-                om.Property(x => x.ProviderName)
-                    .HasColumnName("OcrProviderName")
-                    .HasMaxLength(DocumentConsts.MaxOcrProviderNameLength);
-                om.Property(x => x.ProviderModelName)
-                    .HasColumnName("OcrProviderModelName")
-                    .HasMaxLength(DocumentConsts.MaxOcrProviderModelNameLength);
-                om.Property(x => x.ProviderVersion)
-                    .HasColumnName("OcrProviderVersion")
-                    .HasMaxLength(DocumentConsts.MaxOcrProviderVersionLength);
-                om.Property(x => x.QualitySignals)
-                    .HasColumnName("OcrQualitySignals")
-                    .HasColumnType("json")
-                    .HasConversion(OcrQualitySignalsConverter, OcrQualitySignalsComparer);
             });
 
             b.HasMany(x => x.PipelineRuns)

@@ -10,14 +10,4 @@ public static class DocumentConsts
 
     /// <summary>OCR / 抽取阶段检测到的语言 tag（ISO 639-1 或 IETF）。</summary>
     public static int MaxLanguageLength { get; set; } = 16;
-
-    public static int MaxOcrProfileCodeLength { get; set; } = 64;
-
-    public static int MaxOcrProfileResolutionReasonLength { get; set; } = 512;
-
-    public static int MaxOcrProviderNameLength { get; set; } = 128;
-
-    public static int MaxOcrProviderModelNameLength { get; set; } = 128;
-
-    public static int MaxOcrProviderVersionLength { get; set; } = 64;
 }

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Abstractions.TextExtraction;
 using Dignite.Paperbase.Documents;
 using Volo.Abp;
 using Volo.Abp.Data;
@@ -118,14 +117,12 @@ public class DocumentPipelineRunManager : DomainService
         string markdown,
         string? title,
         double? ocrConfidence,
-        SourceType sourceType = SourceType.Physical,
-        OcrExtractionMetadata? ocrMetadata = null)
+        SourceType sourceType = SourceType.Physical)
     {
         document.SetSourceType(sourceType);
         document.SetMarkdown(markdown);
         document.SetTitle(title);
         document.SetOcrConfidence(ocrConfidence);
-        document.SetOcrMetadata(ocrMetadata);
         return CompleteAsync(document, run);
     }
 

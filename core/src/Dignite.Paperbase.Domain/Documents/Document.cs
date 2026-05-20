@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
-using Dignite.Paperbase.Abstractions.TextExtraction;
 using Dignite.Paperbase.Documents;
 using Volo.Abp;
 using Volo.Abp.Domain.Entities.Auditing;
@@ -78,12 +77,6 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
 
     /// <summary>OCR 平均置信度（0..1）。OCR 完成后填充；CLAUDE.md "OCR 置信度门槛"依赖此值决定 <c>DocumentReadyEto</c> 是否发布。</summary>
     public virtual double? OcrConfidence { get; private set; }
-
-    /// <summary>
-    /// OCR 元数据（provider 标识 / profile 解析 / 质量信号快照）。OCR 完成后由 <see cref="SetOcrMetadata"/> 写入。
-    /// 与门槛一等公民 <see cref="OcrConfidence"/> 分离：后者是出口事件契约值，本属性是溯源 / 调试用的封装值对象。
-    /// </summary>
-    public virtual DocumentOcrMetadata? OcrMetadata { get; private set; }
 
     /// <summary>
     /// 类型绑定字段抽取结果（字段架构 v2）。键 = FieldName（与 LLM 输出 JSON 键同形）。
@@ -172,21 +165,6 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
         OcrConfidence = confidence.HasValue
             ? Check.Range(confidence.Value, nameof(confidence), 0d, 1d)
             : null;
-    }
-
-    internal void SetOcrMetadata(OcrExtractionMetadata? metadata)
-    {
-        // transport 契约 → 聚合根值对象的一次性映射；长度截断校验下沉到值对象 ctor。
-        OcrMetadata = metadata == null
-            ? null
-            : new DocumentOcrMetadata(
-                metadata.RequestedProfileCode,
-                metadata.EffectiveProfileCode,
-                metadata.ResolutionReason,
-                metadata.ProviderName,
-                metadata.ProviderModelName,
-                metadata.ProviderVersion,
-                metadata.QualitySignals);
     }
 
     /// <summary>

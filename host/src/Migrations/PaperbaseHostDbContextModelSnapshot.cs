@@ -2230,53 +2230,6 @@ namespace Dignite.Paperbase.Host.Migrations
 
             modelBuilder.Entity("Dignite.Paperbase.Documents.Document", b =>
                 {
-                    b.OwnsOne("Dignite.Paperbase.Documents.DocumentOcrMetadata", "OcrMetadata", b1 =>
-                        {
-                            b1.Property<Guid>("DocumentId")
-                                .HasColumnType("uniqueidentifier");
-
-                            b1.Property<string>("EffectiveProfileCode")
-                                .HasMaxLength(64)
-                                .HasColumnType("nvarchar(64)")
-                                .HasColumnName("EffectiveOcrProfileCode");
-
-                            b1.Property<string>("ProviderModelName")
-                                .HasMaxLength(128)
-                                .HasColumnType("nvarchar(128)")
-                                .HasColumnName("OcrProviderModelName");
-
-                            b1.Property<string>("ProviderName")
-                                .HasMaxLength(128)
-                                .HasColumnType("nvarchar(128)")
-                                .HasColumnName("OcrProviderName");
-
-                            b1.Property<string>("ProviderVersion")
-                                .HasMaxLength(64)
-                                .HasColumnType("nvarchar(64)")
-                                .HasColumnName("OcrProviderVersion");
-
-                            b1.Property<string>("QualitySignals")
-                                .HasColumnType("json")
-                                .HasColumnName("OcrQualitySignals");
-
-                            b1.Property<string>("RequestedProfileCode")
-                                .HasMaxLength(64)
-                                .HasColumnType("nvarchar(64)")
-                                .HasColumnName("RequestedOcrProfileCode");
-
-                            b1.Property<string>("ResolutionReason")
-                                .HasMaxLength(512)
-                                .HasColumnType("nvarchar(512)")
-                                .HasColumnName("OcrProfileResolutionReason");
-
-                            b1.HasKey("DocumentId");
-
-                            b1.ToTable("PaperbaseDocuments");
-
-                            b1.WithOwner()
-                                .HasForeignKey("DocumentId");
-                        });
-
                     b.OwnsOne("Dignite.Paperbase.Documents.FileOrigin", "FileOrigin", b1 =>
                         {
                             b1.Property<Guid>("DocumentId")
@@ -2306,7 +2259,7 @@ namespace Dignite.Paperbase.Host.Migrations
 
                             b1.HasKey("DocumentId");
 
-                            b1.ToTable("PaperbaseDocuments");
+                            b1.ToTable("PaperbaseDocuments", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("DocumentId");
@@ -2314,8 +2267,6 @@ namespace Dignite.Paperbase.Host.Migrations
 
                     b.Navigation("FileOrigin")
                         .IsRequired();
-
-                    b.Navigation("OcrMetadata");
                 });
 
             modelBuilder.Entity("Dignite.Paperbase.Documents.DocumentPipelineRun", b =>
@@ -2430,7 +2381,7 @@ namespace Dignite.Paperbase.Host.Migrations
 
                             b1.HasKey("IdentityUserPasskeyCredentialId");
 
-                            b1.ToTable("AbpUserPasskeys");
+                            b1.ToTable("AbpUserPasskeys", (string)null);
 
                             b1
                                 .ToJson("Data")

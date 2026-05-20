@@ -35,9 +35,4 @@ public class TextExtractionResult
 
     /// <summary>true = OCR (physical scan), false = direct text layer (digital)</summary>
     public bool UsedOcr { get; set; }
-
-    /// <summary>
-    /// OCR profile/provider audit metadata. Null for direct digital text extraction paths.
-    /// </summary>
-    public OcrExtractionMetadata? OcrMetadata { get; set; }
 }
