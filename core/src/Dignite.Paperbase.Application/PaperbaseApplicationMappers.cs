@@ -97,3 +97,17 @@ public partial class DocumentToDocumentListItemDtoMapper : MapperBase<Document, 
     public override partial DocumentListItemDto Map(Document source);
     public override partial void Map(Document source, DocumentListItemDto destination);
 }
+
+[Mapper(RequiredMappingStrategy = RequiredMappingStrategy.Target)]
+public partial class DocumentTypeToDtoMapper : MapperBase<DocumentType, DocumentTypeDto>
+{
+    public override partial DocumentTypeDto Map(DocumentType source);
+    public override partial void Map(DocumentType source, DocumentTypeDto destination);
+}
+
+[Mapper(RequiredMappingStrategy = RequiredMappingStrategy.Target)]
+public partial class FieldDefinitionToDtoMapper : MapperBase<FieldDefinition, FieldDefinitionDto>
+{
+    public override partial FieldDefinitionDto Map(FieldDefinition source);
+    public override partial void Map(FieldDefinition source, FieldDefinitionDto destination);
+}
