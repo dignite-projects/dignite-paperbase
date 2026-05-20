@@ -424,8 +424,7 @@ public class DocumentAppService : PaperbaseAppService, IDocumentAppService
                 TenantId = document.TenantId,
                 EventTime = Clock.Now,
                 DocumentTypeCode = documentTypeCode,
-                ClassificationConfidence = 1.0,
-                Markdown = document.Markdown
+                ClassificationConfidence = 1.0
             });
 
         await _documentRepository.UpdateAsync(document, autoSave: true);

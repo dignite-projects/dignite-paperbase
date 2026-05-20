@@ -76,15 +76,13 @@ public class EtoContract_Tests
             TenantId = Guid.NewGuid(),
             EventTime = SampleEventTime,
             DocumentTypeCode = "contract.general",
-            ClassificationConfidence = 0.93,
-            Markdown = "# Title\n\nbody"
+            ClassificationConfidence = 0.93
         };
 
         var roundTrip = RoundTrip(eto);
 
         roundTrip.DocumentTypeCode.ShouldBe("contract.general");
         roundTrip.ClassificationConfidence.ShouldBe(0.93);
-        roundTrip.Markdown.ShouldBe("# Title\n\nbody");
         roundTrip.EventTime.ShouldBe(eto.EventTime);
     }
 

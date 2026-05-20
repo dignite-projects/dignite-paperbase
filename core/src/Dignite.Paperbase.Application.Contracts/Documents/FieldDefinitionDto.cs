@@ -1,5 +1,4 @@
 using System;
-using Dignite.Paperbase.Abstractions.Documents;
 using Volo.Abp.Application.Dtos;
 
 namespace Dignite.Paperbase.Documents;

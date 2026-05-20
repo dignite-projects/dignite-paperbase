@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using Dignite.Paperbase.Abstractions.Documents;
 using Volo.Abp.Validation;
 
 namespace Dignite.Paperbase.Documents;

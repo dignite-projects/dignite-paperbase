@@ -76,8 +76,7 @@ public class FieldExtractionEventHandler_Tests
             TenantId = null,
             EventTime = DateTime.UtcNow,
             DocumentTypeCode = string.Empty,
-            ClassificationConfidence = 0,
-            Markdown = "# Body"
+            ClassificationConfidence = 0
         };
 
         await _handler.HandleEventAsync(evt);
@@ -102,8 +101,7 @@ public class FieldExtractionEventHandler_Tests
             TenantId = null,
             EventTime = DateTime.UtcNow,
             DocumentTypeCode = "contract.general",
-            ClassificationConfidence = 0.92,
-            Markdown = "# Body"
+            ClassificationConfidence = 0.92
         };
 
         await _handler.HandleEventAsync(evt);
@@ -147,8 +145,7 @@ public class FieldExtractionEventHandler_Tests
             TenantId = null,
             EventTime = DateTime.UtcNow,
             DocumentTypeCode = "contract.general",
-            ClassificationConfidence = 0.92,
-            Markdown = "# Body"
+            ClassificationConfidence = 0.92
         };
 
         await _handler.HandleEventAsync(evt);
@@ -185,8 +182,7 @@ public class FieldExtractionEventHandler_Tests
             TenantId = eventTenant,
             EventTime = DateTime.UtcNow,
             DocumentTypeCode = "contract.general",
-            ClassificationConfidence = 0.92,
-            Markdown = "# Body"
+            ClassificationConfidence = 0.92
         };
 
         await _handler.HandleEventAsync(evt);
@@ -226,8 +222,7 @@ public class FieldExtractionEventHandler_Tests
             TenantId = null,
             EventTime = DateTime.UtcNow,
             DocumentTypeCode = "contract.general",   // ← stale typeCode
-            ClassificationConfidence = 0.92,
-            Markdown = "# Body"
+            ClassificationConfidence = 0.92
         };
 
         await _handler.HandleEventAsync(staleEvent);
@@ -275,8 +270,7 @@ public class FieldExtractionEventHandler_Tests
             TenantId = null,
             EventTime = DateTime.UtcNow,
             DocumentTypeCode = "contract.general",
-            ClassificationConfidence = 0.92,
-            Markdown = "# Body"
+            ClassificationConfidence = 0.92
         };
 
         await _handler.HandleEventAsync(evt);
@@ -319,6 +313,10 @@ public class FieldExtractionEventHandler_Tests
             .GetMethod("ApplyAutomaticClassificationResult",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
             .Invoke(doc, [typeCode, 0.99]);
+        typeof(Document)
+            .GetMethod("SetMarkdown",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .Invoke(doc, ["# Body"]);
 
         return doc;
     }

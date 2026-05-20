@@ -1,5 +1,4 @@
 using System;
-using Dignite.Paperbase.Abstractions.Documents;
 using Shouldly;
 using Volo.Abp;
 using Xunit;

@@ -1,4 +1,4 @@
-namespace Dignite.Paperbase.Abstractions.Documents;
+namespace Dignite.Paperbase.Documents;
 
 /// <summary>
 /// 文档分类相关的默认常量。集中维护以避免阈值魔法值散落在多个分类器中。

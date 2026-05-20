@@ -185,8 +185,7 @@ public class DocumentClassificationBackgroundJob
                     TenantId = document.TenantId,
                     EventTime = _clock.Now,
                     DocumentTypeCode = typeDef.TypeCode,
-                    ClassificationConfidence = outcome.ConfidenceScore,
-                    Markdown = document.Markdown
+                    ClassificationConfidence = outcome.ConfidenceScore
                 });
 
             return;

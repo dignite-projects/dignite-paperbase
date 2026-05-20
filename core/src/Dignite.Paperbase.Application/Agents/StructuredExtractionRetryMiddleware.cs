@@ -4,12 +4,13 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Paperbase.Abstractions.Agents;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace Dignite.Paperbase.Abstractions.Agents;
+namespace Dignite.Paperbase.Agents;
 
 /// <summary>
 /// Wraps an <see cref="AIAgent"/> with a validation-and-retry loop for structured

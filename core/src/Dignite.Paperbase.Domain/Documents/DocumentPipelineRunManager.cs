@@ -177,7 +177,7 @@ public class DocumentPipelineRunManager : DomainService
     /// <summary>
     /// 人工确认文档类型：写入分类结果、标记已审核、完成 Run。置信度固定为 1.0。
     /// 人工覆盖信号由 <see cref="Document.ReviewStatus"/> = Reviewed 表达。
-    /// 该字面量与 Abstractions 层 <c>ClassificationDefaults.ManualClassificationConfidence</c>
+    /// 该字面量与 Domain.Shared 层 <c>ClassificationDefaults.ManualClassificationConfidence</c>
     /// 同步维护（Domain 不依赖 Abstractions，故此处硬编码）。
     /// <para>
     /// 调用方负责传入已加载的 <paramref name="typeDef"/>；manager 不再查 DB。

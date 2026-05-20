@@ -5,6 +5,7 @@ namespace Dignite.Paperbase.Abstractions.Documents;
 
 /// <summary>
 /// 文档分类完成后发布——下游字段抽取 / 业务消费方按 <see cref="DocumentTypeCode"/> 路由。
+/// 薄载荷：正文 Markdown 通过 REST / MCP / 仓储回拉，不随事件投递。
 /// <para>
 /// 不变契约（issue #188）：所有属性 <c>init</c>-only；<see cref="EventTime"/> 标 <c>required</c>。
 /// </para>
@@ -27,10 +28,4 @@ public class DocumentClassifiedEto
     public string DocumentTypeCode { get; init; } = default!;
 
     public double ClassificationConfidence { get; init; }
-
-    /// <summary>
-    /// 文档提取的结构化 Markdown，随事件携带，省去业务模块回查核心仓储。
-    /// 业务模块可直接喂给 LLM（结构信号有助于字段抽取）；需要纯文本时用 <see cref="Dignite.Paperbase.Documents.MarkdownStripper"/>。
-    /// </summary>
-    public string? Markdown { get; init; }
 }

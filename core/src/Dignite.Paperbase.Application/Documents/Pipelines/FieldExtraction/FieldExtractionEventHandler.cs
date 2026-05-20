@@ -26,7 +26,7 @@ namespace Dignite.Paperbase.Documents.Pipelines.FieldExtraction;
 /// </para>
 /// <para>
 /// UoW 三段式（<c>.claude/rules/background-jobs.md</c>）：handler 上 <c>[UnitOfWork(IsDisabled = true)]</c>
-/// 关掉 ambient UoW；读 FieldDefinition / LLM 调用 / 写 Document + publish 三阶段各自 begin
+/// 关掉 ambient UoW；读 FieldDefinition / 回查 Document.Markdown / LLM 调用 / 写 Document + publish 各阶段 begin
 /// <c>requiresNew</c> 短 UoW——LLM 外部调用永远不被任何长事务包住，避免在高并发下 DB 连接 /
 /// 锁 / transaction 跨整个 LLM 调用窗口而触发 SQL command timeout。
 /// </para>
@@ -98,9 +98,44 @@ public class FieldExtractionEventHandler
             var descriptors = definitions.Select(d => new FieldExtractionDescriptor(
                 d.Name, d.Prompt, d.DataType, d.IsRequired)).ToList();
 
+            string markdown;
+            using (var documentReadUow = _unitOfWorkManager.Begin(requiresNew: true))
+            {
+                var readDocument = await _documentRepository.FindAsync(eventData.DocumentId, includeDetails: false);
+                if (readDocument == null)
+                {
+                    _logger.LogWarning(
+                        "DocumentClassifiedEto for missing document {DocumentId} — field extraction skipped.",
+                        eventData.DocumentId);
+                    return;
+                }
+
+                // 跨租户断言（防 ambient DataFilter 被 disable 的路径）。
+                if (readDocument.TenantId != eventData.TenantId)
+                {
+                    _logger.LogWarning(
+                        "Cross-tenant DocumentClassifiedEto received: event tenant={EventTenant} document tenant={DocTenant} document={DocId}",
+                        eventData.TenantId, readDocument.TenantId, eventData.DocumentId);
+                    return;
+                }
+
+                // 在 LLM 调用前先做一次 stale 事件防护，避免对已经重分类的文档做无意义外部调用。
+                if (!string.Equals(readDocument.DocumentTypeCode, eventData.DocumentTypeCode, StringComparison.Ordinal))
+                {
+                    _logger.LogInformation(
+                        "Stale DocumentClassifiedEto before field extraction: event typeCode={EventTypeCode} document typeCode={DocTypeCode} doc={DocumentId}.",
+                        eventData.DocumentTypeCode, readDocument.DocumentTypeCode, eventData.DocumentId);
+                    return;
+                }
+
+                markdown = readDocument.Markdown ?? string.Empty;
+                await documentReadUow.CompleteAsync();
+            }
+
             // 阶段 2：外部 LLM 调用，**不在任何 UoW 内**（background-jobs.md 硬约束）。
             // handler 上 [UnitOfWork(IsDisabled = true)] 关掉了 ambient UoW；
-            // 阶段 1 的 readUow 已 dispose；到这里 _unitOfWorkManager.Current 应为 null。
+            // 字段定义读取和 Document.Markdown 回查的短 UoW 均已 dispose；
+            // 到这里 _unitOfWorkManager.Current 应为 null。
             // 一旦不为 null 说明上述假设被未来改动打穿，立即 log 警告以暴露隐患。
             if (_unitOfWorkManager.Current != null)
             {
@@ -111,7 +146,7 @@ public class FieldExtractionEventHandler
                     eventData.DocumentId);
             }
 
-            var extracted = await _workflow.ExtractAsync(descriptors, eventData.Markdown ?? string.Empty);
+            var extracted = await _workflow.ExtractAsync(descriptors, markdown);
 
             // 阶段 3：短 UoW 写 Document + publish FieldsExtractedEto——
             // 两件事在同一 UoW 内由 ABP outbox 原子持久化，避免"字段写入成功但事件丢失"。

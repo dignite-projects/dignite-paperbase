@@ -5,7 +5,6 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Dignite.Paperbase.Abstractions.Documents;
 using Dignite.Paperbase.Ai;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;

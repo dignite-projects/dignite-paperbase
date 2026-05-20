@@ -13,7 +13,7 @@ namespace Dignite.Paperbase.Ai;
 public static class PaperbaseAIConsts
 {
     /// <summary>
-    /// DI key for the document-title-generator <see cref="Microsoft.Extensions.AI.IChatClient"/>
+    /// DI key for the document-title-generator <c>IChatClient</c>
     /// used by <c>DocumentTextExtractionBackgroundJob.TryGenerateTitleAsync</c>. This is a
     /// single-shot text-completion path: no tools, no distributed cache (each prompt is
     /// unique), no FunctionInvocation wrapper. Splitting it off from the main chat client
@@ -23,7 +23,7 @@ public static class PaperbaseAIConsts
     public const string TitleGeneratorChatClientKey = "paperbase-title-generator";
 
     /// <summary>
-    /// DI key for the structured-output <see cref="Microsoft.Extensions.AI.IChatClient"/>
+    /// DI key for the structured-output <c>IChatClient</c>
     /// shared by all single-shot, tool-free, prompt-unique <c>RunAsync&lt;T&gt;</c> call
     /// sites: <c>DocumentClassificationWorkflow</c> and business-module field extractors.
     ///

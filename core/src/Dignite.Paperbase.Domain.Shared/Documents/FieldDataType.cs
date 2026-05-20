@@ -1,4 +1,4 @@
-namespace Dignite.Paperbase.Abstractions.Documents;
+namespace Dignite.Paperbase.Documents;
 
 /// <summary>
 /// 字段数据类型——影响 LLM 抽取时的 schema 提示与下游解析行为。

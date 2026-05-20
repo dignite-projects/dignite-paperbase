@@ -1,4 +1,4 @@
-using Dignite.Paperbase.Abstractions.Documents;
+using Dignite.Paperbase.Documents;
 
 namespace Dignite.Paperbase.Documents.Pipelines.FieldExtraction;
 

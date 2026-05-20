@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Text.RegularExpressions;
-using Dignite.Paperbase.Abstractions.Documents;
 using Volo.Abp;
 using Volo.Abp.Domain.Entities.Auditing;
 using Volo.Abp.MultiTenancy;
