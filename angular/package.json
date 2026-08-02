@@ -47,7 +47,7 @@
   "devDependencies": {
     "@abp/ng.schematics": "~10.2.0",
     "@abp/nx.generators": "~10.2.0",
-    "@angular-devkit/build-angular": "~21.2.0",
+    "@angular-devkit/build-angular": "~22.1.2",
     "@angular-eslint/builder": "~21.0.0",
     "@angular-eslint/eslint-plugin": "~21.0.0",
     "@angular-eslint/eslint-plugin-template": "~21.0.0",
