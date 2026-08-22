@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0-preview.1] - 2026-08-22
+
+First preview of the 0.4.0 line, opening the post-0.3.1 development cycle. Headline work: closing a silent field-extraction truncation on large multi-value fields (a production bank-statement document lost the tail of a transcribed table with no error signal), deterministic LaTeX-table / layout-annotation cleanup for the vision-LLM OCR provider, and hardening the host's OpenAI-compatible `HttpClient` against stale pooled connections. As a `0.y.z` pre-release the exit contracts may still change — see [CONTRIBUTING → Versioning and releases](CONTRIBUTING.md#versioning-and-releases).
+
+### Fixed
+
+- **Field extraction silently truncating large multi-value fields** — `FieldExtractionWorkflow` never set `ChatOptions.MaxOutputTokens`, so SiliconFlow silently applied its own ~4096-token default completion cap; even once sized (CJK-aware, since field values preserve the document's original wording and `DefaultLanguage` defaults to Japanese), the OpenAI SDK serializes it as `max_completion_tokens`, which SiliconFlow's endpoint doesn't recognize and silently ignores instead of erroring. A `DelegatingHandler` on the host's SiliconFlow `HttpClient` now rewrites the outgoing request body to the legacy `max_tokens` field it does understand; a response cut off at the limit (`FinishReason.Length`) also now logs a distinct warning instead of degrading with no diagnosable signal.
+- **Chat-client HTTP hangs from stale pooled connections** — the host's OpenAI-compatible `HttpClient` now bounds `PooledConnectionLifetime` to 5 minutes and raises `NetworkTimeout` to 300s (with the SDK's own 100s `HttpClient.Timeout` disabled, since it was silently overriding `NetworkTimeout` back down to 100s), closing a failure mode where a NAT/proxy-dropped idle connection hung every request that reused it for the full timeout before ABP's retry loop re-queued the job.
+- **VisionLlm OCR: LaTeX tables and leaked layout annotations** — a vision LLM (observed on Qwen3-VL), trained heavily on academic document datasets, still rendered line-item tables as `\begin{tabular}` and occasionally leaked an internal bounding-box HTML comment into the transcription, despite the prompt requiring GitHub-Flavored Markdown and forbidding both. `VisionLlmOutputGuard` now deterministically rewrites `\begin{tabular}` blocks to GFM tables and strips HTML comments, the same fix pattern as the existing code-fence stripper (#448).
+- **VisionLlm OCR: single-page running-header/footer judgment** — the prompt now asks the model to judge boilerplate by position and style rather than by confirmed repetition (a single-page call can never confirm repetition across pages), closing a case where a page-bottom confidentiality line and page number survived transcription.
+
+### Changed
+
+- **`SlugSuggestionAppService` moved off the `Structured` keyed chat client onto `TitleGenerator`** — `Structured` is now reserved for classification and field extraction, the accuracy-sensitive callers where mis-output is user-visible, so it stays pinned to a strong model rather than trimming cost; slug suggestion's single-shot, prompt-unique-per-call shape matches `TitleGenerator`'s existing usage instead.
+
 ## [0.3.1] - 2026-07-17
 
 Patch release for the 0.3.x stable line. This release tightens field-schema cleanup and prompt-budget guards, hardens MCP client-IP handling behind trusted proxies, fixes delete guards around recycle-bin documents, restores stable NuGet symbol validation by embedding PDBs, and adds operator bulk-delete selection to the document list and recycle bin.
@@ -249,7 +264,8 @@ Preview of the 0.2.0 line. This release rebrands the project to **Dignite Vault 
 - Legacy Angular document-upload route.
 - Dead fields from the segmentation subsystem (#390).
 
-[Unreleased]: https://github.com/dignite-projects/vault-extract/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/dignite-projects/vault-extract/compare/v0.4.0-preview.1...HEAD
+[0.4.0-preview.1]: https://github.com/dignite-projects/vault-extract/compare/v0.3.1...v0.4.0-preview.1
 [0.3.1]: https://github.com/dignite-projects/vault-extract/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/dignite-projects/vault-extract/compare/v0.2.0...v0.3.0
 [0.3.0-preview.4]: https://github.com/dignite-projects/vault-extract/compare/v0.3.0-preview.3...v0.3.0-preview.4
