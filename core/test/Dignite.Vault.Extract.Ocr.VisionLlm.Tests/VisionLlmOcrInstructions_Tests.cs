@@ -60,4 +60,29 @@ public class VisionLlmOcrInstructions_Tests
         prompt.ShouldContain("#, ##, ###");
         prompt.ShouldContain("top-level heading");
     }
+
+    [Fact]
+    public void System_prompt_forbids_latex_tables_and_layout_annotations()
+    {
+        var prompt = VisionLlmOcrInstructions.SystemPrompt;
+
+        // Empirically observed on Qwen3-VL: without an explicit ban, a vision-LLM educated on academic document
+        // datasets renders line-item tables as \begin{tabular}...\end{tabular} instead of a Markdown pipe table,
+        // and leaks internal layout bookkeeping (an HTML bbox comment) into the transcription.
+        prompt.ShouldContain("GitHub-Flavored Markdown");
+        prompt.ShouldContain("\\begin{tabular}");
+        prompt.ShouldContain("bounding-box coordinates");
+    }
+
+    [Fact]
+    public void System_prompt_applies_the_header_footer_exclusion_without_needing_confirmed_repetition()
+    {
+        var prompt = VisionLlmOcrInstructions.SystemPrompt;
+
+        // Empirically observed on Qwen3-VL: a page-bottom confidentiality line and page number survived
+        // transcription on a single-page call. The exclusion is framed around *repeated* boilerplate (#409), but
+        // a single-page call can never confirm repetition, so the prompt must say how to judge from one page alone.
+        prompt.ShouldContain("even on a single page");
+        prompt.ShouldContain("not by confirming repetition");
+    }
 }

@@ -1,13 +1,17 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Dignite.Vault.Extract.Ocr.VisionLlm;
 
 /// <summary>
 /// Output sanitation for the vision-LLM OCR provider: a repetition-loop <b>detector</b>
-/// (<see cref="LooksLikeRepetitionLoop"/>, discard on a trip) plus a code-fence <b>stripper</b>
-/// (<see cref="StripCodeFences"/>, unwrap in place).
+/// (<see cref="LooksLikeRepetitionLoop"/>, discard on a trip), a code-fence <b>stripper</b>
+/// (<see cref="StripCodeFences"/>, unwrap in place), a LaTeX-table <b>converter</b>
+/// (<see cref="ConvertLatexTables"/>, rewrite to GitHub-Flavored Markdown), and a layout-annotation
+/// <b>stripper</b> (<see cref="StripLayoutAnnotations"/>, drop HTML comments).
 /// <para>
 /// Traditional OCR can only mis-read characters; a vision LLM driven in chat mode can additionally fall
 /// into a repetition loop that fills the token budget with the same line/phrase over and over (the
@@ -178,6 +182,101 @@ public static class VisionLlmOutputGuard
         }
 
         return run >= 3 && s[run..].IndexOf('`') < 0;
+    }
+
+    private static readonly Regex LatexTabularRegex = new(
+        @"\\begin\{tabular\}\{[^}]*\}(?<body>.*?)\\end\{tabular\}",
+        RegexOptions.Singleline | RegexOptions.Compiled);
+
+    private static readonly Regex LatexTextCommandRegex = new(
+        @"\\text(?:bf|it)\{(?<inner>[^{}]*)\}",
+        RegexOptions.Compiled);
+
+    private static readonly Regex HtmlCommentRegex = new(
+        @"<!--.*?-->",
+        RegexOptions.Singleline | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Rewrites LaTeX <c>\begin{tabular}...\end{tabular}</c> blocks into GitHub-Flavored Markdown tables.
+    /// <para>
+    /// The OCR system prompt requires GFM tables and explicitly forbids LaTeX table markup, but a vision
+    /// LLM trained heavily on academic document datasets still reaches for <c>\begin{tabular}</c> /
+    /// <c>\hline</c> / <c>\\</c> for line-item tables regardless — observed on Qwen3-VL and not fixed by
+    /// strengthening the prompt further. As with <see cref="StripCodeFences"/> (#448), the reliable fix is a
+    /// deterministic rewrite rather than another round of prompt wording. <c>\textbf{...}</c> / <c>\textit{...}</c>
+    /// wrapping inside a cell is unwrapped to its inner text; any other LaTeX inside a cell passes through
+    /// verbatim (rare, and safer than trying to strip commands we have not observed).
+    /// </para>
+    /// </summary>
+    public static string ConvertLatexTables(string? markdown)
+    {
+        if (string.IsNullOrEmpty(markdown) || markdown.IndexOf("tabular", StringComparison.Ordinal) < 0)
+        {
+            return markdown ?? string.Empty;
+        }
+
+        return LatexTabularRegex.Replace(markdown, match => RenderMarkdownTable(match.Groups["body"].Value));
+    }
+
+    /// <summary>
+    /// Drops HTML comments (e.g. a leaked internal bounding-box annotation like
+    /// <c>&lt;!-- Table (48, 238, 952, 391) --&gt;</c>) from a vision-LLM transcription. An OCR'd business
+    /// document never legitimately contains an HTML comment, so removing every occurrence is safe.
+    /// </summary>
+    public static string StripLayoutAnnotations(string? markdown)
+    {
+        if (string.IsNullOrEmpty(markdown) || markdown.IndexOf("<!--", StringComparison.Ordinal) < 0)
+        {
+            return markdown ?? string.Empty;
+        }
+
+        return HtmlCommentRegex.Replace(markdown, string.Empty);
+    }
+
+    private static string RenderMarkdownTable(string tabularBody)
+    {
+        var rowTexts = tabularBody
+            .Replace("\\hline", string.Empty)
+            .Split(new[] { "\\\\" }, StringSplitOptions.None)
+            .Select(r => r.Trim())
+            .Where(r => r.Length > 0)
+            .ToList();
+
+        if (rowTexts.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var rows = rowTexts.Select(r => r.Split('&').Select(CleanTableCell).ToArray()).ToList();
+        var columnCount = rows.Max(r => r.Length);
+
+        var sb = new StringBuilder();
+        AppendMarkdownRow(sb, rows[0], columnCount);
+        sb.Append('|').Append(string.Concat(Enumerable.Repeat("---|", columnCount))).Append('\n');
+        for (var i = 1; i < rows.Count; i++)
+        {
+            AppendMarkdownRow(sb, rows[i], columnCount);
+        }
+
+        return sb.ToString().TrimEnd('\n');
+    }
+
+    private static void AppendMarkdownRow(StringBuilder sb, string[] cells, int columnCount)
+    {
+        sb.Append("| ");
+        for (var i = 0; i < columnCount; i++)
+        {
+            sb.Append(i < cells.Length ? cells[i] : string.Empty).Append(" | ");
+        }
+
+        sb.Length -= 1; // drop the trailing extra space, keep the final "|"
+        sb.Append('\n');
+    }
+
+    private static string CleanTableCell(string cell)
+    {
+        var unwrapped = LatexTextCommandRegex.Replace(cell.Trim(), "${inner}");
+        return unwrapped.Replace("|", "\\|").Trim();
     }
 
     // Majority letters/digits → real content. Excludes Markdown table separators ("|---|---|"),

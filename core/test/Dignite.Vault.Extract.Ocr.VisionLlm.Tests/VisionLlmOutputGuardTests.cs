@@ -190,4 +190,92 @@ public class VisionLlmOutputGuardTests
         const string markdown = "```code```";
         VisionLlmOutputGuard.StripCodeFences(markdown).ShouldBe(markdown);
     }
+
+    // --- ConvertLatexTables ---
+
+    [Fact]
+    public void ConvertLatexTables_Leaves_Plain_Markdown_Untouched()
+    {
+        const string markdown = "# Title\n\n| a | b |\n| --- | --- |\n| 1 | 2 |";
+        VisionLlmOutputGuard.ConvertLatexTables(markdown).ShouldBe(markdown);
+    }
+
+    [Fact]
+    public void ConvertLatexTables_Null_Or_Empty_Becomes_Empty()
+    {
+        VisionLlmOutputGuard.ConvertLatexTables(null).ShouldBe(string.Empty);
+        VisionLlmOutputGuard.ConvertLatexTables(string.Empty).ShouldBe(string.Empty);
+    }
+
+    [Fact]
+    public void ConvertLatexTables_Rewrites_A_Bolded_Header_Tabular_Into_A_Gfm_Table()
+    {
+        // Reproduces the exact shape Qwen3-VL emitted for a Japanese invoice line-item table despite the
+        // prompt requiring GFM tables: \textbf{...} headers, \hline row rules, \\ row separators.
+        const string latex =
+            "\\begin{tabular}{|l|c|c|c|}\n" +
+            "\\hline\n" +
+            "\\textbf{品目} & \\textbf{数量} & \\textbf{単価} & \\textbf{金額} \\\\\n" +
+            "\\hline\n" +
+            "ノートパソコン & 3 & ¥128,000 & ¥384,000 \\\\\n" +
+            "\\hline\n" +
+            "ワイヤレスマウス & 10 & ¥2,500 & ¥25,000 \\\\\n" +
+            "\\hline\n" +
+            "\\end{tabular}";
+
+        var result = VisionLlmOutputGuard.ConvertLatexTables(latex);
+
+        result.ShouldNotContain("tabular");
+        result.ShouldNotContain("\\hline");
+        result.ShouldNotContain("\\textbf");
+        result.ShouldContain("| 品目 | 数量 | 単価 | 金額 |");
+        result.ShouldContain("|---|---|---|---|");
+        result.ShouldContain("| ノートパソコン | 3 | ¥128,000 | ¥384,000 |");
+        result.ShouldContain("| ワイヤレスマウス | 10 | ¥2,500 | ¥25,000 |");
+    }
+
+    [Fact]
+    public void ConvertLatexTables_Preserves_Surrounding_Content()
+    {
+        const string markdown =
+            "# 請求書\n\nBefore.\n\n\\begin{tabular}{|l|c|}\n\\hline\na & b \\\\\n\\hline\n\\end{tabular}\n\nAfter.";
+
+        var result = VisionLlmOutputGuard.ConvertLatexTables(markdown);
+
+        result.ShouldContain("# 請求書");
+        result.ShouldContain("Before.");
+        result.ShouldContain("After.");
+        result.ShouldContain("| a | b |");
+    }
+
+    // --- StripLayoutAnnotations ---
+
+    [Fact]
+    public void StripLayoutAnnotations_Removes_A_Leaked_Bounding_Box_Comment()
+    {
+        // Reproduces what Qwen3-VL leaked immediately before a table despite the prompt forbidding
+        // layout annotations.
+        const string markdown = "御中: 有限会社テスト工業 様\n\n<!-- Table (48, 238, 952, 391) -->\n\n| a | b |";
+
+        var result = VisionLlmOutputGuard.StripLayoutAnnotations(markdown);
+
+        result.ShouldNotContain("<!--");
+        result.ShouldNotContain("Table (48");
+        result.ShouldContain("御中: 有限会社テスト工業 様");
+        result.ShouldContain("| a | b |");
+    }
+
+    [Fact]
+    public void StripLayoutAnnotations_Leaves_Plain_Markdown_Untouched()
+    {
+        const string markdown = "# Title\n\nBody text with no comments.";
+        VisionLlmOutputGuard.StripLayoutAnnotations(markdown).ShouldBe(markdown);
+    }
+
+    [Fact]
+    public void StripLayoutAnnotations_Null_Or_Empty_Becomes_Empty()
+    {
+        VisionLlmOutputGuard.StripLayoutAnnotations(null).ShouldBe(string.Empty);
+        VisionLlmOutputGuard.StripLayoutAnnotations(string.Empty).ShouldBe(string.Empty);
+    }
 }

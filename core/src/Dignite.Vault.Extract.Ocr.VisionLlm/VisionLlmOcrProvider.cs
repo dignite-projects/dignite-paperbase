@@ -97,9 +97,14 @@ public class VisionLlmOcrProvider : IOcrProvider, ITransientDependency
         // #448: a chat vision LLM sometimes wraps all or part of its Markdown in a ```markdown code fence
         // despite the prompt forbidding it, which makes the fenced block (typically a table) render as literal
         // code downstream. Strip fence delimiters so the persisted transcription is clean Markdown for every
-        // consumer (preview / RAG / classification / egress). Trim again since removing a leading/trailing
-        // fence line can leave a blank edge.
-        var text = VisionLlmOutputGuard.StripCodeFences(response.Text).Trim();
+        // consumer (preview / RAG / classification / egress).
+        // Two more deterministic rewrites for the same reason (prompt wording alone did not hold on Qwen3-VL):
+        // line-item tables sometimes come back as LaTeX \begin{tabular} instead of a Markdown table, and an
+        // internal bounding-box annotation (an HTML comment) sometimes leaks into the output.
+        // Trim again since removing a leading/trailing fence line can leave a blank edge.
+        var text = VisionLlmOutputGuard.StripLayoutAnnotations(
+            VisionLlmOutputGuard.ConvertLatexTables(
+                VisionLlmOutputGuard.StripCodeFences(response.Text))).Trim();
 
         if (text.Length == 0)
         {
