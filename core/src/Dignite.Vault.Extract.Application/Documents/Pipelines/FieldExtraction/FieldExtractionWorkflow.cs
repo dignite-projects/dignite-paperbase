@@ -99,14 +99,77 @@ public class FieldExtractionWorkflow : ITransientDependency
 
         var options = new ChatOptions
         {
-            ResponseFormat = BuildResponseFormat(fields)
+            ResponseFormat = BuildResponseFormat(fields),
+            MaxOutputTokens = EstimateMaxOutputTokens(fields)
         };
 
         var response = await _chatClient.GetResponseAsync(messages, options, cancellationToken);
         var rawJson = response.Text?.Trim() ?? string.Empty;
 
+        if (response.FinishReason == ChatFinishReason.Length)
+        {
+            // The provider cut generation off mid-JSON before the model finished the envelope — observed in
+            // practice on a many-row AllowMultiple field (SiliconFlow's own default output cap, ~4096 tokens,
+            // silently applies whenever the caller sends none). Log it distinctly from a genuinely malformed
+            // response so this is diagnosable from logs alone; ParseResult's JSON-parse failure below still
+            // falls back to all-null for whichever fields did not fully decode.
+            _logger.LogWarning(
+                "Field extraction response was cut off at the token limit (MaxOutputTokens={MaxOutputTokens}); " +
+                "the JSON envelope is likely incomplete and some or all field values may parse as null.",
+                options.MaxOutputTokens);
+        }
+
         return ParseResult(rawJson, fields);
     }
+
+    /// <summary>
+    /// Conservative worst-case output-token ceiling for the requested schema, so the provider's own default
+    /// output cap (observed at ~4096 tokens on SiliconFlow when the caller sends none) can never silently cut
+    /// the JSON off mid-generation for a schema that is itself within the documented per-field limits. One
+    /// <c>AllowMultiple</c> field alone can legitimately need up to <c>MaxMultiValueCount</c> ×
+    /// <c>MaxTextValueLength</c> characters.
+    /// <para>
+    /// <b>Text-bearing content is budgeted at <see cref="CjkTokenSafetyMultiplier"/> tokens per character, not
+    /// 1:1.</b> <see cref="VaultExtractBehaviorOptions.DefaultLanguage"/> defaults to <c>"ja"</c> and field
+    /// values preserve the document's original wording (see that option's remarks), so this product's real
+    /// output is routinely Japanese/CJK. An initial 1-char-≈-1-token cut (and an earlier, even more optimistic
+    /// 1.5-2-chars-per-token guess) both under-allocated in practice: replaying the real prompt for a production
+    /// bank-statement document against SiliconFlow's DeepSeek-V3 showed ~3.5-3.8 tokens spent per character of
+    /// generated Japanese table content (BPE tokenizers not tuned for Japanese routinely split one multi-byte
+    /// kana/kanji character into 2+ tokens), which reproduced the exact mid-JSON truncation this method exists
+    /// to prevent even though the estimate looked generous in characters. <c>MaxOutputTokens</c> is a ceiling
+    /// the model can stop well short of, not a target it is asked to fill, so erring high here is cheap; erring
+    /// low silently nulls fields (see <see cref="ExtractAsync"/>'s <c>ChatFinishReason.Length</c> branch).
+    /// </para>
+    /// </summary>
+    private static int EstimateMaxOutputTokens(IReadOnlyList<FieldExtractionDescriptor> fields)
+    {
+        var chars = 0;
+        foreach (var field in fields)
+        {
+            chars += field.DataType switch
+            {
+                FieldDataType.LongText => DocumentExtractedFieldConsts.MaxLongTextValueLength * CjkTokenSafetyMultiplier,
+                FieldDataType.Text when field.AllowMultiple =>
+                    DocumentExtractedFieldConsts.MaxMultiValueCount *
+                    ((DocumentExtractedFieldConsts.MaxTextValueLength * CjkTokenSafetyMultiplier) + 4),
+                FieldDataType.Text => DocumentExtractedFieldConsts.MaxTextValueLength * CjkTokenSafetyMultiplier,
+                _ => 40 // Number / Boolean / Date / DateTime: a short scalar plus its JSON key and quotes (ASCII).
+            };
+        }
+
+        chars += DocumentFieldValidationWarningConsts.MaxWarningsPerExtraction *
+            ((DocumentFieldValidationWarningConsts.MaxMessageLength * CjkTokenSafetyMultiplier) + 60); // + fieldName enum value + JSON overhead
+
+        return chars + 2048; // + fixed margin for JSON structure (braces, field-name keys repeated per property).
+    }
+
+    /// <summary>
+    /// Empirically measured worst-case tokens-per-character ratio for Japanese/CJK output on the structured
+    /// extraction model (see <see cref="EstimateMaxOutputTokens"/>), rounded up from the ~3.5-3.8 observed for
+    /// safety margin.
+    /// </summary>
+    private const int CjkTokenSafetyMultiplier = 4;
 
     /// <summary>
     /// Compile-time constant system instructions. **Do not** concatenate any runtime string into this value.

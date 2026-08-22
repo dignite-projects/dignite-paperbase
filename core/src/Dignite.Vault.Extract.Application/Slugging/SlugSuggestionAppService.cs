@@ -46,7 +46,7 @@ public class SlugSuggestionAppService : VaultExtractAppService, ISlugSuggestionA
     private readonly ILogger<SlugSuggestionAppService> _logger;
 
     public SlugSuggestionAppService(
-        [FromKeyedServices(VaultExtractConsts.StructuredChatClientKey)] IChatClient chatClient,
+        [FromKeyedServices(VaultExtractConsts.TitleGeneratorChatClientKey)] IChatClient chatClient,
         ILogger<SlugSuggestionAppService> logger)
     {
         _chatClient = chatClient;

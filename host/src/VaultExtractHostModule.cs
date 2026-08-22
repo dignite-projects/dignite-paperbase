@@ -593,16 +593,51 @@ public class VaultExtractHostModule : AbpModule
                 "local Ollama /v1 endpoint and use any non-empty token as the key. See docs/en/configuration/ai-provider.md.");
         }
 
+        // Raised past the OpenAI SDK's default 100s NetworkTimeout (sized for interactive chat) because
+        // FieldExtractionWorkflow deliberately feeds the complete, untruncated Markdown + full field schema (a
+        // type-bound field can sit anywhere in the document, so truncation would silently miss it) — a workload
+        // that can legitimately run long. This alone is only a backstop, though: it does not explain what was
+        // actually observed in practice — every attempt hanging for the *entire* timeout (100s, then 300s after
+        // raising it) with zero bytes read back (TaskCanceledException wrapping a SocketException / "Unable to
+        // read data from the transport connection"), 4 SDK-internal retries each time, then ABP re-queuing the
+        // whole cycle — while the identical request replayed standalone against the same endpoint returns in
+        // 10-30s. That signature — deterministic silent hangs from a long-lived process, fine from a fresh
+        // connection — is a stale pooled HTTP connection: `HttpClient`'s default `SocketsHttpHandler` pools
+        // connections for the process lifetime, so once a NAT/proxy on the path to the provider silently drops
+        // an idle one (no FIN/RST), every future request that reuses it writes into a black hole until the
+        // client-side timeout fires. Bounding `PooledConnectionLifetime` forces periodic reconnection so a dead
+        // connection is never reused for more than a few minutes. NetworkTimeout stays raised as defense in
+        // depth for the field-extraction workload itself. SlugSuggestionAppService's interactive 10s SLA is
+        // enforced independently via its own linked CancellationTokenSource (InteractiveLlmCall), so neither
+        // change affects it.
+        var httpClient = new HttpClient(new MaxCompletionTokensToMaxTokensHandler(new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(5)
+        }))
+        {
+            // HttpClient.Timeout defaults to 100s and fires from inside HttpClientPipelineTransport before the
+            // pipeline-level NetworkTimeout below ever gets a chance to apply, silently overriding it back down
+            // to 100s (surfaced as "canceled due to the configured HttpClient.Timeout of 100 seconds elapsing",
+            // not the NetworkTimeout wording). NetworkTimeout is the single intended timeout authority here, so
+            // this must be disabled.
+            Timeout = Timeout.InfiniteTimeSpan
+        };
         var openAIClient = new OpenAIClient(
             new System.ClientModel.ApiKeyCredential(apiKey),
-            new OpenAIClientOptions { Endpoint = new Uri(endpoint) });
+            new OpenAIClientOptions
+            {
+                Endpoint = new Uri(endpoint),
+                Transport = new System.ClientModel.Primitives.HttpClientPipelineTransport(httpClient),
+                NetworkTimeout = TimeSpan.FromSeconds(300)
+            });
 
         // Title-generator chat client: single-shot, tool-free, prompt-unique-per-call so
         // distributed caching is a net negative. Consumed by
-        // DocumentParseBackgroundJob.TryGenerateTitleAsync via
+        // DocumentParseBackgroundJob.TryGenerateTitleAsync and SlugSuggestionAppService via
         // [FromKeyedServices(VaultExtractConsts.TitleGeneratorChatClientKey)]. Falls back
         // to ChatModelId when TitleGeneratorModelId is unset; hosts that want to cut cost
-        // can point this at a small fast model (e.g. Qwen3-8B).
+        // can point this at a small fast model (e.g. Qwen3-8B) — it must still honour
+        // ChatResponseFormat.ForJsonSchema for the slug call to keep working.
         var titleGeneratorModelId = configuration["Vault:Extract:TitleGeneratorModelId"]
             ?? chatModelId;
         context.Services.AddKeyedChatClient(
@@ -612,13 +647,13 @@ public class VaultExtractHostModule : AbpModule
             .UseLogging();
 
         // Structured-output chat client: shared by classification (MAF RunAsync<T>) plus
-        // direct JSON-schema callers such as field extraction and slug suggestion. All are
-        // tool-free and prompts are document/admin-input-derived (unique per call), so
+        // direct JSON-schema callers such as field extraction. All are tool-free and
+        // prompts are document/admin-input-derived (unique per call), so
         // FunctionInvocation and DistributedCache are pure overhead. OTel + Logging stay
         // so each structured call shows up as a clean chat <model> span. Falls back to
-        // ChatModelId when StructuredModelId is unset; production teams running tight
-        // token budgets can point this at a smaller / cheaper model that can still
-        // satisfy schema-bound output.
+        // ChatModelId when StructuredModelId is unset; this is the accuracy-sensitive
+        // link in the pipeline (mis-classification / mis-extraction is user-visible), so
+        // keep it on a strong model rather than trimming cost here.
         var structuredModelId = configuration["Vault:Extract:StructuredModelId"]
             ?? chatModelId;
         context.Services.AddKeyedChatClient(
@@ -648,6 +683,53 @@ public class VaultExtractHostModule : AbpModule
             _ => openAIClient.GetChatClient(visionOcrModelId).AsIChatClient())
             .UseOpenTelemetry()
             .UseLogging();
+    }
+
+    /// <summary>
+    /// Rewrites <c>max_completion_tokens</c> to <c>max_tokens</c> in every outgoing chat-completions request body.
+    /// <para>
+    /// <b>Why this exists</b>: the <c>OpenAI</c> SDK (2.10.0, pulled in by <c>Microsoft.Extensions.AI.OpenAI</c>)
+    /// unconditionally serializes <see cref="ChatOptions.MaxOutputTokens"/> / <c>ChatCompletionOptions.MaxOutputTokenCount</c>
+    /// as OpenAI's current <c>max_completion_tokens</c> field, which replaced the legacy <c>max_tokens</c> field for
+    /// chat completions. SiliconFlow's OpenAI-compatible endpoint does not recognize <c>max_completion_tokens</c> —
+    /// it silently ignores the field and falls back to its own undocumented default output cap (observed at ~4096
+    /// tokens), no matter how large a value the caller requests. Confirmed directly: capturing the wire request body
+    /// showed <c>"max_completion_tokens":500</c> being sent and having zero effect (a 500-cap request generated 2000+
+    /// tokens), while an identical request with <c>"max_tokens":500</c> instead cut generation at exactly 500 tokens
+    /// with <c>finish_reason: "length"</c>. Every previous attempt to fix field-extraction truncation by sizing
+    /// <see cref="ChatOptions.MaxOutputTokens"/> more generously (see <c>FieldExtractionWorkflow.EstimateMaxOutputTokens</c>)
+    /// was therefore computing a correct number that never reached the provider — this handler is the actual fix;
+    /// the sizing logic still matters once this rewrite makes <c>MaxOutputTokens</c> take effect at all.
+    /// </para>
+    /// <para>
+    /// Scoped to this method's SiliconFlow wiring, not the SDK globally: a host that switches to genuine OpenAI (see
+    /// the "non-OpenAI wire protocol" comment above) should drop this handler along with the rest of this method,
+    /// since real OpenAI already understands <c>max_completion_tokens</c> and does not need the rewrite.
+    /// </para>
+    /// </summary>
+    private sealed class MaxCompletionTokensToMaxTokensHandler(HttpMessageHandler innerHandler) : DelegatingHandler(innerHandler)
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.Content is not null &&
+                request.Content.Headers.ContentType?.MediaType == "application/json")
+            {
+                var body = await request.Content.ReadAsStringAsync(cancellationToken);
+                if (body.Contains("\"max_completion_tokens\"", StringComparison.Ordinal))
+                {
+                    var node = System.Text.Json.Nodes.JsonNode.Parse(body)!.AsObject();
+                    if (node.Remove("max_completion_tokens", out var value))
+                    {
+                        node["max_tokens"] = value;
+                        var rewritten = node.ToJsonString();
+                        var content = new StringContent(rewritten, System.Text.Encoding.UTF8, "application/json");
+                        request.Content = content;
+                    }
+                }
+            }
+
+            return await base.SendAsync(request, cancellationToken);
+        }
     }
 
     // OTel export pipeline. MAF (Microsoft.Agents.AI) and Microsoft.Extensions.AI (gen_ai.*

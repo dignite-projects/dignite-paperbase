@@ -46,6 +46,31 @@ public class FieldExtractionWorkflow_Tests
     private static FieldExtractionDescriptor MultiField(string name)
         => new(System.Guid.NewGuid(), name, $"Extract {name}.", FieldDataType.Text, false, true);
 
+    private static (FieldExtractionWorkflow Workflow, Func<ChatOptions?> CapturedOptions) CreateWorkflowCapturingOptions(
+        string jsonResponse, ChatFinishReason? finishReason = null)
+    {
+        var chatClient = Substitute.For<IChatClient>();
+        ChatOptions? captured = null;
+        var response = new ChatResponse([new ChatMessage(ChatRole.Assistant, jsonResponse)]);
+        if (finishReason.HasValue)
+        {
+            response.FinishReason = finishReason.Value;
+        }
+
+        chatClient.GetResponseAsync(
+                Arg.Any<IEnumerable<ChatMessage>>(),
+                Arg.Do<ChatOptions?>(o => captured = o),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(response));
+
+        var workflow = new FieldExtractionWorkflow(
+            chatClient,
+            NullLogger<FieldExtractionWorkflow>.Instance,
+            new FieldSchemaPromptBudgetGuard(Options.Create(new VaultExtractBehaviorOptions())));
+
+        return (workflow, () => captured);
+    }
+
     // ─── values: typed validation (unchanged behavior, now under the `values` key) ───
 
     [Fact]
@@ -410,5 +435,54 @@ public class FieldExtractionWorkflow_Tests
 
         result.Values["amount"].ShouldNotBeNull();
         result.ValidationWarnings.ShouldBeEmpty();
+    }
+
+    // ─── MaxOutputTokens: reproduces a real silent-truncation incident on a many-row AllowMultiple field ───
+    // (SiliconFlow's own default output cap, observed at ~4096 tokens, applies whenever the caller sends none;
+    // the JSON gets cut off mid-generation and fails to parse, silently nulling every field on the call).
+
+    [Fact]
+    public async Task MaxOutputTokens_covers_an_AllowMultiple_fields_own_worst_case()
+    {
+        var (workflow, capturedOptions) = CreateWorkflowCapturingOptions(
+            """{ "values": { "tags": [] }, "validationWarnings": [] }""");
+
+        await workflow.ExtractAsync(new[] { MultiField("tags") }, "# doc");
+
+        // A hard floor, not an exact figure: MaxOutputTokens must at least cover every array slot at its max
+        // length, or a full multi-value field can never finish generating before the request's own ceiling
+        // truncates it — the same failure this fix targets, just self-inflicted instead of provider-inflicted.
+        capturedOptions()!.MaxOutputTokens.ShouldNotBeNull();
+        capturedOptions()!.MaxOutputTokens!.Value.ShouldBeGreaterThan(
+            DocumentExtractedFieldConsts.MaxMultiValueCount * DocumentExtractedFieldConsts.MaxTextValueLength);
+    }
+
+    [Fact]
+    public async Task MaxOutputTokens_scales_up_when_an_AllowMultiple_field_is_requested()
+    {
+        var (scalarWorkflow, scalarOptions) = CreateWorkflowCapturingOptions(
+            """{ "values": { "amount": 1 }, "validationWarnings": [] }""");
+        await scalarWorkflow.ExtractAsync(new[] { Field("amount", FieldDataType.Number) }, "# doc");
+
+        var (multiWorkflow, multiOptions) = CreateWorkflowCapturingOptions(
+            """{ "values": { "tags": [] }, "validationWarnings": [] }""");
+        await multiWorkflow.ExtractAsync(new[] { MultiField("tags") }, "# doc");
+
+        multiOptions()!.MaxOutputTokens!.Value.ShouldBeGreaterThan(scalarOptions()!.MaxOutputTokens!.Value);
+    }
+
+    [Fact]
+    public async Task Response_cut_off_at_the_token_limit_degrades_without_throwing()
+    {
+        // finish_reason=length with an incomplete (unterminated) JSON body — the exact shape observed against a
+        // real multi-page document once its AllowMultiple field grew past the provider's silent default cap.
+        // ExtractAsync must not throw; it degrades through the existing non-JSON-output fallback (all-null).
+        var (workflow, _) = CreateWorkflowCapturingOptions(
+            """{ "values": { "amount": 1""",
+            ChatFinishReason.Length);
+
+        var result = await workflow.ExtractAsync(new[] { Field("amount", FieldDataType.Number) }, "# doc");
+
+        result.Values["amount"].ShouldBeNull();
     }
 }
