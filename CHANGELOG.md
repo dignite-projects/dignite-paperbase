@@ -5,9 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.0-preview.1] - 2026-08-22
+## [0.4.0-preview.1] - 2026-08-23
 
-First preview of the 0.4.0 line, opening the post-0.3.1 development cycle. Headline work: closing a silent field-extraction truncation on large multi-value fields (a production bank-statement document lost the tail of a transcribed table with no error signal), deterministic LaTeX-table / layout-annotation cleanup for the vision-LLM OCR provider, and hardening the host's OpenAI-compatible `HttpClient` against stale pooled connections. As a `0.y.z` pre-release the exit contracts may still change — see [CONTRIBUTING → Versioning and releases](CONTRIBUTING.md#versioning-and-releases).
+First preview of the 0.4.0 line, opening the post-0.3.1 development cycle. Headline work: closing a silent field-extraction truncation on large multi-value fields (a production bank-statement document lost the tail of a transcribed table with no error signal), and a cluster of vision-LLM OCR and PDF ruling-line fixes surfaced by the same document — LaTeX-table / layout-annotation cleanup, no-content-refusal normalization, and stacked per-row table-box detection. As a `0.y.z` pre-release the exit contracts may still change — see [CONTRIBUTING → Versioning and releases](CONTRIBUTING.md#versioning-and-releases).
 
 ### Fixed
 
@@ -15,6 +15,8 @@ First preview of the 0.4.0 line, opening the post-0.3.1 development cycle. Headl
 - **Chat-client HTTP hangs from stale pooled connections** — the host's OpenAI-compatible `HttpClient` now bounds `PooledConnectionLifetime` to 5 minutes and raises `NetworkTimeout` to 300s (with the SDK's own 100s `HttpClient.Timeout` disabled, since it was silently overriding `NetworkTimeout` back down to 100s), closing a failure mode where a NAT/proxy-dropped idle connection hung every request that reused it for the full timeout before ABP's retry loop re-queued the job.
 - **VisionLlm OCR: LaTeX tables and leaked layout annotations** — a vision LLM (observed on Qwen3-VL), trained heavily on academic document datasets, still rendered line-item tables as `\begin{tabular}` and occasionally leaked an internal bounding-box HTML comment into the transcription, despite the prompt requiring GitHub-Flavored Markdown and forbidding both. `VisionLlmOutputGuard` now deterministically rewrites `\begin{tabular}` blocks to GFM tables and strips HTML comments, the same fix pattern as the existing code-fence stripper (#448).
 - **VisionLlm OCR: single-page running-header/footer judgment** — the prompt now asks the model to judge boilerplate by position and style rather than by confirmed repetition (a single-page call can never confirm repetition across pages), closing a case where a page-bottom confidentiality line and page number survived transcription.
+- **VisionLlm OCR: no-content refusals inlined as transcribed text** — despite the prompt asking for no output at all on an unreadable image, the model sometimes returned an English refusal sentence instead, which was then treated as real content and occasionally misjudged by sub-document segmentation as a standalone document (observed on two purely decorative images in a bank-statement PDF). `VisionLlmOutputGuard.LooksLikeNoContentRefusal` now normalizes a detected refusal to an empty result, length-gated so real (longer) transcriptions can never be misclassified; the segmentation prompt also now treats a confirmed-empty embedded-image OCR result as never a standalone document.
+- **PDF ruling-line grid detection missed stacked per-row table boxes** — some report engines (observed on a Japanese bank-statement PDF) draw a table's grid as many small per-row rectangles rather than continuous ruling lines, which `DetectGrids` silently dropped, falling back to the less reliable whitespace-heuristic path and mis-clustering rows. `ChainStackedRowBoxes` / `ChainCollinearVerticalSegments` chain these leftover shapes into valid rule candidates.
 
 ### Changed
 
