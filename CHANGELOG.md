@@ -5,9 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.0-preview.1] - 2026-08-23
+## [0.3.2] - 2026-08-23
 
-First preview of the 0.4.0 line, opening the post-0.3.1 development cycle. Headline work: closing a silent field-extraction truncation on large multi-value fields (a production bank-statement document lost the tail of a transcribed table with no error signal), and a cluster of vision-LLM OCR and PDF ruling-line fixes surfaced by the same document — LaTeX-table / layout-annotation cleanup, no-content-refusal normalization, and stacked per-row table-box detection. As a `0.y.z` pre-release the exit contracts may still change — see [CONTRIBUTING → Versioning and releases](CONTRIBUTING.md#versioning-and-releases).
+Patch release for the 0.3.x stable line. This release closes a silent field-extraction truncation on large multi-value fields (a production bank-statement document lost the tail of a transcribed table with no error signal), and fixes a cluster of vision-LLM OCR and PDF ruling-line issues surfaced by the same document — LaTeX-table / layout-annotation cleanup, no-content-refusal normalization, and stacked per-row table-box detection.
 
 ### Fixed
 
@@ -266,8 +266,8 @@ Preview of the 0.2.0 line. This release rebrands the project to **Dignite Vault 
 - Legacy Angular document-upload route.
 - Dead fields from the segmentation subsystem (#390).
 
-[Unreleased]: https://github.com/dignite-projects/vault-extract/compare/v0.4.0-preview.1...HEAD
-[0.4.0-preview.1]: https://github.com/dignite-projects/vault-extract/compare/v0.3.1...v0.4.0-preview.1
+[Unreleased]: https://github.com/dignite-projects/vault-extract/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/dignite-projects/vault-extract/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/dignite-projects/vault-extract/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/dignite-projects/vault-extract/compare/v0.2.0...v0.3.0
 [0.3.0-preview.4]: https://github.com/dignite-projects/vault-extract/compare/v0.3.0-preview.3...v0.3.0-preview.4
