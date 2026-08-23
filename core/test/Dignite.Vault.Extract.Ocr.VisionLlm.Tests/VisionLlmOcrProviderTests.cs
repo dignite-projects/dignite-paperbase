@@ -140,6 +140,25 @@ public class VisionLlmOcrProviderTests
     }
 
     [Fact]
+    public async Task Should_Treat_A_No_Content_Refusal_As_Genuinely_Blank()
+    {
+        // Despite the system prompt's "output nothing at all" / "no commentary" rules, the model sometimes
+        // explains in English prose that it found no text (a purely decorative image, e.g. a letterhead
+        // banner with no glyphs) instead of actually outputting nothing. This must normalize to the same
+        // "genuinely blank" outcome as an actually-empty response — not be persisted as if it were the
+        // image's real transcribed content.
+        SetupSingleResponse("There is no readable text in the image to transcribe.");
+
+        var result = await CreateProvider().RecognizeAsync(
+            new MemoryStream(FakeJpeg()),
+            new OcrOptions { ContentType = "image/jpeg" });
+
+        result.Markdown.ShouldBeEmpty();
+        result.IsComplete.ShouldBeTrue();
+        result.IncompleteReason.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task Should_Transcribe_Each_Pdf_Page_And_Join_Them()
     {
         _rasterizer.GetPageCount(Arg.Any<byte[]>()).Returns(3);

@@ -68,4 +68,12 @@ public class VisionLlmOcrOptions
     /// fails loudly (the provider throws) rather than silently dropping pages.
     /// </summary>
     public int MaxPdfPages { get; set; } = 30;
+
+    /// <summary>
+    /// No-content-refusal guard: only a response no longer than this is checked against the refusal
+    /// phrasings (e.g. "There is no readable text in the image to transcribe."). A refusal is always one
+    /// short sentence, so this keeps the guard from ever matching a genuine (longer) transcription that
+    /// happens to contain a word like "text".
+    /// </summary>
+    public int MaxNoContentRefusalLength { get; set; } = 160;
 }

@@ -10,8 +10,9 @@ namespace Dignite.Vault.Extract.Ocr.VisionLlm;
 /// Output sanitation for the vision-LLM OCR provider: a repetition-loop <b>detector</b>
 /// (<see cref="LooksLikeRepetitionLoop"/>, discard on a trip), a code-fence <b>stripper</b>
 /// (<see cref="StripCodeFences"/>, unwrap in place), a LaTeX-table <b>converter</b>
-/// (<see cref="ConvertLatexTables"/>, rewrite to GitHub-Flavored Markdown), and a layout-annotation
-/// <b>stripper</b> (<see cref="StripLayoutAnnotations"/>, drop HTML comments).
+/// (<see cref="ConvertLatexTables"/>, rewrite to GitHub-Flavored Markdown), a layout-annotation
+/// <b>stripper</b> (<see cref="StripLayoutAnnotations"/>, drop HTML comments), and a no-content-refusal
+/// <b>detector</b> (<see cref="LooksLikeNoContentRefusal"/>, normalize to empty).
 /// <para>
 /// Traditional OCR can only mis-read characters; a vision LLM driven in chat mode can additionally fall
 /// into a repetition loop that fills the token budget with the same line/phrase over and over (the
@@ -231,6 +232,48 @@ public static class VisionLlmOutputGuard
         }
 
         return HtmlCommentRegex.Replace(markdown, string.Empty);
+    }
+
+    // Matches the model explaining, in English prose, that it found nothing to transcribe — e.g. "There is no
+    // readable text in the image to transcribe.", "No text detected in this image.", "The image contains no
+    // text.", "I cannot find any text in this image.". Anchored at the start (^) so a real transcription that
+    // merely CONTAINS the word "text" partway through is never matched; combined with the caller's length gate
+    // (a refusal is one short sentence — a real transcription this short would need to independently look like
+    // one of these specific phrasings, which no legitimate receipt/form/table content does).
+    private static readonly Regex NoContentRefusalPattern = new(
+        // Every alternative requires the "text" noun-phrase to follow the negation — "there is no" / "no" alone
+        // would also match the opening of real content ("There is no outstanding balance.", "There is no
+        // signature on this page."), silently wiping a genuine short transcription instead of a refusal.
+        @"^(there\s+(is|are|was|were)\s+no\s+(readable|visible|legible|discernible)?\s*text|" +
+        @"no\s+(readable|visible|legible|discernible)?\s*text|" +
+        @"the\s+image\s+(contains|has|shows)\s+no\s+(readable|visible|legible)?\s*text|" +
+        @"(i\s+)?(cannot|can't|could\s+not|couldn't|do\s+not|don't|unable\s+to)\s+(see|find|detect|identify|make\s+out)\s+(any\s+)?(readable\s+|visible\s+|legible\s+)?text|" +
+        @"(there\s+is\s+)?nothing\s+to\s+transcribe|" +
+        @"no\s+text\s+(is\s+|was\s+)?(visible|detected|found|present|readable))",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Whether <paramref name="text"/> looks like the model explaining — in violation of the system prompt's
+    /// "If the image contains no readable text, output nothing at all" / "no commentary, no explanations" rules
+    /// — that it found no text, rather than actually transcribing any. Mirrors the reasoning behind
+    /// <see cref="StripCodeFences"/> / <see cref="ConvertLatexTables"/>: prompt wording alone does not reliably
+    /// hold, so a deterministic guard normalizes the violation. <c>OcrResult.Markdown</c>'s contract is "empty
+    /// string when the provider recognizes no content" — left unnormalized, this sentence would instead be
+    /// treated as real transcribed content: inlined into the document's Markdown as a figure's transcription,
+    /// and handed to the sub-document segmentation pass as if it were a meaningful standalone span.
+    /// </summary>
+    /// <param name="text">The already-trimmed model output (after the other guards have run).</param>
+    /// <param name="maxRefusalLength">Only a short response is checked — a genuine transcription of any
+    /// length can legitimately contain isolated words like "text", but a refusal is always one short sentence,
+    /// so gating on length keeps this from ever matching real (longer) transcribed content.</param>
+    public static bool LooksLikeNoContentRefusal(string text, int maxRefusalLength)
+    {
+        if (string.IsNullOrWhiteSpace(text) || text.Length > maxRefusalLength)
+        {
+            return false;
+        }
+
+        return NoContentRefusalPattern.IsMatch(text.Trim());
     }
 
     private static string RenderMarkdownTable(string tabularBody)

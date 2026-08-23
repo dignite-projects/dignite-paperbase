@@ -112,6 +112,23 @@ public class VisionLlmOcrProvider : IOcrProvider, ITransientDependency
             return ImageTranscription.Complete(string.Empty);
         }
 
+        // No-content-refusal guard: despite "output nothing at all" / "no commentary" in the system prompt, the
+        // model sometimes explains in English prose that it found no text (e.g. a purely decorative letterhead
+        // banner or logo with no glyphs) instead of actually outputting nothing. Left unnormalized, that
+        // sentence would be persisted as if it were the image's real transcribed content — same class of
+        // prompt-wording-is-not-enough issue as the code-fence / LaTeX-table guards above.
+        // Complete, not Incomplete (unlike the repetition-loop guard below): a repetition loop is discarded
+        // output whose *real* content is unknown and may have been lost, so #268 must flag it. Here the model
+        // is asserting "there is no text", i.e. the same claim as the text.Length==0 branch just above — this
+        // guard only normalizes ITS PHRASING, so nothing is being discarded that might have been real content.
+        if (VisionLlmOutputGuard.LooksLikeNoContentRefusal(text, _options.MaxNoContentRefusalLength))
+        {
+            // A probabilistic regex over free-form model prose: log every trip (mirroring the other guards in
+            // this method) so a future phrasing-pattern drift or false positive is diagnosable, not silent.
+            Logger.LogDebug("VisionLlm OCR output normalized as a no-content refusal: {Text}", text);
+            return ImageTranscription.Complete(string.Empty);
+        }
+
         // Hallucination / repetition-loop guard: never persist a runaway loop as if it were real text.
         if (VisionLlmOutputGuard.LooksLikeRepetitionLoop(
                 text,

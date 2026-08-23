@@ -89,6 +89,7 @@ Provider behaviour knobs (the model id / endpoint / key are host `ConfigureAI` c
 | `MinLengthForSegmentCheck` | `200` | Guard heuristic 3: minimum single-line length before the short-period check inspects it |
 | `MaxRepeatedSegmentLength` | `120` | Guard heuristic 3: largest repeating-unit (period) length treated as a loop |
 | `MinRepeatedSegmentRepeats` | `8` | Guard heuristic 3: minimum times the unit must tile a line to trip |
+| `MaxNoContentRefusalLength` | `160` | No-content-refusal guard: only a response no longer than this is checked against refusal phrasings, so a genuine (longer) transcription is never mistaken for one |
 
 ## Hallucination / repetition-loop guard
 
@@ -100,6 +101,12 @@ A vision LLM driven in chat mode can fall into a repetition loop that fills the 
 - On a guard trip the output is **discarded** (empty Markdown + warning) — never persisted. For PDFs the guard runs **per page**, so one looping page is dropped without failing the whole document.
 - A PDF page that **fails to rasterize** (corrupt PDFium page object) is likewise skipped with a warning, preserving the pages already transcribed. A failure in the per-page LLM call is *not* swallowed — it is almost always systemic (auth / network / quota) and propagates to fail the run loudly (visible, retryable), distinct from "the model produced garbage".
 - **Incompleteness is surfaced, not silent (#268).** Whenever output is truncated at the token cap, discarded by the guard, or a PDF page is dropped, the result is flagged incomplete and the REST `DocumentDto` exposes `ExtractionIsComplete = false` + `ExtractionIncompleteReason`. Downstream consumers decide whether to accept / downgrade / route to review — the channel does not gate Ready on it. See [text-extraction.md](text-extraction.md) and [#268](https://github.com/dignite-projects/vault-extract/issues/268).
+
+## No-content-refusal guard
+
+The system prompt tells the model: "If the image contains no readable text, output nothing at all" — but a chat vision LLM sometimes explains itself instead of complying, returning a short English sentence such as *"There is no readable text in the image to transcribe."* for a purely decorative image (a letterhead banner, a logo, a stamp with no legible glyphs). Left as-is, that sentence would be persisted as if it were the image's real transcribed content.
+
+[`VisionLlmOutputGuard.LooksLikeNoContentRefusal`](../core/src/Dignite.Vault.Extract.Ocr.VisionLlm/VisionLlmOutputGuard.cs) recognizes common refusal phrasings ("there is no ... text", "I cannot find any text", "nothing to transcribe", …) in a response no longer than `MaxNoContentRefusalLength` characters, and normalizes a match to the same outcome as a genuinely empty response (`IsComplete = true`, empty Markdown) — this is a phrasing normalization, not a discard of possibly-real content, so it is reported complete rather than tripping the `#268` incompleteness signal the way the repetition-loop guard does.
 
 ## Cost
 

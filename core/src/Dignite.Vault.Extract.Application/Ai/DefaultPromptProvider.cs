@@ -84,8 +84,18 @@ public class DefaultPromptProvider : IPromptProvider, ITransientDependency
         // Conservative boundaries: the same false-positive traps as container detection (#346) + the figure gate (#365).
         "Be conservative. Do NOT split a single multi-page document (a continuation page or line-item overflow of " +
         "one invoice or contract is the SAME document, one span). Do NOT split attachments, annexes, 別紙, " +
-        "appendices, or exhibits away from the document they belong to. When unsure whether something is a separate " +
-        "document, set isSubDocument to false. List the spans in the order they appear. " +
+        "appendices, or exhibits away from the document they belong to. " +
+        // A stamp, seal, or watermark OCRs to no text, or to a short/garbled fragment — the SAME pattern a
+        // poorly-photographed real certificate or ID card can also produce (glare, angle, low resolution), so
+        // "short/garbled" is a hint to weigh, never an automatic exclusion; only a confirmed EMPTY result is
+        // conclusive (there is nothing there for standalone content to consist of).
+        "An embedded-image span whose OCR transcription states that no text was found is never a standalone " +
+        "document — there is nothing there to be one. A short or garbled transcription (a handful of characters, " +
+        "unparseable text) should NOT by itself be read as a standalone document; weigh it against the image's " +
+        "role in context (a stamp/seal/watermark on a letterhead vs. a certificate or ID card genuinely embedded " +
+        "in the page) rather than treating brevity alone as ambiguous evidence for isSubDocument=true. " +
+        "When unsure whether something is a separate document, set isSubDocument to false. List the spans in the " +
+        "order they appear. " +
         $"Respond in: {LanguageTagValidator.Normalize(language) ?? FallbackLanguage}."
     );
 

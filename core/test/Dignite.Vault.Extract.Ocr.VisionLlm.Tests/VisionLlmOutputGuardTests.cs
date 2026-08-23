@@ -278,4 +278,65 @@ public class VisionLlmOutputGuardTests
         VisionLlmOutputGuard.StripLayoutAnnotations(null).ShouldBe(string.Empty);
         VisionLlmOutputGuard.StripLayoutAnnotations(string.Empty).ShouldBe(string.Empty);
     }
+
+    // --- LooksLikeNoContentRefusal ---
+
+    private const int MaxRefusalLength = 160;
+
+    [Theory]
+    [InlineData("There is no readable text in the image to transcribe.")]
+    [InlineData("There is no text in this image.")]
+    [InlineData("No text detected in this image.")]
+    [InlineData("No readable text found.")]
+    [InlineData("The image contains no text.")]
+    [InlineData("The image shows no visible text.")]
+    [InlineData("I cannot find any text in this image.")]
+    [InlineData("I can't detect any readable text.")]
+    [InlineData("Unable to identify any text in the image.")]
+    [InlineData("There is nothing to transcribe.")]
+    [InlineData("Nothing to transcribe.")]
+    [InlineData("No text is visible in this image.")]
+    public void Recognizes_Common_No_Content_Refusal_Phrasings(string refusal)
+        => VisionLlmOutputGuard.LooksLikeNoContentRefusal(refusal, MaxRefusalLength).ShouldBeTrue();
+
+    [Fact]
+    public void Real_Short_Transcription_Does_Not_Trip_The_Refusal_Guard()
+    {
+        // A genuinely short transcription (a stamp, a logo caption) must never be mistaken for a refusal —
+        // none of these start with a refusal phrasing.
+        VisionLlmOutputGuard.LooksLikeNoContentRefusal("¥980", MaxRefusalLength).ShouldBeFalse();
+        VisionLlmOutputGuard.LooksLikeNoContentRefusal("株式会社ドコモSMTBネット銀行", MaxRefusalLength).ShouldBeFalse();
+        VisionLlmOutputGuard.LooksLikeNoContentRefusal("# Invoice\n\nTotal: 1,000 JPY", MaxRefusalLength).ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData("There is no outstanding balance.")]
+    [InlineData("There are no fees charged this statement period.")]
+    [InlineData("There was no interest earned this period.")]
+    [InlineData("There is no signature on this page.")]
+    [InlineData("There is no penalty for early withdrawal.")]
+    public void Real_Content_Starting_With_There_Is_No_Does_Not_Trip_The_Refusal_Guard(string realContent)
+        // Regression: the first alternative once matched bare "there is/are/was/were no" with no requirement
+        // that "text" (or any content noun) follow, so a genuine sentence opening this way — exactly the
+        // phrasing a bank statement or notice legitimately contains — was silently wiped to empty and reported
+        // as "correctly recognized as nothing" instead of being kept as real transcribed content.
+        => VisionLlmOutputGuard.LooksLikeNoContentRefusal(realContent, MaxRefusalLength).ShouldBeFalse();
+
+    [Fact]
+    public void A_Long_Transcription_That_Happens_To_Contain_The_Word_Text_Does_Not_Trip()
+    {
+        // The length gate is what keeps a real (longer) transcription safe even if it happens to contain a
+        // refusal-adjacent word like "text" somewhere in its body.
+        var longBody = "# Notice\n\n" + string.Join("\n", System.Linq.Enumerable.Repeat("This clause governs the text of the agreement.", 5));
+        VisionLlmOutputGuard.LooksLikeNoContentRefusal(longBody, MaxRefusalLength).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Null_Or_Empty_Or_Overlong_Does_Not_Trip()
+    {
+        VisionLlmOutputGuard.LooksLikeNoContentRefusal(string.Empty, MaxRefusalLength).ShouldBeFalse();
+        VisionLlmOutputGuard.LooksLikeNoContentRefusal(
+            "There is no readable text in the image to transcribe." + new string('.', MaxRefusalLength),
+            MaxRefusalLength).ShouldBeFalse();
+    }
 }
