@@ -52,6 +52,12 @@ internal static class PdfRulingLines
     {
         var horizontals = new List<HRule>();
         var verticals = new List<VRule>();
+        // Rectangles that matched none of the three shapes below — a report engine that draws its grid as many
+        // small per-row / per-cell boxes (rather than long continuous lines) leaves both its row separators
+        // (wide, but only one row tall — too thick for a thin rule, too short for a bordered box) and its column
+        // dividers (thin, but individually shorter than minRuleLength because each is redrawn per row) here.
+        // Chained below instead of being silently dropped.
+        var leftovers = new List<PdfRectangle>();
 
         foreach (var rect in subpathBounds)
         {
@@ -78,7 +84,14 @@ internal static class PdfRulingLines
                 verticals.Add(new VRule(left, bottom, top));
                 verticals.Add(new VRule(right, bottom, top));
             }
+            else
+            {
+                leftovers.Add(rect);
+            }
         }
+
+        ChainStackedRowBoxes(leftovers, minRuleLength, clusterTolerance, horizontals);
+        ChainCollinearVerticalSegments(leftovers, maxRuleThickness, minRuleLength, clusterTolerance, verticals);
 
         // Group rules into separate tables: a table is a connected component of rules where a vertical and a
         // horizontal cross. Union-find over [0..h) horizontals and [h..h+v) verticals.
@@ -144,6 +157,151 @@ internal static class PdfRulingLines
 
         // Top-to-bottom (by the grid's top edge) for a stable, reading-order-ish sequence.
         return grids.OrderByDescending(g => g.RowBoundaries[^1]).ToList();
+    }
+
+    /// <summary>
+    /// Rescues a table whose grid is drawn as many small per-row boxes — each row its own rectangle, wide but
+    /// only one row tall, so it qualifies as neither a thin rule nor a big bordered box on its own — a common
+    /// encoding for report-engine output (bank statements, forms). A maximal vertically-stacked run of >= 2
+    /// rectangles sharing the same column span (left/right within <paramref name="clusterTolerance"/>) and
+    /// touching top-to-bottom (each one's bottom within tolerance of the next one's top) implicitly draws a
+    /// horizontal rule at EVERY member's own top and bottom edge: the boundary between two adjacent members IS
+    /// the row separator, regardless of how thin or thick any single box measures. A rectangle with no
+    /// vertically-adjacent same-width partner has nothing to confirm it as a table row, so it is left alone
+    /// (stays unclaimed, exactly as before this method existed) — a single stray medium-sized shape never
+    /// becomes a spurious rule.
+    /// </summary>
+    private static void ChainStackedRowBoxes(
+        IReadOnlyList<PdfRectangle> leftovers, double minRuleLength, double clusterTolerance,
+        List<HRule> horizontals)
+    {
+        var candidates = leftovers
+            .Select(r => (
+                Left: Math.Min(r.Left, r.Right), Right: Math.Max(r.Left, r.Right),
+                Bottom: Math.Min(r.Bottom, r.Top), Top: Math.Max(r.Bottom, r.Top)))
+            .Where(r => r.Right - r.Left >= minRuleLength) // wide enough to plausibly span table columns
+            .ToList();
+
+        var consumed = new bool[candidates.Count];
+        for (var i = 0; i < candidates.Count; i++)
+        {
+            if (consumed[i])
+            {
+                continue;
+            }
+
+            // Gather every not-yet-consumed candidate sharing this one's column span (same left/right).
+            var group = new List<int> { i };
+            consumed[i] = true;
+            for (var j = i + 1; j < candidates.Count; j++)
+            {
+                if (!consumed[j]
+                    && Math.Abs(candidates[j].Left - candidates[i].Left) <= clusterTolerance
+                    && Math.Abs(candidates[j].Right - candidates[i].Right) <= clusterTolerance)
+                {
+                    group.Add(j);
+                    consumed[j] = true;
+                }
+            }
+
+            if (group.Count < 2)
+            {
+                continue; // a lone medium box has no partner to confirm it as a grid row.
+            }
+
+            // Walk the group top-to-bottom; each maximal touching run of >= 2 boxes contributes every member's
+            // own top/bottom edge (at the group's shared column span) as a horizontal rule candidate.
+            var ordered = group.Select(idx => candidates[idx]).OrderByDescending(r => r.Top).ToList();
+            var runStart = 0;
+            for (var k = 1; k <= ordered.Count; k++)
+            {
+                var chainBreaks = k == ordered.Count || ordered[k - 1].Bottom - ordered[k].Top > clusterTolerance;
+                if (!chainBreaks)
+                {
+                    continue;
+                }
+
+                if (k - runStart >= 2)
+                {
+                    for (var m = runStart; m < k; m++)
+                    {
+                        horizontals.Add(new HRule(ordered[m].Top, ordered[m].Left, ordered[m].Right));
+                        horizontals.Add(new HRule(ordered[m].Bottom, ordered[m].Left, ordered[m].Right));
+                    }
+                }
+
+                runStart = k;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Rescues a table's column dividers when they are redrawn per row (a short vertical segment for every row,
+    /// rather than one continuous line for the whole table) — each individual segment is thin enough to be a
+    /// vertical rule but shorter than <paramref name="minRuleLength"/> on its own. Groups thin leftover
+    /// rectangles by shared centre-x (within <paramref name="clusterTolerance"/>), then within each group merges
+    /// any vertically touching/overlapping run into one combined span; a run whose combined length clears
+    /// <paramref name="minRuleLength"/> becomes one vertical rule. A segment with no touching same-x partner (or
+    /// whose merged run still falls short) stays unclaimed — an isolated tick mark or glyph stroke never becomes
+    /// a spurious rule, exactly as before this method existed.
+    /// </summary>
+    private static void ChainCollinearVerticalSegments(
+        IReadOnlyList<PdfRectangle> leftovers, double maxRuleThickness, double minRuleLength,
+        double clusterTolerance, List<VRule> verticals)
+    {
+        var candidates = leftovers
+            .Select(r => (
+                Left: Math.Min(r.Left, r.Right), Right: Math.Max(r.Left, r.Right),
+                Bottom: Math.Min(r.Bottom, r.Top), Top: Math.Max(r.Bottom, r.Top)))
+            .Where(r => r.Right - r.Left <= maxRuleThickness) // thin enough to plausibly be a divider
+            .ToList();
+
+        var consumed = new bool[candidates.Count];
+        for (var i = 0; i < candidates.Count; i++)
+        {
+            if (consumed[i])
+            {
+                continue;
+            }
+
+            var centreX = (candidates[i].Left + candidates[i].Right) / 2.0;
+            var group = new List<int> { i };
+            consumed[i] = true;
+            for (var j = i + 1; j < candidates.Count; j++)
+            {
+                if (!consumed[j]
+                    && Math.Abs((candidates[j].Left + candidates[j].Right) / 2.0 - centreX) <= clusterTolerance)
+                {
+                    group.Add(j);
+                    consumed[j] = true;
+                }
+            }
+
+            if (group.Count < 2)
+            {
+                continue; // a lone short segment has no partner to merge into a longer rule.
+            }
+
+            var ordered = group.Select(idx => candidates[idx]).OrderBy(r => r.Bottom).ToList();
+            var runStart = 0;
+            for (var k = 1; k <= ordered.Count; k++)
+            {
+                var chainBreaks = k == ordered.Count || ordered[k].Bottom - ordered[k - 1].Top > clusterTolerance;
+                if (!chainBreaks)
+                {
+                    continue;
+                }
+
+                var mergedBottom = ordered[runStart].Bottom;
+                var mergedTop = ordered[k - 1].Top;
+                if (k - runStart >= 2 && mergedTop - mergedBottom >= minRuleLength)
+                {
+                    verticals.Add(new VRule(centreX, mergedBottom, mergedTop));
+                }
+
+                runStart = k;
+            }
+        }
     }
 
     /// <summary>Whether a horizontal and a vertical rule cross (within <paramref name="tolerance"/> slack).</summary>
