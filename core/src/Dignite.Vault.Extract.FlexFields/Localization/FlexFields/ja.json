@@ -1,0 +1,12 @@
+{
+  "culture": "ja",
+  "texts": {
+    "FieldType:Tags": "タグ",
+    "FieldType:Tags:MaxCount": "値の最大数",
+    "FieldType:Tags:MaxLength": "値ごとの最大文字数",
+    "FieldType:Tags:Placeholder": "プレースホルダー",
+    "Validate:Required": "{0} は必須です。",
+    "Validate:Tags:CountExceedsLimit": "{0} に指定できる値は最大 {1} 件です。",
+    "Validate:Tags:LengthExceedsLimit": "{0} の各値は最大 {1} 文字です。"
+  }
+}

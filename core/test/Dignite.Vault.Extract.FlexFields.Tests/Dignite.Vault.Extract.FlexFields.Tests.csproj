@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\..\..\common.test.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Dignite.Vault.Extract.FlexFields</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Shouldly" />
+    <!-- FieldTypeBase resolves IStringLocalizerFactory through its LazyServiceProvider, so Validate()
+         cannot run outside a container - these are AbpIntegratedTest-based, not plain unit tests. -->
+    <PackageReference Include="Volo.Abp.TestBase" />
+    <PackageReference Include="Volo.Abp.Autofac" />
+    <!-- For FlexFieldConsts (kernel .Domain.Shared, reached transitively through .Domain). The project
+         under test deliberately references .Abstractions alone; this assertion couples a Tags default to
+         the kernel's index string-slot limit, so the test - not the src project - takes the wider
+         reference. Reading the real const is the point: hardcoding 512 here would keep passing if the
+         kernel ever widened or narrowed it. -->
+    <PackageReference Include="Dignite.Abp.FlexFields.Domain" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Dignite.Vault.Extract.FlexFields\Dignite.Vault.Extract.FlexFields.csproj" />
+  </ItemGroup>
+
+</Project>

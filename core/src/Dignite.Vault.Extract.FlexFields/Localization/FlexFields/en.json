@@ -1,0 +1,12 @@
+{
+  "culture": "en",
+  "texts": {
+    "FieldType:Tags": "Tags",
+    "FieldType:Tags:MaxCount": "Maximum Number of Values",
+    "FieldType:Tags:MaxLength": "Maximum Length per Value",
+    "FieldType:Tags:Placeholder": "Placeholder",
+    "Validate:Required": "{0} is required.",
+    "Validate:Tags:CountExceedsLimit": "{0} accepts at most {1} values.",
+    "Validate:Tags:LengthExceedsLimit": "Each value of {0} may be at most {1} characters."
+  }
+}
