@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Abp.FlexFields;
+using Dignite.Vault.Extract.Documents.Pipelines.FieldExtraction;
 using Microsoft.Extensions.Logging;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.Domain.Repositories;
@@ -206,6 +207,76 @@ public class FieldArchitectureV3Migrator : ITransientDependency
         }
 
         return (documentsMigrated, valuesMigrated);
+    }
+
+    /// <summary>
+    /// Recomputes <see cref="Document.FieldFingerprint"/> for every document in the current layer from the
+    /// v3 value bag (#561 step 6).
+    /// <para>
+    /// <b>Deliberately not called by <see cref="MigrateAsync"/>. Run this at the cutover, once v3 owns
+    /// extraction — never before.</b> Duplicate detection compares stored fingerprints by string
+    /// equality, so it only needs every document hashed by the <i>same</i> calculator, not by any
+    /// particular one. Running this during the additive phase would satisfy that for exactly as long as
+    /// nothing is re-extracted: the v2 pipeline is still live and would write a v2-shaped fingerprint for
+    /// the next document that passes through it, leaving a corpus split into two populations that can
+    /// never match each other. Missed duplicates, silently.
+    /// </para>
+    /// <para>
+    /// Call it immediately after the extraction path switches, in the same maintenance window. The
+    /// acceptance check is that the number of documents carrying
+    /// <see cref="DocumentReviewReasons.DuplicateSuspected"/> is unchanged across it.
+    /// </para>
+    /// </summary>
+    public virtual async Task<int> RecomputeFingerprintsAsync(CancellationToken cancellationToken = default)
+    {
+        var fieldsByType = new Dictionary<Guid, List<Field>>();
+        var recomputed = 0;
+        var skip = 0;
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var page = await DocumentGenericRepository.GetPagedListAsync(
+                skip, BatchSize, sorting: nameof(Document.Id), includeDetails: false, cancellationToken);
+
+            if (page.Count == 0)
+            {
+                break;
+            }
+
+            foreach (var document in page)
+            {
+                if (document.DocumentTypeId == null)
+                {
+                    continue;
+                }
+
+                if (!fieldsByType.TryGetValue(document.DocumentTypeId.Value, out var fields))
+                {
+                    fields = await FieldRepository.GetListAsync(document.DocumentTypeId.Value, cancellationToken);
+                    fieldsByType[document.DocumentTypeId.Value] = fields;
+                }
+
+                var fingerprint = FlexFieldFingerprintCalculator.Compute(document, fields);
+                if (string.Equals(fingerprint, document.FieldFingerprint, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                document.SetFieldFingerprint(fingerprint);
+                await DocumentGenericRepository.UpdateAsync(document, autoSave: true, cancellationToken);
+                recomputed++;
+            }
+
+            skip += page.Count;
+        }
+
+        Logger.LogInformation(
+            "Recomputed {Count} document fingerprints from the v3 value bag for layer {Layer}.",
+            recomputed, CurrentTenant.Id?.ToString() ?? "host");
+
+        return recomputed;
     }
 
     /// <summary>

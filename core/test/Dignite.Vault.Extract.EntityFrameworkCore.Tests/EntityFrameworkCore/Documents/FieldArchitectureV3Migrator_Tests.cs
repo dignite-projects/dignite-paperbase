@@ -54,7 +54,7 @@ public class FieldArchitectureV3Migrator_Tests : VaultExtractEntityFrameworkCore
     [Fact]
     public async Task Migrates_definitions_preserving_identity()
     {
-        await WithUnitOfWorkAsync(SeedSchemaAsync);
+        await WithUnitOfWorkAsync(() => SeedSchemaAsync());
 
         var result = await WithMigrationAsync();
 
@@ -228,6 +228,68 @@ public class FieldArchitectureV3Migrator_Tests : VaultExtractEntityFrameworkCore
         });
     }
 
+    /// <summary>
+    /// Fingerprint recomputation is a separate call on purpose, so this asserts what
+    /// <see cref="FieldArchitectureV3Migrator.MigrateAsync"/> does <i>not</i> do. Running it during the
+    /// additive phase would leave a corpus split between v2-shaped and v3-shaped hashes as soon as the
+    /// still-live v2 pipeline re-extracted anything — and duplicate detection compares those hashes by
+    /// string equality, so the split would show up only as duplicates quietly going unnoticed.
+    /// </summary>
+    [Fact]
+    public async Task Migrating_does_not_touch_fingerprints()
+    {
+        var id = _guidGenerator.Create();
+        await WithUnitOfWorkAsync(async () =>
+        {
+            await SeedSchemaAsync();
+            await SeedDocumentAsync(id);
+        });
+
+        string? before = null;
+        await WithUnitOfWorkAsync(async () => before = (await _documentRepository.FindAsync(id))!.FieldFingerprint);
+
+        await WithMigrationAsync();
+
+        await WithUnitOfWorkAsync(async () =>
+            (await _documentRepository.FindAsync(id))!.FieldFingerprint.ShouldBe(before));
+    }
+
+    /// <summary>
+    /// The cutover step: once run, a document's fingerprint is derived from its bag, and two documents
+    /// with the same unique-key values still agree - which is the only property duplicate detection
+    /// actually needs.
+    /// </summary>
+    [Fact]
+    public async Task Recompute_derives_fingerprints_from_the_bag()
+    {
+        var first = _guidGenerator.Create();
+        var second = _guidGenerator.Create();
+
+        await WithUnitOfWorkAsync(async () =>
+        {
+            await SeedSchemaAsync(uniqueKey: true);
+            await SeedDocumentAsync(first);
+            await SeedDocumentAsync(second, seedSchema: false);
+        });
+
+        await WithMigrationAsync();
+
+        var recomputed = 0;
+        await WithUnitOfWorkAsync(async () => recomputed = await _migrator.RecomputeFingerprintsAsync());
+
+        recomputed.ShouldBe(2);
+
+        await WithUnitOfWorkAsync(async () =>
+        {
+            var a = await _documentRepository.FindAsync(first);
+            var b = await _documentRepository.FindAsync(second);
+
+            a!.FieldFingerprint.ShouldNotBeNullOrWhiteSpace();
+            // Same unique-key values -> same fingerprint, which is what makes them detectable duplicates.
+            b!.FieldFingerprint.ShouldBe(a.FieldFingerprint);
+        });
+    }
+
     // --- helpers ---
 
     private async Task<FieldArchitectureV3MigrationResult> WithMigrationAsync()
@@ -248,29 +310,29 @@ public class FieldArchitectureV3Migrator_Tests : VaultExtractEntityFrameworkCore
         };
     }
 
-    private async Task SeedSchemaAsync()
+    private async Task SeedSchemaAsync(bool uniqueKey = false)
     {
         await _documentTypeRepository.InsertAsync(
             new DocumentType(TypeId(TypeCode), null, TypeCode, TypeCode), autoSave: true);
 
-        await InsertDefinitionAsync("title", FieldDataType.Text, "extract title");
-        await InsertDefinitionAsync("amount", FieldDataType.Number, "extract amount");
+        await InsertDefinitionAsync("title", FieldDataType.Text, "extract title", isUniqueKey: uniqueKey);
+        await InsertDefinitionAsync("amount", FieldDataType.Number, "extract amount", isUniqueKey: uniqueKey);
         await InsertDefinitionAsync("signed_on", FieldDataType.Date, "extract date");
         await InsertDefinitionAsync("parties", FieldDataType.Text, "extract parties", allowMultiple: true);
     }
 
     private async Task InsertDefinitionAsync(
-        string name, FieldDataType dataType, string prompt, bool allowMultiple = false)
+        string name, FieldDataType dataType, string prompt, bool allowMultiple = false, bool isUniqueKey = false)
     {
         await _fieldDefinitionRepository.InsertAsync(
             new FieldDefinition(
                 FieldId(name), null, TypeId(TypeCode),
                 name: name, displayName: name, prompt: prompt, dataType: dataType,
-                allowMultiple: allowMultiple),
+                allowMultiple: allowMultiple, isUniqueKey: isUniqueKey),
             autoSave: true);
     }
 
-    private async Task SeedDocumentAsync(Guid id)
+    private async Task SeedDocumentAsync(Guid id, bool seedSchema = true)
     {
         var doc = new Document(
             id,
