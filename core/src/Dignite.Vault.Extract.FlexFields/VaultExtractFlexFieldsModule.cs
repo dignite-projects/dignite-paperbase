@@ -14,7 +14,12 @@ namespace Dignite.Vault.Extract.FlexFields;
 /// module declares no services of its own beyond its localization resource.
 /// </para>
 /// </summary>
-[DependsOn(typeof(FlexFieldsAbstractionsModule))]
+[DependsOn(
+    typeof(FlexFieldsAbstractionsModule),
+    // The CKEditor bolt-on field type, which carries what v2 called LongText. Registered here so the
+    // whole set of field types a Vault Extract Field may name resolves from one module.
+    typeof(Dignite.Abp.FlexFields.CKEditor.FlexFieldsCKEditorModule)
+    )]
 public class VaultExtractFlexFieldsModule : AbpModule
 {
     public override void ConfigureServices(ServiceConfigurationContext context)

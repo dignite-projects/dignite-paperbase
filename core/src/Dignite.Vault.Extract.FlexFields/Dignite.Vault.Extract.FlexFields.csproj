@@ -19,6 +19,9 @@
       downstream, never in the kernel.
     -->
     <PackageReference Include="Dignite.Abp.FlexFields.Abstractions" />
+    <!-- Serves v2 LongText in v3 (#559 resolution 1): CKEditorFieldType.IndexValueType is null, so
+         "never indexed" stays structural, and ContentFormat=Markdown persists a plain GFM string. -->
+    <PackageReference Include="Dignite.Abp.FlexFields.CKEditor" />
     <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" />
   </ItemGroup>
 
