@@ -81,6 +81,22 @@ public class FieldArchitectureV3Migrator : ITransientDependency
     public virtual async Task<FieldArchitectureV3MigrationResult> MigrateAsync(
         CancellationToken cancellationToken = default)
     {
+        // Opens its own unit of work rather than assuming one. The caller that matters most is a host's
+        // "--migrate-database" path, which runs outside any ambient unit of work, so without this the
+        // very first repository call fails with "A DbContext can only be created inside a unit of work".
+        // requiresNew: false so an ambient one is joined instead of nested when there is one - which is
+        // how the tests call it.
+        using var uow = UnitOfWorkManager.Begin(requiresNew: false);
+
+        var result = await MigrateCoreAsync(cancellationToken);
+
+        await uow.CompleteAsync(cancellationToken);
+        return result;
+    }
+
+    protected virtual async Task<FieldArchitectureV3MigrationResult> MigrateCoreAsync(
+        CancellationToken cancellationToken)
+    {
         var tenantId = CurrentTenant.Id;
         Logger.LogInformation(
             "Field architecture v3 migration starting for layer {Layer}.",
@@ -92,6 +108,18 @@ public class FieldArchitectureV3Migrator : ITransientDependency
         // The derived index is never hand-migrated: re-deriving it from the bags is the kernel's own
         // designed path, and running it here doubles as the first real exercise of the rebuild that every
         // later field-type or searchability change will depend on.
+        //
+        // Runs unconditionally, including when this pass migrated nothing.
+        //
+        // An earlier version skipped it when nothing had moved, to keep a repeat run cheap. Running the
+        // migration against a real database showed why that is wrong: the first attempt migrated the
+        // definitions and bags and then failed at the rebuild, so the second attempt correctly found
+        // nothing left to migrate - and skipped the very step that had not finished, leaving the query
+        // index permanently empty while reporting success. The skip removed exactly the resumability the
+        // idempotency exists to provide.
+        //
+        // Rebuilding is itself idempotent and this is a maintenance command, not a startup path, so the
+        // saving was never worth a correctness condition that only bites after a partial failure.
         await IndexManager.RebuildAsync(cancellationToken);
 
         var result = new FieldArchitectureV3MigrationResult(
@@ -228,6 +256,16 @@ public class FieldArchitectureV3Migrator : ITransientDependency
     /// </para>
     /// </summary>
     public virtual async Task<int> RecomputeFingerprintsAsync(CancellationToken cancellationToken = default)
+    {
+        using var uow = UnitOfWorkManager.Begin(requiresNew: false);
+
+        var recomputed = await RecomputeFingerprintsCoreAsync(cancellationToken);
+
+        await uow.CompleteAsync(cancellationToken);
+        return recomputed;
+    }
+
+    protected virtual async Task<int> RecomputeFingerprintsCoreAsync(CancellationToken cancellationToken)
     {
         var fieldsByType = new Dictionary<Guid, List<Field>>();
         var recomputed = 0;
