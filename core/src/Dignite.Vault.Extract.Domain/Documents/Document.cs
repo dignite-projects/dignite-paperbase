@@ -384,6 +384,42 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
     /// Atomic state change without DomainService mediation, unlike internal setters such as <see cref="SetMarkdown"/> that must be composed with pipeline completion transactions.
     /// <b>Precondition</b>: <see cref="DocumentTypeId"/> is not null because fields hang off document types; both caller paths run after classification completes.
     /// </summary>
+    /// <summary>
+    /// Replaces the whole type-bound field value set (field architecture v3, #562) — the v3 successor to
+    /// <see cref="SetFields"/>.
+    /// <para>
+    /// Whole-set replacement, not a merge: extraction produces the complete set for a document's type in
+    /// one call, so a field absent from <paramref name="values"/> means "this document has no value for
+    /// it", not "leave whatever was there". Merging would let a value from a previous type survive a
+    /// reclassification.
+    /// </para>
+    /// <para>
+    /// Keyed by <see cref="Fields.Field.Name"/>, because that is the bag's key. The caller resolves names
+    /// from the field definitions and is responsible for having validated each value against its field
+    /// type first — the aggregate stores what it is given, exactly as <see cref="SetFields"/> did.
+    /// </para>
+    /// </summary>
+    public void SetFlexFields(IReadOnlyDictionary<string, object?>? values)
+    {
+        FlexFields.Clear();
+
+        if (values == null)
+        {
+            return;
+        }
+
+        foreach (var pair in values)
+        {
+            // A null value is an absent field, not a stored null: keeping the key would make "extracted as
+            // empty" and "never extracted" indistinguishable on the egress, and would put an entry in the
+            // index for a value that does not exist.
+            if (pair.Value != null)
+            {
+                FlexFields[pair.Key] = pair.Value;
+            }
+        }
+    }
+
     public void SetFields(IEnumerable<DocumentFieldValue>? values)
     {
         var incoming = values?.ToList() ?? new List<DocumentFieldValue>();
