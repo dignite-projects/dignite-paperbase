@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Dignite.Abp.FlexFields;
 using Dignite.Vault.Extract.Documents;
 using Dignite.Vault.Extract.Documents.Cabinets;
 using Dignite.Vault.Extract.Documents.DocumentTypes;
@@ -12,7 +13,7 @@ using Volo.Abp.MultiTenancy;
 
 namespace Dignite.Vault.Extract.Documents;
 
-public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
+public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFields
 {
     // Multi-tenancy
     public virtual Guid? TenantId { get; private set; }
@@ -211,6 +212,32 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
     /// <see cref="DocumentReviewReasons.FieldValidationWarning"/> bit — through <see cref="ReplaceFieldValidationWarnings"/>.
     /// </summary>
     public virtual IReadOnlyCollection<DocumentFieldValidationWarning> FieldValidationWarnings => _fieldValidationWarnings.AsReadOnly();
+
+    // --- Field architecture v3 value bag (#558) ---
+
+    /// <summary>
+    /// Authoritative storage for type-bound field values under field architecture v3: one entry per field,
+    /// keyed by <see cref="Fields.Field.Name"/>, persisted as a single JSON column.
+    /// <para>
+    /// <b>Not yet in use.</b> <see cref="ExtractedFieldValues"/> above is still the truth source; this
+    /// property exists so the schema and the v2 rows can coexist while the migration is written and
+    /// verified (#561's expand-then-contract plan). The rollback before the final drop is therefore
+    /// "revert the code", not "restore a backup".
+    /// </para>
+    /// <para>
+    /// This is FlexFields' own dictionary, deliberately <b>not</b> ABP's <c>ExtraProperties</c>: kept
+    /// isolated from that shared bag so no other module can collide with a tenant's field names. Note
+    /// that it is not the untyped extension bag CLAUDE.md forbids on this aggregate either — every key in
+    /// it is constrained by a real <see cref="Fields.Field"/> definition, which is exactly what the
+    /// forbidden <c>Dictionary&lt;string, object&gt;</c> extension bag would not have been.
+    /// </para>
+    /// <para>
+    /// The derived <c>DocumentFlexFieldIndex</c> table alongside it is never authoritative: every row in
+    /// it is re-derivable from this bag, which is what lets a field's type or searchability change be
+    /// repaired by a rebuild rather than a data migration.
+    /// </para>
+    /// </summary>
+    public virtual FlexFieldDictionary FlexFields { get; protected set; } = new();
 
     protected Document()
     {

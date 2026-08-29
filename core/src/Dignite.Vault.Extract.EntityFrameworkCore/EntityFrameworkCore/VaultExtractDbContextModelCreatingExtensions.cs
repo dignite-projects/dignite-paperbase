@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Text.Json;
+using Dignite.Abp.FlexFields.EntityFrameworkCore;
 using Dignite.Vault.Extract.Documents;
 using Dignite.Vault.Extract.Documents.Fields;
 using Microsoft.EntityFrameworkCore;
@@ -70,6 +71,22 @@ public static class VaultExtractDbContextModelCreatingExtensions
             // Text extraction provenance (#210): provider name + archived manifest, serialized as a whole into a typed JSON column (#206 cross-DB principle).
             b.Property(x => x.ExtractionMetadata)
                 .HasConversion(ExtractionMetadataConverter, ExtractionMetadataComparer);
+
+            // Field architecture v3 (#558): the authoritative flex-field value bag, one JSON column. Mapped by
+            // the kernel, which also installs the value comparer a converted mutable dictionary needs - without
+            // it EF compares the bag by reference and an in-place field write on a loaded document never
+            // persists. Not yet written to: ExtractedFieldValues below is still the truth source until #561's
+            // migration runs.
+            b.ConfigureFlexFieldsProperty<Document>();
+
+            // The bag is read back through AbpJsonValueConverter, i.e.
+            // JsonSerializer.Deserialize<FlexFieldDictionary>(columnValue) - and an empty string is not
+            // JSON, so that call throws "The input does not contain any JSON tokens" (verified against
+            // rc.5, not assumed). Without this default, EF generates the column with the CLR default ""
+            // for a non-nullable string, which is harmless on a new table but not here: VaultDocuments is
+            // populated, so every document predating v3 would become unreadable on its next load rather
+            // than failing at migration time. "{}" is the empty bag such a document actually has.
+            b.Property(x => x.FlexFields).HasDefaultValueSql("'{}'");
 
             // Field architecture v2 / Issue #206: type-bound field values are an aggregate-internal child collection (DocumentExtractedField),
             // no longer a top-level native JSON column on Document. Hard-deleting a Document cascades field-row deletion.
@@ -339,6 +356,79 @@ public static class VaultExtractDbContextModelCreatingExtensions
 
             // Non-unique index: supports listing fields by (tenant layer, type), including trash-bin paths (DataFilter.Disable<ISoftDelete>).
             b.HasIndex(x => new { x.TenantId, x.DocumentTypeId });
+        });
+
+        // === Field architecture v3 (#558): the FlexFields kernel's three shapes ===
+        // Additive alongside the v2 FieldDefinition / DocumentExtractedField tables above, which stay
+        // authoritative until the migration is written and verified (#561 expand-then-contract).
+
+        builder.Entity<Field>(b =>
+        {
+            b.ToTable(VaultExtractDbProperties.DbTablePrefix + "Fields", VaultExtractDbProperties.DbSchema);
+            b.ConfigureByConvention();
+
+            // Name / DisplayName / Description / FieldTypeName / Configuration and their column lengths are
+            // mapped by the kernel, so the contract's storage shape stays identical across every downstream.
+            // Description is mapped with no length limit, which is what keeps #447's uncapped extraction
+            // instruction uncapped after the move off FieldDefinition.Prompt.
+            b.ConfigureFlexField<Field>();
+
+            // Clear the kernel's max length on Description. Field.Description carries what v2 called
+            // Prompt - the LLM extraction instruction - which #447 deliberately left uncapped as
+            // admin-authored configuration that may be long structured Markdown. The published
+            // 10.0.0-rc.5 package still maps Description as nvarchar(256), so without this the column
+            // would silently narrow a decision this project already made, and the entity (which enforces
+            // no length) would happily accept values the database then rejects.
+            //
+            // Drop this line once flex-fields ships a release without that limit - not before, and not on
+            // the strength of the source repo showing it removed: what matters is the version in
+            // Directory.Packages.props.
+            b.Property(x => x.Description).Metadata.SetMaxLength(null);
+
+            // Vault Extract's own columns, beside the contract's - same shape as the site repository's GroupName.
+            b.Property(x => x.DisplayOrder).IsRequired();
+            b.Property(x => x.IsRequired).IsRequired();
+            b.Property(x => x.IsSearchable).IsRequired();
+            b.Property(x => x.IsUniqueKey).IsRequired();
+
+            // Internal association to parent document type (#207): FK -> DocumentType.Id, OnDelete Restrict.
+            b.HasOne<DocumentType>()
+                .WithMany()
+                .HasForeignKey(x => x.DocumentTypeId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Layer-scoped uniqueness on (TenantId, DocumentTypeId, Name) stays an application-layer check,
+            // not a DB index - same cross-DB rationale as DocumentType / FieldDefinition above.
+            b.HasIndex(x => new { x.TenantId, x.DocumentTypeId });
+        });
+
+        builder.Entity<DocumentFlexFieldIndex>(b =>
+        {
+            b.ToTable(VaultExtractDbProperties.DbTablePrefix + "DocumentFlexFieldIndexes", VaultExtractDbProperties.DbSchema);
+            b.ConfigureByConvention();
+
+            // The five typed value slots and their lengths, from the kernel.
+            b.ConfigureFlexFieldIndex<DocumentFlexFieldIndex>();
+
+            // Derived rows die with their document. No soft delete: these are hidden through the parent
+            // Document filter while it is soft-deleted, exactly like the v2 DocumentExtractedField rows.
+            b.HasOne<Document>()
+                .WithMany()
+                .HasForeignKey(x => x.DocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Rebuild and per-document delete both walk by document.
+            b.HasIndex(x => x.DocumentId);
+
+            // Seek shape for "documents where field X matches Y": narrow by tenant and field, then by the
+            // typed slot, ending on DocumentId so the match is index-only. One per slot that can actually be
+            // compared - Boolean gets none, the same call the v2 mapping made: two distinct values is too
+            // little selectivity to earn an index, and the (TenantId, FieldId) prefix plus AND-narrowing with
+            // other fields already does the work.
+            b.HasIndex(x => new { x.TenantId, x.FieldId, x.StringValue, x.DocumentId });
+            b.HasIndex(x => new { x.TenantId, x.FieldId, x.NumberValue, x.DocumentId });
+            b.HasIndex(x => new { x.TenantId, x.FieldId, x.DateTimeValue, x.DocumentId });
+            b.HasIndex(x => new { x.TenantId, x.FieldId, x.GuidValue, x.DocumentId });
         });
 
         builder.Entity<Cabinet>(b =>

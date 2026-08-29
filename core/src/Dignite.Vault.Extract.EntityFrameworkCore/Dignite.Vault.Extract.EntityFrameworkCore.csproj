@@ -13,6 +13,8 @@
     <!-- Keep the core EF project free of vector database dependencies. Vectorization and
          vector storage are downstream RAG concerns, out of scope for the Extract channel. -->
     <PackageReference Include="Volo.Abp.EntityFrameworkCore" />
+    <!-- Field architecture v3 (#558): FlexFieldIndexBase, FlexFieldIndexValue and the ConfigureFlexField* model extensions. Relational-only shapes, so they enter here and never in Domain. -->
+    <PackageReference Include="Dignite.Abp.FlexFields.EntityFrameworkCore" />
     <ProjectReference Include="..\Dignite.Vault.Extract.Domain\Dignite.Vault.Extract.Domain.csproj" />
   </ItemGroup>
 
