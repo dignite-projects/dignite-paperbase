@@ -16,6 +16,8 @@
     <!-- Field architecture v3 (#558): IFlexField (the field-definition Entity contract) and the
          IFlexFieldProvider / IFlexFieldValueMigrator seams. Pulls .Abstractions transitively. -->
     <PackageReference Include="Dignite.Abp.FlexFields.Domain" />
+    <!-- Vault Extract's own field types, so a Field bound to Tags resolves wherever the domain does. -->
+    <ProjectReference Include="..\Dignite.Vault.Extract.FlexFields\Dignite.Vault.Extract.FlexFields.csproj" />
     <ProjectReference Include="..\Dignite.Vault.Extract.Abstractions\Dignite.Vault.Extract.Abstractions.csproj" />
     <ProjectReference Include="..\Dignite.Vault.Extract.Domain.Shared\Dignite.Vault.Extract.Domain.Shared.csproj" />
     <!-- EFCore.Tests must construct DocumentPipelineRun directly through its internal constructor to verify repository visibility semantics for unflushed runs (#216 follow-up #1). -->

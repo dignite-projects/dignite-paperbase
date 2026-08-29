@@ -11,6 +11,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Proxies" />
+    <!-- TagsFieldType: the v3 pipeline tests seed a Tags field and assert its multi-value fan-out. -->
+    <ProjectReference Include="..\..\src\Dignite.Vault.Extract.FlexFields\Dignite.Vault.Extract.FlexFields.csproj" />
     <ProjectReference Include="..\..\src\Dignite.Vault.Extract.EntityFrameworkCore\Dignite.Vault.Extract.EntityFrameworkCore.csproj" />
     <ProjectReference Include="..\Dignite.Vault.Extract.Application.Tests\Dignite.Vault.Extract.Application.Tests.csproj" />
     <PackageReference Include="Volo.Abp.EntityFrameworkCore.Sqlite"/>
