@@ -1,3 +1,5 @@
+using Dignite.Abp.FlexFields;
+
 namespace Dignite.Vault.Extract.Documents.Fields;
 
 /// <summary>
@@ -12,7 +14,7 @@ namespace Dignite.Vault.Extract.Documents.Fields;
 /// <para>
 /// Any field may be <b>empty / default</b>: when the LLM is unavailable, times out, or returns
 /// non-JSON, the whole result falls back to a conservative draft (empty DisplayName + empty Name +
-/// <see cref="FieldDataType.Text"/> + all false). The frontend treats empty DisplayName as "drafting
+/// the default Text field type + all false). The frontend treats empty DisplayName as "drafting
 /// unavailable", preserves user-entered content, and prompts manual input.
 /// </para>
 /// </summary>
@@ -23,11 +25,23 @@ public class FieldDefinitionDraftDto
     /// <summary>Populated only when input <see cref="DraftFieldDefinitionInput.ForNewField"/>=true; always empty for edits.</summary>
     public string Name { get; set; } = string.Empty;
 
-    public FieldDataType DataType { get; set; } = FieldDataType.Text;
+    /// <summary>
+    /// Registration key of the drafted field type. The LLM never sees the live field-type registry — it
+    /// picks from a compile-time allow-list of coarse kinds, which the server maps to a field type plus
+    /// configuration exactly as the v2-to-v3 migration does. Building the model's vocabulary from the
+    /// registry at runtime would be a runtime-constructed instruction, which the security conventions
+    /// forbid outright.
+    /// </summary>
+    public string FieldTypeName { get; set; } = DefaultFieldTypeName;
+
+    /// <summary>Type-specific configuration that goes with <see cref="FieldTypeName"/>, e.g. the DateTime input mode.</summary>
+    public FieldConfigurationDictionary Configuration { get; set; } = new();
 
     /// <summary>Guardrail 3: document semantics do not signal whether a field is required, so AI only returns conservative default false and admins decide.</summary>
     public bool IsRequired { get; set; }
 
-    /// <summary>Guardrail 2: only <see cref="FieldDataType.Text"/> fields can be true, mirroring the entity invariant; non-text is always clamped to false by the server.</summary>
-    public bool AllowMultiple { get; set; }
+    // The kind a draft falls back to, matching the shape the whole DTO falls back to when drafting fails.
+    // A literal for the same reason CreateFieldDefinitionDto uses one: Application.Contracts does not depend
+    // on the field-type implementations to name a default.
+    private const string DefaultFieldTypeName = "Text";
 }

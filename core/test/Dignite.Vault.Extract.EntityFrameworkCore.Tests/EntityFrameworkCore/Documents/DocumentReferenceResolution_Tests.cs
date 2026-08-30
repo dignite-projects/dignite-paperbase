@@ -1,3 +1,9 @@
+using System.Collections.Generic;
+using Dignite.Abp.FlexFields.CKEditor;
+using Dignite.Abp.FlexFields.Date;
+using Dignite.Abp.FlexFields.Number;
+using Dignite.Abp.FlexFields.Text;
+using Dignite.Vault.Extract.FlexFields.Tags;
 using System;
 using System.Linq;
 using System.Text.Json;
@@ -28,11 +34,11 @@ public class DocumentReferenceResolutionTestModule : AbpModule
 }
 
 /// <summary>
-/// #207 acceptance: TypeCode / Name rename unlock, soft-delete-penetrating join, and DataType change guard,
+/// #207 acceptance: TypeCode / Name rename unlock, soft-delete-penetrating join, and field-type change guard,
 /// end to end through real EF (SQLite) + AppService DTO assembly. Core proof: internal relations use immutable
 /// Ids, so renames do not cascade data rows while exit DTOs transparently reflect current code / name. Archived
 /// (soft-deleted) fields can still be resolved by historical document read paths, and fields with extracted
-/// values cannot change DataType.
+/// values cannot change their field type.
 /// </summary>
 public class DocumentReferenceResolution_Tests : VaultExtractTestBase<DocumentReferenceResolutionTestModule>
 {
@@ -40,6 +46,7 @@ public class DocumentReferenceResolution_Tests : VaultExtractTestBase<DocumentRe
     private readonly IDocumentTypeAppService _documentTypeAppService;
     private readonly IFieldDefinitionAppService _fieldDefinitionAppService;
     private readonly IDocumentRepository _documentRepository;
+    private readonly Dignite.Abp.FlexFields.IFlexFieldIndexManager<Document> _indexManager;
 
     public DocumentReferenceResolution_Tests()
     {
@@ -47,6 +54,7 @@ public class DocumentReferenceResolution_Tests : VaultExtractTestBase<DocumentRe
         _documentTypeAppService = GetRequiredService<IDocumentTypeAppService>();
         _fieldDefinitionAppService = GetRequiredService<IFieldDefinitionAppService>();
         _documentRepository = GetRequiredService<IDocumentRepository>();
+        _indexManager = GetRequiredService<Dignite.Abp.FlexFields.IFlexFieldIndexManager<Document>>();
     }
 
     [Fact]
@@ -59,7 +67,7 @@ public class DocumentReferenceResolution_Tests : VaultExtractTestBase<DocumentRe
         await WithUnitOfWorkAsync(async () =>
         {
             (typeId, fieldId) = await SeedTypeFieldAndDocAsync(
-                "contract.general", "amount", FieldDataType.Number, docId, 100m);
+                "contract.general", "amount", NumberFieldType.ControlName, docId, 100m);
         });
 
         // Before rename: DTO outputs original code / name.
@@ -71,8 +79,9 @@ public class DocumentReferenceResolution_Tests : VaultExtractTestBase<DocumentRe
             dto.ExtractedFields!.ShouldContainKey("amount");
         });
 
-        // Rename TypeCode + Name while DataType stays unchanged, so the guard is not triggered. Internal Ids stay
-        // unchanged and Document / field-value rows are not cascaded.
+        // Rename TypeCode + Name while the field type stays unchanged, so the guard is not triggered. The
+        // internal ids stay put and nothing cascades — but in v3 the rename does rewrite the value bags,
+        // because the field name is the key each document stores the value under.
         await WithUnitOfWorkAsync(async () =>
         {
             await _documentTypeAppService.UpdateAsync(typeId, new UpdateDocumentTypeDto
@@ -86,8 +95,8 @@ public class DocumentReferenceResolution_Tests : VaultExtractTestBase<DocumentRe
             {
                 Name = "total_amount",
                 DisplayName = "Amount",
-                Prompt = "Extract the amount.",
-                DataType = FieldDataType.Number,
+                Description = "Extract the amount.",
+                FieldTypeName = NumberFieldType.ControlName,
                 DisplayOrder = 0,
                 IsRequired = false
             });
@@ -114,7 +123,7 @@ public class DocumentReferenceResolution_Tests : VaultExtractTestBase<DocumentRe
         await WithUnitOfWorkAsync(async () =>
         {
             (_, fieldId) = await SeedTypeFieldAndDocAsync(
-                "host.invoice", "partner", FieldDataType.Text, docId, "Acme");
+                "host.invoice", "partner", TextFieldType.ControlName, docId, "Acme");
         });
 
         // Soft-delete the field. FieldDefinition deletion uses soft delete and has no in-use guard; field-value
@@ -132,7 +141,7 @@ public class DocumentReferenceResolution_Tests : VaultExtractTestBase<DocumentRe
     }
 
     [Fact]
-    public async Task Changing_DataType_With_Existing_Field_Values_Is_Rejected()
+    public async Task Changing_FieldType_With_Existing_Field_Values_Is_Rejected()
     {
         Guid fieldId = default;
         var docId = Guid.NewGuid();
@@ -140,11 +149,12 @@ public class DocumentReferenceResolution_Tests : VaultExtractTestBase<DocumentRe
         await WithUnitOfWorkAsync(async () =>
         {
             (_, fieldId) = await SeedTypeFieldAndDocAsync(
-                "contract.general", "amount", FieldDataType.Number, docId, 100m);
+                "contract.general", "amount", NumberFieldType.ControlName, docId, 100m);
         });
 
-        // Fields with extracted values cannot change DataType; otherwise historical values remain in old typed
-        // columns and silently disappear under new-type queries.
+        // A field with extracted values cannot change its field type. The values stay in the bag either way
+        // in v3 — but nothing would render or index them under the new type, which is the same silent
+        // disappearance the v2 typed-column guard existed to prevent.
         await WithUnitOfWorkAsync(async () =>
         {
             var ex = await Should.ThrowAsync<BusinessException>(() =>
@@ -152,8 +162,8 @@ public class DocumentReferenceResolution_Tests : VaultExtractTestBase<DocumentRe
                 {
                     Name = "amount",
                     DisplayName = "Amount",
-                    Prompt = "Extract the amount.",
-                    DataType = FieldDataType.Text,   // Changed from Number to Text.
+                    Description = "Extract the amount.",
+                    FieldTypeName = TextFieldType.ControlName,   // Changed from Number to Text.
                     DisplayOrder = 0,
                     IsRequired = false
                 }));
@@ -163,7 +173,7 @@ public class DocumentReferenceResolution_Tests : VaultExtractTestBase<DocumentRe
     }
 
     private async Task<(Guid TypeId, Guid FieldId)> SeedTypeFieldAndDocAsync(
-        string typeCode, string fieldName, FieldDataType dataType, Guid docId, object value)
+        string typeCode, string fieldName, string fieldTypeName, Guid docId, object value)
     {
         var type = await _documentTypeAppService.CreateAsync(new CreateDocumentTypeDto
         {
@@ -177,8 +187,8 @@ public class DocumentReferenceResolution_Tests : VaultExtractTestBase<DocumentRe
             DocumentTypeId = type.Id,
             Name = fieldName,
             DisplayName = "Field",
-            Prompt = "Extract.",
-            DataType = dataType
+            Description = "Extract.",
+            FieldTypeName = fieldTypeName
         });
 
         var doc = new Document(
@@ -186,8 +196,12 @@ public class DocumentReferenceResolution_Tests : VaultExtractTestBase<DocumentRe
             tenantId: null,
             fileOrigin: new FileOrigin($"blobs/{docId:N}.pdf", "test-user", "application/pdf", $"{Guid.NewGuid():N}{Guid.NewGuid():N}", 1024, "f.pdf"));
         typeof(Document).GetProperty(nameof(Document.DocumentTypeId))!.SetValue(doc, type.Id);
-        doc.SetFields(new[] { new DocumentFieldValue(field.Id, dataType, JsonSerializer.SerializeToElement(value)) });
+        doc.SetFlexFields(new Dictionary<string, object?> { [fieldName] = value });
         await _documentRepository.InsertAsync(doc, autoSave: true);
+
+        // The field-type guard answers "does this field have values" from the derived index, so a seed that
+        // skipped this would let a type change through that production would refuse.
+        await _indexManager.SynchronizeAsync(doc);
 
         return (type.Id, field.Id);
     }

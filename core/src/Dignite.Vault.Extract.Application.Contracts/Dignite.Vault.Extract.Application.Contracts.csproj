@@ -13,6 +13,13 @@
     <PackageReference Include="Volo.Abp.Ddd.Application.Contracts" />
     <PackageReference Include="Volo.Abp.Authorization" />
     <PackageReference Include="Volo.Abp.Features" />
+    <!--
+      Field architecture v3 (#559) puts FieldTypeName + Configuration on the wire in place of the v2
+      DataType enum, so the contracts need FieldConfigurationDictionary. Abstractions only: it is the
+      bottom of the FlexFields topology and carries no domain, entities or persistence, matching the role
+      Dignite.Vault.Extract.Abstractions plays here.
+    -->
+    <PackageReference Include="Dignite.Abp.FlexFields.Abstractions" />
     <ProjectReference Include="..\Dignite.Vault.Extract.Abstractions\Dignite.Vault.Extract.Abstractions.csproj" />
     <ProjectReference Include="..\Dignite.Vault.Extract.Domain.Shared\Dignite.Vault.Extract.Domain.Shared.csproj" />
   </ItemGroup>

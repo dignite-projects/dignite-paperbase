@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Dignite.Abp.FlexFields;
 using Dignite.Vault.Extract.Documents.DocumentTypes;
 using Dignite.Vault.Extract.Documents.Fields.Cleanup;
 using Dignite.Vault.Extract.Permissions;
@@ -18,18 +19,29 @@ namespace Dignite.Vault.Extract.Documents.Fields;
 // using the same programmatic pattern as DocumentAppService.
 public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitionAppService
 {
-    private readonly IFieldDefinitionRepository _repository;
+    private readonly IFieldRepository _repository;
     private readonly IDocumentTypeRepository _documentTypeRepository;
     private readonly IDocumentRepository _documentRepository;
     private readonly FieldDefinitionManager _fieldDefinitionManager;
+    private readonly IFieldTypeResolver _fieldTypeResolver;
+
+    /// <summary>
+    /// A field's <c>Name</c> is the key its values are stored under in every document's bag, so a rename
+    /// has to move that key on every document — the one thing <c>RebuildAsync</c> explicitly cannot repair,
+    /// because re-deriving reads the bag under the same key it is trying to move.
+    /// </summary>
+    private readonly IFlexFieldValueMigrator<Document> _valueMigrator;
+
     private readonly IBackgroundJobManager _backgroundJobManager;
     private readonly FieldSchemaPromptBudgetGuard _schemaPromptBudget;
 
     public FieldDefinitionAppService(
-        IFieldDefinitionRepository repository,
+        IFieldRepository repository,
         IDocumentTypeRepository documentTypeRepository,
         IDocumentRepository documentRepository,
         FieldDefinitionManager fieldDefinitionManager,
+        IFieldTypeResolver fieldTypeResolver,
+        IFlexFieldValueMigrator<Document> valueMigrator,
         IBackgroundJobManager backgroundJobManager,
         FieldSchemaPromptBudgetGuard schemaPromptBudget)
     {
@@ -37,6 +49,8 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
         _documentTypeRepository = documentTypeRepository;
         _documentRepository = documentRepository;
         _fieldDefinitionManager = fieldDefinitionManager;
+        _fieldTypeResolver = fieldTypeResolver;
+        _valueMigrator = valueMigrator;
         _backgroundJobManager = backgroundJobManager;
         _schemaPromptBudget = schemaPromptBudget;
     }
@@ -63,7 +77,7 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
                 }
                 var deleted = await AsyncExecuter.ToListAsync(
                     deletedQuery.OrderByDescending(f => f.DeletionTime));
-                return ObjectMapper.Map<List<FieldDefinition>, List<FieldDefinitionDto>>(deleted);
+                return ObjectMapper.Map<List<Field>, List<FieldDefinitionDto>>(deleted);
             }
         }
 
@@ -87,17 +101,17 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
                 queryable
                     .OrderBy(f => f.DocumentTypeId)
                     .ThenBy(f => f.DisplayOrder));
-            return ObjectMapper.Map<List<FieldDefinition>, List<FieldDefinitionDto>>(all);
+            return ObjectMapper.Map<List<Field>, List<FieldDefinitionDto>>(all);
         }
 
         var list = await _repository.GetListAsync(input.DocumentTypeId.Value);
-        return ObjectMapper.Map<List<FieldDefinition>, List<FieldDefinitionDto>>(list);
+        return ObjectMapper.Map<List<Field>, List<FieldDefinitionDto>>(list);
     }
 
     [Authorize(VaultExtractPermissions.FieldDefinitions.Create)]
     public virtual async Task<FieldDefinitionDto> CreateAsync(CreateFieldDefinitionDto input)
     {
-        // Parent type must exist in the current layer (#207 FieldDefinition.DocumentTypeId FK RESTRICT).
+        // Parent type must exist in the current layer (#207 Field.DocumentTypeId FK RESTRICT).
         // IMultiTenant + ISoftDelete filters ensure cross-layer / deleted types return null.
         var type = await _documentTypeRepository.FindAsync(input.DocumentTypeId);
         if (type == null)
@@ -105,26 +119,29 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
             throw new EntityNotFoundException(typeof(DocumentType), input.DocumentTypeId);
         }
 
+        EnsureFieldTypeRegistered(input.FieldTypeName);
+
         // Soft-delete-aware duplicate check owned by the domain service (#304): the same (TenantId, DocumentTypeId, Name)
         // counts as occupied even when soft-deleted, avoiding conflicts with new records on restore.
         await _fieldDefinitionManager.CheckNameAvailableAsync(input.DocumentTypeId, input.Name);
-        await EnsureSchemaPromptBudgetAsync(type, replacingFieldId: null, projectedPrompt: input.Prompt);
+        await EnsureSchemaPromptBudgetAsync(type, replacingFieldId: null, projectedPrompt: input.Description);
 
-        var entity = new FieldDefinition(
+        var entity = new Field(
             GuidGenerator.Create(),
             CurrentTenant.Id,
             input.DocumentTypeId,
             input.Name,
             input.DisplayName,
-            input.Prompt,
-            input.DataType,
+            input.FieldTypeName,
+            input.Description,
+            input.Configuration,
             input.DisplayOrder,
             input.IsRequired,
-            input.AllowMultiple,
+            input.IsSearchable,
             input.IsUniqueKey);
 
         await _repository.InsertAsync(entity, autoSave: true);
-        return ObjectMapper.Map<FieldDefinition, FieldDefinitionDto>(entity);
+        return ObjectMapper.Map<Field, FieldDefinitionDto>(entity);
     }
 
     [Authorize(VaultExtractPermissions.FieldDefinitions.Update)]
@@ -135,44 +152,60 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
         // Cross-layer defense: callers may modify only their own layer.
         if (entity.TenantId != CurrentTenant.Id)
         {
-            throw new EntityNotFoundException(typeof(FieldDefinition), id);
+            throw new EntityNotFoundException(typeof(Field), id);
         }
 
-        // Rename unlock (#207): run the domain duplicate check only when Name changes. Same layer + same type is unique,
-        // including soft-deleted occupancy. The manager resolves the owning TypeCode for the error message only on conflict.
-        if (!string.Equals(input.Name, entity.Name, StringComparison.Ordinal))
+        EnsureFieldTypeRegistered(input.FieldTypeName);
+
+        var oldName = entity.Name;
+        var renamed = !string.Equals(input.Name, oldName, StringComparison.Ordinal);
+        if (renamed)
         {
+            // Rename unlock (#207): run the domain duplicate check only when Name changes. Same layer + same type is unique,
+            // including soft-deleted occupancy. The manager resolves the owning TypeCode for the error message only on conflict.
             await _fieldDefinitionManager.CheckNameAvailableAsync(entity.DocumentTypeId, input.Name);
         }
 
-        // Two "forbid when extracted values exist" guards share the same fact: whether this field has any value rows.
-        // Query once only when a relevant change needs a decision:
-        // - DataType change (#207): historical values live in the old typed column and silently disappear when queried as the new type.
-        // - Multi-value narrowing multi -> single (#212): Order>0 rows become orphans; exports render only Order 0, silently dropping extra values while storage rows remain.
-        //   single -> multi is lossless broadening because existing single-value rows become a one-element list, so it is not guarded here.
-        var dataTypeChanged = input.DataType != entity.DataType;
-        var multiValueNarrowed = entity.AllowMultiple && !input.AllowMultiple;
-        if (dataTypeChanged || multiValueNarrowed)
+        // #207, carried into v3: changing the field type of a field that already holds values is refused.
+        // The values were validated against the old type and stay in the bag untouched, but nothing would
+        // render or index them under the new one — the same silent disappearance the v2 typed-column guard
+        // existed to prevent, arrived at by a different route.
+        //
+        // v3 drops the separate multi-value narrowing guard: "one value or many" is a property of the type
+        // now (Tags versus Text), so narrowing IS a type change and this one guard covers both.
+        var fieldTypeChanged = !string.Equals(input.FieldTypeName, entity.FieldTypeName, StringComparison.Ordinal);
+        if (fieldTypeChanged &&
+            await _documentRepository.AnyFlexFieldValueAsync(entity, IsIndexable(entity.FieldTypeName)))
         {
-            var hasValues = await _documentRepository.AnyExtractedFieldValueAsync(entity.Id);
-            if (dataTypeChanged && hasValues)
-            {
-                throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.DataTypeChangeNotAllowed)
-                    .WithData("Name", entity.Name);
-            }
-            if (multiValueNarrowed && hasValues)
-            {
-                throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.MultiValueChangeNotAllowed)
-                    .WithData("Name", entity.Name);
-            }
+            throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.DataTypeChangeNotAllowed)
+                .WithData("Name", entity.Name);
         }
 
         var type = await _documentTypeRepository.GetAsync(entity.DocumentTypeId);
-        await EnsureSchemaPromptBudgetAsync(type, entity.Id, input.Prompt);
+        await EnsureSchemaPromptBudgetAsync(type, entity.Id, input.Description);
 
-        entity.Update(input.Name, input.DisplayName, input.Prompt, input.DataType, input.DisplayOrder, input.IsRequired, input.AllowMultiple, input.IsUniqueKey);
+        entity.SetName(input.Name);
+        entity.SetDisplayName(input.DisplayName);
+        entity.SetDescription(input.Description);
+        entity.SetFieldTypeName(input.FieldTypeName);
+        entity.SetConfiguration(input.Configuration);
+        entity.SetDisplayOrder(input.DisplayOrder);
+        entity.SetIsRequired(input.IsRequired);
+        entity.SetIsSearchable(input.IsSearchable);
+        entity.SetIsUniqueKey(input.IsUniqueKey);
         await _repository.UpdateAsync(entity, autoSave: true);
-        return ObjectMapper.Map<FieldDefinition, FieldDefinitionDto>(entity);
+
+        if (renamed)
+        {
+            // Order matters, and the kernel is explicit about it: the definition changes first, the bags
+            // follow, and nothing may synchronize the index in between — an entity synchronized between the
+            // two steps projects nothing for this field and loses the index rows it had. Nothing here
+            // reindexes afterwards either, and nothing needs to: index rows key on field id and value,
+            // neither of which a rename touches.
+            await _valueMigrator.RenameFieldAsync(oldName, input.Name);
+        }
+
+        return ObjectMapper.Map<Field, FieldDefinitionDto>(entity);
     }
 
     /// <summary>
@@ -191,6 +224,12 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
     /// <c>MissingRequiredFields</c> (non-blocking) and a stale fingerprint under a narrowed-but-non-empty unique-key
     /// set (an under-detection, not a park) are #537, not this path.
     /// </para>
+    /// <para>
+    /// The values themselves are deliberately left in their bags, as v2 left its value rows: deletion is soft, and
+    /// <see cref="RestoreAsync"/> has to be able to bring the field back to values that are still there. They are
+    /// invisible while the field is gone — <c>AssembleExtractedFields</c> only emits keys that resolve to a
+    /// definition — which is the same "archived field contributes no column" behaviour #499 pinned for the export.
+    /// </para>
     /// </summary>
     [Authorize(VaultExtractPermissions.FieldDefinitions.Delete)]
     public virtual async Task DeleteAsync(Guid id)
@@ -198,7 +237,7 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
         var entity = await _repository.GetAsync(id);
         if (entity.TenantId != CurrentTenant.Id)
         {
-            throw new EntityNotFoundException(typeof(FieldDefinition), id);
+            throw new EntityNotFoundException(typeof(Field), id);
         }
 
         await _repository.DeleteAsync(entity);
@@ -233,7 +272,7 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
             var entity = await _repository.GetAsync(id);
             if (entity.TenantId != CurrentTenant.Id)
             {
-                throw new EntityNotFoundException(typeof(FieldDefinition), id);
+                throw new EntityNotFoundException(typeof(Field), id);
             }
 
             // Already inside Disable<ISoftDelete>, so the parent type TypeCode can be resolved even if soft-deleted for error messages / DTO.
@@ -243,7 +282,7 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
             // Idempotent: return directly when not deleted.
             if (!entity.IsDeleted)
             {
-                return ObjectMapper.Map<FieldDefinition, FieldDefinitionDto>(entity);
+                return ObjectMapper.Map<Field, FieldDefinitionDto>(entity);
             }
 
             // Parent type must exist and be active, with strict single-layer matching (consistent with FieldExtractionService).
@@ -269,8 +308,8 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
                         f.DocumentTypeId == entity.DocumentTypeId &&
                         f.Id != entity.Id &&
                         !f.IsDeleted)
-                    .Select(f => f.Prompt));
-            activePrompts.Add(entity.Prompt);
+                    .Select(f => f.Description));
+            activePrompts.Add(entity.Description);
             _schemaPromptBudget.EnsureCanPersist(parentType.TypeCode, activePrompts);
 
             entity.IsDeleted = false;
@@ -278,7 +317,7 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
             entity.DeleterId = null;
             await _repository.UpdateAsync(entity);
 
-            return ObjectMapper.Map<FieldDefinition, FieldDefinitionDto>(entity);
+            return ObjectMapper.Map<Field, FieldDefinitionDto>(entity);
         }
     }
 
@@ -290,9 +329,41 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
         var fields = await _repository.GetListAsync(type.Id);
         var projectedPrompts = fields
             .Where(f => f.Id != replacingFieldId)
-            .Select(f => f.Prompt)
+            .Select(f => f.Description)
             .Append(projectedPrompt);
 
         _schemaPromptBudget.EnsureCanPersist(type.TypeCode, projectedPrompts);
     }
+
+    /// <summary>
+    /// A <c>FieldTypeName</c> is a registration key, not a class name, and it arrives from the wire. An
+    /// unregistered one would persist a field that no reader, validator or indexer can act on — every one
+    /// of them dispatches on this string — so it is rejected at the boundary rather than discovered later
+    /// as values that silently fail to save.
+    /// </summary>
+    protected virtual void EnsureFieldTypeRegistered(string fieldTypeName)
+    {
+        if (FindFieldType(fieldTypeName) == null)
+        {
+            throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.UnknownFieldType)
+                .WithData("FieldTypeName", fieldTypeName);
+        }
+    }
+
+    /// <summary>
+    /// Whether values of this field type reach the query index at all. A type with no index value type
+    /// (long text) produces no index rows however <c>IsSearchable</c> is set, which is what makes the
+    /// index unusable as an "are there values" oracle for it.
+    /// </summary>
+    protected virtual bool IsIndexable(string fieldTypeName)
+        => FindFieldType(fieldTypeName)?.IndexValueType != null;
+
+    /// <summary>
+    /// Lookup that tolerates an unknown name. <c>IFieldTypeResolver.Get</c> throws an
+    /// <c>AbpException</c> — right for the internal callers that only ever pass a name a stored field
+    /// already carries, wrong here, where the name arrives on the wire and "unknown" is a 400 with a
+    /// localized message rather than a 500.
+    /// </summary>
+    protected virtual IFieldType? FindFieldType(string fieldTypeName)
+        => _fieldTypeResolver.GetAll().FirstOrDefault(t => string.Equals(t.Name, fieldTypeName, StringComparison.Ordinal));
 }

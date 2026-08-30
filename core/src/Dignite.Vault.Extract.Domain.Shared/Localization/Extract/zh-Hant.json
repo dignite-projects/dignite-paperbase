@@ -410,6 +410,7 @@
     "Extract:FieldDefinitionRestoreConflict": "無法還原欄位 '{Name}'：文件類型 '{DocumentTypeCode}' 下已存在另一個未刪除的同名欄位。",
     "Extract:FieldDefinitionParentTypeMissing": "無法還原欄位 '{Name}'：父文件類型 '{DocumentTypeCode}' 不存在或仍處於已刪除狀態，請先還原此類型。",
     "Extract:FieldDefinitionDataTypeChangeNotAllowed": "無法修改欄位 '{Name}' 的資料類型：此欄位已存在擷取值。請改為新增欄位。",
+    "Extract:UnknownFieldType": "未知的欄位類型 '{FieldTypeName}'。請從已註冊的欄位類型中選擇。",
     "Extract:FieldDefinitionMultiValueRequiresStringType": "多值僅支援文字類型欄位，但要求的是 '{dataType}'。請將欄位宣告為文字類型再開啟多值。",
     "Extract:FieldDefinitionMultiValueChangeNotAllowed": "無法關閉欄位 '{Name}' 的多值：此欄位已存在擷取值，收窄為單值會讓多餘的值變成孤立資料列。請改為新增欄位。",
     "Extract:FieldDefinitionSchemaPromptBudgetExceeded": "文件類型 '{DocumentTypeCode}' 的欄位 schema 共包含 {ActualLength} 個提示詞字元，超過設定上限 {MaxLength}。請縮短一個或多個欄位提示詞後再儲存。",

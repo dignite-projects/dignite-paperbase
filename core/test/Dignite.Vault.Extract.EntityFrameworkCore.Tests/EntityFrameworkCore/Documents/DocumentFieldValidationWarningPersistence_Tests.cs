@@ -1,4 +1,5 @@
 using System;
+using Dignite.Abp.FlexFields.Text;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -16,8 +17,8 @@ namespace Dignite.Vault.Extract.EntityFrameworkCore.Documents;
 /// <summary>
 /// #527 §4: EF mapping for the <see cref="DocumentFieldValidationWarning"/> child collection against the real SQLite
 /// DB — composite key <c>(DocumentId, FieldDefinitionId)</c> round-trip, the tenant + message columns, and cascade
-/// delete when the owning <see cref="Document"/> is hard-deleted. The FK to <see cref="FieldDefinition"/> is RESTRICT
-/// (mirrors <see cref="DocumentExtractedField"/>), so the parent <see cref="DocumentType"/> + <see cref="FieldDefinition"/>
+/// delete when the owning <see cref="Document"/> is hard-deleted. The FK to <see cref="Field"/> is RESTRICT,
+/// so the parent <see cref="DocumentType"/> + <see cref="Field"/>
 /// rows are seeded first. Mirrors <c>DocumentReadAssembly_Tests</c>.
 /// </summary>
 public class DocumentFieldValidationWarningPersistence_Tests : VaultExtractEntityFrameworkCoreTestBase
@@ -26,7 +27,7 @@ public class DocumentFieldValidationWarningPersistence_Tests : VaultExtractEntit
 
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentTypeRepository _documentTypeRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldDefinitionRepository;
     private readonly IDbContextProvider<VaultExtractDbContext> _dbContextProvider;
     private readonly IGuidGenerator _guidGenerator;
 
@@ -34,7 +35,7 @@ public class DocumentFieldValidationWarningPersistence_Tests : VaultExtractEntit
     {
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _documentTypeRepository = GetRequiredService<IDocumentTypeRepository>();
-        _fieldDefinitionRepository = GetRequiredService<IFieldDefinitionRepository>();
+        _fieldDefinitionRepository = GetRequiredService<IFieldRepository>();
         _dbContextProvider = GetRequiredService<IDbContextProvider<VaultExtractDbContext>>();
         _guidGenerator = GetRequiredService<IGuidGenerator>();
     }
@@ -135,16 +136,17 @@ public class DocumentFieldValidationWarningPersistence_Tests : VaultExtractEntit
 
     private async Task InsertAsync(Guid id, FieldValidationWarning[] warnings, params Guid[] fieldIds)
     {
-        // FK RESTRICT to FieldDefinition (#207): seed the parent DocumentType + FieldDefinition rows first.
+        // FK RESTRICT to Field (#207, repointed by #562): seed the parent DocumentType + Field rows first.
         await _documentTypeRepository.InsertAsync(
             new DocumentType(TypeId(TypeCode), null, TypeCode, TypeCode), autoSave: true);
         foreach (var fieldId in fieldIds)
         {
             await _fieldDefinitionRepository.InsertAsync(
-                new FieldDefinition(
+                new Field(
                     fieldId, null, TypeId(TypeCode),
                     name: "f" + fieldId.ToString("N"),
-                    displayName: "field", prompt: "extract", dataType: FieldDataType.Text),
+                    displayName: "field",
+                    fieldTypeName: TextFieldType.ControlName, description: "extract"),
                 autoSave: true);
         }
 

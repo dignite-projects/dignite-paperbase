@@ -188,6 +188,38 @@ public interface IDocumentRepository : IRepository<Document, Guid>
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The v3 answer to the same question: whether any document holds a value for <paramref name="field"/>
+    /// (#559). Same guard, same fail-closed direction — a field whose values already exist may not change
+    /// its field type, because those values were validated against the old type and would render and index
+    /// as nothing under the new one.
+    /// <para>
+    /// Two paths, because the value bag is an opaque JSON column and no provider can push a bag-key
+    /// predicate into it:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>
+    ///     <b>Indexable and searchable field</b> — answered from the derived index by <c>FieldId</c>, one
+    ///     indexed lookup. Exact, because every value of such a field has an index row by construction.
+    ///   </item>
+    ///   <item>
+    ///     <b>Otherwise</b> (the field type is not indexable at all, e.g. long text, or the admin turned
+    ///     <c>IsSearchable</c> off) — the index is legitimately empty regardless of the values, so it
+    ///     cannot answer, and this falls back to paging the type's documents and testing the bag key in
+    ///     memory, stopping at the first hit. Confined to that minority of fields on purpose: the scan is
+    ///     bounded only by the type's document count.
+    ///   </item>
+    /// </list>
+    /// <para>
+    /// Soft-deleted documents count, as they did under v2: their values survive deletion and come back on
+    /// restore. <c>IMultiTenant</c> stays on, so the answer is scoped to the field's own layer.
+    /// </para>
+    /// </summary>
+    Task<bool> AnyFlexFieldValueAsync(
+        Fields.Field field,
+        bool isIndexable,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Scope count for bulk reprocessing (#289), used by preview modals. Returns the number of documents in the current ambient layer
     /// (<c>IMultiTenant</c> + <c>ISoftDelete</c> global filters isolate automatically by ambient state; soft-deleted / trash documents do not count),
     /// with completed text extraction (<c>Markdown</c> non-empty because reclassification / field extraction both require text payload),

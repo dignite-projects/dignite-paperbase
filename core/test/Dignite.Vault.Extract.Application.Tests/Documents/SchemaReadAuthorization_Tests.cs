@@ -82,9 +82,6 @@ public class SchemaReadAuthorizationTestModule : AbpModule
 
         context.Services.AddSingleton(Substitute.For<IDocumentTypeRepository>());
         context.Services.AddSingleton(Substitute.For<IFieldRepository>());
-        // IFieldDefinitionAppService is still the v2 service (#562 has not moved the DTO surface yet),
-        // so both repositories have to be present while the two shapes run side by side.
-        context.Services.AddSingleton(Substitute.For<IFieldDefinitionRepository>());
         context.Services.AddSingleton(Substitute.For<ICabinetRepository>());
         context.Services.AddSingleton(Substitute.For<IDocumentRepository>());
     }
@@ -101,7 +98,7 @@ public class SchemaReadAuthorization_Tests : VaultExtractApplicationTestBase<Sch
     private readonly IFieldDefinitionAppService _fieldDefinitionAppService;
     private readonly ICabinetReadAppService _cabinetReadAppService;
     private readonly IDocumentTypeRepository _documentTypeRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldRepository;
     private readonly ICabinetRepository _cabinetRepository;
     private readonly GrantSetAuthorizationService _authorization;
 
@@ -111,7 +108,7 @@ public class SchemaReadAuthorization_Tests : VaultExtractApplicationTestBase<Sch
         _fieldDefinitionAppService = GetRequiredService<IFieldDefinitionAppService>();
         _cabinetReadAppService = GetRequiredService<ICabinetReadAppService>();
         _documentTypeRepository = GetRequiredService<IDocumentTypeRepository>();
-        _fieldDefinitionRepository = GetRequiredService<IFieldDefinitionRepository>();
+        _fieldRepository = GetRequiredService<IFieldRepository>();
         _cabinetRepository = GetRequiredService<ICabinetRepository>();
         _authorization = GetRequiredService<GrantSetAuthorizationService>();
     }
@@ -227,8 +224,8 @@ public class SchemaReadAuthorization_Tests : VaultExtractApplicationTestBase<Sch
         // #223 fix point: document operators read field schema for dynamic field columns,
         // detail-field editing, and export-column selection.
         Grant(VaultExtractPermissions.Documents.Default);
-        _fieldDefinitionRepository.GetListAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition>());
+        _fieldRepository.GetListAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Field>());
 
         var result = await _fieldDefinitionAppService.GetListAsync(new GetFieldDefinitionListInput
         {
@@ -243,8 +240,8 @@ public class SchemaReadAuthorization_Tests : VaultExtractApplicationTestBase<Sch
     public async Task FieldDefinition_GetListAsync_Active_Succeeds_For_FieldDefinitions_Default_Only()
     {
         Grant(VaultExtractPermissions.FieldDefinitions.Default);
-        _fieldDefinitionRepository.GetListAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition>());
+        _fieldRepository.GetListAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Field>());
 
         var result = await _fieldDefinitionAppService.GetListAsync(new GetFieldDefinitionListInput
         {

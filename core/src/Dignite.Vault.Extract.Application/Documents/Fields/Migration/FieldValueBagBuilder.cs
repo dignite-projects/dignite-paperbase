@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Dignite.Abp.FlexFields;
+using Dignite.Vault.Extract.FlexFields;
 
 namespace Dignite.Vault.Extract.Documents.Fields.Migration;
 
@@ -70,7 +71,7 @@ public static class FieldValueBagBuilder
     /// </summary>
     private static bool IsMultiValued(Field definition)
     {
-        return string.Equals(definition.FieldTypeName, FlexFields.Tags.TagsFieldType.ControlName, StringComparison.Ordinal);
+        return VaultExtractFieldTypes.IsMultiValue(definition.FieldTypeName, definition.Configuration);
     }
 
     private static string? ReadText(DocumentExtractedField row) => row.TextValue ?? row.LongTextValue;

@@ -19,7 +19,7 @@ public class DocumentTypeAppService : VaultExtractAppService, IDocumentTypeAppSe
 {
     private readonly IDocumentTypeRepository _repository;
     private readonly IDocumentRepository _documentRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldDefinitionRepository;
     private readonly DocumentTypeManager _documentTypeManager;
     private readonly FieldDefinitionManager _fieldDefinitionManager;
     private readonly FieldSchemaPromptBudgetGuard _schemaPromptBudget;
@@ -27,7 +27,7 @@ public class DocumentTypeAppService : VaultExtractAppService, IDocumentTypeAppSe
     public DocumentTypeAppService(
         IDocumentTypeRepository repository,
         IDocumentRepository documentRepository,
-        IFieldDefinitionRepository fieldDefinitionRepository,
+        IFieldRepository fieldDefinitionRepository,
         DocumentTypeManager documentTypeManager,
         FieldDefinitionManager fieldDefinitionManager,
         FieldSchemaPromptBudgetGuard schemaPromptBudget)
@@ -112,7 +112,7 @@ public class DocumentTypeAppService : VaultExtractAppService, IDocumentTypeAppSe
 
         // Rename unlock (#207): run the domain duplicate check only when TypeCode changes. Same-layer (TenantId, TypeCode)
         // is unique; soft-deleted records occupy the name too, avoiding restore conflicts.
-        // Internal associations (Document / FieldDefinition) already use this type's immutable Id, so rename does not cascade to those tables.
+        // Internal associations (Document / Field) already use this type's immutable Id, so a rename does not cascade to those tables.
         if (!string.Equals(input.TypeCode, entity.TypeCode, StringComparison.Ordinal))
         {
             await _documentTypeManager.CheckCodeAvailableAsync(input.TypeCode);
@@ -154,7 +154,7 @@ public class DocumentTypeAppService : VaultExtractAppService, IDocumentTypeAppSe
                 .WithData("TypeCode", entity.TypeCode);
         }
 
-        // Cascading soft delete: FieldDefinitions under the same DocumentTypeId go offline with DocumentType.
+        // Cascading soft delete: fields under the same DocumentTypeId go offline with the DocumentType.
         // Otherwise orphan field definitions would remain, and a future recreation with the same TypeCode could not reuse the same field names.
         var fields = await _fieldDefinitionRepository.GetListAsync(entity.Id);
         if (fields.Count > 0)
@@ -195,13 +195,13 @@ public class DocumentTypeAppService : VaultExtractAppService, IDocumentTypeAppSe
                 fieldQueryable.Where(f =>
                     f.TenantId == entity.TenantId &&
                     f.DocumentTypeId == entity.Id));
-            var fieldsToRestore = new List<FieldDefinition>();
+            var fieldsToRestore = new List<Field>();
             foreach (var field in allFields.Where(f => f.IsDeleted))
             {
                 if (await _fieldDefinitionManager.HasActiveNameConflictAsync(entity.Id, field.Name))
                 {
                     Logger.LogWarning(
-                        "Skip cascade restore of FieldDefinition {FieldId} (Name={Name}) under DocumentType {TypeCode}: an active field with the same name already exists.",
+                        "Skip cascade restore of field {FieldId} (Name={Name}) under DocumentType {TypeCode}: an active field with the same name already exists.",
                         field.Id, field.Name, entity.TypeCode);
                     continue;
                 }
@@ -211,14 +211,14 @@ public class DocumentTypeAppService : VaultExtractAppService, IDocumentTypeAppSe
 
             _schemaPromptBudget.EnsureCanPersist(
                 entity.TypeCode,
-                allFields.Where(f => !f.IsDeleted).Concat(fieldsToRestore).Select(f => f.Prompt));
+                allFields.Where(f => !f.IsDeleted).Concat(fieldsToRestore).Select(f => f.Description));
 
             entity.IsDeleted = false;
             entity.DeletionTime = null;
             entity.DeleterId = null;
             await _repository.UpdateAsync(entity);
 
-            // Cascading restore: also restore soft-deleted FieldDefinitions under the same (TenantId, TypeCode).
+            // Cascading restore: also restore soft-deleted fields under the same (TenantId, TypeCode).
             // Unlike single-field RestoreAsync, skip conflicting fields here and log a warning rather than interrupting the whole restore.
             foreach (var field in fieldsToRestore)
             {

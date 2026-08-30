@@ -1,3 +1,8 @@
+using Dignite.Abp.FlexFields.CKEditor;
+using Dignite.Abp.FlexFields.Date;
+using Dignite.Abp.FlexFields.Number;
+using Dignite.Abp.FlexFields.Text;
+using Dignite.Vault.Extract.FlexFields.Tags;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -22,7 +27,7 @@ public class DocumentTypePackAppService_Tests : VaultExtractEntityFrameworkCoreT
 {
     private readonly IDocumentTypePackAppService _packAppService;
     private readonly IDocumentTypeRepository _documentTypeRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldDefinitionRepository;
     private readonly IDocumentTypeAppService _documentTypeAppService;
     private readonly IFieldDefinitionAppService _fieldDefinitionAppService;
     private readonly VaultExtractBehaviorOptions _behaviorOptions;
@@ -31,7 +36,7 @@ public class DocumentTypePackAppService_Tests : VaultExtractEntityFrameworkCoreT
     {
         _packAppService = GetRequiredService<IDocumentTypePackAppService>();
         _documentTypeRepository = GetRequiredService<IDocumentTypeRepository>();
-        _fieldDefinitionRepository = GetRequiredService<IFieldDefinitionRepository>();
+        _fieldDefinitionRepository = GetRequiredService<IFieldRepository>();
         _documentTypeAppService = GetRequiredService<IDocumentTypeAppService>();
         _fieldDefinitionAppService = GetRequiredService<IFieldDefinitionAppService>();
         _behaviorOptions = GetRequiredService<IOptions<VaultExtractBehaviorOptions>>().Value;
@@ -47,8 +52,8 @@ public class DocumentTypePackAppService_Tests : VaultExtractEntityFrameworkCoreT
         Priority = 5,
         Fields = new List<DocumentTypePackFieldDto>
         {
-            new() { Name = "amount", DisplayName = "Amount", Prompt = "the total", DataType = FieldDataType.Number, DisplayOrder = 1 },
-            new() { Name = "issuer", DisplayName = "Issuer", DataType = FieldDataType.Text, DisplayOrder = 2 }
+            new() { Name = "amount", DisplayName = "Amount", Description = "the total", FieldTypeName = NumberFieldType.ControlName, DisplayOrder = 1 },
+            new() { Name = "issuer", DisplayName = "Issuer", FieldTypeName = TextFieldType.ControlName, DisplayOrder = 2 }
         }
     };
 
@@ -77,7 +82,7 @@ public class DocumentTypePackAppService_Tests : VaultExtractEntityFrameworkCoreT
 
             var fields = await _fieldDefinitionRepository.GetListAsync(type.Id);
             fields.Select(f => f.Name).OrderBy(n => n).ShouldBe(new[] { "amount", "issuer" });
-            fields.Single(f => f.Name == "amount").DataType.ShouldBe(FieldDataType.Number);
+            fields.Single(f => f.Name == "amount").FieldTypeName.ShouldBe(NumberFieldType.ControlName);
         });
     }
 
@@ -105,8 +110,8 @@ public class DocumentTypePackAppService_Tests : VaultExtractEntityFrameworkCoreT
         exported.Fields.Count.ShouldBe(2);
         // Export orders by DisplayOrder, so amount (1) precedes issuer (2).
         exported.Fields[0].Name.ShouldBe("amount");
-        exported.Fields[0].Prompt.ShouldBe("the total");
-        exported.Fields[0].DataType.ShouldBe(FieldDataType.Number);
+        exported.Fields[0].Description.ShouldBe("the total");
+        exported.Fields[0].FieldTypeName.ShouldBe(NumberFieldType.ControlName);
         exported.Fields[1].Name.ShouldBe("issuer");
     }
 
@@ -144,12 +149,12 @@ public class DocumentTypePackAppService_Tests : VaultExtractEntityFrameworkCoreT
         // Same type code, changed displayName + changed existing-field prompt + one new field, in CreateOnly.
         var additivePack = SamplePack();
         additivePack.DisplayName = "CHANGED";
-        additivePack.Fields.Single(f => f.Name == "amount").Prompt = "CHANGED";
+        additivePack.Fields.Single(f => f.Name == "amount").Description = "CHANGED";
         additivePack.Fields.Add(new DocumentTypePackFieldDto
         {
             Name = "duedate",
             DisplayName = "Due date",
-            DataType = FieldDataType.Date,
+            FieldTypeName = DateTimeFieldType.ControlName,
             DisplayOrder = 3
         });
 
@@ -170,7 +175,7 @@ public class DocumentTypePackAppService_Tests : VaultExtractEntityFrameworkCoreT
 
             var fields = await _fieldDefinitionRepository.GetListAsync(type.Id);
             fields.Count.ShouldBe(3); // the new field was added
-            fields.Single(f => f.Name == "amount").Prompt.ShouldBe("the total"); // existing field untouched
+            fields.Single(f => f.Name == "amount").Description.ShouldBe("the total"); // existing field untouched
         });
     }
 
@@ -188,12 +193,12 @@ public class DocumentTypePackAppService_Tests : VaultExtractEntityFrameworkCoreT
             DocumentTypeId = type.Id,
             Name = "body",
             DisplayName = "Body",
-            Prompt = prompt,
-            DataType = FieldDataType.LongText
+            Description = prompt,
+            FieldTypeName = CKEditorFieldType.ControlName
         });
 
         var exported = await _packAppService.ExportAsync(type.Id);
-        exported.Fields.Single().Prompt.ShouldBe(prompt);
+        exported.Fields.Single().Description.ShouldBe(prompt);
 
         var result = await _packAppService.ImportAsync(new ImportDocumentTypePacksInput
         {
@@ -202,7 +207,7 @@ public class DocumentTypePackAppService_Tests : VaultExtractEntityFrameworkCoreT
 
         result.FieldsUpdated.ShouldBe(1);
         var reExported = await _packAppService.ExportAsync(type.Id);
-        reExported.Fields.Single().Prompt.ShouldBe(prompt);
+        reExported.Fields.Single().Description.ShouldBe(prompt);
     }
 
     [Fact]
@@ -216,15 +221,15 @@ public class DocumentTypePackAppService_Tests : VaultExtractEntityFrameworkCoreT
             {
                 Name = "first",
                 DisplayName = "First",
-                Prompt = new string('a', firstLength),
-                DataType = FieldDataType.Text
+                Description = new string('a', firstLength),
+                FieldTypeName = TextFieldType.ControlName
             },
             new()
             {
                 Name = "second",
                 DisplayName = "Second",
-                Prompt = new string('b', _behaviorOptions.MaxFieldSchemaPromptLength - firstLength + 1),
-                DataType = FieldDataType.Text
+                Description = new string('b', _behaviorOptions.MaxFieldSchemaPromptLength - firstLength + 1),
+                FieldTypeName = TextFieldType.ControlName
             }
         };
 

@@ -410,6 +410,7 @@
     "Extract:FieldDefinitionRestoreConflict": "无法恢复字段 '{Name}'：文档类型 '{DocumentTypeCode}' 下已存在另一个未删除的同名字段。",
     "Extract:FieldDefinitionParentTypeMissing": "无法恢复字段 '{Name}'：父文档类型 '{DocumentTypeCode}' 不存在或仍处于已删除状态，请先恢复该类型。",
     "Extract:FieldDefinitionDataTypeChangeNotAllowed": "无法修改字段 '{Name}' 的数据类型：该字段已存在抽取值。请改为新建字段。",
+    "Extract:UnknownFieldType": "未知的字段类型 '{FieldTypeName}'。请从已注册的字段类型中选择。",
     "Extract:FieldDefinitionMultiValueRequiresStringType": "多值仅支持文本类型字段，但请求的是 '{dataType}'。请将字段声明为文本类型再开启多值。",
     "Extract:FieldDefinitionMultiValueChangeNotAllowed": "无法关闭字段 '{Name}' 的多值：该字段已存在抽取值，收窄为单值会让多余的值变成孤儿行。请改为新建字段。",
     "Extract:FieldDefinitionSchemaPromptBudgetExceeded": "文档类型 '{DocumentTypeCode}' 的字段 schema 共包含 {ActualLength} 个提示词字符，超过配置上限 {MaxLength}。请缩短一个或多个字段提示词后再保存。",

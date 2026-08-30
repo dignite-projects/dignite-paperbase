@@ -46,7 +46,7 @@ public class DuplicateBasisCleanupJob
     : AsyncBackgroundJob<DuplicateBasisCleanupArgs>, ITransientDependency
 {
     private readonly IDocumentRepository _documentRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldDefinitionRepository;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly IBackgroundJobManager _backgroundJobManager;
     private readonly ICurrentTenant _currentTenant;
@@ -55,7 +55,7 @@ public class DuplicateBasisCleanupJob
 
     public DuplicateBasisCleanupJob(
         IDocumentRepository documentRepository,
-        IFieldDefinitionRepository fieldDefinitionRepository,
+        IFieldRepository fieldDefinitionRepository,
         DocumentPipelineRunManager pipelineRunManager,
         IBackgroundJobManager backgroundJobManager,
         ICurrentTenant currentTenant,

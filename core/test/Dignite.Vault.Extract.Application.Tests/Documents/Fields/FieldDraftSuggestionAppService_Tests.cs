@@ -2,6 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Abp.FlexFields.Boolean;
+using Dignite.Abp.FlexFields.Date;
+using Dignite.Abp.FlexFields.Number;
+using Dignite.Abp.FlexFields.Text;
+using Dignite.Vault.Extract.FlexFields;
+using Dignite.Vault.Extract.FlexFields.Tags;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -71,9 +77,9 @@ public class FieldDraftSuggestionAppService_Tests
 
         draft.DisplayName.ShouldBe("Contract Amount");
         draft.Name.ShouldBe("contract_amount");
-        draft.DataType.ShouldBe(FieldDataType.Number);
+        draft.FieldTypeName.ShouldBe(NumberFieldType.ControlName);
         draft.IsRequired.ShouldBeTrue();
-        draft.AllowMultiple.ShouldBeFalse();
+        VaultExtractFieldTypes.IsMultiValue(draft.FieldTypeName, draft.Configuration).ShouldBeFalse();
     }
 
     [Fact]
@@ -101,7 +107,7 @@ public class FieldDraftSuggestionAppService_Tests
 
         draft.Name.ShouldBe(string.Empty);
         draft.DisplayName.ShouldBe("Amount");
-        draft.DataType.ShouldBe(FieldDataType.Number);
+        draft.FieldTypeName.ShouldBe(NumberFieldType.ControlName);
     }
 
     [Fact]
@@ -114,8 +120,12 @@ public class FieldDraftSuggestionAppService_Tests
         // is clamped to false.
         var draft = await svc.DraftAsync(new DraftFieldDefinitionInput { Prompt = "All dates", ForNewField = true });
 
-        draft.DataType.ShouldBe(FieldDataType.Date);
-        draft.AllowMultiple.ShouldBeFalse();
+        // Date and DateTime are one field type told apart by InputMode, so asserting the type alone would
+        // not catch a mapping that lost the date-only distinction.
+        draft.FieldTypeName.ShouldBe(DateTimeFieldType.ControlName);
+        new DateTimeConfiguration(draft.Configuration).InputMode.ShouldBe(DateTimeInputMode.Date);
+        // Guardrail 2 is structural now: a non-text kind cannot reach a multi-valued field type at all.
+        VaultExtractFieldTypes.IsMultiValue(draft.FieldTypeName, draft.Configuration).ShouldBeFalse();
     }
 
     [Fact]
@@ -126,8 +136,9 @@ public class FieldDraftSuggestionAppService_Tests
 
         var draft = await svc.DraftAsync(new DraftFieldDefinitionInput { Prompt = "Tag list", ForNewField = true });
 
-        draft.DataType.ShouldBe(FieldDataType.Text);
-        draft.AllowMultiple.ShouldBeTrue();
+        // v3 folds "many values" into the type: a multi-valued text field is Tags, the open-vocabulary type.
+        draft.FieldTypeName.ShouldBe(TagsFieldType.ControlName);
+        VaultExtractFieldTypes.IsMultiValue(draft.FieldTypeName, draft.Configuration).ShouldBeTrue();
     }
 
     [Fact]
@@ -141,7 +152,7 @@ public class FieldDraftSuggestionAppService_Tests
         var draft = await svc.DraftAsync(new DraftFieldDefinitionInput { Prompt = "Amount", ForNewField = true });
 
         draft.IsRequired.ShouldBeTrue();
-        draft.AllowMultiple.ShouldBeFalse();
+        VaultExtractFieldTypes.IsMultiValue(draft.FieldTypeName, draft.Configuration).ShouldBeFalse();
     }
 
     [Fact]
@@ -155,7 +166,7 @@ public class FieldDraftSuggestionAppService_Tests
         var draft = await svc.DraftAsync(new DraftFieldDefinitionInput { Prompt = "Tags", ForNewField = true });
 
         draft.IsRequired.ShouldBeFalse();
-        draft.AllowMultiple.ShouldBeTrue();
+        VaultExtractFieldTypes.IsMultiValue(draft.FieldTypeName, draft.Configuration).ShouldBeTrue();
     }
 
     [Fact]
@@ -166,7 +177,7 @@ public class FieldDraftSuggestionAppService_Tests
 
         var draft = await svc.DraftAsync(new DraftFieldDefinitionInput { Prompt = "x", ForNewField = true });
 
-        draft.DataType.ShouldBe(FieldDataType.Text);
+        draft.FieldTypeName.ShouldBe(TextFieldType.ControlName);
     }
 
     [Fact]
@@ -191,9 +202,9 @@ public class FieldDraftSuggestionAppService_Tests
 
         draft.DisplayName.ShouldBe(string.Empty);
         draft.Name.ShouldBe(string.Empty);
-        draft.DataType.ShouldBe(FieldDataType.Text);
+        draft.FieldTypeName.ShouldBe(TextFieldType.ControlName);
         draft.IsRequired.ShouldBeFalse();
-        draft.AllowMultiple.ShouldBeFalse();
+        VaultExtractFieldTypes.IsMultiValue(draft.FieldTypeName, draft.Configuration).ShouldBeFalse();
     }
 
     [Fact]

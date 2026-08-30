@@ -21,6 +21,11 @@
          "exits do not depend on the Extract.Application implementation project" because it does not
          introduce transitive OCR / LLM / pipeline implementation dependencies. -->
     <PackageReference Include="Volo.Abp.Ddd.Domain" />
+    <!--
+      The MCP field schema has to tell a client whether a field is multi-valued, which is a fact about
+      which field types Vault Extract picked (VaultExtractFieldTypes), not one the kernel exposes.
+    -->
+    <ProjectReference Include="..\Dignite.Vault.Extract.FlexFields\Dignite.Vault.Extract.FlexFields.csproj" />
     <ProjectReference Include="..\Dignite.Vault.Extract.Application.Contracts\Dignite.Vault.Extract.Application.Contracts.csproj" />
   </ItemGroup>
 

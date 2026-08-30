@@ -231,14 +231,18 @@ public static class VaultExtractDbContextModelCreatingExtensions
 
             b.Property(x => x.Message).IsRequired().HasMaxLength(DocumentFieldValidationWarningConsts.MaxMessageLength);
 
-            // Internal field-definition association (#207): FK -> FieldDefinition.Id, OnDelete Restrict (mirrors
-            // DocumentExtractedField). FieldDefinition uses soft delete and does not trigger the FK; only hard-deleting a
-            // definition still referenced by a warning is rejected by the DB — the same soft-delete-preserves-history
-            // safety DocumentExtractedField relies on. (§7's ClearFieldValidationWarnings fires on Document *type change*
-            // — reclassify / unclassify / container — NOT on field-definition deletion, so it is not what guards this FK.)
-            // EF automatically creates an index for this FK. This row participates in no field-value index and is never
-            // consulted by field-value search / filtering (#527 §11).
-            b.HasOne<FieldDefinition>()
+            // Internal field association (#207): FK -> Field.Id, OnDelete Restrict. Field uses soft delete and does not
+            // trigger the FK; only hard-deleting a field still referenced by a warning is rejected by the DB — the same
+            // soft-delete-preserves-history safety v2's DocumentExtractedField relied on. (§7's
+            // ClearFieldValidationWarnings fires on Document *type change* — reclassify / unclassify / container — NOT on
+            // field deletion, so it is not what guards this FK.) EF automatically creates an index for this FK. This row
+            // participates in no field-value index and is never consulted by field-value search / filtering (#527 §11).
+            //
+            // Repointed from FieldDefinition to Field by #562: the warning names the field that produced it, and once
+            // extraction resolves warnings against v3 rows, a warning written for one would have violated an FK still
+            // pointing at the other. The column keeps its name — FieldDefinitionId is on the wire in
+            // ResolveFieldValidationWarningsInput and in the review-reason detail DTO.
+            b.HasOne<Field>()
                 .WithMany()
                 .HasForeignKey(x => x.FieldDefinitionId)
                 .OnDelete(DeleteBehavior.Restrict);

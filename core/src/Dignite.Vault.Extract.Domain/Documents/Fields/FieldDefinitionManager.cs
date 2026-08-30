@@ -8,7 +8,7 @@ using Volo.Abp.Domain.Services;
 namespace Dignite.Vault.Extract.Documents.Fields;
 
 /// <summary>
-/// Domain service owning the layer-scoped uniqueness invariant of <see cref="FieldDefinition"/> on
+/// Domain service owning the layer-scoped uniqueness invariant of <see cref="Field"/> on
 /// <c>(TenantId, DocumentTypeId, Name)</c> (#304). After dropping the soft-delete-filtered DB unique
 /// index (not portable across providers), this check is the <b>sole</b> guarantor of uniqueness, so
 /// every write path (create / rename / restore, including the bulk cascade restore driven by
@@ -22,12 +22,12 @@ namespace Dignite.Vault.Extract.Documents.Fields;
 /// </summary>
 public class FieldDefinitionManager : DomainService
 {
-    private readonly IFieldDefinitionRepository _repository;
+    private readonly IFieldRepository _repository;
     private readonly IDocumentTypeRepository _documentTypeRepository;
     private readonly IDataFilter _dataFilter;
 
     public FieldDefinitionManager(
-        IFieldDefinitionRepository repository,
+        IFieldRepository repository,
         IDocumentTypeRepository documentTypeRepository,
         IDataFilter dataFilter)
     {
@@ -45,7 +45,7 @@ public class FieldDefinitionManager : DomainService
     /// </summary>
     public virtual async Task CheckNameAvailableAsync(Guid documentTypeId, string name)
     {
-        FieldDefinition? existing;
+        Field? existing;
         using (_dataFilter.Disable<ISoftDelete>())
         {
             existing = await _repository.FindByNameAsync(documentTypeId, name);
@@ -78,7 +78,7 @@ public class FieldDefinitionManager : DomainService
     /// Asserts the soft-deleted <paramref name="entity"/> can be restored: no active field with the same
     /// name already exists under its type in the current layer. Throws <c>RestoreConflict</c> otherwise.
     /// </summary>
-    public virtual async Task CheckRestorableAsync(FieldDefinition entity)
+    public virtual async Task CheckRestorableAsync(Field entity)
     {
         if (await HasActiveNameConflictAsync(entity.DocumentTypeId, entity.Name))
         {

@@ -81,6 +81,13 @@ public static class VaultExtractErrorCodes
         public const string MultiValueRequiresStringType = "Extract:FieldDefinitionMultiValueRequiresStringType";
         public const string MultiValueChangeNotAllowed = "Extract:FieldDefinitionMultiValueChangeNotAllowed";
         public const string SchemaPromptBudgetExceeded = "Extract:FieldDefinitionSchemaPromptBudgetExceeded";
+
+        /// <summary>
+        /// The submitted <c>FieldTypeName</c> matches no registered field type (#559). A registration key
+        /// rather than a closed enum is what buys v3 its extensibility, and this is the cost: the value is
+        /// only checkable at runtime, so it is checked at the write boundary.
+        /// </summary>
+        public const string UnknownFieldType = "Extract:UnknownFieldType";
     }
 
     public static class ExtractedField

@@ -7,6 +7,7 @@ using System.Text.Json;
 using Dignite.Abp.FlexFields;
 using Dignite.Abp.FlexFields.Date;
 using Dignite.Abp.FlexFields.Select;
+using Dignite.Vault.Extract.FlexFields;
 using Dignite.Vault.Extract.FlexFields.Tags;
 
 namespace Dignite.Vault.Extract.Documents.Fields;
@@ -45,9 +46,7 @@ public static class FlexFieldValueJsonWriter
         }
 
         // Multi-valued types render as a JSON array of strings, the shape v2's AllowMultiple fields had.
-        if (string.Equals(fieldTypeName, TagsFieldType.ControlName, StringComparison.Ordinal)
-            || (string.Equals(fieldTypeName, SelectFieldType.ControlName, StringComparison.Ordinal)
-                && new SelectConfiguration(configuration).Multiple))
+        if (VaultExtractFieldTypes.IsMultiValue(fieldTypeName, configuration))
         {
             return JsonSerializer.SerializeToElement(ReadList(value));
         }

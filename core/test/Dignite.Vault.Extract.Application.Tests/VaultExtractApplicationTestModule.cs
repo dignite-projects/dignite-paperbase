@@ -33,6 +33,12 @@ public class VaultExtractApplicationTestModule : AbpModule
         // EntityFrameworkCore layer has. That the write paths call it at all is asserted against real EF in
         // DocumentFlexFieldPipeline_Tests; here it only has to resolve.
         context.Services.AddSingleton(Substitute.For<IFlexFieldIndexManager<Document>>());
+
+        // The kernel registers FlexFieldValueMigrator<T> as an open generic, and it needs an
+        // IBasicRepository<Document> — real persistence, which this stack has none of. Substituting the
+        // interface keeps a rename resolvable here; that a rename actually rewrites the bags is asserted
+        // against real EF in DocumentReferenceResolution_Tests, which is the only place it can be.
+        context.Services.AddSingleton(Substitute.For<IFlexFieldValueMigrator<Document>>());
     }
 }
 
