@@ -88,6 +88,12 @@ public static class VaultExtractErrorCodes
         /// only checkable at runtime, so it is checked at the write boundary.
         /// </summary>
         public const string UnknownFieldType = "Extract:UnknownFieldType";
+
+        /// <summary>
+        /// A field marked <c>IsSearchable</c> whose field type has no query-index slot (#562) — e.g.
+        /// long text. The value would never reach the index, so the flag would silently do nothing.
+        /// </summary>
+        public const string FieldTypeNotSearchable = "Extract:FieldTypeNotSearchable";
     }
 
     public static class ExtractedField

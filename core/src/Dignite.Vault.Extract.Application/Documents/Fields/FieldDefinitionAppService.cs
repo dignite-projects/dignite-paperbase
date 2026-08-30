@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Dignite.Abp.FlexFields;
 using Dignite.Vault.Extract.Documents.DocumentTypes;
+using Dignite.Vault.Extract.FlexFields;
 using Dignite.Vault.Extract.Documents.Fields.Cleanup;
 using Dignite.Vault.Extract.Permissions;
 using Microsoft.AspNetCore.Authorization;
@@ -32,6 +33,15 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
     /// </summary>
     private readonly IFlexFieldValueMigrator<Document> _valueMigrator;
 
+    /// <summary>
+    /// Switching <c>IsSearchable</c> changes which of a field's values belong in the index, and
+    /// re-deriving from the bag is a complete migration for that — see
+    /// <c>IFlexFieldIndexManager.RebuildAsync</c>'s XML doc. Rebuilding on every toggle rather than
+    /// only when it turns on: turning it off has to drop the now-stale rows just as much as turning
+    /// it on has to backfill the missing ones.
+    /// </summary>
+    private readonly IFlexFieldIndexManager<Document> _indexManager;
+
     private readonly IBackgroundJobManager _backgroundJobManager;
     private readonly FieldSchemaPromptBudgetGuard _schemaPromptBudget;
 
@@ -42,6 +52,7 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
         FieldDefinitionManager fieldDefinitionManager,
         IFieldTypeResolver fieldTypeResolver,
         IFlexFieldValueMigrator<Document> valueMigrator,
+        IFlexFieldIndexManager<Document> indexManager,
         IBackgroundJobManager backgroundJobManager,
         FieldSchemaPromptBudgetGuard schemaPromptBudget)
     {
@@ -51,8 +62,27 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
         _fieldDefinitionManager = fieldDefinitionManager;
         _fieldTypeResolver = fieldTypeResolver;
         _valueMigrator = valueMigrator;
+        _indexManager = indexManager;
         _backgroundJobManager = backgroundJobManager;
         _schemaPromptBudget = schemaPromptBudget;
+    }
+
+    /// <summary>See <see cref="IFieldDefinitionAppService.GetFieldTypesAsync"/>.</summary>
+    public virtual Task<List<FieldTypeDto>> GetFieldTypesAsync()
+    {
+        // Filtered through the same allow-list EnsureFieldTypeRegistered enforces, not everything the
+        // kernel resolver knows about — see VaultExtractFieldTypes.SupportedFieldTypeNames for why the
+        // two lists can differ (the kernel registers Tree unconditionally; nothing here reads one).
+        var fieldTypes = _fieldTypeResolver.GetAll()
+            .Where(fieldType => VaultExtractFieldTypes.IsSupported(fieldType.Name))
+            .Select(fieldType => new FieldTypeDto
+            {
+                Name = fieldType.Name,
+                Indexable = fieldType.IsIndexable(),
+            })
+            .ToList();
+
+        return Task.FromResult(fieldTypes);
     }
 
     public virtual async Task<List<FieldDefinitionDto>> GetListAsync(GetFieldDefinitionListInput input)
@@ -120,6 +150,7 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
         }
 
         EnsureFieldTypeRegistered(input.FieldTypeName);
+        CheckSearchable(input.FieldTypeName, input.IsSearchable);
 
         // Soft-delete-aware duplicate check owned by the domain service (#304): the same (TenantId, DocumentTypeId, Name)
         // counts as occupied even when soft-deleted, avoiding conflicts with new records on restore.
@@ -156,8 +187,10 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
         }
 
         EnsureFieldTypeRegistered(input.FieldTypeName);
+        CheckSearchable(input.FieldTypeName, input.IsSearchable);
 
         var oldName = entity.Name;
+        var wasSearchable = entity.IsSearchable;
         var renamed = !string.Equals(input.Name, oldName, StringComparison.Ordinal);
         if (renamed)
         {
@@ -203,6 +236,14 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
             // reindexes afterwards either, and nothing needs to: index rows key on field id and value,
             // neither of which a rename touches.
             await _valueMigrator.RenameFieldAsync(oldName, input.Name);
+        }
+
+        if (wasSearchable != entity.IsSearchable)
+        {
+            // Turning IsSearchable on has to backfill the values that were never indexed; turning it off
+            // has to drop the rows that now would be. Re-deriving the whole index is a complete migration
+            // for either direction, and cheaper to reason about than trying to patch just this field's rows.
+            await _indexManager.RebuildAsync();
         }
 
         return ObjectMapper.Map<Field, FieldDefinitionDto>(entity);
@@ -343,7 +384,11 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
     /// </summary>
     protected virtual void EnsureFieldTypeRegistered(string fieldTypeName)
     {
-        if (FindFieldType(fieldTypeName) == null)
+        // Both halves matter: registered with the kernel (a name Vault Extract could dispatch on at all)
+        // and on Vault Extract's own supported list (a name something here actually does dispatch on —
+        // see VaultExtractFieldTypes.SupportedFieldTypeNames for the built-in the kernel ships that fails
+        // this second check).
+        if (FindFieldType(fieldTypeName) == null || !VaultExtractFieldTypes.IsSupported(fieldTypeName))
         {
             throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.UnknownFieldType)
                 .WithData("FieldTypeName", fieldTypeName);
@@ -357,6 +402,25 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
     /// </summary>
     protected virtual bool IsIndexable(string fieldTypeName)
         => FindFieldType(fieldTypeName)?.IndexValueType != null;
+
+    /// <summary>
+    /// Rejects a field marked searchable under a field type with no query-index slot.
+    /// <para>
+    /// The Angular field designer already disables the setting for such a type, but that is a courtesy
+    /// to the admin, not the rule: anything reaching this service another way — a direct API call, MCP,
+    /// a pack import — would otherwise store a flag <see cref="Dignite.Abp.FlexFields.FlexFieldIndexManagerBase{TEntity}"/>
+    /// silently ignores, and the only symptom would be a filter that never matches. Failing the save is
+    /// the difference between a mistake that is reported and one that is invisible.
+    /// </para>
+    /// </summary>
+    protected virtual void CheckSearchable(string fieldTypeName, bool isSearchable)
+    {
+        if (isSearchable && !IsIndexable(fieldTypeName))
+        {
+            throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.FieldTypeNotSearchable)
+                .WithData("FieldTypeName", fieldTypeName);
+        }
+    }
 
     /// <summary>
     /// Lookup that tolerates an unknown name. <c>IFieldTypeResolver.Get</c> throws an

@@ -194,7 +194,12 @@ public class DocumentTypePackAppService_Tests : VaultExtractEntityFrameworkCoreT
             Name = "body",
             DisplayName = "Body",
             Description = prompt,
-            FieldTypeName = CKEditorFieldType.ControlName
+            FieldTypeName = CKEditorFieldType.ControlName,
+            // CKEditor has no index slot, so IsSearchable must be turned off explicitly — CreateFieldDefinitionDto's
+            // default of true is right for the six indexable types and wrong for this one; the AppService's own
+            // CheckSearchable now rejects the combination rather than silently accepting a switch that would do
+            // nothing (#562).
+            IsSearchable = false,
         });
 
         var exported = await _packAppService.ExportAsync(type.Id);

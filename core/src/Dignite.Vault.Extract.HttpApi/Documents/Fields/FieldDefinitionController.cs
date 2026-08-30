@@ -23,6 +23,12 @@ public class FieldDefinitionController : VaultExtractController, IFieldDefinitio
         return _fieldDefinitionAppService.GetListAsync(input);
     }
 
+    [HttpGet("field-types")]
+    public virtual Task<List<FieldTypeDto>> GetFieldTypesAsync()
+    {
+        return _fieldDefinitionAppService.GetFieldTypesAsync();
+    }
+
     [HttpPost]
     public virtual Task<FieldDefinitionDto> CreateAsync([FromBody] CreateFieldDefinitionDto input)
     {
