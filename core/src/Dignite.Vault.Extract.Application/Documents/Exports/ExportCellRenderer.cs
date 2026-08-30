@@ -1,51 +1,123 @@
+using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Text.Json;
+using Dignite.Abp.FlexFields;
+using Dignite.Abp.FlexFields.Date;
 using Dignite.Vault.Extract.Documents.Fields;
 
 namespace Dignite.Vault.Extract.Documents.Exports;
 
 /// <summary>
-/// Joins one document's typed field-value rows into one export cell string. The per-<c>FieldDataType</c>
-/// rendering itself belongs to <see cref="FieldValueFormatter"/> (#501 item 8); what lives here is the
-/// multi-value join, which only the export performs.
+/// Renders one field's value as the string an exported CSV / XLSX cell carries.
 /// <para>
-/// Extracted from <c>DocumentExportAppService</c> so the ascending-<c>Order</c> join can actually be tested.
-/// It could not be, in place: the only tests that could reach it went through SQLite, which returns
-/// <c>DocumentExtractedField</c> child rows in primary-key order <c>(DocumentId, FieldDefinitionId, Order)</c> —
-/// already ascending by <c>Order</c>. Deleting the sort left every test green. The row order of a child
-/// subquery with no <c>ORDER BY</c> is unspecified, not "whatever SQLite does", so the guard belongs here, over
-/// an input sequence a test controls.
+/// Presentation, not contract: numbers use <see cref="FieldValueFormats.CellNumber"/>, which trims the six
+/// trailing zeros of <c>decimal(38,6)</c> — deliberately unlike the <c>ExtractedFields</c> JSON egress,
+/// which keeps the value exact. A cell an accountant reads and a payload a consumer parses want different
+/// things from the same number.
+/// </para>
+/// <para>
+/// This is the v3 port of the same dispatch v2 did through <c>FieldValueFormatter.ToCellString</c> keyed
+/// on <c>FieldDataType</c>; it belongs with the per-field-type contract tracked on #562, not beside it.
 /// </para>
 /// </summary>
 internal static class ExportCellRenderer
 {
-    /// <summary>
-    /// Joins a multi-value field's rows in one cell.
-    /// <para>
-    /// #501 item 6: the screen joins with this too (<c>formatExtractedFieldValue</c> in
-    /// <c>angular/…/shared/format-field-value.ts</c>). It cannot be a comma. A comma is the CSV delimiter, so the
-    /// writer would have to quote the cell, and a consumer re-splitting a quoted cell on commas shreds one field
-    /// across several columns. The screen moved to the file's separator rather than the reverse, because the file
-    /// already has consumers parsing it and its bytes are the riskier thing to change.
-    /// </para>
-    /// </summary>
     public const string MultiValueSeparator = "; ";
 
     /// <summary>
-    /// Renders every value row of one field, ascending by <c>Order</c>, joined (#212). A single-value field has
-    /// exactly one row, so the result is that value. Yields null — an empty cell — when the field holds no
-    /// renderable value.
+    /// Renders <paramref name="value"/>, or <c>null</c> for a field this document holds no value for —
+    /// an empty cell, never the text "null".
     /// </summary>
-    public static string? RenderCell(IEnumerable<ExtractedFieldProjection> values, FieldDataType dataType)
+    public static string? RenderCell(object? value, string fieldTypeName, FieldConfigurationDictionary configuration)
     {
-        var rendered = values
-            // Never relies on the caller's sequence order: DocumentExportAppService buckets rows with ToLookup,
-            // which preserves the source order, and that source order is the database's unspecified one.
-            .OrderBy(f => f.Order)
-            .Select(f => FieldValueFormatter.ToCellString(f, dataType))
-            .Where(s => s != null)
-            .ToList();
+        if (value == null)
+        {
+            return null;
+        }
 
-        return rendered.Count > 0 ? string.Join(MultiValueSeparator, rendered) : null;
+        if (TryReadList(value, out var items))
+        {
+            // The bag preserves list order, so no re-sort: under v2 this had to order by the row's Order
+            // column because the database returned the rows in no particular order.
+            var rendered = items.Where(i => !string.IsNullOrEmpty(i)).ToList();
+            return rendered.Count > 0 ? string.Join(MultiValueSeparator, rendered) : null;
+        }
+
+        return RenderScalar(value, fieldTypeName, configuration);
+    }
+
+    private static string? RenderScalar(object value, string fieldTypeName, FieldConfigurationDictionary configuration)
+    {
+        if (string.Equals(fieldTypeName, DateTimeFieldType.ControlName, StringComparison.Ordinal))
+        {
+            if (!TryReadDateTime(value, out var moment))
+            {
+                return null;
+            }
+
+            var format = new DateTimeConfiguration(configuration).InputMode == DateTimeInputMode.DateTime
+                ? FieldValueFormats.DateTime
+                : FieldValueFormats.Date;
+            return moment.ToString(format, CultureInfo.InvariantCulture);
+        }
+
+        return value switch
+        {
+            string s => s,
+            decimal d => d.ToString(FieldValueFormats.CellNumber, CultureInfo.InvariantCulture),
+            bool b => b ? "true" : "false",
+            JsonElement { ValueKind: JsonValueKind.String } e => e.GetString(),
+            JsonElement { ValueKind: JsonValueKind.Number } e =>
+                e.GetDecimal().ToString(FieldValueFormats.CellNumber, CultureInfo.InvariantCulture),
+            JsonElement { ValueKind: JsonValueKind.True } => "true",
+            JsonElement { ValueKind: JsonValueKind.False } => "false",
+            JsonElement e => e.ToString(),
+            _ => Convert.ToString(value, CultureInfo.InvariantCulture)
+        };
+    }
+
+    private static bool TryReadList(object value, out List<string> items)
+    {
+        switch (value)
+        {
+            case List<string> list:
+                items = list;
+                return true;
+            case JsonElement { ValueKind: JsonValueKind.Array } element:
+                items = element.EnumerateArray()
+                    .Select(e => e.ValueKind == JsonValueKind.String ? e.GetString()! : e.ToString())
+                    .ToList();
+                return true;
+            // A string is a sequence of chars; "abc" is one value, not three.
+            case string:
+                items = new List<string>();
+                return false;
+            case IEnumerable enumerable:
+                items = enumerable.Cast<object?>()
+                    .Select(i => Convert.ToString(i, CultureInfo.InvariantCulture) ?? string.Empty).ToList();
+                return true;
+            default:
+                items = new List<string>();
+                return false;
+        }
+    }
+
+    private static bool TryReadDateTime(object value, out DateTime result)
+    {
+        switch (value)
+        {
+            case DateTime dt:
+                result = dt;
+                return true;
+            case JsonElement { ValueKind: JsonValueKind.String } e:
+                return e.TryGetDateTime(out result);
+            default:
+                return DateTime.TryParse(
+                    Convert.ToString(value, CultureInfo.InvariantCulture),
+                    CultureInfo.InvariantCulture, DateTimeStyles.None, out result);
+        }
     }
 }

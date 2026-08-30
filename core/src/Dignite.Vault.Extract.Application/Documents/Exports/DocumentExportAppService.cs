@@ -1,3 +1,4 @@
+using Dignite.Abp.FlexFields;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -30,16 +31,22 @@ public class DocumentExportAppService : VaultExtractAppService, IDocumentExportA
 
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentTypeRepository _documentTypeRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldRepository;
+    private readonly IFieldTypeResolver _fieldTypeResolver;
+    private readonly IFlexFieldQueryExecutor<Document> _flexFieldQueryExecutor;
 
     public DocumentExportAppService(
         IDocumentRepository documentRepository,
         IDocumentTypeRepository documentTypeRepository,
-        IFieldDefinitionRepository fieldDefinitionRepository)
+        IFieldRepository fieldRepository,
+        IFieldTypeResolver fieldTypeResolver,
+        IFlexFieldQueryExecutor<Document> flexFieldQueryExecutor)
     {
         _documentRepository = documentRepository;
         _documentTypeRepository = documentTypeRepository;
-        _fieldDefinitionRepository = fieldDefinitionRepository;
+        _fieldRepository = fieldRepository;
+        _fieldTypeResolver = fieldTypeResolver;
+        _flexFieldQueryExecutor = flexFieldQueryExecutor;
     }
 
     public virtual async Task<IRemoteStreamContent> ExportAsync(ExportDocumentsInput input)
@@ -57,7 +64,7 @@ public class DocumentExportAppService : VaultExtractAppService, IDocumentExportA
         // same rows, in the same order, that drive the operator list's dynamic columns. Values a document still
         // holds for an ARCHIVED (soft-deleted) definition are therefore absent from the file. The template path
         // used to traverse soft-delete to resolve columns it explicitly referenced; nothing references them now.
-        var fieldDefinitions = await _fieldDefinitionRepository.GetListAsync(documentType.Id);
+        var fieldDefinitions = await _fieldRepository.GetListAsync(documentType.Id);
 
         // #501 item 2: the column count is bounded explicitly, symmetric with the row bound below. The template
         // layer capped its saved projection at ExportTemplateConsts.MaxColumnCount = 100; #499 deleted the
@@ -91,16 +98,15 @@ public class DocumentExportAppService : VaultExtractAppService, IDocumentExportA
 
         // Extracted-field-value filters, AND-combined with the metadata filters above. Resolve the field names
         // against the type (unknown field loud-fails via the shared resolver — the same path the document list /
-        // MCP search use), match document ids through the EXISTS query (GetFieldMatchedIdsAsync; the ambient
-        // IMultiTenant filter keeps it in the caller's layer), then intersect. The Take(limit + 1) below still
-        // bounds the export size. fieldDefinitions is passed as the already-loaded lookup (#501 item 4).
+        // MCP search use), then let the kernel's query executor push each condition down as a subquery over the
+        // field index; the ambient IMultiTenant filter keeps it in the caller's layer. The Take(limit + 1) below
+        // still bounds the export size. fieldDefinitions is passed as the already-loaded lookup (#501 item 4).
         if (input.FieldFilters is { Count: > 0 })
         {
-            var fieldQueries = await DocumentFieldQueryResolver.ResolveAsync(
-                _fieldDefinitionRepository, input.FieldFilters, documentType.Id, documentType.TypeCode,
+            var conditions = await DocumentFieldQueryResolver.ResolveAsync(
+                _fieldRepository, _fieldTypeResolver, input.FieldFilters, documentType.Id, documentType.TypeCode,
                 knownDefinitions: fieldDefinitions);
-            var matchedIds = await _documentRepository.GetFieldMatchedIdsAsync(documentType.Id, fieldQueries);
-            query = query.Where(d => matchedIds.Contains(d.Id));
+            query = await _flexFieldQueryExecutor.ApplyFilterAsync(query, conditions);
         }
 
         // Single fetch of (Max + 1) projected to ExportProjection (non-entity type -> does not SELECT Markdown and does not enter tracker).
@@ -118,20 +124,9 @@ public class DocumentExportAppService : VaultExtractAppService, IDocumentExportA
                     LifecycleStatus = d.LifecycleStatus,
                     ReviewDisposition = d.ReviewDisposition,
                     ReviewReasons = d.ReviewReasons,
-                    // Typed child rows are projected with the document through a correlated subquery in one query, not per-document N+1.
-                    ExtractedFields = d.ExtractedFieldValues
-                        .Select(f => new ExtractedFieldProjection
-                        {
-                            FieldDefinitionId = f.FieldDefinitionId,
-                            Order = f.Order,
-                            TextValue = f.TextValue,
-                            LongTextValue = f.LongTextValue,
-                            BooleanValue = f.BooleanValue,
-                            NumberValue = f.NumberValue,
-                            DateValue = f.DateValue,
-                            DateTimeValue = f.DateTimeValue,
-                        })
-                        .ToList(),
+                    // One column on the document itself now, so no correlated subquery and no child rows:
+                    // the projection still avoids SELECTing Markdown, which is why it exists at all.
+                    FlexFields = d.FlexFields,
                 })
                 .Take(limit + 1));
 
@@ -151,12 +146,9 @@ public class DocumentExportAppService : VaultExtractAppService, IDocumentExportA
         var dataRows = rows
             .Select(r =>
             {
-                // #501 item 3: bucket this row's field values by FieldDefinitionId once, in one pass. Each cell
-                // is then an O(1) bucket lookup instead of a Where + OrderBy rescan of every value the document
-                // holds — the old shape cost O(columns x values) per row, and #499 grew `columns` from an
-                // operator-chosen subset capped at 100 to every live field the type declares.
-                var valuesByField = r.ExtractedFields.ToLookup(f => f.FieldDefinitionId);
-
+                // #501 item 3 wanted one pass over this row's values so each cell is an O(1) lookup rather
+                // than a rescan. The bag is already that lookup — keyed by field name, which is exactly what
+                // the column definition carries — so the bucketing step is gone rather than ported.
                 var cells = new string?[headers.Count];
                 cells[0] = r.LifecycleStatus.ToString();
                 cells[1] = r.ReviewDisposition.ToString();
@@ -166,9 +158,11 @@ public class DocumentExportAppService : VaultExtractAppService, IDocumentExportA
                 cells[3] = r.Title;
                 for (var i = 0; i < fieldDefinitions.Count; i++)
                 {
-                    // The ILookup indexer yields an empty sequence for a field this document has no value for.
+                    var field = fieldDefinitions[i];
+                    // A missing key means this document holds no value for that field: an empty cell.
+                    r.FlexFields.TryGetValue(field.Name, out var value);
                     cells[systemCount + i] = ExportCellRenderer.RenderCell(
-                        valuesByField[fieldDefinitions[i].Id], fieldDefinitions[i].DataType);
+                        value, field.FieldTypeName, field.Configuration);
                 }
                 return cells;
             })

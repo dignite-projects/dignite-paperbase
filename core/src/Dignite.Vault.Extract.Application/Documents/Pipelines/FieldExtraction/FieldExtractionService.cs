@@ -19,7 +19,7 @@ namespace Dignite.Vault.Extract.Documents.Pipelines.FieldExtraction;
 /// <summary>
 /// Unified field extraction execution engine (#289 step 1). Extracts the core action that used to be inline in the
 /// classification→field-extraction cascade into a reusable unit:
-/// "read field definitions -> <see cref="FieldExtractionWorkflow.ExtractAsync"/> -> in-flight guard -> <c>Document.SetFields</c>
+/// "read field definitions -> <see cref="FieldExtractionWorkflow.ExtractAsync"/> -> in-flight guard -> <c>Document.SetFlexFields</c>
 /// -> publish <see cref="FieldsExtractedEto"/>", shared by two trigger types:
 /// <list type="bullet">
 ///   <item>the classification-completed cascade: since #527 §8 the classification stage schedules this run
@@ -51,7 +51,7 @@ public class FieldExtractionService : ITransientDependency
 {
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentTypeRepository _documentTypeRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldRepository;
     private readonly ReviewStateEvaluator _reviewEvaluator;
     private readonly FieldExtractionWorkflow _workflow;
     private readonly IDistributedEventBus _distributedEventBus;
@@ -68,7 +68,7 @@ public class FieldExtractionService : ITransientDependency
     public FieldExtractionService(
         IDocumentRepository documentRepository,
         IDocumentTypeRepository documentTypeRepository,
-        IFieldDefinitionRepository fieldDefinitionRepository,
+        IFieldRepository fieldRepository,
         ReviewStateEvaluator reviewEvaluator,
         FieldExtractionWorkflow workflow,
         IDistributedEventBus distributedEventBus,
@@ -81,7 +81,7 @@ public class FieldExtractionService : ITransientDependency
     {
         _documentRepository = documentRepository;
         _documentTypeRepository = documentTypeRepository;
-        _fieldDefinitionRepository = fieldDefinitionRepository;
+        _fieldRepository = fieldRepository;
         _reviewEvaluator = reviewEvaluator;
         _workflow = workflow;
         _distributedEventBus = distributedEventBus;
@@ -115,7 +115,7 @@ public class FieldExtractionService : ITransientDependency
             // Explicit disposal fully exits this UoW before entering the phase 2 external LLM call.
             Guid documentTypeId;
             string documentTypeCode;
-            List<FieldDefinition> definitions;
+            List<Field> definitions;
             string markdown;
             using (var readUow = _unitOfWorkManager.Begin(requiresNew: true))
             {
@@ -182,7 +182,7 @@ public class FieldExtractionService : ITransientDependency
                     }
                 }
 
-                definitions = await _fieldDefinitionRepository.GetListAsync(documentTypeId);
+                definitions = await _fieldRepository.GetListAsync(documentTypeId);
                 markdown = readDocument.Markdown ?? string.Empty;
                 await readUow.CompleteAsync();
             }
@@ -227,7 +227,7 @@ public class FieldExtractionService : ITransientDependency
                 // #491: a type with no fields issues no LLM call, so an oversized body can no longer hold this document
                 // back — clear FieldExtractionIncomplete, otherwise reclassifying a declined document to a field-less
                 // type would leave it blocked from Ready forever with nothing an operator could do about it.
-                var hadFields = blankDocument.ExtractedFieldValues.Count > 0;
+                var hadFields = blankDocument.FlexFields.Count > 0;
                 var hadMissingRequired =
                     (blankDocument.ReviewReasons & DocumentReviewReasons.MissingRequiredFields) != DocumentReviewReasons.None;
                 var hadFingerprint = blankDocument.FieldFingerprint != null;
@@ -239,7 +239,7 @@ public class FieldExtractionService : ITransientDependency
                 var hadValidationWarnings = blankDocument.FieldValidationWarnings.Count > 0;
                 if (hadFields || hadMissingRequired || hadFingerprint || hadDuplicateSuspected || hadExtractionIncomplete || hadValidationWarnings)
                 {
-                    blankDocument.SetFields(Array.Empty<DocumentFieldValue>());
+                    blankDocument.SetFlexFields(null);
                     blankDocument.SetReviewReason(DocumentReviewReasons.MissingRequiredFields, present: false);
                     blankDocument.SetFieldFingerprint(null);
                     blankDocument.SetReviewReason(DocumentReviewReasons.DuplicateSuspected, present: false);
@@ -254,7 +254,7 @@ public class FieldExtractionService : ITransientDependency
             }
 
             var descriptors = definitions.Select(d => new FieldExtractionDescriptor(
-                d.Id, d.Name, d.Prompt, d.DataType, d.IsRequired, d.AllowMultiple)).ToList();
+                d.Id, d.Name, d.Description, d.FieldTypeName, d.Configuration, d.IsRequired)).ToList();
 
             // #491: field extraction sends the WHOLE Markdown (a type-bound field can sit anywhere, so tail truncation
             // would silently miss it — see FieldExtractionWorkflow). An unbounded body is therefore an unbounded
@@ -317,10 +317,10 @@ public class FieldExtractionService : ITransientDependency
             }
 
             // During the LLM call, admins may rename, change type, or delete field definitions. Reread once by stable Id before writing.
-            var currentDefinitions = await _fieldDefinitionRepository.GetListAsync(documentTypeId);
+            var currentDefinitions = await _fieldRepository.GetListAsync(documentTypeId);
             var currentDefinitionsById = currentDefinitions.ToDictionary(d => d.Id);
 
-            var fieldValues = new List<DocumentFieldValue>();
+            var fieldValues = new Dictionary<string, object?>(StringComparer.Ordinal);
             foreach (var d in descriptors)
             {
                 if (!extracted.TryGetValue(d.Name, out var value) || !value.HasValue)
@@ -328,45 +328,61 @@ public class FieldExtractionService : ITransientDependency
                     continue;
                 }
 
-                if (!currentDefinitionsById.TryGetValue(d.FieldDefinitionId, out var currentDefinition))
+                if (!currentDefinitionsById.TryGetValue(d.FieldId, out var currentDefinition))
                 {
                     _logger.LogInformation(
-                        "FieldDefinition {FieldDefinitionId} was removed or disabled during extraction for doc {DocumentId}; extracted value skipped.",
-                        d.FieldDefinitionId, documentId);
+                        "Field {FieldId} was removed or disabled during extraction for doc {DocumentId}; extracted value skipped.",
+                        d.FieldId, documentId);
                     continue;
                 }
 
-                if (currentDefinition.DataType != d.DataType)
+                // The in-flight guard now compares the field TYPE, which is what v2 needed two checks for:
+                // DataType covered "what shape is this value" and AllowMultiple covered "is it a list", and
+                // under v3 both follow from FieldTypeName. A configuration change (say, options removed from
+                // a Select) needs no guard of its own, because the reader below validates against the
+                // definition as it stands NOW, not as the descriptor captured it before the call.
+                if (!string.Equals(currentDefinition.FieldTypeName, d.FieldTypeName, StringComparison.Ordinal))
                 {
                     _logger.LogWarning(
-                        "FieldDefinition {FieldDefinitionId} DataType changed during extraction for doc {DocumentId}: {OldDataType} -> {NewDataType}; stale value skipped.",
-                        d.FieldDefinitionId, documentId, d.DataType, currentDefinition.DataType);
+                        "Field {FieldId} changed type during extraction for doc {DocumentId}: {OldFieldType} -> {NewFieldType}; stale value skipped.",
+                        d.FieldId, documentId, d.FieldTypeName, currentDefinition.FieldTypeName);
                     continue;
                 }
 
-                if (currentDefinition.AllowMultiple != d.AllowMultiple)
+                // The name is the bag's key, so a rename mid-call would file the value under a key nothing
+                // reads. The value belongs to the field it was extracted for, and that field now lives under
+                // a different key - so it is stale in exactly the sense the other guards mean.
+                if (!string.Equals(currentDefinition.Name, d.Name, StringComparison.Ordinal))
                 {
                     _logger.LogWarning(
-                        "FieldDefinition {FieldDefinitionId} AllowMultiple changed during extraction for doc {DocumentId}: {OldAllowMultiple} -> {NewAllowMultiple}; stale value skipped.",
-                        d.FieldDefinitionId, documentId, d.AllowMultiple, currentDefinition.AllowMultiple);
+                        "Field {FieldId} was renamed during extraction for doc {DocumentId}: {OldName} -> {NewName}; stale value skipped.",
+                        d.FieldId, documentId, d.Name, currentDefinition.Name);
                     continue;
                 }
 
-                if (!ExtractedFieldValueValidator.IsValid(value.Value, currentDefinition.DataType, currentDefinition.AllowMultiple))
+                // Validated against the CURRENT definition and converted in one step. A value the model
+                // returned in the wrong shape, or outside a Select's options, is skipped and logged rather
+                // than stored - the same "store nothing, say so" trade v2 made, now with one gate instead
+                // of a validator here and a converter in the entity.
+                if (!FlexFieldValueReader.TryRead(
+                        value.Value, currentDefinition.FieldTypeName, currentDefinition.Configuration, out var read))
                 {
                     _logger.LogWarning(
-                        "FieldExtractionWorkflow returned an invalid {DataType} (multi={AllowMultiple}) value for field {FieldName} ({FieldDefinitionId}) on doc {DocumentId}; value skipped.",
-                        currentDefinition.DataType, currentDefinition.AllowMultiple, currentDefinition.Name, currentDefinition.Id, documentId);
+                        "FieldExtractionWorkflow returned a value for field {FieldName} ({FieldId}) on doc {DocumentId} that does not match field type {FieldType} (JSON kind {JsonValueKind}); value skipped.",
+                        currentDefinition.Name, currentDefinition.Id, documentId,
+                        currentDefinition.FieldTypeName, value.Value.ValueKind);
                     continue;
                 }
 
-                fieldValues.AddRange(DocumentFieldValueFactory.Expand(
-                    currentDefinition.Id, currentDefinition.DataType, currentDefinition.AllowMultiple, value.Value));
+                if (read != null)
+                {
+                    fieldValues[currentDefinition.Name] = read;
+                }
             }
 
-            document.SetFields(fieldValues);
+            document.SetFlexFields(fieldValues);
 
-            // #527 §5/§7: persist the field validation warnings atomically with SetFields and the FieldsExtractedEto
+            // #527 §5/§7: persist the field validation warnings atomically with SetFlexFields and the FieldsExtractedEto
             // below. The workflow keys warnings by field name and has already normalized them (§3); here each is resolved
             // to the immutable FieldDefinitionId and passed through the SAME in-flight guards as the values — a warning
             // whose field was deleted, renamed, or changed shape while the LLM was in flight is discarded, never creating
@@ -376,10 +392,12 @@ public class FieldExtractionService : ITransientDependency
             var warnings = new List<FieldValidationWarning>();
             foreach (var w in extractionResult.ValidationWarnings)
             {
+                // The same in-flight guards the values pass through, so a warning whose field was removed,
+                // renamed, or retyped mid-call is discarded rather than left as stale review state.
                 if (!descriptorsByName.TryGetValue(w.FieldName, out var descriptor)
-                    || !currentDefinitionsById.TryGetValue(descriptor.FieldDefinitionId, out var currentDefinition)
-                    || currentDefinition.DataType != descriptor.DataType
-                    || currentDefinition.AllowMultiple != descriptor.AllowMultiple)
+                    || !currentDefinitionsById.TryGetValue(descriptor.FieldId, out var currentDefinition)
+                    || !string.Equals(currentDefinition.FieldTypeName, descriptor.FieldTypeName, StringComparison.Ordinal)
+                    || !string.Equals(currentDefinition.Name, descriptor.Name, StringComparison.Ordinal))
                 {
                     _logger.LogInformation(
                         "Field validation warning for '{FieldName}' on doc {DocumentId} was discarded: its field was removed, renamed, or changed shape during extraction.",
@@ -399,11 +417,11 @@ public class FieldExtractionService : ITransientDependency
 
             // #284: evaluate required-field missingness at the moment extraction completes and materialize MissingRequiredFields.
             // Read paths cannot know whether extraction already ran, so this must be decided at write time.
-            // Reuse currentDefinitions reread before writing, filtered by IsRequired, plus the written ExtractedFieldValues.
+            // Reuse currentDefinitions reread before writing, filtered by IsRequired, plus the keys now present in the value bag.
             // This is after the stale guard, so stale events cannot reach here and no new race is introduced.
             // Non-blocking: setting MRF does not move an already Ready document back, because DeriveLifecycle checks only blocking reasons.
             var requiredIds = currentDefinitions.Where(cd => cd.IsRequired).Select(cd => cd.Id).ToList();
-            var extractedIds = document.ExtractedFieldValues.Select(v => v.FieldDefinitionId).Distinct().ToList();
+            var extractedIds = currentDefinitions.Where(cd => document.FlexFields.ContainsKey(cd.Name)).Select(cd => cd.Id).ToList();
             document.SetReviewReason(
                 DocumentReviewReasons.MissingRequiredFields,
                 _reviewEvaluator.MissingRequiredFieldsPresent(requiredIds, extractedIds));
@@ -416,7 +434,7 @@ public class FieldExtractionService : ITransientDependency
             // "not a duplicate" override) suppresses re-flagging on re-extraction. The collision query relies on the
             // ambient IMultiTenant + ISoftDelete filters (tenant restored via ICurrentTenant.Change above) and is
             // hard-capped, so it never returns a cross-layer or unbounded set.
-            var fingerprint = FieldFingerprintCalculator.Compute(document.ExtractedFieldValues, currentDefinitions);
+            var fingerprint = FlexFieldFingerprintCalculator.Compute(document, currentDefinitions);
             document.SetFieldFingerprint(fingerprint);
 
             var duplicateSuspected = false;
@@ -433,8 +451,10 @@ public class FieldExtractionService : ITransientDependency
 
             document.SetReviewReason(DocumentReviewReasons.DuplicateSuspected, duplicateSuspected);
 
-            // FieldsExtractedEto.FieldCount is the logical field count (distinct fields with values), not the expanded row count.
-            var fieldCount = fieldValues.Select(v => v.FieldDefinitionId).Distinct().Count();
+            // FieldsExtractedEto.FieldCount is the logical field count - fields that got a value. Each bag
+            // entry is one field, so this is simply the count; under v2 the same number needed a Distinct()
+            // over rows, because a multi-value field expanded into several of them.
+            var fieldCount = fieldValues.Count;
 
             await _documentRepository.UpdateAsync(document, autoSave: true);
             await PublishFieldsExtractedAsync(documentId, tenantId, fieldCount, documentTypeCode);
@@ -455,7 +475,7 @@ public class FieldExtractionService : ITransientDependency
     /// <b>terminal</b> outcome, so <c>DocumentFieldExtractionBackgroundJob</c> completes the run instead of rethrowing into
     /// the job-store retry loop (which would keep re-sending the same oversized body).
     /// <para>
-    /// Existing <c>ExtractedFieldValues</c> are deliberately left untouched. A host lowering the ceiling must not silently
+    /// Existing field values are deliberately left untouched. A host lowering the ceiling must not silently
     /// delete values that an earlier, in-budget extraction had legitimately produced; the blocking signal already tells
     /// downstream and the operator that this document's field set is not current. Nothing is published either — no
     /// extraction happened, so there is no <c>FieldsExtractedEto</c> to fire.
