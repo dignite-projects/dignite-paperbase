@@ -1,0 +1,29 @@
+<div class="mb-3">
+  <label class="form-label" *ngIf="fieldValue?.field?.displayName">
+    {{ fieldValue!.field.displayName }}
+  </label>
+  <div class="d-flex flex-wrap gap-1 mb-1" *ngIf="tags.length > 0">
+    <span class="badge bg-light text-dark border" *ngFor="let tag of tags; let i = index">
+      {{ tag }}
+      <button
+        type="button"
+        class="btn-close btn-close-sm ms-1"
+        style="font-size: 0.55rem"
+        [attr.aria-label]="'AbpUi::Delete' | abpLocalization"
+        (click)="removeTag(i)"
+      ></button>
+    </span>
+  </div>
+  <input
+    type="text"
+    class="form-control"
+    [placeholder]="fieldValue?.field?.configuration?.['Tags.Placeholder'] ?? ''"
+    [(ngModel)]="draft"
+    [ngModelOptions]="{ standalone: true }"
+    (keydown.enter)="commitDraft($event)"
+    (keydown.,)="commitDraft($event)"
+  />
+  <small class="form-text text-muted d-block" *ngIf="fieldValue?.field?.description">
+    {{ fieldValue!.field.description }}
+  </small>
+</div>
