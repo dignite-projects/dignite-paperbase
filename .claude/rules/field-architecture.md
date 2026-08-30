@@ -52,15 +52,80 @@ Type-bound fields must be attached under some document type, split into two laye
 
 **Essence of mechanism (B)**: Dignite Vault Extract provides a generic "extract-by-schema" engine — Host or tenant configures the schema, and the engine extracts per the owning layer. Dignite Vault Extract Core **presets no business field definition** (contract amount / invoice number / tax amount, etc. are not hardcoded).
 
-> **v3 in progress (#558)**: the storage form below is being replaced by the Dignite.Abp.FlexFields kernel — a `Document.FlexFields` value bag keyed by `Field.Name` plus a derived `DocumentFlexFieldIndex` pivot table, with `Field : IFlexField` replacing `FieldDefinition` and `FieldTypeName` + `Configuration` replacing the `FieldDataType` enum. **Both layouts are live right now**: v2 below is still authoritative and still serves every read and write; v3 is populated alongside it by `FieldArchitectureV3Migrator` and is not yet read by anything. Treat the v2 description below as current until the cutover (#562) lands, then this section is rewritten rather than amended.
+## Implementation form (field architecture v3, #558 / #559 / #562)
 
-**Implementation form (field architecture v2)**:
+v3 is built on the **`Dignite.Abp.FlexFields` kernel** (sibling repo `abp-modules/flex-fields`). The kernel supplies the mechanism — field types, the value bag, the derived index contract, key migration; Vault Extract supplies the policy: which types exist, how a field is scoped, and everything the pipeline does with a value.
 
-- A single `FieldDefinition` entity carries both layers (`TenantId IS NULL` = Host field definition; `TenantId != null` = tenant field definition), with unique index `(TenantId, DocumentTypeId, Name)` (#207: internally associated by the immutable `DocumentTypeId`; `DocumentType.TypeCode` / `FieldDefinition.Name` may be renamed by admins without cascading to data rows)
-- **No inheritance, and no initial registration in a Module**: both Host fields and tenant fields are created via `IFieldDefinitionAppService` CRUD (Host admin operates Host rows, tenant admin operates its own tenant rows)
-- No cross-layer union: the admin view, the LLM classification candidate set, and field extraction all match a single layer by exact `Document.TenantId` (admin view / classification candidate set go through the generic `GetListAsync`; field extraction goes through `GetForExtractionAsync`)
-- The classification stage schedules a single field-extraction run transactionally with classification completion (#527 §8: `DocumentPipelineJobScheduler`, before classification can derive Ready — no longer a delayed `DocumentClassifiedEto` handler), and `FieldExtractionService` matches a single layer of field definitions by exact `Document.TenantId` → one LLM call → writes the whole group via `Document.SetFields(...)` into the first-class `DocumentExtractedField` value collection (a child entity of the `Document` aggregate, one row per field value with typed columns; composite key `(DocumentId, FieldDefinitionId, Order)`, #207 + #212 — single-valued fields have `Order` always 0, multi-valued fields (AllowMultiple) have multiple rows per field with `Order` 0/1/2…). The egress DTO / MCP / REST `ExtractedFields` (`Dictionary<string, JsonElement>`) is assembled on the fly by the App / Mapper layer from these rows; the dictionary key (field name) is resolved through a soft-delete join to the current `FieldDefinition` (#206 / #207). Field-value queries use ordinary-column EF Core LINQ (Documents-anchored EXISTS, matching the child by `FieldDefinitionId`), portable across any relational database, no longer bound to SQL Server native `json` / `JSON_VALUE`
-- Extraction completion uniformly publishes `FieldsExtractedEto` (thin payload with `FieldCount`; downstream can distinguish scenarios by the event payload's `TenantId`)
+### Where a field is defined
+
+- A single `Field` entity (`Documents/Fields/Field.cs`, implementing the kernel's `IFlexField` + `IMultiTenant`) carries both layers: `TenantId IS NULL` = Host field, `TenantId != null` = tenant field. It replaces v2's `FieldDefinition`.
+- **Fields stay bound to one `DocumentType`** — deliberately *not* the kernel's other shape (a tenant-wide reusable field library plus a per-usage join). One binding per field is why `IsRequired` / `IsSearchable` / `IsUniqueKey` live directly on `Field` rather than in a separate usage object.
+- **`Field.Name` is the machine contract key** and, new in v3, **the key its value is stored under in every document's bag**. Renaming is therefore no longer free: the write path must rewrite every bag through `IFlexFieldValueMigrator<Document>.RenameFieldAsync`, in the order the kernel's own doc comment spells out — change the definition, migrate the bags, and let nothing synchronize the index in between. `FieldDefinitionAppService.UpdateAsync` is the only place that does this.
+- **`Name`'s allow-list regex is Vault Extract's, not the kernel's.** The kernel validates no format on `Name` at all. `Field.SetName` re-declares `FieldDefinitionConsts.NamePattern` because the value is concatenated raw into the LLM's schema message — a prompt-injection boundary, not a formatting preference.
+- Layer-scoped uniqueness on `(TenantId, DocumentTypeId, Name)` is an **application-layer check** (`FieldDefinitionManager`), not a DB index — same cross-database rationale as `DocumentType` (#304). Every write path (create / rename / restore, including the cascade restore driven by `DocumentTypeAppService.RestoreAsync`) must route through it.
+- **No inheritance, no module-startup registration**: Host and tenant fields alike are created through `IFieldDefinitionAppService` CRUD. No cross-layer union anywhere — the admin view, the classification candidate set and field extraction all match a single layer by exact `Document.TenantId`.
+- The app-service, DTO and REST route keep their v2 **names** (`IFieldDefinitionAppService`, `FieldDefinitionDto`, `/field-definitions`): they name the concept, which v3 still has. Only the entity behind them changed, which is what confines the wire break to the members that genuinely changed shape.
+
+### Field types
+
+v2's `FieldDataType` enum is replaced by `Field.FieldTypeName` (a **registration key string**) plus `Field.Configuration` (type-specific settings). "What a field accepts" and "one value or many" are both properties of the type now, not two independent switches — v2's `AllowMultiple` is gone, and its `ValidateMultiValue` loud-fail was itself the evidence that the flag was never orthogonal to the type.
+
+| Key | Notes |
+|---|---|
+| `Text` | `Text.Mode` / `Text.CharLimit` / `Text.Placeholder` |
+| `Number` | `Number.Decimals` / `Min` / `Max` / `Step` / `FormatSpecifier` |
+| `Boolean` | `Boolean.Default` |
+| `DateTime` | **v2's `Date` and `DateTime` are one type**, told apart by `DateTime.InputMode` (Date / DateTime / Month). Date-mode values are normalized to midnight on write, so equality stays equality |
+| `Select` | closed vocabulary. `Select.Options` is projected into the LLM extraction schema as a JSON-schema `enum` — the one capability v2 had no equivalent for. Multi-valued when `Select.Multiple` |
+| `CKEditor` | carries v2's `LongText`. Its `IndexValueType` is `null`, so "never indexed, never queryable" is structural rather than dependent on `IsSearchable`. The migration writes `ContentFormat = Markdown` explicitly — the type's own default is `Html`, wrong for text extracted from a document |
+| `Tags` | Vault Extract's own open-vocabulary multi-value type (`Dignite.Vault.Extract.FlexFields`), the complement of `Select`. Always a list |
+
+**"Is this field multi-valued" has two branches and both matter**: `Tags` always, and `Select` when its configuration says `Multiple`. Never test the type name alone — that silently mis-handles every multi-Select. Server-side the single answer is `VaultExtractFieldTypes.IsMultiValue(fieldTypeName, configuration)`; the Angular twin is `isMultiValueField` in `documents/src/lib/shared/field-types/field-type-catalog.ts`. Adding a multi-valued type means editing those two, not the call sites.
+
+**Configuration enum values are written as numbers.** The kernel reads a configuration enum via `(int)(long)value`, and its fallback path deserializes with `JsonSerializerDefaults.Web`, which carries no string-enum converter — a name silently falls back to the default.
+
+### Where a value lives
+
+- **`Document.FlexFields`** (the kernel's `FlexFieldDictionary`, a JSON column) is **authoritative**, keyed by `Field.Name`. Written as a whole set through `Document.SetFlexFields(...)`; a null value drops its key.
+  - This is *not* the untyped extension bag CLAUDE.md forbids on this aggregate: every key in it is backed by a persisted `Field` with a declared type. Deliberately not ABP's `ExtraProperties` either, so no other module can collide with a tenant's field names.
+- **`DocumentFlexFieldIndex`** (`FlexFieldIndexBase<Document>`) is a **derived** typed pivot table, never authoritative — every row is re-derivable from the bag. That is what lets a type change or a searchability change be repaired by `RebuildAsync` instead of a data migration. Cascade-deleted with its document; `NumberValue` is mapped `decimal(38,6)` because the kernel leaves precision unset and EF's `decimal(18,2)` default would silently round.
+- **Every write of the bag owes the index an `IFlexFieldIndexManager<Document>.SynchronizeAsync` in the same unit of work.** Miss one and that document simply stops matching its own field filters — silently, because the bag is correct and every read that goes *through the bag* is correct. There are exactly three such sites: `FieldExtractionService`'s extraction write, its no-definitions clearing path, and `DocumentAppService.UpdateExtractedFieldsAsync`.
+- **`IsSearchable`** (new in v3) decides whether a field's values are decomposed into the index at all. Migrated fields default to `true`, matching v2's unconditional indexing. A type whose `IndexValueType` is null yields nothing regardless.
+
+### The extraction path
+
+The classification stage schedules a single field-extraction run transactionally with classification completion (#527 §8: `DocumentPipelineJobScheduler`, before classification can derive Ready — **not** a delayed `DocumentClassifiedEto` handler). `FieldExtractionService` then:
+
+1. reads one layer of `Field` rows by exact `Document.TenantId` (`IFieldRepository.GetListAsync(documentTypeId)`);
+2. builds the response schema from field type + configuration (`FlexFieldValueSchemaBuilder`);
+3. makes one LLM call;
+4. re-reads the definitions and applies the **in-flight guards** — a value whose field was deleted, **renamed**, or **retyped** while the LLM was in flight is discarded. The guards compare `FieldTypeName` *and* `Name`; the name matters now precisely because it is the bag key;
+5. validates and converts each value with `FlexFieldValueReader` (one step, not validate-then-convert);
+6. writes the whole group via `Document.SetFlexFields(...)`, synchronizes the index, and publishes `FieldsExtractedEto` (thin payload with `FieldCount`; downstream distinguishes scenarios by the payload's `TenantId`).
+
+`FlexFieldValueReader` is the single validation gate, shared by extraction and the operator edit — the only difference is what happens on rejection (logged-and-skipped there, an interactive error here). The extraction workflow deliberately does **not** validate: it hands the raw `JsonElement` through, because a second gate could only diverge from the reader.
+
+### The read and query paths
+
+- The egress `ExtractedFields` (`Dictionary<string, JsonElement>`) is assembled on the fly by `DocumentAppService.AssembleExtractedFields` from the bag, rendered per field type by `FlexFieldValueJsonWriter`. Reference resolution runs under `Disable<ISoftDelete>` so an archived field a historical document still holds a value for keeps resolving to a name.
+- Field-value **filtering** goes through `DocumentFieldQueryResolver` → `IFlexFieldQueryExecutor<Document>`, which composes a subquery against the index. The value type comes from `IFieldType.IndexValueType` rather than a parallel dispatch ladder. An unknown field name **loud-fails** (`BusinessException`), never a silent empty result; so does filtering on a non-indexable type.
+- **Presence is tested by name, not by id.** `document.FlexFields.ContainsKey(field.Name)` is how "does this document have this field" is answered — for the missing-required-fields reason and for its detail projection alike. A leftover id-against-value-rows test compiles fine and reports every required field of every document as missing.
+
+### Duplicate detection (#411)
+
+`FlexFieldFingerprintCalculator` hashes the **unique-key fields' values read from the bag**, in a canonical order. It replaces the v2 calculator, which hashed value rows in `Order` sequence — preserving hash equality across v2 and v3 would have frozen the v2 row layout as a permanent constraint, so fingerprints are **recomputed** at cutover instead (`FieldArchitectureV3Migrator.RecomputeFingerprintsAsync`, a separate cutover-only call).
+
+### Changing a field's type
+
+Refused when the field already holds values — the same fail-closed direction as v2, reached by a different route: the values stay in the bag untouched, but nothing would render or index them under the new type, which is the same silent disappearance v2's typed-column guard existed to prevent. v2's separate multi-value-narrowing guard is folded in, because narrowing *is* a type change now.
+
+"Does any document hold this field" has no cheap general answer in v3: the bag is an opaque JSON column and no provider can push a bag-key predicate into it. `IDocumentRepository.AnyFlexFieldValueAsync` therefore answers it two ways — from the derived index by `FieldId` when the field is indexable and searchable (exact, one lookup), and by paging the type's documents and testing the key in memory when it is not (long text, or searchability switched off). Keep that fallback confined to those cases: it is bounded only by the type's document count.
+
+### Migration status (expand-then-contract, #561)
+
+The v2 entities (`FieldDefinition`, `DocumentExtractedField`) and their tables **still exist** and are still mapped, but **nothing reads or writes them on any live path** — the sole remaining consumer is `FieldArchitectureV3Migrator`. That is what makes the rollback before the final drop "revert the code", not "restore a backup". Dropping the tables is a separate later migration. Until then, do not reintroduce a v2 read: it will compile, and it will be wrong.
+
+`DocumentFieldValidationWarning.FieldDefinitionId` keeps its column name (it is on the wire, in `ResolveFieldValidationWarningsInput` and the review-reason detail DTO) but its FK now points at `VaultFields` (#562). The repoint is safe only because `FieldDefinitionToFieldMapper` preserves ids.
 
 ## Document field-extension judgment (full two axes)
 
@@ -72,3 +137,5 @@ The above principles are at the transient transport (`TextExtractionResult` / `O
    - **Business-specific** (contract amount / invoice number / ID-card name / receipt line items) → stored by downstream business consumers in their own aggregate roots (downstream `Contract` / `Invoice` / `IdCardRecord`); **`Document` is not polluted**
 
 This rule also answers "where do OCR out-of-band signals go" — they belong neither to downstream business (unrelated to any specific business) nor can be stuffed back into the Markdown string (which would break Markdown-first). They should be carried at the `Document` level, but **open a separate Issue per signal**, adding named strongly-typed nullable fields as needed; **forbidden** to use a `Dictionary<string, object>` generic extension bag.
+
+> The one bag that is allowed is `Document.FlexFields` (#558), and only because every key in it is backed by a persisted `Field` definition — the schema lives in `VaultFields`, not in the bag, so the contents stay enumerable, reviewable and deletable. What the rule targets is a bag anyone can write an arbitrary key into. Adding a **second** bag, or widening this one to accept keys with no definition, is still forbidden.

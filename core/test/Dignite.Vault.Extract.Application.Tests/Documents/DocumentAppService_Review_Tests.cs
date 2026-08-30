@@ -5,6 +5,7 @@ using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Abp.FlexFields.Number;
+using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.Documents.Fields;
 using Dignite.Vault.Extract.Documents.Pipelines;
 using Dignite.Vault.Extract.Documents.Review;
@@ -154,6 +155,55 @@ public class DocumentAppService_Review_Tests
         detail.IsBlocking.ShouldBeFalse();   // MRF is non-blocking
         detail.MissingFieldNames.ShouldNotBeNull();
         detail.MissingFieldNames.ShouldContain("Amount");
+    }
+
+    /// <summary>
+    /// The other half of the same guard, and the half that actually reddens when the presence test is wrong:
+    /// a required field the document DOES hold must not be named as missing.
+    /// <para>
+    /// Under v2, presence was tested by field id against the value rows. The #562 cutover stopped writing those
+    /// rows, so leaving the test that way named every required field of every document as missing — and the
+    /// case above kept passing throughout, because a document with no values is missing its required field
+    /// either way. Presence is a bag-key lookup by <b>name</b> now, and this is what pins it.
+    /// </para>
+    /// <para>
+    /// The reason bit is set deliberately: the detail list is only built for a reason the document carries, so
+    /// without it this asserts nothing. A stale bit beside a value that is genuinely there is exactly the state
+    /// a re-extraction leaves behind, and the operator's next read is what has to be right about it.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task GetAsync_Does_Not_Name_A_Required_Field_The_Document_Actually_Holds()
+    {
+        var typeId = Guid.NewGuid();
+        var doc = CreateDocument();
+        typeof(Document)
+            .GetMethod("ApplyAutomaticClassificationResult",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .Invoke(doc, [typeId, 0.99]);
+        doc.SetReviewReason(DocumentReviewReasons.MissingRequiredFields, present: true);
+        // Two required fields, one of them extracted: only the absent one may be named.
+        doc.SetFlexFields(new Dictionary<string, object?> { ["amount"] = 1000m });
+        StubGet(doc);
+
+        GetRequiredService<IFieldRepository>()
+            .GetListAsync(typeId, Arg.Any<CancellationToken>())
+            .Returns(new List<Field>
+            {
+                new(Guid.NewGuid(), tenantId: null, documentTypeId: typeId,
+                    name: "amount", displayName: "Amount",
+                    fieldTypeName: NumberFieldType.ControlName, isRequired: true),
+                new(Guid.NewGuid(), tenantId: null, documentTypeId: typeId,
+                    name: "party", displayName: "Party",
+                    fieldTypeName: TextFieldType.ControlName, isRequired: true),
+            });
+
+        var dto = await _appService.GetAsync(doc.Id);
+
+        var detail = dto.ReviewReasonDetails.ShouldNotBeNull().ShouldHaveSingleItem();
+        detail.MissingFieldNames.ShouldNotBeNull();
+        detail.MissingFieldNames.ShouldContain("Party");
+        detail.MissingFieldNames.ShouldNotContain("Amount");
     }
 
     [Fact]

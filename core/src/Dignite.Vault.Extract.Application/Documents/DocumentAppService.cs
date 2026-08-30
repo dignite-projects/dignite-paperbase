@@ -1125,15 +1125,20 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
     }
 
     /// <summary>
-    /// DisplayName values for missing required fields: current IsRequired definitions for this type that are absent from the extracted value set.
+    /// DisplayName values for missing required fields: current IsRequired definitions for this type that are absent from the value bag.
     /// <para>
-    /// #284: this method intentionally does <b>not</b> reuse <see cref="ResolveReferenceMapsAsync"/>. They have opposite soft-delete semantics and different keys.
-    /// <c>ResolveReferenceMaps</c> uses <c>Disable&lt;ISoftDelete&gt;</c> and looks up by <b>FieldDefinitionId of extracted values</b>
-    /// so archived fields referenced by historical documents can still resolve to field names at export time, preventing orphaned values.
+    /// #284: this method intentionally does <b>not</b> reuse <see cref="ResolveReferenceMapsAsync"/>. They have opposite soft-delete semantics.
+    /// <c>ResolveReferenceMaps</c> uses <c>Disable&lt;ISoftDelete&gt;</c> so archived fields a historical document still holds values for can
+    /// resolve to field names at export time, preventing orphaned values.
     /// This method looks for fields that are "currently still required but <b>missing</b>", so it must read only <b>active</b> definitions
-    /// and query all definitions by <b>DocumentTypeId</b>; missing items are naturally absent from by-id maps.
+    /// and query all definitions by <b>DocumentTypeId</b>; missing items are naturally absent from the bag.
     /// Soft-deleted fields are no longer required and must never be reported as pending entry.
     /// This method is called once for a single document on the detail page, not in lists and not as N+1, so there is no performance reason to merge it.
+    /// </para>
+    /// <para>
+    /// Presence is tested by <b>name</b>, because the bag keys on the field name (#559). Under v2 it was tested by
+    /// field id against the value rows; leaving it that way after the cutover would have reported every required
+    /// field of every document as missing, since nothing writes those rows any more.
     /// </para>
     /// </summary>
     protected virtual async Task<List<string>> BuildMissingRequiredFieldNamesAsync(Document document)
@@ -1144,9 +1149,8 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
         }
 
         var definitions = await _fieldRepository.GetListAsync(document.DocumentTypeId.Value);
-        var extractedIds = document.ExtractedFieldValues.Select(f => f.FieldDefinitionId).ToHashSet();
         return definitions
-            .Where(d => d.IsRequired && !extractedIds.Contains(d.Id))
+            .Where(d => d.IsRequired && !document.FlexFields.ContainsKey(d.Name))
             .Select(d => d.DisplayName)
             .ToList();
     }
