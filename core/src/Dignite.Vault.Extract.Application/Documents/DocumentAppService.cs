@@ -30,6 +30,12 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
     private readonly IFieldRepository _fieldRepository;
     private readonly IFieldTypeResolver _fieldTypeResolver;
     private readonly IFlexFieldQueryExecutor<Document> _flexFieldQueryExecutor;
+    /// <summary>
+    /// An operator edit writes the same value bag the extraction pipeline writes, so it owes the query
+    /// index the same re-derivation — otherwise a hand-corrected value would read back correctly on the
+    /// detail page while quietly failing to match its own field filter.
+    /// </summary>
+    private readonly IFlexFieldIndexManager<Document> _flexFieldIndexManager;
     private readonly ICabinetRepository _cabinetRepository;
     private readonly IBlobContainer<VaultExtractDocumentContainer> _blobContainer;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
@@ -43,6 +49,7 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
         IFieldRepository fieldRepository,
         IFieldTypeResolver fieldTypeResolver,
         IFlexFieldQueryExecutor<Document> flexFieldQueryExecutor,
+        IFlexFieldIndexManager<Document> flexFieldIndexManager,
         ICabinetRepository cabinetRepository,
         IBlobContainer<VaultExtractDocumentContainer> blobContainer,
         DocumentPipelineRunManager pipelineRunManager,
@@ -55,6 +62,7 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
         _fieldRepository = fieldRepository;
         _fieldTypeResolver = fieldTypeResolver;
         _flexFieldQueryExecutor = flexFieldQueryExecutor;
+        _flexFieldIndexManager = flexFieldIndexManager;
         _cabinetRepository = cabinetRepository;
         _blobContainer = blobContainer;
         _pipelineRunManager = pipelineRunManager;
@@ -756,6 +764,7 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
         await _pipelineRunManager.ReDeriveLifecycleAsync(document);
 
         await _documentRepository.UpdateAsync(document, autoSave: true);
+        await _flexFieldIndexManager.SynchronizeAsync(document);
 
         // FieldsExtractedEto.FieldCount is the logical field count - fields that hold a value. One bag entry
         // is one field, so this is simply the count, and it matches FieldExtractionService exactly: both

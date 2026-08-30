@@ -81,6 +81,9 @@ public class SchemaReadAuthorizationTestModule : AbpModule
         context.Services.AddSingleton<IAbpAuthorizationService>(authorizationService);
 
         context.Services.AddSingleton(Substitute.For<IDocumentTypeRepository>());
+        context.Services.AddSingleton(Substitute.For<IFieldRepository>());
+        // IFieldDefinitionAppService is still the v2 service (#562 has not moved the DTO surface yet),
+        // so both repositories have to be present while the two shapes run side by side.
         context.Services.AddSingleton(Substitute.For<IFieldDefinitionRepository>());
         context.Services.AddSingleton(Substitute.For<ICabinetRepository>());
         context.Services.AddSingleton(Substitute.For<IDocumentRepository>());

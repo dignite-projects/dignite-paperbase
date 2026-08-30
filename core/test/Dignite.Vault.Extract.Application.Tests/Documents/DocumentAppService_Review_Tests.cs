@@ -4,6 +4,8 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Abp.FlexFields.Number;
+using Dignite.Vault.Extract.Documents.Fields;
 using Dignite.Vault.Extract.Documents.Pipelines;
 using Dignite.Vault.Extract.Documents.Review;
 using Microsoft.Extensions.DependencyInjection;
@@ -39,11 +41,11 @@ public class DocumentAppServiceReviewTestModule : AbpModule
             .Returns(new List<DocumentType>());
         context.Services.AddSingleton(documentTypeRepository);
 
-        var fieldDefinitionRepository = Substitute.For<IFieldDefinitionRepository>();
-        fieldDefinitionRepository
-            .GetListAsync(Arg.Any<Expression<Func<FieldDefinition, bool>>>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition>());
-        context.Services.AddSingleton(fieldDefinitionRepository);
+        var fieldRepository = Substitute.For<IFieldRepository>();
+        fieldRepository
+            .GetListAsync(Arg.Any<Expression<Func<Field, bool>>>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Field>());
+        context.Services.AddSingleton(fieldRepository);
     }
 }
 
@@ -134,13 +136,13 @@ public class DocumentAppService_Review_Tests
         StubGet(doc);
 
         // This type has one required field "amount", and the document did not extract it, so it is missing.
-        var amountDef = new FieldDefinition(
+        var amountDef = new Field(
             Guid.NewGuid(), tenantId: null, documentTypeId: typeId,
-            name: "amount", displayName: "Amount", prompt: null,
-            dataType: FieldDataType.Number, displayOrder: 0, isRequired: true);
-        GetRequiredService<IFieldDefinitionRepository>()
+            name: "amount", displayName: "Amount",
+            fieldTypeName: NumberFieldType.ControlName, isRequired: true);
+        GetRequiredService<IFieldRepository>()
             .GetListAsync(typeId, Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { amountDef });
+            .Returns(new List<Field> { amountDef });
 
         var dto = await _appService.GetAsync(doc.Id);
 
@@ -213,13 +215,13 @@ public class DocumentAppService_Review_Tests
         doc.SetReviewReason(DocumentReviewReasons.MissingRequiredFields, present: true);
         StubGet(doc);
 
-        var amountDef = new FieldDefinition(
+        var amountDef = new Field(
             Guid.NewGuid(), tenantId: null, documentTypeId: typeId,
-            name: "amount", displayName: "Amount", prompt: null,
-            dataType: FieldDataType.Number, displayOrder: 0, isRequired: true);
-        GetRequiredService<IFieldDefinitionRepository>()
+            name: "amount", displayName: "Amount",
+            fieldTypeName: NumberFieldType.ControlName, isRequired: true);
+        GetRequiredService<IFieldRepository>()
             .GetListAsync(typeId, Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { amountDef });
+            .Returns(new List<Field> { amountDef });
 
         var dto = await _appService.GetAsync(doc.Id);
 
@@ -247,9 +249,9 @@ public class DocumentAppService_Review_Tests
 
         // This type currently has no required fields, all non-required or soft-deleted, so the missing
         // field name set is empty.
-        GetRequiredService<IFieldDefinitionRepository>()
+        GetRequiredService<IFieldRepository>()
             .GetListAsync(typeId, Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition>());
+            .Returns(new List<Field>());
 
         var dto = await _appService.GetAsync(doc.Id);
 
@@ -317,7 +319,10 @@ public class DocumentAppService_Review_Tests
         var service = new DocumentAppService(
             Substitute.For<IDocumentRepository>(),
             Substitute.For<IDocumentTypeRepository>(),
-            Substitute.For<IFieldDefinitionRepository>(),
+            Substitute.For<IFieldRepository>(),
+            Substitute.For<Dignite.Abp.FlexFields.IFieldTypeResolver>(),
+            Substitute.For<Dignite.Abp.FlexFields.IFlexFieldQueryExecutor<Document>>(),
+            Substitute.For<Dignite.Abp.FlexFields.IFlexFieldIndexManager<Document>>(),
             Substitute.For<ICabinetRepository>(),
             Substitute.For<IBlobContainer<VaultExtractDocumentContainer>>(),
             new DocumentPipelineRunManager(runRepoSubstitute),

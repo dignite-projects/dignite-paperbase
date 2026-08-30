@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Abp.FlexFields.Number;
 using Dignite.Vault.Extract.Abstractions.Documents;
 using Dignite.Vault.Extract.Ai;
 using Dignite.Vault.Extract.Documents.DocumentTypes;
@@ -33,7 +34,7 @@ public class FieldExtractionServiceTestModule : AbpModule
     {
         context.Services.AddSingleton(Substitute.For<IDocumentRepository>());
         context.Services.AddSingleton(Substitute.For<IDocumentTypeRepository>());
-        context.Services.AddSingleton(Substitute.For<IFieldDefinitionRepository>());
+        context.Services.AddSingleton(Substitute.For<IFieldRepository>());
         context.Services.AddSingleton(Substitute.For<IDistributedEventBus>());
 
         Configure<VaultExtractBehaviorOptions>(options =>
@@ -61,7 +62,7 @@ public class FieldExtractionService_Tests
     private readonly FieldExtractionService _service;
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentTypeRepository _documentTypeRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldRepository;
     private readonly FieldExtractionWorkflow _workflow;
     private readonly IDistributedEventBus _eventBus;
 
@@ -70,7 +71,7 @@ public class FieldExtractionService_Tests
         _service = GetRequiredService<FieldExtractionService>();
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _documentTypeRepository = GetRequiredService<IDocumentTypeRepository>();
-        _fieldDefinitionRepository = GetRequiredService<IFieldDefinitionRepository>();
+        _fieldRepository = GetRequiredService<IFieldRepository>();
         _workflow = GetRequiredService<FieldExtractionWorkflow>();
         _eventBus = GetRequiredService<IDistributedEventBus>();
     }
@@ -82,8 +83,8 @@ public class FieldExtractionService_Tests
         SetupType("contract.general");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { CreateField("contract.general", "amount", FieldDataType.Number) });
+        _fieldRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { CreateField("contract.general", "amount", NumberFieldType.ControlName) });
         _workflow.ExtractAsync(Arg.Any<IReadOnlyList<FieldExtractionDescriptor>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(WorkflowResult(new Dictionary<string, JsonElement?> { ["amount"] = JsonDocument.Parse("1500").RootElement }));
 
@@ -91,7 +92,7 @@ public class FieldExtractionService_Tests
 
         result.Outcome.ShouldBe(FieldExtractionOutcome.Extracted);
         result.FieldCount.ShouldBe(1);
-        doc.ExtractedFieldValues.Single().FieldDefinitionId.ShouldBe(FieldId("amount"));
+        doc.FlexFields["amount"].ShouldBe(1500m);
         await _eventBus.Received(1).PublishAsync(
             Arg.Is<FieldsExtractedEto>(e => e.DocumentId == doc.Id && e.DocumentTypeCode == "contract.general" && e.FieldCount == 1),
             Arg.Any<bool>(), Arg.Any<bool>());
@@ -101,20 +102,17 @@ public class FieldExtractionService_Tests
     public async Task Batch_Path_With_No_Definitions_Clears_And_Returns_Cleared()
     {
         var doc = CreateClassifiedDocument(typeCode: "blank.type");
-        doc.SetFields(new[]
-        {
-            new DocumentFieldValue(FieldId("old"), FieldDataType.Number, JsonDocument.Parse("9").RootElement)
-        });
+        doc.SetFlexFields(new Dictionary<string, object?> { ["old"] = 9m });
         SetupType("blank.type");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("blank.type"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition>());
+        _fieldRepository.GetListAsync(TypeId("blank.type"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field>());
 
         var result = await _service.ExtractAsync(doc.Id, tenantId: null, expectedEventTypeCode: null);
 
         result.Outcome.ShouldBe(FieldExtractionOutcome.Cleared);
-        doc.ExtractedFieldValues.ShouldBeEmpty();
+        doc.FlexFields.ShouldBeEmpty();
         await _eventBus.Received(1).PublishAsync(
             Arg.Is<FieldsExtractedEto>(e => e.DocumentId == doc.Id && e.FieldCount == 0),
             Arg.Any<bool>(), Arg.Any<bool>());
@@ -149,8 +147,8 @@ public class FieldExtractionService_Tests
             markdown: new string('x', FieldExtractionServiceTestModule.MarkdownCeiling + 1));
         SetupType("contract.general");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { CreateField("contract.general", "amount", FieldDataType.Number) });
+        _fieldRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { CreateField("contract.general", "amount", NumberFieldType.ControlName) });
 
         var result = await _service.ExtractAsync(doc.Id, tenantId: null, expectedEventTypeCode: null);
 
@@ -172,19 +170,16 @@ public class FieldExtractionService_Tests
         var doc = CreateClassifiedDocument(
             typeCode: "contract.general",
             markdown: new string('x', FieldExtractionServiceTestModule.MarkdownCeiling + 1));
-        doc.SetFields(new[]
-        {
-            new DocumentFieldValue(FieldId("amount"), FieldDataType.Number, JsonDocument.Parse("1500").RootElement)
-        });
+        doc.SetFlexFields(new Dictionary<string, object?> { ["amount"] = 1500m });
         SetupType("contract.general");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { CreateField("contract.general", "amount", FieldDataType.Number) });
+        _fieldRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { CreateField("contract.general", "amount", NumberFieldType.ControlName) });
 
         var result = await _service.ExtractAsync(doc.Id, tenantId: null, expectedEventTypeCode: null);
 
         result.Outcome.ShouldBe(FieldExtractionOutcome.Declined);
-        doc.ExtractedFieldValues.Single().FieldDefinitionId.ShouldBe(FieldId("amount"));
+        doc.FlexFields["amount"].ShouldBe(1500m);
     }
 
     /// <summary>
@@ -200,8 +195,8 @@ public class FieldExtractionService_Tests
         SetupType("contract.general");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { CreateField("contract.general", "amount", FieldDataType.Number) });
+        _fieldRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { CreateField("contract.general", "amount", NumberFieldType.ControlName) });
         _workflow.ExtractAsync(Arg.Any<IReadOnlyList<FieldExtractionDescriptor>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(WorkflowResult(new Dictionary<string, JsonElement?> { ["amount"] = JsonDocument.Parse("1500").RootElement }));
 
@@ -222,8 +217,8 @@ public class FieldExtractionService_Tests
             typeCode: "contract.general",
             markdown: new string('x', FieldExtractionServiceTestModule.MarkdownCeiling + 1));
         SetupType("contract.general");
-        _fieldDefinitionRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { CreateField("contract.general", "amount", FieldDataType.Number) });
+        _fieldRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { CreateField("contract.general", "amount", NumberFieldType.ControlName) });
 
         // Phase 1 sees contract.general; by the time the decline reloads, an operator has reclassified the document.
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>())
@@ -251,8 +246,8 @@ public class FieldExtractionService_Tests
         SetupType("contract.general");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { CreateField("contract.general", "amount", FieldDataType.Number) });
+        _fieldRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { CreateField("contract.general", "amount", NumberFieldType.ControlName) });
         _workflow.ExtractAsync(Arg.Any<IReadOnlyList<FieldExtractionDescriptor>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(WorkflowResult(new Dictionary<string, JsonElement?> { ["amount"] = JsonDocument.Parse("1500").RootElement }));
 
@@ -273,8 +268,8 @@ public class FieldExtractionService_Tests
         SetupType("blank.type");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("blank.type"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition>());
+        _fieldRepository.GetListAsync(TypeId("blank.type"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field>());
 
         var result = await _service.ExtractAsync(doc.Id, tenantId: null, expectedEventTypeCode: null);
 
@@ -312,9 +307,9 @@ public class FieldExtractionService_Tests
             .GetMethod(method, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
             .Invoke(doc, args);
 
-    private static FieldDefinition CreateField(string typeCode, string name, FieldDataType dataType) =>
+    private static Field CreateField(string typeCode, string name, string fieldTypeName) =>
         new(FieldId(name), tenantId: null, documentTypeId: TypeId(typeCode), name: name, displayName: name,
-            prompt: $"Extract the {name}.", dataType: dataType);
+            fieldTypeName: fieldTypeName, description: $"Extract the {name}.");
 
     private static Guid TypeId(string code) => new(MD5.HashData(Encoding.UTF8.GetBytes("type:" + code)));
     private static Guid FieldId(string name) => new(MD5.HashData(Encoding.UTF8.GetBytes("field:" + name)));

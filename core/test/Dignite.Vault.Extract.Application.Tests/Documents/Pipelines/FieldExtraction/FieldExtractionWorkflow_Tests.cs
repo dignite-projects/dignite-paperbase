@@ -1,3 +1,8 @@
+using Dignite.Abp.FlexFields;
+using Dignite.Abp.FlexFields.CKEditor;
+using Dignite.Abp.FlexFields.Date;
+using Dignite.Abp.FlexFields.Text;
+using Dignite.Vault.Extract.FlexFields.Tags;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -39,12 +44,24 @@ public class FieldExtractionWorkflow_Tests
             new FieldSchemaPromptBudgetGuard(Options.Create(new VaultExtractBehaviorOptions())));
     }
 
-    private static FieldExtractionDescriptor Field(string name, FieldDataType type)
-        => new(System.Guid.NewGuid(), name, $"Extract {name}.", type, false, false);
+    private static FieldExtractionDescriptor Field(
+        string name, string fieldTypeName, FieldConfigurationDictionary? configuration = null)
+        => new(System.Guid.NewGuid(), name, $"Extract {name}.", fieldTypeName,
+            configuration ?? new FieldConfigurationDictionary(), IsRequired: false);
 
-    // #212: multi-value text field (AllowMultiple).
+    /// <summary>Open-vocabulary multi-value — what v2 expressed as a Text field with AllowMultiple.</summary>
     private static FieldExtractionDescriptor MultiField(string name)
-        => new(System.Guid.NewGuid(), name, $"Extract {name}.", FieldDataType.Text, false, true);
+        => Field(name, TagsFieldType.ControlName);
+
+    // Date and DateTime share one field type in v3 and are told apart by InputMode, so the two v2 data
+    // types become two configurations of the same descriptor.
+    private static FieldExtractionDescriptor DateField(string name)
+        => Field(name, DateTimeFieldType.ControlName,
+            new DateTimeConfiguration { InputMode = DateTimeInputMode.Date }.ConfigurationDictionary);
+
+    private static FieldExtractionDescriptor DateTimeField(string name)
+        => Field(name, DateTimeFieldType.ControlName,
+            new DateTimeConfiguration { InputMode = DateTimeInputMode.DateTime }.ConfigurationDictionary);
 
     private static (FieldExtractionWorkflow Workflow, Func<ChatOptions?> CapturedOptions) CreateWorkflowCapturingOptions(
         string jsonResponse, ChatFinishReason? finishReason = null)
@@ -93,11 +110,11 @@ public class FieldExtractionWorkflow_Tests
         var result = await workflow.ExtractAsync(
             new[]
             {
-                Field("amount", FieldDataType.Number),
-                Field("count", FieldDataType.Number),
-                Field("active", FieldDataType.Boolean),
-                Field("signed_on", FieldDataType.Date),
-                Field("party", FieldDataType.Text),
+                Field("amount", "Number"),
+                Field("count", "Number"),
+                Field("active", "Boolean"),
+                DateField("signed_on"),
+                Field("party", "Text"),
             },
             "# doc");
 
@@ -109,18 +126,23 @@ public class FieldExtractionWorkflow_Tests
         result.ValidationWarnings.ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// The workflow passes values through as the model returned them and does <b>not</b> type-check.
+    /// <para>
+    /// v2 validated here and converted in the service, so the same rules lived in two places that agreed
+    /// only because both switched on the same enum. v3 has one gate — <c>FlexFieldValueReader</c>, which the
+    /// service must call anyway — and the assertions that used to live in this test now live in
+    /// <c>FlexFieldValueReader_Tests</c>, against the field type rather than a data-type enum.
+    /// </para>
+    /// </summary>
     [Fact]
-    public async Task Nulls_values_that_do_not_match_declared_type()
+    public async Task Passes_values_through_without_type_checking_them()
     {
-        // Dirty values are blocked by strict validation and stored as null, preserving ExtractedFields type consistency.
         var json = """
         {
           "values": {
             "amount": "about 100k",
-            "signed_on": "2024/01/15",
-            "active": "true",
-            "party": 123,
-            "count": true
+            "party": 123
           },
           "validationWarnings": []
         }
@@ -128,21 +150,12 @@ public class FieldExtractionWorkflow_Tests
         var workflow = CreateWorkflow(json);
 
         var result = await workflow.ExtractAsync(
-            new[]
-            {
-                Field("amount", FieldDataType.Number),
-                Field("signed_on", FieldDataType.Date),
-                Field("active", FieldDataType.Boolean),
-                Field("party", FieldDataType.Text),
-                Field("count", FieldDataType.Number),
-            },
+            new[] { Field("amount", "Number"), Field("party", "Text") },
             "# doc");
 
-        result.Values["amount"].ShouldBeNull();
-        result.Values["signed_on"].ShouldBeNull();
-        result.Values["active"].ShouldBeNull();
-        result.Values["party"].ShouldBeNull();
-        result.Values["count"].ShouldBeNull();
+        // Shapes that do not match their field type survive this far; the reader is what rejects them.
+        result.Values["amount"]!.Value.GetString().ShouldBe("about 100k");
+        result.Values["party"]!.Value.GetInt32().ShouldBe(123);
     }
 
     [Fact]
@@ -163,15 +176,18 @@ public class FieldExtractionWorkflow_Tests
         var result = await workflow.ExtractAsync(
             new[]
             {
-                Field("offset_free", FieldDataType.DateTime),
-                Field("with_offset", FieldDataType.DateTime),
-                Field("utc_z", FieldDataType.DateTime),
+                DateTimeField("offset_free"),
+                DateTimeField("with_offset"),
+                DateTimeField("utc_z"),
             },
             "# doc");
 
+        // All three come back untouched: rejecting the offset-bearing ones is the reader's job now, and
+        // FlexFieldValueReader_Tests covers it. What this still pins is that the workflow does not mangle
+        // the string on the way through.
         result.Values["offset_free"]!.Value.GetString().ShouldBe("2024-01-01T10:00:00");
-        result.Values["with_offset"].ShouldBeNull();
-        result.Values["utc_z"].ShouldBeNull();
+        result.Values["with_offset"]!.Value.GetString().ShouldBe("2024-01-01T10:00:00+08:00");
+        result.Values["utc_z"]!.Value.GetString().ShouldBe("2024-01-01T10:00:00Z");
     }
 
     [Fact]
@@ -183,9 +199,9 @@ public class FieldExtractionWorkflow_Tests
         var result = await workflow.ExtractAsync(
             new[]
             {
-                Field("present", FieldDataType.Text),
-                Field("explicit_null", FieldDataType.Text),
-                Field("absent", FieldDataType.Text),
+                Field("present", "Text"),
+                Field("explicit_null", "Text"),
+                Field("absent", "Text"),
             },
             "# doc");
 
@@ -200,7 +216,7 @@ public class FieldExtractionWorkflow_Tests
         var workflow = CreateWorkflow("sorry, I can't do that");
 
         var result = await workflow.ExtractAsync(
-            new[] { Field("amount", FieldDataType.Number) },
+            new[] { Field("amount", "Number") },
             "# doc");
 
         result.Values["amount"].ShouldBeNull();
@@ -214,22 +230,34 @@ public class FieldExtractionWorkflow_Tests
         var workflow = CreateWorkflow("""{ "validationWarnings": [] }""");
 
         var result = await workflow.ExtractAsync(
-            new[] { Field("amount", FieldDataType.Number), Field("party", FieldDataType.Text) },
+            new[] { Field("amount", "Number"), Field("party", "Text") },
             "# doc");
 
         result.Values["amount"].ShouldBeNull();
         result.Values["party"].ShouldBeNull();
     }
 
+    /// <summary>
+    /// The workflow hands multi-valued JSON through untouched — array shape, element types and the count
+    /// cap are all <see cref="FlexFieldValueReader"/>'s to enforce, and it runs on both the extraction and
+    /// the operator-edit path. Under v2 this method validated as well, so the same rules lived in two
+    /// places that agreed only because both switched on the same enum. What must survive here is that the
+    /// raw <c>JsonElement</c> reaches the service undamaged: re-encoding it would cost decimal precision
+    /// for nothing, and dropping it would hide a rejection the service reports per field.
+    /// <para>
+    /// The rejections themselves are pinned in <c>FlexFieldValueReader_Tests</c>
+    /// (<c>Tags_rejects_a_scalar</c> / <c>Tags_rejects_a_non_string_element</c> /
+    /// <c>Tags_over_the_count_cap_is_rejected_whole</c>).
+    /// </para>
+    /// </summary>
     [Fact]
-    public async Task Multi_value_string_field_keeps_json_array_and_rejects_non_array()
+    public async Task Multi_value_json_reaches_the_service_verbatim()
     {
         var json = """
         {
           "values": {
             "tags": ["urgent", "legal", "2026"],
-            "scalar_tags": "urgent",
-            "bad_tags": ["ok", 123]
+            "scalar_tags": "urgent"
           },
           "validationWarnings": []
         }
@@ -237,30 +265,19 @@ public class FieldExtractionWorkflow_Tests
         var workflow = CreateWorkflow(json);
 
         var result = await workflow.ExtractAsync(
-            new[]
-            {
-                MultiField("tags"),
-                MultiField("scalar_tags"),
-                MultiField("bad_tags"),
-            },
+            new[] { MultiField("tags"), MultiField("scalar_tags"), MultiField("absent_tags") },
             "# doc");
 
         result.Values["tags"]!.Value.ValueKind.ShouldBe(System.Text.Json.JsonValueKind.Array);
-        result.Values["tags"]!.Value.GetArrayLength().ShouldBe(3);
-        result.Values["scalar_tags"].ShouldBeNull();   // Multi-value field received a scalar: type mismatch -> null.
-        result.Values["bad_tags"].ShouldBeNull();       // Array contains a non-string element -> null.
-    }
+        result.Values["tags"]!.Value.EnumerateArray().Select(e => e.GetString())
+            .ShouldBe(new[] { "urgent", "legal", "2026" });
 
-    [Fact]
-    public async Task Multi_value_array_exceeding_count_cap_is_nulled()
-    {
-        var elements = string.Join(",", Enumerable.Range(0, DocumentExtractedFieldConsts.MaxMultiValueCount + 1)
-            .Select(i => $"\"t{i}\""));
-        var workflow = CreateWorkflow($$"""{ "values": { "tags": [{{elements}}] }, "validationWarnings": [] }""");
+        // Off-shape, but still passed on: the workflow is not the gate, and swallowing it here would turn a
+        // reported per-field rejection into a silently missing field.
+        result.Values["scalar_tags"]!.Value.ValueKind.ShouldBe(System.Text.Json.JsonValueKind.String);
 
-        var result = await workflow.ExtractAsync(new[] { MultiField("tags") }, "# doc");
-
-        result.Values["tags"].ShouldBeNull();
+        // A field the model omitted is the one case the workflow does decide: absent means null.
+        result.Values["absent_tags"].ShouldBeNull();
     }
 
     [Fact]
@@ -288,7 +305,7 @@ public class FieldExtractionWorkflow_Tests
         var fields = new[]
         {
             new FieldExtractionDescriptor(
-                Guid.NewGuid(), "body", "12345", FieldDataType.Text, IsRequired: false, AllowMultiple: false)
+                Guid.NewGuid(), "body", "12345", TextFieldType.ControlName, new FieldConfigurationDictionary(), IsRequired: false)
         };
 
         await Should.ThrowAsync<InvalidOperationException>(() => workflow.ExtractAsync(fields, "# doc"));
@@ -315,7 +332,7 @@ public class FieldExtractionWorkflow_Tests
         """;
         var workflow = CreateWorkflow(json);
 
-        var result = await workflow.ExtractAsync(new[] { Field("transactions", FieldDataType.Text) }, "# doc");
+        var result = await workflow.ExtractAsync(new[] { Field("transactions", "Text") }, "# doc");
 
         result.Values["transactions"].ShouldNotBeNull();   // value preserved despite the warning
         result.ValidationWarnings.Count.ShouldBe(1);
@@ -337,7 +354,7 @@ public class FieldExtractionWorkflow_Tests
         """;
         var workflow = CreateWorkflow(json);
 
-        var result = await workflow.ExtractAsync(new[] { Field("amount", FieldDataType.Number) }, "# doc");
+        var result = await workflow.ExtractAsync(new[] { Field("amount", "Number") }, "# doc");
 
         result.ValidationWarnings.Select(w => w.FieldName).ShouldBe(new[] { "amount" });
     }
@@ -348,7 +365,7 @@ public class FieldExtractionWorkflow_Tests
         var workflow = CreateWorkflow(
             """{ "values": { "amount": 100 }, "validationWarnings": [ { "fieldName": "amount", "message": "   " } ] }""");
 
-        var result = await workflow.ExtractAsync(new[] { Field("amount", FieldDataType.Number) }, "# doc");
+        var result = await workflow.ExtractAsync(new[] { Field("amount", "Number") }, "# doc");
 
         result.ValidationWarnings.ShouldBeEmpty();
     }
@@ -367,7 +384,7 @@ public class FieldExtractionWorkflow_Tests
         """;
         var workflow = CreateWorkflow(json);
 
-        var result = await workflow.ExtractAsync(new[] { Field("amount", FieldDataType.Number) }, "# doc");
+        var result = await workflow.ExtractAsync(new[] { Field("amount", "Number") }, "# doc");
 
         result.ValidationWarnings.Count.ShouldBe(1);
         result.ValidationWarnings[0].Message.ShouldBe("first");   // first wins
@@ -380,7 +397,7 @@ public class FieldExtractionWorkflow_Tests
         var workflow = CreateWorkflow(
             $$"""{ "values": { "amount": 100 }, "validationWarnings": [ { "fieldName": "amount", "message": "{{longMessage}}" } ] }""");
 
-        var result = await workflow.ExtractAsync(new[] { Field("amount", FieldDataType.Number) }, "# doc");
+        var result = await workflow.ExtractAsync(new[] { Field("amount", "Number") }, "# doc");
 
         result.ValidationWarnings.Single().Message.Length
             .ShouldBe(DocumentFieldValidationWarningConsts.MaxMessageLength);
@@ -391,7 +408,7 @@ public class FieldExtractionWorkflow_Tests
     {
         // More distinct warned fields than the cap -> only MaxWarningsPerExtraction warnings are kept.
         var fields = Enumerable.Range(0, DocumentFieldValidationWarningConsts.MaxWarningsPerExtraction + 5)
-            .Select(i => Field($"f{i}", FieldDataType.Text)).ToArray();
+            .Select(i => Field($"f{i}", "Text")).ToArray();
         var values = string.Join(",", fields.Select(f => $$""" "{{f.Name}}": "v" """));
         var warnings = string.Join(",", fields.Select(f => $$"""{ "fieldName": "{{f.Name}}", "message": "bad" }"""));
         var workflow = CreateWorkflow($$"""{ "values": { {{values}} }, "validationWarnings": [ {{warnings}} ] }""");
@@ -419,7 +436,7 @@ public class FieldExtractionWorkflow_Tests
         """;
         var workflow = CreateWorkflow(json);
 
-        var result = await workflow.ExtractAsync(new[] { Field("amount", FieldDataType.Number) }, "# doc");
+        var result = await workflow.ExtractAsync(new[] { Field("amount", "Number") }, "# doc");
 
         result.Values["amount"]!.Value.GetInt64().ShouldBe(100);
         result.ValidationWarnings.Count.ShouldBe(1);
@@ -431,7 +448,7 @@ public class FieldExtractionWorkflow_Tests
     {
         var workflow = CreateWorkflow("""{ "values": { "amount": 100 } }""");
 
-        var result = await workflow.ExtractAsync(new[] { Field("amount", FieldDataType.Number) }, "# doc");
+        var result = await workflow.ExtractAsync(new[] { Field("amount", "Number") }, "# doc");
 
         result.Values["amount"].ShouldNotBeNull();
         result.ValidationWarnings.ShouldBeEmpty();
@@ -462,7 +479,7 @@ public class FieldExtractionWorkflow_Tests
     {
         var (scalarWorkflow, scalarOptions) = CreateWorkflowCapturingOptions(
             """{ "values": { "amount": 1 }, "validationWarnings": [] }""");
-        await scalarWorkflow.ExtractAsync(new[] { Field("amount", FieldDataType.Number) }, "# doc");
+        await scalarWorkflow.ExtractAsync(new[] { Field("amount", "Number") }, "# doc");
 
         var (multiWorkflow, multiOptions) = CreateWorkflowCapturingOptions(
             """{ "values": { "tags": [] }, "validationWarnings": [] }""");
@@ -481,7 +498,7 @@ public class FieldExtractionWorkflow_Tests
             """{ "values": { "amount": 1""",
             ChatFinishReason.Length);
 
-        var result = await workflow.ExtractAsync(new[] { Field("amount", FieldDataType.Number) }, "# doc");
+        var result = await workflow.ExtractAsync(new[] { Field("amount", "Number") }, "# doc");
 
         result.Values["amount"].ShouldBeNull();
     }

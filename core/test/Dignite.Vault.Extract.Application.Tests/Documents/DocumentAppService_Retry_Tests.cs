@@ -26,7 +26,7 @@ public class DocumentAppServiceRetryTestModule : AbpModule
     {
         context.Services.AddSingleton(Substitute.For<IDocumentRepository>());
         context.Services.AddSingleton(Substitute.For<IDocumentTypeRepository>());
-        context.Services.AddSingleton(Substitute.For<IFieldDefinitionRepository>());
+        context.Services.AddSingleton(Substitute.For<IFieldRepository>());
         context.Services.AddSingleton(Substitute.For<ICabinetRepository>());
         context.Services.AddSingleton(Substitute.For<IBlobContainer<VaultExtractDocumentContainer>>());
         context.Services.AddSingleton(Substitute.For<IBackgroundJobManager>());

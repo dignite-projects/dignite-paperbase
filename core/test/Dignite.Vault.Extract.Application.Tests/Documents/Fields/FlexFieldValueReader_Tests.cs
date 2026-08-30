@@ -110,6 +110,22 @@ public class FlexFieldValueReader_Tests
         TryRead("\"2026-03-14T10:30:00\"", "DateTime", out _, configuration).ShouldBeFalse();
     }
 
+    /// <summary>
+    /// A DateTime field stores wall-clock time with no offset, so an offset-bearing or Z-suffixed string is
+    /// rejected rather than silently reinterpreted in some local zone. This assertion moved here from
+    /// <c>FieldExtractionWorkflow_Tests</c> when validation collapsed into the reader — the guarantee is the
+    /// same, it just has one owner now.
+    /// </summary>
+    [Theory]
+    [InlineData("\"2024-01-01T10:00:00+08:00\"")]
+    [InlineData("\"2024-01-01T10:00:00Z\"")]
+    public void Datetime_rejects_an_offset_bearing_string(string json)
+    {
+        var configuration = new DateTimeConfiguration { InputMode = DateTimeInputMode.DateTime }.ConfigurationDictionary;
+
+        TryRead(json, "DateTime", out _, configuration).ShouldBeFalse();
+    }
+
     [Fact]
     public void Datetime_mode_reads_the_full_moment()
     {
@@ -154,6 +170,18 @@ public class FlexFieldValueReader_Tests
     public void Tags_rejects_a_non_string_element()
     {
         TryRead("[\"a\",1]", TagsFieldType.ControlName, out _).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// A bare string is not "one tag": a multi-valued field's shape is the array, and accepting a scalar
+    /// would put a <c>string</c> where every later reader expects a <c>List&lt;string&gt;</c>. The extraction
+    /// workflow no longer checks this itself — it hands the raw JsonElement through — so this is the only
+    /// gate between a model that ignored the array schema and the value bag.
+    /// </summary>
+    [Fact]
+    public void Tags_rejects_a_scalar()
+    {
+        TryRead("\"urgent\"", TagsFieldType.ControlName, out _).ShouldBeFalse();
     }
 
     /// <summary>

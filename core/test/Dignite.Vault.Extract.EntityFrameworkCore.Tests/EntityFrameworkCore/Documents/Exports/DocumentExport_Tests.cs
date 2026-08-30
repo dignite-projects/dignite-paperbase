@@ -3,12 +3,17 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Dignite.Abp.FlexFields;
+using Dignite.Abp.FlexFields.Number;
+using Dignite.Abp.FlexFields.Date;
+using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.Documents;
 using Dignite.Vault.Extract.Documents.Exports;
 using Dignite.Vault.Extract.Documents.Fields;
 using Shouldly;
 using Volo.Abp;
 using Volo.Abp.Domain.Entities;
+using Dignite.Vault.Extract.FlexFields.Tags;
 using Volo.Abp.Guids;
 using Volo.Abp.Validation;
 using Xunit;
@@ -23,8 +28,8 @@ namespace Dignite.Vault.Extract.EntityFrameworkCore.Documents;
 ///   <item>an <b>archived</b> field definition contributes no column, even when documents still hold values for it (#499 decision (a));</item>
 ///   <item>over-cap fails fast rather than truncating.</item>
 /// </list>
-/// Column headers come from <c>FieldDefinition.DisplayName</c>; the data type comes from
-/// <c>FieldDefinition.DataType</c> (#208), which is not persisted on field-value rows.
+/// Column headers come from <c>Field.DisplayName</c>; how a cell renders comes from <c>Field.FieldTypeName</c>
+/// plus its configuration (#208, now #559), neither of which is persisted beside the value.
 /// </summary>
 public class DocumentExport_Tests : VaultExtractEntityFrameworkCoreTestBase
 {
@@ -33,7 +38,7 @@ public class DocumentExport_Tests : VaultExtractEntityFrameworkCoreTestBase
     private readonly IDocumentExportAppService _appService;
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentTypeRepository _documentTypeRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldRepository;
     private readonly IGuidGenerator _guidGenerator;
 
     public DocumentExport_Tests()
@@ -41,7 +46,7 @@ public class DocumentExport_Tests : VaultExtractEntityFrameworkCoreTestBase
         _appService = GetRequiredService<IDocumentExportAppService>();
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _documentTypeRepository = GetRequiredService<IDocumentTypeRepository>();
-        _fieldDefinitionRepository = GetRequiredService<IFieldDefinitionRepository>();
+        _fieldRepository = GetRequiredService<IFieldRepository>();
         _guidGenerator = GetRequiredService<IGuidGenerator>();
     }
 
@@ -56,15 +61,11 @@ public class DocumentExport_Tests : VaultExtractEntityFrameworkCoreTestBase
         {
             await SeedTypeAsync(typeId);
             // Seeded out of DisplayOrder on purpose: Counterparty (order 1) is inserted first.
-            await SeedFieldAsync(partnerFieldId, typeId, "partner", "Counterparty", FieldDataType.Text, displayOrder: 1);
-            await SeedFieldAsync(amountFieldId, typeId, "amount", "Amount", FieldDataType.Text, displayOrder: 0);
+            await SeedFieldAsync(partnerFieldId, typeId, "partner", "Counterparty", TextFieldType.ControlName, displayOrder: 1);
+            await SeedFieldAsync(amountFieldId, typeId, "amount", "Amount", TextFieldType.ControlName, displayOrder: 0);
 
             await _documentRepository.InsertAsync(
-                CreateDocument(_guidGenerator.Create(), typeId, "Invoice A", new[]
-                {
-                    new DocumentFieldValue(amountFieldId, FieldDataType.Text, Json("1000")),
-                    new DocumentFieldValue(partnerFieldId, FieldDataType.Text, Json("Acme")),
-                }),
+                CreateDocument(_guidGenerator.Create(), typeId, "Invoice A", new Dictionary<string, object?> { ["amount"] = "1000", ["partner"] = "Acme" }),
                 autoSave: true);
         });
 
@@ -91,23 +92,19 @@ public class DocumentExport_Tests : VaultExtractEntityFrameworkCoreTestBase
         await WithUnitOfWorkAsync(async () =>
         {
             await SeedTypeAsync(typeId);
-            await SeedFieldAsync(liveFieldId, typeId, "amount", "Amount", FieldDataType.Text, displayOrder: 0);
-            await SeedFieldAsync(archivedFieldId, typeId, "legacy", "LegacyCode", FieldDataType.Text, displayOrder: 1);
+            await SeedFieldAsync(liveFieldId, typeId, "amount", "Amount", TextFieldType.ControlName, displayOrder: 0);
+            await SeedFieldAsync(archivedFieldId, typeId, "legacy", "LegacyCode", TextFieldType.ControlName, displayOrder: 1);
 
             await _documentRepository.InsertAsync(
-                CreateDocument(_guidGenerator.Create(), typeId, "Invoice A", new[]
-                {
-                    new DocumentFieldValue(liveFieldId, FieldDataType.Text, Json("1000")),
-                    new DocumentFieldValue(archivedFieldId, FieldDataType.Text, Json("LEGACY-XYZ")),
-                }),
+                CreateDocument(_guidGenerator.Create(), typeId, "Invoice A", new Dictionary<string, object?> { ["amount"] = "1000", ["legacy"] = "LEGACY-XYZ" }),
                 autoSave: true);
         });
 
         // Archive the definition (soft delete) after the document already holds a value for it.
         await WithUnitOfWorkAsync(async () =>
         {
-            var archived = await _fieldDefinitionRepository.GetAsync(archivedFieldId);
-            await _fieldDefinitionRepository.DeleteAsync(archived, autoSave: true);
+            var archived = await _fieldRepository.GetAsync(archivedFieldId);
+            await _fieldRepository.DeleteAsync(archived, autoSave: true);
         });
 
         var csv = await ExportCsvAsync();
@@ -122,7 +119,7 @@ public class DocumentExport_Tests : VaultExtractEntityFrameworkCoreTestBase
     public async Task Export_breaks_a_DisplayOrder_tie_by_field_name_so_column_order_is_total()
     {
         // #499: DisplayOrder defaults to 0, so ties are ordinary. Since the export derives its columns from
-        // IFieldDefinitionRepository.GetListAsync, an unstable tail would export the same data in a different
+        // IFieldRepository.GetListAsync, an unstable tail would export the same data in a different
         // column order on different days — and would disagree with the operator list, which renders from the
         // same call. Name is unique per (TenantId, DocumentTypeId), so (DisplayOrder, Name) is a total order.
         var typeId = _guidGenerator.Create();
@@ -133,8 +130,8 @@ public class DocumentExport_Tests : VaultExtractEntityFrameworkCoreTestBase
         {
             await SeedTypeAsync(typeId);
             // Same DisplayOrder, inserted zebra-first.
-            await SeedFieldAsync(zebraId, typeId, "zebra", "Zebra", FieldDataType.Text);
-            await SeedFieldAsync(alphaId, typeId, "alpha", "Alpha", FieldDataType.Text);
+            await SeedFieldAsync(zebraId, typeId, "zebra", "Zebra", TextFieldType.ControlName);
+            await SeedFieldAsync(alphaId, typeId, "alpha", "Alpha", TextFieldType.ControlName);
         });
 
         var csv = await ExportCsvAsync();
@@ -153,10 +150,10 @@ public class DocumentExport_Tests : VaultExtractEntityFrameworkCoreTestBase
         await WithUnitOfWorkAsync(async () =>
         {
             await SeedTypeAsync(typeId);
-            await SeedFieldAsync(amountFieldId, typeId, "amount", "Amount", FieldDataType.Text);
+            await SeedFieldAsync(amountFieldId, typeId, "amount", "Amount", TextFieldType.ControlName);
             await _documentRepository.InsertAsync(
                 CreateDocument(_guidGenerator.Create(), typeId, "Invoice MRF",
-                    new[] { new DocumentFieldValue(amountFieldId, FieldDataType.Text, Json("1000")) },
+                    new Dictionary<string, object?> { ["amount"] = "1000" },
                     reviewReasons: DocumentReviewReasons.MissingRequiredFields),
                 autoSave: true);
         });
@@ -176,14 +173,10 @@ public class DocumentExport_Tests : VaultExtractEntityFrameworkCoreTestBase
         await WithUnitOfWorkAsync(async () =>
         {
             await SeedTypeAsync(typeId);
-            await SeedFieldAsync(amountFieldId, typeId, "amount", "Amount", FieldDataType.Number, displayOrder: 0);
-            await SeedFieldAsync(issuedFieldId, typeId, "issued", "Date", FieldDataType.Date, displayOrder: 1);
+            await SeedFieldAsync(amountFieldId, typeId, "amount", "Amount", NumberFieldType.ControlName, displayOrder: 0);
+            await SeedFieldAsync(issuedFieldId, typeId, "issued", "Date", DateTimeFieldType.ControlName, DateOnly(), displayOrder: 1);
             await _documentRepository.InsertAsync(
-                CreateDocument(_guidGenerator.Create(), typeId, "Invoice T", new[]
-                {
-                    new DocumentFieldValue(amountFieldId, FieldDataType.Number, JsonSerializer.SerializeToElement(1234.5m)),
-                    new DocumentFieldValue(issuedFieldId, FieldDataType.Date, JsonSerializer.SerializeToElement("2024-03-09")),
-                }),
+                CreateDocument(_guidGenerator.Create(), typeId, "Invoice T", new Dictionary<string, object?> { ["amount"] = 1234.5m, ["issued"] = new DateTime(2024, 3, 9) }),
                 autoSave: true);
         });
 
@@ -205,18 +198,10 @@ public class DocumentExport_Tests : VaultExtractEntityFrameworkCoreTestBase
         await WithUnitOfWorkAsync(async () =>
         {
             await SeedTypeAsync(typeId);
-            await _fieldDefinitionRepository.InsertAsync(
-                new FieldDefinition(tagsFieldId, null, typeId, "tags", "Tags", "extract",
-                    FieldDataType.Text, allowMultiple: true),
-                autoSave: true);
+            await SeedFieldAsync(tagsFieldId, typeId, "tags", "Tags", TagsFieldType.ControlName);
 
             await _documentRepository.InsertAsync(
-                CreateDocument(_guidGenerator.Create(), typeId, "Doc M", new[]
-                {
-                    new DocumentFieldValue(tagsFieldId, FieldDataType.Text, Json("2026"), 2),
-                    new DocumentFieldValue(tagsFieldId, FieldDataType.Text, Json("urgent"), 0),
-                    new DocumentFieldValue(tagsFieldId, FieldDataType.Text, Json("legal"), 1),
-                }),
+                CreateDocument(_guidGenerator.Create(), typeId, "Doc M", new Dictionary<string, object?> { ["tags"] = new List<string> { "urgent", "legal", "2026" } }),
                 autoSave: true);
         });
 
@@ -268,9 +253,9 @@ public class DocumentExport_Tests : VaultExtractEntityFrameworkCoreTestBase
             await WithUnitOfWorkAsync(async () =>
             {
                 await SeedTypeAsync(typeId);
-                await SeedFieldAsync(_guidGenerator.Create(), typeId, "a", "A", FieldDataType.Text, displayOrder: 0);
-                await SeedFieldAsync(_guidGenerator.Create(), typeId, "b", "B", FieldDataType.Text, displayOrder: 1);
-                await SeedFieldAsync(_guidGenerator.Create(), typeId, "c", "C", FieldDataType.Text, displayOrder: 2);
+                await SeedFieldAsync(_guidGenerator.Create(), typeId, "a", "A", TextFieldType.ControlName, displayOrder: 0);
+                await SeedFieldAsync(_guidGenerator.Create(), typeId, "b", "B", TextFieldType.ControlName, displayOrder: 1);
+                await SeedFieldAsync(_guidGenerator.Create(), typeId, "c", "C", TextFieldType.ControlName, displayOrder: 2);
             });
 
             await WithUnitOfWorkAsync(async () =>
@@ -298,8 +283,8 @@ public class DocumentExport_Tests : VaultExtractEntityFrameworkCoreTestBase
             await WithUnitOfWorkAsync(async () =>
             {
                 await SeedTypeAsync(typeId);
-                await SeedFieldAsync(_guidGenerator.Create(), typeId, "a", "A", FieldDataType.Text, displayOrder: 0);
-                await SeedFieldAsync(_guidGenerator.Create(), typeId, "b", "B", FieldDataType.Text, displayOrder: 1);
+                await SeedFieldAsync(_guidGenerator.Create(), typeId, "a", "A", TextFieldType.ControlName, displayOrder: 0);
+                await SeedFieldAsync(_guidGenerator.Create(), typeId, "b", "B", TextFieldType.ControlName, displayOrder: 1);
             });
 
             var csv = await ExportCsvAsync();
@@ -326,19 +311,11 @@ public class DocumentExport_Tests : VaultExtractEntityFrameworkCoreTestBase
         await WithUnitOfWorkAsync(async () =>
         {
             await SeedTypeAsync(typeId);
-            await _fieldDefinitionRepository.InsertAsync(
-                new FieldDefinition(tagsFieldId, null, typeId, "tags", "Tags", "extract",
-                    FieldDataType.Text, displayOrder: 0, allowMultiple: true),
-                autoSave: true);
-            await SeedFieldAsync(amountFieldId, typeId, "amount", "Amount", FieldDataType.Text, displayOrder: 1);
+            await SeedFieldAsync(tagsFieldId, typeId, "tags", "Tags", TagsFieldType.ControlName, displayOrder: 0);
+            await SeedFieldAsync(amountFieldId, typeId, "amount", "Amount", TextFieldType.ControlName, displayOrder: 1);
 
             await _documentRepository.InsertAsync(
-                CreateDocument(_guidGenerator.Create(), typeId, "Doc X", new[]
-                {
-                    new DocumentFieldValue(amountFieldId, FieldDataType.Text, Json("42"), 0),
-                    new DocumentFieldValue(tagsFieldId, FieldDataType.Text, Json("beta"), 1),
-                    new DocumentFieldValue(tagsFieldId, FieldDataType.Text, Json("alpha"), 0),
-                }),
+                CreateDocument(_guidGenerator.Create(), typeId, "Doc X", new Dictionary<string, object?> { ["amount"] = "42", ["tags"] = new List<string> { "alpha", "beta" } }),
                 autoSave: true);
         });
 
@@ -360,14 +337,11 @@ public class DocumentExport_Tests : VaultExtractEntityFrameworkCoreTestBase
         await WithUnitOfWorkAsync(async () =>
         {
             await SeedTypeAsync(typeId);
-            await SeedFieldAsync(amountFieldId, typeId, "amount", "Amount", FieldDataType.Text, displayOrder: 0);
-            await SeedFieldAsync(missingFieldId, typeId, "absent", "Absent", FieldDataType.Text, displayOrder: 1);
+            await SeedFieldAsync(amountFieldId, typeId, "amount", "Amount", TextFieldType.ControlName, displayOrder: 0);
+            await SeedFieldAsync(missingFieldId, typeId, "absent", "Absent", TextFieldType.ControlName, displayOrder: 1);
 
             await _documentRepository.InsertAsync(
-                CreateDocument(_guidGenerator.Create(), typeId, "Doc Y", new[]
-                {
-                    new DocumentFieldValue(amountFieldId, FieldDataType.Text, Json("7"), 0),
-                }),
+                CreateDocument(_guidGenerator.Create(), typeId, "Doc Y", new Dictionary<string, object?> { ["amount"] = "7" }),
                 autoSave: true);
         });
 
@@ -438,16 +412,24 @@ public class DocumentExport_Tests : VaultExtractEntityFrameworkCoreTestBase
         _documentTypeRepository.InsertAsync(new DocumentType(typeId, null, TypeCode, "Invoice"), autoSave: true);
 
     private Task SeedFieldAsync(
-        Guid fieldId, Guid typeId, string name, string displayName, FieldDataType dataType, int displayOrder = 0) =>
-        _fieldDefinitionRepository.InsertAsync(
-            new FieldDefinition(fieldId, null, typeId, name, displayName, "extract", dataType, displayOrder),
+        Guid fieldId,
+        Guid typeId,
+        string name,
+        string displayName,
+        string fieldTypeName,
+        FieldConfigurationDictionary? configuration = null,
+        int displayOrder = 0) =>
+        _fieldRepository.InsertAsync(
+            new Field(
+                fieldId, null, typeId, name, displayName, fieldTypeName,
+                description: "extract", configuration: configuration, displayOrder: displayOrder),
             autoSave: true);
 
     private static Document CreateDocument(
         Guid id,
         Guid documentTypeId,
         string title,
-        IEnumerable<DocumentFieldValue>? fields,
+        IReadOnlyDictionary<string, object?>? fields,
         DocumentReviewReasons reviewReasons = DocumentReviewReasons.None)
     {
         var document = new Document(id, tenantId: null, DocumentTestData.NewFileOrigin(id, originalFileName: "f.pdf"));
@@ -462,15 +444,12 @@ public class DocumentExport_Tests : VaultExtractEntityFrameworkCoreTestBase
 
         if (fields != null)
         {
-            document.SetFields(fields);
+            document.SetFlexFields(fields);
         }
 
         return document;
     }
 
-    private static JsonElement Json(string value)
-    {
-        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(value));
-        return doc.RootElement.Clone();
-    }
+    private static FieldConfigurationDictionary DateOnly() =>
+        new DateTimeConfiguration { InputMode = DateTimeInputMode.Date }.ConfigurationDictionary;
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Dignite.Abp.FlexFields;
 using Dignite.Vault.Extract.Abstractions.Documents;
 using Dignite.Vault.Extract.Ai;
 using Dignite.Vault.Extract.Documents.Review;
@@ -52,6 +53,13 @@ public class FieldExtractionService : ITransientDependency
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentTypeRepository _documentTypeRepository;
     private readonly IFieldRepository _fieldRepository;
+    /// <summary>
+    /// The query index is derived state, not a second source of truth, so it has to be re-derived in the
+    /// same unit of work that writes the bag it comes from. Miss one write site and that document simply
+    /// stops matching field filters — silently, because the bag itself is correct and every read that goes
+    /// through the bag still shows the value.
+    /// </summary>
+    private readonly IFlexFieldIndexManager<Document> _indexManager;
     private readonly ReviewStateEvaluator _reviewEvaluator;
     private readonly FieldExtractionWorkflow _workflow;
     private readonly IDistributedEventBus _distributedEventBus;
@@ -69,6 +77,7 @@ public class FieldExtractionService : ITransientDependency
         IDocumentRepository documentRepository,
         IDocumentTypeRepository documentTypeRepository,
         IFieldRepository fieldRepository,
+        IFlexFieldIndexManager<Document> indexManager,
         ReviewStateEvaluator reviewEvaluator,
         FieldExtractionWorkflow workflow,
         IDistributedEventBus distributedEventBus,
@@ -82,6 +91,7 @@ public class FieldExtractionService : ITransientDependency
         _documentRepository = documentRepository;
         _documentTypeRepository = documentTypeRepository;
         _fieldRepository = fieldRepository;
+        _indexManager = indexManager;
         _reviewEvaluator = reviewEvaluator;
         _workflow = workflow;
         _distributedEventBus = distributedEventBus;
@@ -246,6 +256,7 @@ public class FieldExtractionService : ITransientDependency
                     blankDocument.SetReviewReason(DocumentReviewReasons.FieldExtractionIncomplete, present: false);
                     blankDocument.ReplaceFieldValidationWarnings(null);
                     await _documentRepository.UpdateAsync(blankDocument, autoSave: true);
+                    await _indexManager.SynchronizeAsync(blankDocument);
                 }
 
                 await PublishFieldsExtractedAsync(documentId, tenantId, fieldCount: 0, documentTypeCode);
@@ -457,13 +468,14 @@ public class FieldExtractionService : ITransientDependency
             var fieldCount = fieldValues.Count;
 
             await _documentRepository.UpdateAsync(document, autoSave: true);
+            await _indexManager.SynchronizeAsync(document);
             await PublishFieldsExtractedAsync(documentId, tenantId, fieldCount, documentTypeCode);
 
             await writeUow.CompleteAsync();
 
             _logger.LogInformation(
-                "Field extraction for document {DocumentId} produced {NonNullCount}/{TotalCount} non-null fields ({RowCount} value rows).",
-                documentId, fieldCount, definitions.Count, fieldValues.Count);
+                "Field extraction for document {DocumentId} produced {NonNullCount}/{TotalCount} non-null fields.",
+                documentId, fieldCount, definitions.Count);
 
             return FieldExtractionResult.Extracted(fieldCount);
         }

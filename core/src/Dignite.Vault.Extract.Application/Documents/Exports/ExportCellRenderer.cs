@@ -5,7 +5,13 @@ using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using Dignite.Abp.FlexFields;
+using Dignite.Abp.FlexFields.Boolean;
+using Dignite.Abp.FlexFields.CKEditor;
 using Dignite.Abp.FlexFields.Date;
+using Dignite.Abp.FlexFields.Number;
+using Dignite.Abp.FlexFields.Select;
+using Dignite.Abp.FlexFields.Text;
+using Dignite.Vault.Extract.FlexFields.Tags;
 using Dignite.Vault.Extract.Documents.Fields;
 
 namespace Dignite.Vault.Extract.Documents.Exports;
@@ -36,6 +42,15 @@ internal static class ExportCellRenderer
         if (value == null)
         {
             return null;
+        }
+
+        // Loud-fail rather than render by guesswork, carried over from v2's switch: a field type this method
+        // does not know would render a DateTime in some default shape, or a composite value as its type
+        // name, into a file an operator hands to an accountant. An error is the better cell.
+        if (!IsKnown(fieldTypeName))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(fieldTypeName), fieldTypeName, "No export cell rendering is defined for this field type.");
         }
 
         if (TryReadList(value, out var items))
@@ -78,6 +93,15 @@ internal static class ExportCellRenderer
             _ => Convert.ToString(value, CultureInfo.InvariantCulture)
         };
     }
+
+    private static bool IsKnown(string fieldTypeName)
+        => fieldTypeName is TextFieldType.ControlName
+            or NumberFieldType.ControlName
+            or BooleanFieldType.ControlName
+            or DateTimeFieldType.ControlName
+            or SelectFieldType.ControlName
+            or CKEditorFieldType.ControlName
+            or TagsFieldType.ControlName;
 
     private static bool TryReadList(object value, out List<string> items)
     {
