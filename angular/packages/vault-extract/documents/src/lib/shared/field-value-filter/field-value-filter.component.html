@@ -34,7 +34,7 @@
 
         @if (row.fieldName) {
           <!-- Operator: only Number/Date/DateTime offer equality-vs-range; Text/Boolean are equality-only -->
-          @if (supportsRange(row.dataType)) {
+          @if (supportsRange(row.fieldTypeName)) {
             <select
               class="form-select form-select-sm w-auto"
               [ngModel]="row.mode"
@@ -45,7 +45,7 @@
             </select>
           }
 
-          @if (row.dataType === FieldDataType.Boolean) {
+          @if (row.fieldTypeName === FIELD_TYPES.boolean) {
             <select
               class="form-select form-select-sm w-auto"
               [ngModel]="row.value"
@@ -55,10 +55,10 @@
               <option value="true">{{ '::Document:Filter:BooleanTrue' | abpLocalization }}</option>
               <option value="false">{{ '::Document:Filter:BooleanFalse' | abpLocalization }}</option>
             </select>
-          } @else if (row.mode === 'range' && supportsRange(row.dataType)) {
+          } @else if (row.mode === 'range' && supportsRange(row.fieldTypeName)) {
             <input
               class="form-control form-control-sm field-value-filter__value"
-              [type]="inputType(row.dataType)"
+              [type]="inputType(row)"
               [attr.maxlength]="maxValueLength"
               [ngModel]="row.min"
               (ngModelChange)="patchRow(row.key, { min: coerce($event) })"
@@ -67,7 +67,7 @@
             <span class="text-muted">–</span>
             <input
               class="form-control form-control-sm field-value-filter__value"
-              [type]="inputType(row.dataType)"
+              [type]="inputType(row)"
               [attr.maxlength]="maxValueLength"
               [ngModel]="row.max"
               (ngModelChange)="patchRow(row.key, { max: coerce($event) })"
@@ -76,7 +76,7 @@
           } @else {
             <input
               class="form-control form-control-sm field-value-filter__value"
-              [type]="inputType(row.dataType)"
+              [type]="inputType(row)"
               [attr.maxlength]="maxValueLength"
               [ngModel]="row.value"
               (ngModelChange)="patchRow(row.key, { value: coerce($event) })"

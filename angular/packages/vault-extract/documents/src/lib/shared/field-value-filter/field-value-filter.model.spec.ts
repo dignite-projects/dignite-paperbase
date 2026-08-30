@@ -1,19 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { FieldDataType } from '@dignite/vault-extract';
+import { FIELD_TYPES } from "../field-types/field-type-catalog";
 
 import { FilterRow, composeFieldFilters, rangeSupported } from './field-value-filter.model';
 
 // #415: the field-value composer compiles editor rows into server-shaped DocumentFieldFilter values. These
-// guard the two rules the backend enforces (ApplyFieldValueFilter): only Number/Date/DateTime may carry a
-// range, and every emitted filter must have at least one of value/min/max — an incomplete filter would be
-// an AbpValidationException, and a range on Text/Boolean a FieldTypeDoesNotSupportRange error.
+// guard the two rules the backend enforces: only Number and DateTime may carry a range, and every emitted
+// filter must have at least one of value/min/max — an incomplete filter would be an AbpValidationException,
+// and a range on Text/Boolean a FieldTypeDoesNotSupportRange error.
 
 // Full FilterRow with defaults so each test states only what it exercises.
 function row(overrides: Partial<FilterRow>): FilterRow {
   return {
     key: 0,
     fieldName: 'amount',
-    dataType: FieldDataType.Text,
+    fieldTypeName: FIELD_TYPES.text,
+    configuration: {},
     mode: 'eq',
     value: '',
     min: '',
@@ -23,58 +24,61 @@ function row(overrides: Partial<FilterRow>): FilterRow {
 }
 
 describe('rangeSupported', () => {
-  it('is true only for Number / Date / DateTime', () => {
-    expect(rangeSupported(FieldDataType.Number)).toBe(true);
-    expect(rangeSupported(FieldDataType.Date)).toBe(true);
-    expect(rangeSupported(FieldDataType.DateTime)).toBe(true);
+  // v2's Date and DateTime are one field type in v3, so what was three range-capable data types is two
+  // field types. Nothing lost: both halves of the old split supported ranges.
+  it('is true only for Number and DateTime', () => {
+    expect(rangeSupported(FIELD_TYPES.number)).toBe(true);
+    expect(rangeSupported(FIELD_TYPES.dateTime)).toBe(true);
   });
 
   it('is false for Text / Boolean / LongText', () => {
-    expect(rangeSupported(FieldDataType.Text)).toBe(false);
-    expect(rangeSupported(FieldDataType.Boolean)).toBe(false);
-    expect(rangeSupported(FieldDataType.LongText)).toBe(false);
+    expect(rangeSupported(FIELD_TYPES.text)).toBe(false);
+    expect(rangeSupported(FIELD_TYPES.boolean)).toBe(false);
+    expect(rangeSupported(FIELD_TYPES.ckEditor)).toBe(false);
+    expect(rangeSupported(FIELD_TYPES.select)).toBe(false);
+    expect(rangeSupported(FIELD_TYPES.tags)).toBe(false);
   });
 });
 
 describe('composeFieldFilters', () => {
   it('emits a Text equality as { name, value } (no min/max)', () => {
     const out = composeFieldFilters([
-      row({ fieldName: 'partyName', dataType: FieldDataType.Text, value: 'Acme' }),
+      row({ fieldName: 'partyName', fieldTypeName: FIELD_TYPES.text, value: 'Acme' }),
     ]);
     expect(out).toEqual([{ name: 'partyName', value: 'Acme' }]);
   });
 
   it('emits a Boolean equality with the literal true/false string the server parses', () => {
     const out = composeFieldFilters([
-      row({ fieldName: 'signed', dataType: FieldDataType.Boolean, value: 'false' }),
+      row({ fieldName: 'signed', fieldTypeName: FIELD_TYPES.boolean, value: 'false' }),
     ]);
     expect(out).toEqual([{ name: 'signed', value: 'false' }]);
   });
 
   it('emits Number equality (eq mode) as a value, not a range', () => {
     const out = composeFieldFilters([
-      row({ fieldName: 'amount', dataType: FieldDataType.Number, mode: 'eq', value: '100' }),
+      row({ fieldName: 'amount', fieldTypeName: FIELD_TYPES.number, mode: 'eq', value: '100' }),
     ]);
     expect(out).toEqual([{ name: 'amount', value: '100' }]);
   });
 
   it('keeps a literal "0" numeric equality (a falsy string must not be dropped)', () => {
     const out = composeFieldFilters([
-      row({ fieldName: 'amount', dataType: FieldDataType.Number, mode: 'eq', value: '0' }),
+      row({ fieldName: 'amount', fieldTypeName: FIELD_TYPES.number, mode: 'eq', value: '0' }),
     ]);
     expect(out).toEqual([{ name: 'amount', value: '0' }]);
   });
 
   it('keeps "0" range bounds (a "0" bound is a real bound, not an unset one)', () => {
     const out = composeFieldFilters([
-      row({ fieldName: 'amount', dataType: FieldDataType.Number, mode: 'range', min: '0', max: '0' }),
+      row({ fieldName: 'amount', fieldTypeName: FIELD_TYPES.number, mode: 'range', min: '0', max: '0' }),
     ]);
     expect(out).toEqual([{ name: 'amount', min: '0', max: '0' }]);
   });
 
   it('emits a two-sided Number range as { name, min, max } with no value', () => {
     const out = composeFieldFilters([
-      row({ fieldName: 'amount', dataType: FieldDataType.Number, mode: 'range', min: '10', max: '20' }),
+      row({ fieldName: 'amount', fieldTypeName: FIELD_TYPES.number, mode: 'range', min: '10', max: '20' }),
     ]);
     expect(out).toEqual([{ name: 'amount', min: '10', max: '20' }]);
   });
@@ -82,12 +86,12 @@ describe('composeFieldFilters', () => {
   it('emits a one-sided range (unset bound becomes null)', () => {
     expect(
       composeFieldFilters([
-        row({ fieldName: 'd', dataType: FieldDataType.Date, mode: 'range', min: '2026-01-01' }),
+        row({ fieldName: 'd', fieldTypeName: FIELD_TYPES.dateTime, mode: 'range', min: '2026-01-01' }),
       ]),
     ).toEqual([{ name: 'd', min: '2026-01-01', max: null }]);
     expect(
       composeFieldFilters([
-        row({ fieldName: 'd', dataType: FieldDataType.Date, mode: 'range', max: '2026-12-31' }),
+        row({ fieldName: 'd', fieldTypeName: FIELD_TYPES.dateTime, mode: 'range', max: '2026-12-31' }),
       ]),
     ).toEqual([{ name: 'd', min: null, max: '2026-12-31' }]);
   });
@@ -98,25 +102,25 @@ describe('composeFieldFilters', () => {
 
   it('drops an equality row whose value is blank (never sends an incomplete filter)', () => {
     expect(
-      composeFieldFilters([row({ fieldName: 'amount', dataType: FieldDataType.Text, value: '   ' })]),
+      composeFieldFilters([row({ fieldName: 'amount', fieldTypeName: FIELD_TYPES.text, value: '   ' })]),
     ).toEqual([]);
   });
 
   it('drops a range row with neither bound', () => {
     expect(
       composeFieldFilters([
-        row({ fieldName: 'amount', dataType: FieldDataType.Number, mode: 'range', min: ' ', max: '' }),
+        row({ fieldName: 'amount', fieldTypeName: FIELD_TYPES.number, mode: 'range', min: ' ', max: '' }),
       ]),
     ).toEqual([]);
   });
 
   it('trims values and bounds', () => {
     expect(
-      composeFieldFilters([row({ fieldName: 'a', dataType: FieldDataType.Text, value: '  hi  ' })]),
+      composeFieldFilters([row({ fieldName: 'a', fieldTypeName: FIELD_TYPES.text, value: '  hi  ' })]),
     ).toEqual([{ name: 'a', value: 'hi' }]);
     expect(
       composeFieldFilters([
-        row({ fieldName: 'n', dataType: FieldDataType.Number, mode: 'range', min: ' 1 ', max: ' 9 ' }),
+        row({ fieldName: 'n', fieldTypeName: FIELD_TYPES.number, mode: 'range', min: ' 1 ', max: ' 9 ' }),
       ]),
     ).toEqual([{ name: 'n', min: '1', max: '9' }]);
   });
@@ -125,15 +129,15 @@ describe('composeFieldFilters', () => {
     // The UI never offers range mode on Text, but even if a row arrives in range mode the compiler must
     // not emit a Text range (the server hard-errors it); it compiles the equality value instead.
     const out = composeFieldFilters([
-      row({ fieldName: 't', dataType: FieldDataType.Text, mode: 'range', value: 'v', min: '1', max: '2' }),
+      row({ fieldName: 't', fieldTypeName: FIELD_TYPES.text, mode: 'range', value: 'v', min: '1', max: '2' }),
     ]);
     expect(out).toEqual([{ name: 't', value: 'v' }]);
   });
 
   it('preserves order across multiple rows', () => {
     const out = composeFieldFilters([
-      row({ key: 1, fieldName: 'a', dataType: FieldDataType.Text, value: 'x' }),
-      row({ key: 2, fieldName: 'b', dataType: FieldDataType.Number, mode: 'range', min: '1', max: '2' }),
+      row({ key: 1, fieldName: 'a', fieldTypeName: FIELD_TYPES.text, value: 'x' }),
+      row({ key: 2, fieldName: 'b', fieldTypeName: FIELD_TYPES.number, mode: 'range', min: '1', max: '2' }),
     ]);
     expect(out).toEqual([
       { name: 'a', value: 'x' },

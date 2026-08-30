@@ -29,7 +29,6 @@ import {
   DocumentService,
   DocumentTypeDto,
   DocumentTypeService,
-  FieldDataType,
   FieldDefinitionDto,
   FieldDefinitionService,
   FieldValidationWarningDto,
@@ -37,6 +36,8 @@ import {
   PipelineRunStatus,
 } from '@dignite/vault-extract';
 import { formatExtractedFieldValue } from '../../shared/format-field-value';
+import { FIELD_TYPES, isDateOnly, isMultiValueField } from '../../shared/field-types/field-type-catalog';
+import { readSelectOptions } from '../../shared/field-types/select-options';
 import { stripMarkdownCodeFences } from '../../shared/strip-code-fences';
 import { DocumentFileBlobService } from '../../shared/document-file-blob.service';
 import { isImageContentType, isPdfContentType } from '../../shared/content-type';
@@ -396,13 +397,13 @@ export class DocumentDetailComponent implements OnInit {
         const def = defByName.get(key)!;
         const raw = fields[key];
         const value = this.formatFieldValue(raw);
-        // #418: a LongText value is rendered as Markdown here in the detail view (never in the compact
-        // list, so multi-paragraph content cannot blow apart table rows). LongText is an explicit
-        // config-time choice on FieldDefinition.DataType — a declared type, not a runtime guess. Only
-        // render when there is real string content; a null / empty value (formatted as "—") stays plain
-        // text. renderedHtml keeps the sanitize-on-bind contract via renderMarkdown + [innerHTML].
+        // #418: a long-text value is rendered as Markdown here in the detail view (never in the compact
+        // list, so multi-paragraph content cannot blow apart table rows). The long-text field type is an
+        // explicit config-time choice - a declared type, not a runtime guess. Only render when there is
+        // real string content; a null / empty value (formatted as "-") stays plain text. renderedHtml keeps
+        // the sanitize-on-bind contract via renderMarkdown + [innerHTML].
         const isMarkdown =
-          def.dataType === FieldDataType.LongText &&
+          def.fieldTypeName === FIELD_TYPES.ckEditor &&
           typeof raw === 'string' &&
           raw.trim().length > 0;
         return {
@@ -1181,9 +1182,11 @@ export class DocumentDetailComponent implements OnInit {
       const config: FormFieldConfig = {
         key: def.name ?? '',
         label: `${def.displayName} (${def.name})`,
-        // Multi-value fields (#212, text only) use a textarea with one value per line; single-value fields
-        // choose input type by DataType.
-        type: def.allowMultiple ? 'textarea' : this.toFormFieldType(def.dataType),
+        // A multi-valued field (Tags, or a Select configured Multiple) uses a textarea with one value per
+        // line; a single-valued one picks its input from the field type.
+        type: isMultiValueField(def.fieldTypeName, def.configuration)
+          ? 'textarea'
+          : this.toFormFieldType(def),
         value: this.toFormInitialValue(def, values[def.name ?? '']),
         required: def.isRequired,
         order: def.displayOrder,
@@ -1193,16 +1196,23 @@ export class DocumentDetailComponent implements OnInit {
           : [],
       };
 
-      if (def.allowMultiple) {
+      if (isMultiValueField(def.fieldTypeName, def.configuration)) {
         config.placeholder = this.localization.instant('::FieldDefinition:AllowMultipleEditHint');
-      } else if (def.dataType === FieldDataType.Number) {
+      } else if (def.fieldTypeName === FIELD_TYPES.number) {
         config.step = 'any';
-      } else if (def.dataType === FieldDataType.Boolean) {
+      } else if (def.fieldTypeName === FIELD_TYPES.boolean) {
         config.options = {
           defaultValues: [
             { key: 'true', value: 'true' },
             { key: 'false', value: 'false' },
           ],
+        };
+      } else if (def.fieldTypeName === FIELD_TYPES.select) {
+        // A closed vocabulary, so the operator picks rather than types: anything outside the option list
+        // is rejected by the same reader the extraction path uses, and a free-text box would only let them
+        // discover that on save.
+        config.options = {
+          defaultValues: readSelectOptions(def.configuration).map(o => ({ key: o.text, value: o.value })),
         };
       }
 
@@ -1210,43 +1220,44 @@ export class DocumentDetailComponent implements OnInit {
     });
   }
 
-  private toFormFieldType(dataType: FieldDataType | undefined): FormFieldConfig['type'] {
-    switch (dataType) {
+  private toFormFieldType(def: FieldDefinitionDto): FormFieldConfig['type'] {
+    switch (def.fieldTypeName) {
       // Long text, such as summaries or descriptions, uses a multiline editor. The default branch of
       // toFormInitialValue already fills it back as a string unchanged.
-      case FieldDataType.LongText:
+      case FIELD_TYPES.ckEditor:
         return 'textarea';
-      case FieldDataType.Number:
+      case FIELD_TYPES.number:
         return 'number';
-      case FieldDataType.Boolean:
+      case FIELD_TYPES.boolean:
+      case FIELD_TYPES.select:
         return 'select';
-      case FieldDataType.Date:
-        return 'date';
-      case FieldDataType.DateTime:
-        return 'datetime-local';
+      // v2 had two data types here; v3 has one field type whose configuration says whether it carries a
+      // time, so the control follows the configuration rather than the type name.
+      case FIELD_TYPES.dateTime:
+        return isDateOnly(def.configuration) ? 'date' : 'datetime-local';
       default:
         return 'text';
     }
   }
 
   private toFormInitialValue(def: FieldDefinitionDto, value: unknown): unknown {
-    // Multi-value fields (#212): output array becomes one textarea line per value. Non-arrays, including
-    // null or unextracted values, become empty.
-    if (def.allowMultiple) {
+    // A multi-valued field's array becomes one textarea line per value. Non-arrays, including null or
+    // unextracted values, become empty.
+    if (isMultiValueField(def.fieldTypeName, def.configuration)) {
       return Array.isArray(value) ? value.map(v => String(v)).join('\n') : '';
     }
 
     if (value === null || value === undefined) return '';
 
-    switch (def.dataType) {
-      case FieldDataType.Number:
+    switch (def.fieldTypeName) {
+      case FIELD_TYPES.number:
         return this.toNumberInputValue(value);
-      case FieldDataType.Boolean:
+      case FIELD_TYPES.boolean:
         return this.parseBoolean(value) ? 'true' : 'false';
-      case FieldDataType.Date:
-        return this.toDateInputValue(value);
-      case FieldDataType.DateTime:
-        return this.toDateTimeLocalInputValue(value);
+      case FIELD_TYPES.dateTime:
+        return isDateOnly(def.configuration)
+          ? this.toDateInputValue(value)
+          : this.toDateTimeLocalInputValue(value);
       default:
         return typeof value === 'object' ? JSON.stringify(value) : String(value);
     }
@@ -1258,24 +1269,23 @@ export class DocumentDetailComponent implements OnInit {
       (typeof value === 'string' && value.trim() === '');
   }
 
-  // Convert to the corresponding JSON type by field DataType. Date/DateTime/Text are always stored as
-  // strings.
+  // Convert to the corresponding JSON type by field type. Dates and text are always stored as strings.
   private coerceValue(def: FieldDefinitionDto, value: unknown): unknown {
-    // Multi-value fields (#212): textarea one value per line, trimmed and with empty lines removed,
-    // becomes string[], symmetric with backend UpdateExtractedFieldsAsync receiving arrays.
-    if (def.allowMultiple) {
+    // A multi-valued field's textarea holds one value per line; trimmed and with empty lines removed it
+    // becomes string[], symmetric with the server receiving arrays.
+    if (isMultiValueField(def.fieldTypeName, def.configuration)) {
       return String(value ?? '')
         .split(/\r?\n/)
         .map(s => s.trim())
         .filter(s => s.length > 0);
     }
 
-    switch (def.dataType) {
-      case FieldDataType.Number: {
+    switch (def.fieldTypeName) {
+      case FIELD_TYPES.number: {
         const n = typeof value === 'number' ? value : Number(value);
         return !Number.isNaN(n) ? n : value;
       }
-      case FieldDataType.Boolean:
+      case FIELD_TYPES.boolean:
         return this.parseBoolean(value);
       default:
         return value;

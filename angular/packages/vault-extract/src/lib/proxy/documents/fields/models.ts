@@ -1,15 +1,23 @@
-import type { FieldDataType } from './field-data-type.enum';
 import type { EntityDto } from '@abp/ng.core';
+
+/**
+ * Type-specific field configuration, keyed by the field type's own namespaced constants
+ * ("Text.CharLimit", "Select.Options", "DateTime.InputMode", ...). Opaque on the wire on purpose: the
+ * field type owns the shape, so the client reads and writes it through the per-type helpers in
+ * `field-type-configuration` rather than by reaching for keys directly.
+ */
+export type FieldConfigurationDictionary = Record<string, unknown>;
 
 export interface CreateFieldDefinitionDto {
   documentTypeId: string;
   name: string;
   displayName: string;
-  prompt?: string | null;
-  dataType?: FieldDataType;
+  description?: string | null;
+  fieldTypeName: string;
+  configuration?: FieldConfigurationDictionary | null;
   displayOrder?: number;
   isRequired?: boolean;
-  allowMultiple?: boolean;
+  isSearchable?: boolean;
   isUniqueKey?: boolean;
 }
 
@@ -21,9 +29,9 @@ export interface DraftFieldDefinitionInput {
 export interface FieldDefinitionDraftDto {
   displayName?: string;
   name?: string;
-  dataType?: FieldDataType;
+  fieldTypeName?: string;
+  configuration?: FieldConfigurationDictionary;
   isRequired?: boolean;
-  allowMultiple?: boolean;
 }
 
 export interface FieldDefinitionDto extends EntityDto<string> {
@@ -31,11 +39,12 @@ export interface FieldDefinitionDto extends EntityDto<string> {
   documentTypeId?: string;
   name?: string;
   displayName?: string;
-  prompt?: string | null;
-  dataType?: FieldDataType;
+  description?: string | null;
+  fieldTypeName?: string;
+  configuration?: FieldConfigurationDictionary;
   displayOrder?: number;
   isRequired?: boolean;
-  allowMultiple?: boolean;
+  isSearchable?: boolean;
   isUniqueKey?: boolean;
 }
 
@@ -55,10 +64,11 @@ export interface GetFieldDefinitionListInput {
 export interface UpdateFieldDefinitionDto {
   name: string;
   displayName: string;
-  prompt?: string | null;
-  dataType?: FieldDataType;
+  description?: string | null;
+  fieldTypeName: string;
+  configuration?: FieldConfigurationDictionary | null;
   displayOrder?: number;
   isRequired?: boolean;
-  allowMultiple?: boolean;
+  isSearchable?: boolean;
   isUniqueKey?: boolean;
 }

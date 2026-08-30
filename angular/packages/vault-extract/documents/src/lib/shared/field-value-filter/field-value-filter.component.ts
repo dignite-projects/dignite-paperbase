@@ -10,7 +10,9 @@ import {
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LocalizationPipe } from '@abp/ng.core';
-import { DocumentFieldFilter, FieldDataType, FieldDefinitionDto } from '@dignite/vault-extract';
+import { DocumentFieldFilter, FieldDefinitionDto } from '@dignite/vault-extract';
+import { FIELD_TYPES, isDateOnly, isFilterableField } from '../field-types/field-type-catalog';
+
 import {
   FilterMode,
   FilterRow,
@@ -31,7 +33,7 @@ const MAX_FIELD_VALUE_LENGTH = 512;
  * decides what to do with the emitted filters — so the same component backs both the operator document
  * list (this issue) and the Data Download surface (#414).
  *
- * Operator/input is driven by FieldDataType, matching what the backend's ApplyFieldValueFilter supports:
+ * Operator/input is driven by the field type, matching what the backend's field-value filter supports:
  * Text/Boolean → equality only; Number/Date/DateTime → equality or inclusive (one- or two-sided) range;
  * LongText is excluded from the picker entirely (the backend loud-fails a LongText filter by design).
  */
@@ -61,14 +63,16 @@ export class FieldValueFilterComponent {
   // per keystroke: the consumer re-queries on each emit, so per-edit emission would spam the list endpoint.
   @Output() filtersChange = new EventEmitter<DocumentFieldFilter[]>();
 
-  readonly FieldDataType = FieldDataType;
+  readonly FIELD_TYPES = FIELD_TYPES;
   readonly maxValueLength = MAX_FIELD_VALUE_LENGTH;
 
   readonly rows = signal<FilterRow[]>([]);
 
-  // LongText is not queryable (server loud-fails it), so it never appears in the field picker.
+  // A field the server would reject as a filter never appears in the picker: long text indexes nothing,
+  // and neither does a field whose admin turned searchability off. Both loud-fail server-side, so offering
+  // them here would only turn a choice into an error.
   readonly filterableFields = computed(() =>
-    this._fields().filter(f => f.dataType !== FieldDataType.LongText),
+    this._fields().filter(f => isFilterableField(f.fieldTypeName, f.isSearchable)),
   );
 
   readonly hasFilterableFields = computed(() => this.filterableFields().length > 0);
@@ -83,7 +87,8 @@ export class FieldValueFilterComponent {
       {
         key: this.nextKey++,
         fieldName: '',
-        dataType: FieldDataType.Text,
+        fieldTypeName: FIELD_TYPES.text,
+        configuration: {},
         mode: 'eq',
         value: '',
         min: '',
@@ -96,16 +101,19 @@ export class FieldValueFilterComponent {
     this.rows.update(rows => rows.filter(r => r.key !== key));
   }
 
-  // Picking a field resets the row's operator + inputs: the new field's dataType may not support the old
+  // Picking a field resets the row's operator + inputs: the new field's type may not support the old
   // mode (e.g. switching to a Text field while in range mode), and a carried-over value would be
   // mistyped. Start clean at equality.
   onFieldChange(key: number, fieldName: string): void {
-    const dataType =
-      this.filterableFields().find(f => f.name === fieldName)?.dataType ?? FieldDataType.Text;
+    const field = this.filterableFields().find(f => f.name === fieldName);
+    const fieldTypeName = field?.fieldTypeName ?? FIELD_TYPES.text;
+    // The row carries the configuration too, because Date and DateTime are one field type in v3 and only
+    // its InputMode says which of the two a given field is - and that decides the input control.
+    const configuration = field?.configuration ?? {};
     this.rows.update(rows =>
       rows.map(r =>
         r.key === key
-          ? { ...r, fieldName, dataType, mode: 'eq', value: '', min: '', max: '' }
+          ? { ...r, fieldName, fieldTypeName, configuration, mode: 'eq', value: '', min: '', max: '' }
           : r,
       ),
     );
@@ -130,21 +138,22 @@ export class FieldValueFilterComponent {
   }
 
   // Kept as a method (delegating to the pure rangeSupported) so the template can call it directly.
-  supportsRange(dataType: FieldDataType): boolean {
-    return rangeSupported(dataType);
+  supportsRange(fieldTypeName: string): boolean {
+    return rangeSupported(fieldTypeName);
   }
 
-  // Native input type per data type. The resulting string values are exactly what the server parser
-  // expects: number → invariant decimal, date → yyyy-MM-dd, datetime-local → offset-free wall-clock
-  // (Kind=Unspecified), which is what ApplyFieldValueFilter requires.
-  inputType(dataType: FieldDataType): string {
-    switch (dataType) {
-      case FieldDataType.Number:
+  // Native input type per field type. The resulting string values are exactly what the server parser
+  // expects: number -> invariant decimal, date -> yyyy-MM-dd, datetime-local -> offset-free wall-clock
+  // (Kind=Unspecified), which is what the field-value filter requires.
+  //
+  // The date split is the one place v3's merged DateTime type shows through: v2 had two data types to
+  // switch on, v3 has one plus an InputMode, so the row's configuration decides.
+  inputType(row: Pick<FilterRow, 'fieldTypeName' | 'configuration'>): string {
+    switch (row.fieldTypeName) {
+      case FIELD_TYPES.number:
         return 'number';
-      case FieldDataType.Date:
-        return 'date';
-      case FieldDataType.DateTime:
-        return 'datetime-local';
+      case FIELD_TYPES.dateTime:
+        return isDateOnly(row.configuration) ? "date" : "datetime-local";
       default:
         return 'text';
     }
