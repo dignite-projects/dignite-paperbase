@@ -36,6 +36,8 @@ public class DocumentFlexFieldProvider : IFlexFieldProvider<Document>, ITransien
 
     protected ICurrentTenant CurrentTenant { get; }
 
+    private readonly Dictionary<Guid, List<Field>> _fieldsByType = new();
+
     public DocumentFlexFieldProvider(
         IFieldRepository fieldRepository,
         IRepository<Document, Guid> documentRepository,
@@ -77,7 +79,16 @@ public class DocumentFlexFieldProvider : IFlexFieldProvider<Document>, ITransien
                 "a document's fields.");
         }
 
-        var fields = await FieldRepository.GetListAsync(entity.DocumentTypeId.Value, cancellationToken);
+        // Cached per document type for this provider instance. The kernel calls this once per entity, so a
+        // rebuild over N documents would otherwise issue N identical queries for the same handful of field
+        // lists. The class is transient, and the index manager holds one instance for the whole rebuild, so
+        // the cache lives exactly as long as one operation - keep it transient or this turns into a stale
+        // read on the pipeline's per-write path.
+        if (!_fieldsByType.TryGetValue(entity.DocumentTypeId.Value, out var fields))
+        {
+            fields = await FieldRepository.GetListAsync(entity.DocumentTypeId.Value, cancellationToken);
+            _fieldsByType[entity.DocumentTypeId.Value] = fields;
+        }
 
         var values = new List<FlexFieldValue>(fields.Count);
         foreach (var field in fields)

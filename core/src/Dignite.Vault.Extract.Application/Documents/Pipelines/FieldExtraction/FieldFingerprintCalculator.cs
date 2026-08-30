@@ -29,10 +29,9 @@ namespace Dignite.Vault.Extract.Documents.Pipelines.FieldExtraction;
 /// </summary>
 public static class FieldFingerprintCalculator
 {
-    // Unambiguous separators (ASCII unit / record separators) that cannot appear in normalized values, so distinct
-    // field/value boundaries never alias into the same canonical string.
-    private const char ValueSeparator = '\u001F';
-    private const char FieldSeparator = '\u001E';
+    // The separators and the number format live in FieldValueFormats, shared with the v3 calculator: both are
+    // live during the coexistence window, and these are frozen hash-contract literals that must not drift
+    // between them.
 
     /// <summary>
     /// Returns the fingerprint for the given extracted values + their definitions, or <c>null</c> when the type has
@@ -80,13 +79,13 @@ public static class FieldFingerprintCalculator
 
                 if (i > 0)
                 {
-                    builder.Append(ValueSeparator);
+                    builder.Append(FieldValueFormats.FingerprintValueSeparator);
                 }
 
                 builder.Append(canonical);
             }
 
-            builder.Append(FieldSeparator);
+            builder.Append(FieldValueFormats.FingerprintFieldSeparator);
         }
 
         return ContentHasher.Sha256Hex(Encoding.UTF8.GetBytes(builder.ToString()));
@@ -98,7 +97,7 @@ public static class FieldFingerprintCalculator
         FieldDataType.LongText => NormalizeText(row.LongTextValue),
         // Full precision on purpose, unlike FieldValueFormats.CellNumber: two amounts differing beyond six
         // decimals must not hash to the same fingerprint.
-        FieldDataType.Number => row.NumberValue?.ToString("0.############################", CultureInfo.InvariantCulture),
+        FieldDataType.Number => row.NumberValue?.ToString(FieldValueFormats.FingerprintNumber, CultureInfo.InvariantCulture),
         FieldDataType.Boolean => row.BooleanValue switch { true => "true", false => "false", null => null },
         FieldDataType.Date => row.DateValue?.ToString(FieldValueFormats.Date, CultureInfo.InvariantCulture),
         FieldDataType.DateTime => row.DateTimeValue?.ToString(FieldValueFormats.DateTime, CultureInfo.InvariantCulture),

@@ -410,6 +410,14 @@ public static class VaultExtractDbContextModelCreatingExtensions
             // The five typed value slots and their lengths, from the kernel.
             b.ConfigureFlexFieldIndex<DocumentFlexFieldIndex>();
 
+            // Same precision as the v2 field-value column this index is rebuilt from. The kernel maps
+            // NumberValue with no precision, so EF falls back to decimal(18,2) - which, as the v2 block
+            // above records, "silently rounds values with more than 2 decimals and loses precision".
+            // Since these rows are what the query executor compares against, that default would make a
+            // filter on 0.0825 miss the document whose bag holds exactly 0.0825, and would throw
+            // arithmetic overflow on any value above 16 integer digits during a rebuild.
+            b.Property(x => x.NumberValue).HasPrecision(38, 6);
+
             // Derived rows die with their document. No soft delete: these are hidden through the parent
             // Document filter while it is soft-deleted, exactly like the v2 DocumentExtractedField rows.
             b.HasOne<Document>()

@@ -326,7 +326,8 @@ namespace Dignite.Vault.Extract.Host.Migrations
                         .HasColumnName("GuidValue");
 
                     b.Property<decimal?>("NumberValue")
-                        .HasColumnType("decimal(18,2)")
+                        .HasPrecision(38, 6)
+                        .HasColumnType("decimal(38,6)")
                         .HasColumnName("NumberValue");
 
                     b.Property<string>("StringValue")

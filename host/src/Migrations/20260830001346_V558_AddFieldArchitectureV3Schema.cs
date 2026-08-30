@@ -28,7 +28,7 @@ namespace Dignite.Vault.Extract.Host.Migrations
                     FieldId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     ValueType = table.Column<int>(type: "int", nullable: false),
                     StringValue = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: true),
-                    NumberValue = table.Column<decimal>(type: "decimal(18,2)", nullable: true),
+                    NumberValue = table.Column<decimal>(type: "decimal(38,6)", precision: 38, scale: 6, nullable: true),
                     DateTimeValue = table.Column<DateTime>(type: "datetime2", nullable: true),
                     BooleanValue = table.Column<bool>(type: "bit", nullable: true),
                     GuidValue = table.Column<Guid>(type: "uniqueidentifier", nullable: true)

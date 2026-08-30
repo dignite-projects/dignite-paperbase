@@ -52,6 +52,8 @@ Type-bound fields must be attached under some document type, split into two laye
 
 **Essence of mechanism (B)**: Dignite Vault Extract provides a generic "extract-by-schema" engine — Host or tenant configures the schema, and the engine extracts per the owning layer. Dignite Vault Extract Core **presets no business field definition** (contract amount / invoice number / tax amount, etc. are not hardcoded).
 
+> **v3 in progress (#558)**: the storage form below is being replaced by the Dignite.Abp.FlexFields kernel — a `Document.FlexFields` value bag keyed by `Field.Name` plus a derived `DocumentFlexFieldIndex` pivot table, with `Field : IFlexField` replacing `FieldDefinition` and `FieldTypeName` + `Configuration` replacing the `FieldDataType` enum. **Both layouts are live right now**: v2 below is still authoritative and still serves every read and write; v3 is populated alongside it by `FieldArchitectureV3Migrator` and is not yet read by anything. Treat the v2 description below as current until the cutover (#562) lands, then this section is rewritten rather than amended.
+
 **Implementation form (field architecture v2)**:
 
 - A single `FieldDefinition` entity carries both layers (`TenantId IS NULL` = Host field definition; `TenantId != null` = tenant field definition), with unique index `(TenantId, DocumentTypeId, Name)` (#207: internally associated by the immutable `DocumentTypeId`; `DocumentType.TypeCode` / `FieldDefinition.Name` may be renamed by admins without cascading to data rows)

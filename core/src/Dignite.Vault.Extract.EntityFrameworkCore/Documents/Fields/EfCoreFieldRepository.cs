@@ -16,7 +16,7 @@ public class EfCoreFieldRepository
     public EfCoreFieldRepository(IDbContextProvider<VaultExtractDbContext> dbContextProvider)
         : base(dbContextProvider) { }
 
-    public async Task<List<Field>> GetListAsync(
+    public virtual async Task<List<Field>> GetListAsync(
         Guid documentTypeId,
         CancellationToken cancellationToken = default)
     {
@@ -32,7 +32,7 @@ public class EfCoreFieldRepository
             .ToListAsync(GetCancellationToken(cancellationToken));
     }
 
-    public async Task<Field?> FindByNameAsync(
+    public virtual async Task<Field?> FindByNameAsync(
         Guid documentTypeId,
         string name,
         CancellationToken cancellationToken = default)
@@ -46,7 +46,7 @@ public class EfCoreFieldRepository
             GetCancellationToken(cancellationToken));
     }
 
-    public async Task<List<Field>> GetListByIdsAsync(
+    public virtual async Task<List<Field>> GetListByIdsAsync(
         IEnumerable<Guid> ids,
         CancellationToken cancellationToken = default)
     {
@@ -62,7 +62,7 @@ public class EfCoreFieldRepository
             .ToListAsync(GetCancellationToken(cancellationToken));
     }
 
-    public async Task<bool> NameExistsAsync(
+    public virtual async Task<bool> NameExistsAsync(
         Guid documentTypeId,
         string name,
         Guid? excludedId = null,

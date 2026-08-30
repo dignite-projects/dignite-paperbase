@@ -13,7 +13,7 @@ using Volo.Abp.EntityFrameworkCore;
 namespace Dignite.Vault.Extract.Host.Migrations
 {
     [DbContext(typeof(VaultExtractHostDbContext))]
-    [Migration("20260829101915_V558_AddFieldArchitectureV3Schema")]
+    [Migration("20260830001346_V558_AddFieldArchitectureV3Schema")]
     partial class V558_AddFieldArchitectureV3Schema
     {
         /// <inheritdoc />
@@ -329,7 +329,8 @@ namespace Dignite.Vault.Extract.Host.Migrations
                         .HasColumnName("GuidValue");
 
                     b.Property<decimal?>("NumberValue")
-                        .HasColumnType("decimal(18,2)")
+                        .HasPrecision(38, 6)
+                        .HasColumnType("decimal(38,6)")
                         .HasColumnName("NumberValue");
 
                     b.Property<string>("StringValue")

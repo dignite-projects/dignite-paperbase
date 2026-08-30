@@ -201,7 +201,13 @@ public static class FlexFieldValueReader
                 // Enforced even though the extraction schema already emits an enum: the schema constrains
                 // the model, this constrains everything - an operator edit, a replayed payload, a provider
                 // that ignores the enum.
-                if (allowed.Count > 0 && !allowed.Contains(text))
+                //
+                // Membership is required unconditionally, including when the option list is empty. The
+                // kernel's own SelectFieldType.Validate does the same (`value.Except(options).Any()`
+                // rejects everything when options are empty), and an earlier `allowed.Count > 0 &&` guard
+                // here inverted that: a misconfigured Select accepted anything through extraction and
+                // would then have been rejected the moment kernel validation ran over the same value.
+                if (!allowed.Contains(text))
                 {
                     return false;
                 }
@@ -219,7 +225,7 @@ public static class FlexFieldValueReader
         }
 
         var single = value.GetString()!;
-        if (allowed.Count > 0 && !allowed.Contains(single))
+        if (!allowed.Contains(single))
         {
             return false;
         }
@@ -247,7 +253,8 @@ public static class FlexFieldValueReader
         {
             if (!DateTime.TryParseExact(
                     text, FieldValueFormats.DateTime, CultureInfo.InvariantCulture,
-                    DateTimeStyles.None, out var moment))
+                    DateTimeStyles.None, out var moment)
+                || IsOutOfRange(moment, configuration))
             {
                 return false;
             }
@@ -264,7 +271,26 @@ public static class FlexFieldValueReader
             return false;
         }
 
-        result = date.ToDateTime(TimeOnly.MinValue);
+        var midnight = date.ToDateTime(TimeOnly.MinValue);
+        if (IsOutOfRange(midnight, configuration))
+        {
+            return false;
+        }
+
+        result = midnight;
         return true;
+    }
+
+    /// <summary>
+    /// Applies the field type's configured bounds, which the kernel's own
+    /// <c>DateTimeFieldType.Validate</c> enforces. Without this the extraction path accepted a value that
+    /// kernel validation would reject the moment it ran over the same bag — a divergence that would only
+    /// surface once the cutover wires <c>IFlexFieldValidator</c>, and then only as an operator edit
+    /// failing on a value extraction had already stored.
+    /// </summary>
+    private static bool IsOutOfRange(DateTime value, DateTimeConfiguration configuration)
+    {
+        return (configuration.Max.HasValue && value > configuration.Max.Value)
+            || (configuration.Min.HasValue && value < configuration.Min.Value);
     }
 }

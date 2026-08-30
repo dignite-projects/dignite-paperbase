@@ -83,4 +83,32 @@ public static class FieldValueFormats
     /// number format, which keeps full precision so two values that differ beyond six decimals do not collide.
     /// </summary>
     public const string CellNumber = "0.######";
+
+    /// <summary>
+    /// The fingerprint's number shape (#411): full precision, so two amounts that differ beyond six
+    /// decimals never collide. Deliberately not <see cref="CellNumber"/>, which rounds for presentation.
+    /// </summary>
+    /// <remarks>
+    /// Frozen: the fingerprint is a stored hash compared by string equality, so changing this splits the
+    /// corpus into documents hashed under the old rule and the new one, which can never match. It lives
+    /// here rather than in either calculator because both the v2 and v3 calculators are live during the
+    /// coexistence window, and #501 already recorded what happens when a fingerprint literal is copied
+    /// per call site instead of hoisted.
+    /// </remarks>
+    public const string FingerprintNumber = "0.############################";
+
+    /// <summary>
+    /// Separator between the values of one multi-valued field inside the fingerprint's canonical string
+    /// (ASCII unit separator, U+001F). Frozen, and written as an escape rather than a literal control
+    /// character so no editor or transform can silently rewrite it.
+    /// </summary>
+    public const char FingerprintValueSeparator = '\u001F';
+
+    /// <summary>
+    /// Separator between fields inside the fingerprint's canonical string (ASCII record separator,
+    /// U+001E). Chosen because neither separator can appear in a normalized value, so distinct field and
+    /// value boundaries can never alias into the same canonical string. Frozen; see
+    /// <see cref="FingerprintValueSeparator"/> on the escape form.
+    /// </summary>
+    public const char FingerprintFieldSeparator = '\u001E';
 }

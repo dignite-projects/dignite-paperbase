@@ -185,12 +185,36 @@ public class FlexFieldValueReader_Tests
         TryRead("[\"a\",\"z\"]", SelectFieldType.ControlName, out _, configuration).ShouldBeFalse();
     }
 
-    /// <summary>Mirrors the schema builder: no options configured means nothing to enforce.</summary>
+    /// <summary>
+    /// A Select with no options accepts nothing, matching the kernel's own
+    /// <c>SelectFieldType.Validate</c> (<c>value.Except(options).Any()</c> rejects everything when the
+    /// option list is empty). An earlier reading here accepted anything, which would have let extraction
+    /// store values that kernel validation rejects the moment the cutover wires it.
+    /// </summary>
     [Fact]
-    public void Select_without_options_accepts_any_string()
+    public void Select_without_options_accepts_nothing()
     {
-        TryRead("\"anything\"", SelectFieldType.ControlName, out var result).ShouldBeTrue();
-        result.ShouldBe("anything");
+        TryRead("\"anything\"", SelectFieldType.ControlName, out _).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The field type's configured bounds are enforced here too, for the same reason: the kernel's
+    /// DateTimeFieldType.Validate enforces them, and a value accepted by extraction but rejected by
+    /// validation is a divergence that only shows up at the cutover.
+    /// </summary>
+    [Fact]
+    public void Datetime_outside_its_configured_range_is_rejected()
+    {
+        var configuration = new DateTimeConfiguration
+        {
+            InputMode = DateTimeInputMode.Date,
+            Min = new DateTime(2026, 1, 1),
+            Max = new DateTime(2026, 12, 31)
+        }.ConfigurationDictionary;
+
+        TryRead("\"2026-06-15\"", "DateTime", out _, configuration).ShouldBeTrue();
+        TryRead("\"2025-12-31\"", "DateTime", out _, configuration).ShouldBeFalse();
+        TryRead("\"2027-01-01\"", "DateTime", out _, configuration).ShouldBeFalse();
     }
 
     [Fact]

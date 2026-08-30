@@ -8,6 +8,7 @@ using Dignite.Vault.Extract.Documents.Pipelines.FieldExtraction;
 using Microsoft.Extensions.Logging;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.Domain.Repositories;
+using Volo.Abp.Linq;
 using Volo.Abp.MultiTenancy;
 using Volo.Abp.Uow;
 
@@ -53,6 +54,8 @@ public class FieldArchitectureV3Migrator : ITransientDependency
 
     protected IUnitOfWorkManager UnitOfWorkManager { get; }
 
+    protected IAsyncQueryableExecuter AsyncExecuter { get; }
+
     protected ILogger<FieldArchitectureV3Migrator> Logger { get; }
 
     public FieldArchitectureV3Migrator(
@@ -63,6 +66,7 @@ public class FieldArchitectureV3Migrator : ITransientDependency
         IFlexFieldIndexManager<Document> indexManager,
         ICurrentTenant currentTenant,
         IUnitOfWorkManager unitOfWorkManager,
+        IAsyncQueryableExecuter asyncExecuter,
         ILogger<FieldArchitectureV3Migrator> logger)
     {
         FieldDefinitionRepository = fieldDefinitionRepository;
@@ -72,6 +76,7 @@ public class FieldArchitectureV3Migrator : ITransientDependency
         IndexManager = indexManager;
         CurrentTenant = currentTenant;
         UnitOfWorkManager = unitOfWorkManager;
+        AsyncExecuter = asyncExecuter;
         Logger = logger;
     }
 
@@ -167,9 +172,10 @@ public class FieldArchitectureV3Migrator : ITransientDependency
     /// <summary>
     /// Each document's field-value rows to its bag.
     /// <para>
-    /// Paged rather than loaded whole: documents carry <c>Markdown</c>, so materializing the corpus at
-    /// once would be the one part of this migration whose memory cost scales with content rather than
-    /// with field count.
+    /// Paged, and paged over <b>ids</b> rather than entities: documents carry <c>Markdown</c>, so a page of
+    /// full entities would load every body twice — once to read its id, once again in the reload that
+    /// actually needs the child rows. The id projection makes the heavy load happen exactly once per
+    /// document that has something to migrate.
     /// </para>
     /// </summary>
     protected virtual async Task<(int Documents, int Values)> MigrateValuesAsync(CancellationToken cancellationToken)
@@ -190,19 +196,16 @@ public class FieldArchitectureV3Migrator : ITransientDependency
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var page = await DocumentGenericRepository.GetPagedListAsync(
-                skip, BatchSize, sorting: nameof(Document.Id), includeDetails: false, cancellationToken);
+            var page = await PageDocumentIdsAsync(skip, cancellationToken);
 
             if (page.Count == 0)
             {
                 break;
             }
 
-            foreach (var summary in page)
+            foreach (var documentId in page)
             {
-                // Reload with the field-value collection: the paged query deliberately does not include
-                // details, and the child rows are exactly what this pass reads.
-                var document = await DocumentRepository.FindWithFieldValuesAsync(summary.Id, cancellationToken);
+                var document = await DocumentRepository.FindWithFieldValuesAsync(documentId, cancellationToken);
                 if (document == null || document.ExtractedFieldValues.Count == 0)
                 {
                     continue;
@@ -225,11 +228,16 @@ public class FieldArchitectureV3Migrator : ITransientDependency
                     document.SetField(entry.Key, entry.Value);
                 }
 
-                await DocumentRepository.UpdateAsync(document, autoSave: true, cancellationToken);
+                // autoSave: false - one flush per page below, not one per document. Each flush is its own
+                // round trip through ABP's audit and event plumbing, and nothing in this loop reads back
+                // what an earlier iteration wrote.
+                await DocumentRepository.UpdateAsync(document, autoSave: false, cancellationToken);
 
                 documentsMigrated++;
                 valuesMigrated += bag.Count;
             }
+
+            await UnitOfWorkManager.Current!.SaveChangesAsync(cancellationToken);
 
             skip += page.Count;
         }
@@ -303,9 +311,12 @@ public class FieldArchitectureV3Migrator : ITransientDependency
                 }
 
                 document.SetFieldFingerprint(fingerprint);
-                await DocumentGenericRepository.UpdateAsync(document, autoSave: true, cancellationToken);
+                // One flush per page, as in MigrateValuesAsync.
+                await DocumentGenericRepository.UpdateAsync(document, autoSave: false, cancellationToken);
                 recomputed++;
             }
+
+            await UnitOfWorkManager.Current!.SaveChangesAsync(cancellationToken);
 
             skip += page.Count;
         }
@@ -315,6 +326,27 @@ public class FieldArchitectureV3Migrator : ITransientDependency
             recomputed, CurrentTenant.Id?.ToString() ?? "host");
 
         return recomputed;
+    }
+
+    /// <summary>
+    /// One page of document ids, ordered by id.
+    /// <para>
+    /// A projection rather than a page of entities: the callers need the id to decide whether a document
+    /// is worth loading at all, and loading whole documents to find that out means paying for every
+    /// <c>Markdown</c> body twice.
+    /// </para>
+    /// <para>
+    /// Ordering by id is what makes paging safe while the loop writes: it is stable and unaffected by the
+    /// updates each iteration makes, so no document is skipped or seen twice.
+    /// </para>
+    /// </summary>
+    protected virtual async Task<List<Guid>> PageDocumentIdsAsync(int skipCount, CancellationToken cancellationToken)
+    {
+        var queryable = await DocumentGenericRepository.GetQueryableAsync();
+
+        return await AsyncExecuter.ToListAsync(
+            queryable.OrderBy(d => d.Id).Skip(skipCount).Take(BatchSize).Select(d => d.Id),
+            cancellationToken);
     }
 
     /// <summary>

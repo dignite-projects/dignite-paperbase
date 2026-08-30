@@ -31,14 +31,21 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # NuGet.Config routes Dignite.Abp.FlexFields.* to GitHub Packages, which requires auth even for
+      # public packages, and reads the credential from GITHUB_PACKAGES_TOKEN. The built-in GITHUB_TOKEN
+      # carries packages:read for packages in this same org, so no PAT secret is needed here.
       - name: Restore core
         run: dotnet restore Dignite.Vault.Extract.slnx
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build core
         run: dotnet build Dignite.Vault.Extract.slnx --no-restore --configuration Release
 
       - name: Restore host
         run: dotnet restore host/src/Dignite.Vault.Extract.Host.csproj
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build host
         run: dotnet build host/src/Dignite.Vault.Extract.Host.csproj --no-restore --configuration Release

@@ -10,6 +10,7 @@ using Dignite.Abp.FlexFields.Boolean;
 using Dignite.Abp.FlexFields.CKEditor;
 using Dignite.Abp.FlexFields.Date;
 using Dignite.Abp.FlexFields.Number;
+using Dignite.Abp.FlexFields.Select;
 using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.Documents.Fields;
 using Dignite.Vault.Extract.FlexFields.Tags;
@@ -43,10 +44,8 @@ namespace Dignite.Vault.Extract.Documents.Pipelines.FieldExtraction;
 /// </summary>
 public static class FlexFieldFingerprintCalculator
 {
-    // Same separators as v2: ASCII unit/record separators, which cannot appear in a normalized value, so
-    // distinct field and value boundaries can never alias into the same canonical string.
-    private const char ValueSeparator = '';
-    private const char FieldSeparator = '';
+    // Separators and the number format come from FieldValueFormats, shared with the v2 calculator so the
+    // frozen hash-contract literals cannot drift between the two while both are live.
 
     /// <summary>
     /// Returns the fingerprint for <paramref name="document"/>, or <c>null</c> when its type declares no
@@ -86,13 +85,13 @@ public static class FlexFieldFingerprintCalculator
             {
                 if (i > 0)
                 {
-                    builder.Append(ValueSeparator);
+                    builder.Append(FieldValueFormats.FingerprintValueSeparator);
                 }
 
                 builder.Append(canonicalValues[i]);
             }
 
-            builder.Append(FieldSeparator);
+            builder.Append(FieldValueFormats.FingerprintFieldSeparator);
         }
 
         return ContentHasher.Sha256Hex(Encoding.UTF8.GetBytes(builder.ToString()));
@@ -114,7 +113,14 @@ public static class FlexFieldFingerprintCalculator
         }
 
         // Multi-valued: every element must normalize, in bag order.
-        if (string.Equals(fieldTypeName, TagsFieldType.ControlName, StringComparison.Ordinal))
+        //
+        // Select belongs here alongside Tags whenever it is configured Multiple, but this method is not
+        // given the field's configuration - so a Select value is routed by its runtime shape instead: a
+        // JSON array or list means multi-valued. That is sound because the reader only ever stores a list
+        // for a multi-Select and a bare string for a single one, and it keeps a multi-Select unique key
+        // from silently falling through to the scalar path and nulling the whole fingerprint.
+        if (string.Equals(fieldTypeName, TagsFieldType.ControlName, StringComparison.Ordinal) ||
+            (string.Equals(fieldTypeName, SelectFieldType.ControlName, StringComparison.Ordinal) && IsListShaped(value)))
         {
             var elements = ReadList(value);
             if (elements.Count == 0)
@@ -144,7 +150,12 @@ public static class FlexFieldFingerprintCalculator
     private static string? CanonicalizeScalar(object value, string fieldTypeName)
     {
         if (string.Equals(fieldTypeName, TextFieldType.ControlName, StringComparison.Ordinal) ||
-            string.Equals(fieldTypeName, CKEditorFieldType.ControlName, StringComparison.Ordinal))
+            string.Equals(fieldTypeName, CKEditorFieldType.ControlName, StringComparison.Ordinal) ||
+            // A single-valued Select stores the chosen option's value as a plain string, so it
+            // canonicalizes exactly like text. Without this a Select field marked IsUniqueKey fell
+            // through to the unknown-type null below and silently disabled duplicate detection for its
+            // whole document type - the type is not unknown, it was simply missed.
+            string.Equals(fieldTypeName, SelectFieldType.ControlName, StringComparison.Ordinal))
         {
             return NormalizeText(ReadString(value));
         }
@@ -154,7 +165,7 @@ public static class FlexFieldFingerprintCalculator
             // Full precision on purpose, unlike the export's rounded cell format: two amounts that differ
             // beyond six decimals must not hash to the same fingerprint.
             return TryReadDecimal(value, out var number)
-                ? number.ToString("0.############################", CultureInfo.InvariantCulture)
+                ? number.ToString(FieldValueFormats.FingerprintNumber, CultureInfo.InvariantCulture)
                 : null;
         }
 
@@ -180,6 +191,17 @@ public static class FlexFieldFingerprintCalculator
         // an arbitrary ToString(). A field type this calculator does not understand must not silently
         // produce a fingerprint that a later version would compute differently.
         return null;
+    }
+
+    /// <summary>
+    /// Whether a bag value carries a list rather than a scalar. Used only to route Select, whose
+    /// arity lives in configuration this method is not handed.
+    /// </summary>
+    private static bool IsListShaped(object value)
+    {
+        return value is JsonElement { ValueKind: JsonValueKind.Array }
+            or IEnumerable<string>
+            or IList;
     }
 
     private static string? NormalizeText(string? raw)
