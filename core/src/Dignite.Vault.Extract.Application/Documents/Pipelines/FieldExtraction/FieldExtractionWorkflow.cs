@@ -10,6 +10,7 @@ using Dignite.Abp.FlexFields.CKEditor;
 using Dignite.Abp.FlexFields.Select;
 using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.Ai;
+using Dignite.Vault.Extract.FlexFields;
 using Dignite.Vault.Extract.FlexFields.Tags;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -40,15 +41,18 @@ public class FieldExtractionWorkflow : ITransientDependency
     private readonly IChatClient _chatClient;
     private readonly ILogger<FieldExtractionWorkflow> _logger;
     private readonly FieldSchemaPromptBudgetGuard _schemaPromptBudget;
+    private readonly IVaultExtractFieldTypeRegistry _registry;
 
     public FieldExtractionWorkflow(
         [FromKeyedServices(VaultExtractConsts.StructuredChatClientKey)] IChatClient chatClient,
         ILogger<FieldExtractionWorkflow> logger,
-        FieldSchemaPromptBudgetGuard schemaPromptBudget)
+        FieldSchemaPromptBudgetGuard schemaPromptBudget,
+        IVaultExtractFieldTypeRegistry registry)
     {
         _chatClient = chatClient;
         _logger = logger;
         _schemaPromptBudget = schemaPromptBudget;
+        _registry = registry;
     }
 
     /// <summary>
@@ -262,7 +266,7 @@ public class FieldExtractionWorkflow : ITransientDependency
         return sb.ToString();
     }
 
-    private static ChatResponseFormat BuildResponseFormat(IReadOnlyList<FieldExtractionDescriptor> fields)
+    private ChatResponseFormat BuildResponseFormat(IReadOnlyList<FieldExtractionDescriptor> fields)
     {
         // #527 §1/§3: the response is an envelope { values, validationWarnings }. `values` is the existing per-field
         // typed object; `validationWarnings` is a bounded array whose fieldName is constrained to the declared field
@@ -321,14 +325,14 @@ public class FieldExtractionWorkflow : ITransientDependency
             schemaDescription: "Extracted field values plus field validation warnings.");
     }
 
-    private static JsonObject BuildValuesSchema(IReadOnlyList<FieldExtractionDescriptor> fields)
+    private JsonObject BuildValuesSchema(IReadOnlyList<FieldExtractionDescriptor> fields)
     {
         var properties = new JsonObject();
         var required = new JsonArray();
 
         foreach (var field in fields)
         {
-            properties[field.Name] = FlexFieldValueSchemaBuilder.Build(field.FieldTypeName, field.Configuration);
+            properties[field.Name] = FlexFieldValueSchemaBuilder.Build(field.FieldTypeName, field.Configuration, _registry);
             required.Add(field.Name);
         }
 

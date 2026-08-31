@@ -381,7 +381,8 @@ public class DocumentAppService_Review_Tests
                 new DocumentPipelineRunManager(runRepoSubstitute),
                 Substitute.For<IBackgroundJobManager>()),
             Substitute.For<IDistributedEventBus>(),
-            new ReviewStateEvaluator());
+            new ReviewStateEvaluator(),
+            Substitute.For<Dignite.Vault.Extract.FlexFields.IVaultExtractFieldTypeRegistry>());
 
         var method = typeof(DocumentAppService).GetMethod(
             "ApplyFilter",

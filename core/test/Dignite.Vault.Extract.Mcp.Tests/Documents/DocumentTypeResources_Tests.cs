@@ -8,6 +8,8 @@ using Dignite.Abp.FlexFields.CKEditor;
 using Dignite.Abp.FlexFields.Number;
 using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.Ai;
+using Dignite.Vault.Extract.Documents.Fields.FieldTypeExtensions;
+using Dignite.Vault.Extract.FlexFields;
 using Dignite.Vault.Extract.FlexFields.Tags;
 using Dignite.Vault.Extract.Documents;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,9 +23,11 @@ using Xunit;
 
 namespace Dignite.Vault.Extract.Mcp.Documents;
 
-// VaultExtractFlexFieldsModule brings the field-type registry the schema projection reads: it decides
-// isMultiValue / isFilterable, so stubbing it would let the projection agree with a registry that does
-// not exist.
+// VaultExtractFlexFieldsModule brings the kernel field-type registry the schema projection reads (isFilterable);
+// stubbing it would let the projection agree with a registry that does not exist. IVaultExtractFieldTypeRegistry
+// (isMultiValue) is Vault Extract's own, built-in extensions constructed directly here rather than via
+// [DependsOn(VaultExtractApplicationModule)] - that module's own EF Core / background-job registration is not
+// needed just to get the same 7 stateless extension classes it would auto-register.
 [DependsOn(typeof(VaultExtractTestBaseModule), typeof(Extract.FlexFields.VaultExtractFlexFieldsModule))]
 public class DocumentTypeResourcesTestModule : AbpModule
 {
@@ -34,6 +38,13 @@ public class DocumentTypeResourcesTestModule : AbpModule
         // filtering, schema projection, PromptBoundary wrapping, and not-found behavior.
         context.Services.AddSingleton(Substitute.For<IDocumentTypeAppService>());
         context.Services.AddSingleton(Substitute.For<IFieldDefinitionAppService>());
+        context.Services.AddSingleton<IVaultExtractFieldTypeRegistry>(new VaultExtractFieldTypeRegistry(
+            new IVaultExtractFieldTypeExtension[]
+            {
+                new TextFieldTypeExtension(), new NumberFieldTypeExtension(), new BooleanFieldTypeExtension(),
+                new DateTimeFieldTypeExtension(), new SelectFieldTypeExtension(), new CKEditorFieldTypeExtension(),
+                new TagsFieldTypeExtension()
+            }));
     }
 }
 
@@ -52,6 +63,7 @@ public class DocumentTypeResources_Tests : VaultExtractTestBase<DocumentTypeReso
     private readonly IDocumentTypeAppService _documentTypeAppService;
     private readonly IFieldDefinitionAppService _fieldDefinitionAppService;
     private readonly IFieldTypeResolver _fieldTypeResolver;
+    private readonly IVaultExtractFieldTypeRegistry _fieldTypeExtensionRegistry;
 
     public DocumentTypeResources_Tests()
     {
@@ -61,6 +73,7 @@ public class DocumentTypeResources_Tests : VaultExtractTestBase<DocumentTypeReso
         // types actually registered, and a stubbed resolver would let a type this deployment does not have
         // pass for a filterable one.
         _fieldTypeResolver = GetRequiredService<IFieldTypeResolver>();
+        _fieldTypeExtensionRegistry = GetRequiredService<IVaultExtractFieldTypeRegistry>();
     }
 
     [Fact]
@@ -84,6 +97,7 @@ public class DocumentTypeResources_Tests : VaultExtractTestBase<DocumentTypeReso
             _documentTypeAppService,
             _fieldDefinitionAppService,
             _fieldTypeResolver,
+            _fieldTypeExtensionRegistry,
             serviceProvider: ServiceProvider);
 
         var contents = (TextResourceContents)result;
@@ -126,7 +140,8 @@ public class DocumentTypeResources_Tests : VaultExtractTestBase<DocumentTypeReso
             });
 
         var result = await DocumentTypeResources.ReadAsync(
-            "contract.general", _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver);
+            "contract.general", _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver,
+            _fieldTypeExtensionRegistry);
 
         var schema = JsonSerializer.Deserialize<DocumentTypeSchema>(((TextResourceContents)result).Text)!;
 
@@ -177,7 +192,8 @@ public class DocumentTypeResources_Tests : VaultExtractTestBase<DocumentTypeReso
             });
 
         var result = await DocumentTypeResources.ReadAsync(
-            "contract.general", _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver);
+            "contract.general", _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver,
+            _fieldTypeExtensionRegistry);
 
         var schema = JsonSerializer.Deserialize<DocumentTypeSchema>(((TextResourceContents)result).Text)!;
 
@@ -198,7 +214,8 @@ public class DocumentTypeResources_Tests : VaultExtractTestBase<DocumentTypeReso
 
         await Should.ThrowAsync<McpException>(async () =>
             await DocumentTypeResources.ReadAsync(
-                "nonexistent", _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver));
+                "nonexistent", _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver,
+                _fieldTypeExtensionRegistry));
     }
 
     [Fact]

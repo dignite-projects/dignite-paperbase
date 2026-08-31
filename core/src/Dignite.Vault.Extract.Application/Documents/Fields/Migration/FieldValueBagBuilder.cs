@@ -27,7 +27,8 @@ public static class FieldValueBagBuilder
     /// </param>
     public static FlexFieldDictionary Build(
         IReadOnlyCollection<DocumentExtractedField> values,
-        IReadOnlyCollection<Field> definitions)
+        IReadOnlyCollection<Field> definitions,
+        IVaultExtractFieldTypeRegistry registry)
     {
         var bag = new FlexFieldDictionary();
         var byId = definitions.ToDictionary(d => d.Id);
@@ -44,7 +45,7 @@ public static class FieldValueBagBuilder
             // built in row-enumeration order would produce a different fingerprint for the same data.
             var ordered = group.OrderBy(v => v.Order).ToList();
 
-            var isMultiValued = IsMultiValued(definition);
+            var isMultiValued = IsMultiValued(definition, registry);
             if (isMultiValued)
             {
                 // A list even when it currently holds one element: the field is multi-valued by type, and
@@ -69,9 +70,9 @@ public static class FieldValueBagBuilder
     /// Whether the v3 field type stores a list. Keyed on the migrated <c>FieldTypeName</c> rather than on
     /// v2's <c>AllowMultiple</c>, because after the migration the type is the only thing that says so.
     /// </summary>
-    private static bool IsMultiValued(Field definition)
+    private static bool IsMultiValued(Field definition, IVaultExtractFieldTypeRegistry registry)
     {
-        return VaultExtractFieldTypes.IsMultiValue(definition.FieldTypeName, definition.Configuration);
+        return registry.IsMultiValue(definition.FieldTypeName, definition.Configuration);
     }
 
     private static string? ReadText(DocumentExtractedField row) => row.TextValue ?? row.LongTextValue;

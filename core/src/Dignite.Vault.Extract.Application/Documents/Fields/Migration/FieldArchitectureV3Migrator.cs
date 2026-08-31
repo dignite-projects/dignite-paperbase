@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Abp.FlexFields;
 using Dignite.Vault.Extract.Documents.Pipelines.FieldExtraction;
+using Dignite.Vault.Extract.FlexFields;
 using Microsoft.Extensions.Logging;
 using Volo.Abp;
 using Volo.Abp.Data;
@@ -62,6 +63,8 @@ public class FieldArchitectureV3Migrator : ITransientDependency
 
     protected ILogger<FieldArchitectureV3Migrator> Logger { get; }
 
+    protected IVaultExtractFieldTypeRegistry FieldTypeExtensionRegistry { get; }
+
     public FieldArchitectureV3Migrator(
         IFieldDefinitionRepository fieldDefinitionRepository,
         IFieldRepository fieldRepository,
@@ -72,7 +75,8 @@ public class FieldArchitectureV3Migrator : ITransientDependency
         IUnitOfWorkManager unitOfWorkManager,
         IAsyncQueryableExecuter asyncExecuter,
         IDataFilter dataFilter,
-        ILogger<FieldArchitectureV3Migrator> logger)
+        ILogger<FieldArchitectureV3Migrator> logger,
+        IVaultExtractFieldTypeRegistry fieldTypeExtensionRegistry)
     {
         FieldDefinitionRepository = fieldDefinitionRepository;
         FieldRepository = fieldRepository;
@@ -84,6 +88,7 @@ public class FieldArchitectureV3Migrator : ITransientDependency
         AsyncExecuter = asyncExecuter;
         DataFilter = dataFilter;
         Logger = logger;
+        FieldTypeExtensionRegistry = fieldTypeExtensionRegistry;
     }
 
     /// <summary>
@@ -252,7 +257,7 @@ public class FieldArchitectureV3Migrator : ITransientDependency
                         continue;
                     }
 
-                    var bag = FieldValueBagBuilder.Build(document.ExtractedFieldValues, fields);
+                    var bag = FieldValueBagBuilder.Build(document.ExtractedFieldValues, fields, FieldTypeExtensionRegistry);
                     if (bag.Count == 0)
                     {
                         continue;
@@ -354,7 +359,7 @@ public class FieldArchitectureV3Migrator : ITransientDependency
                     fieldsByType[document.DocumentTypeId.Value] = fields;
                 }
 
-                var fingerprint = FlexFieldFingerprintCalculator.Compute(document, fields);
+                var fingerprint = FlexFieldFingerprintCalculator.Compute(document, fields, FieldTypeExtensionRegistry);
                 if (string.Equals(fingerprint, document.FieldFingerprint, StringComparison.Ordinal))
                 {
                     continue;

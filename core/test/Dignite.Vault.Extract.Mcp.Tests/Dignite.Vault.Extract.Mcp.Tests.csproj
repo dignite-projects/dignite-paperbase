@@ -25,6 +25,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Dignite.Vault.Extract.Mcp\Dignite.Vault.Extract.Mcp.csproj" />
     <ProjectReference Include="..\Dignite.Vault.Extract.TestBase\Dignite.Vault.Extract.TestBase.csproj" />
+    <!-- #564: only for constructing the real IVaultExtractFieldTypeRegistry directly (see
+         DocumentTypeResourcesTestModule / DocumentTypeToolsTestModule) - not an ABP module dependency, so
+         it does not pull Application's own module/EF Core registration into these lightweight tests. -->
+    <ProjectReference Include="..\..\src\Dignite.Vault.Extract.Application\Dignite.Vault.Extract.Application.csproj" />
   </ItemGroup>
 
 </Project>

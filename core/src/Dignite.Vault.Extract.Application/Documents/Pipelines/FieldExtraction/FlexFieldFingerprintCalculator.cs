@@ -1,19 +1,11 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Text;
-using System.Text.Json;
 using Dignite.Abp.FlexFields;
-using Dignite.Abp.FlexFields.Boolean;
-using Dignite.Abp.FlexFields.CKEditor;
-using Dignite.Abp.FlexFields.Date;
-using Dignite.Abp.FlexFields.Number;
-using Dignite.Abp.FlexFields.Select;
-using Dignite.Abp.FlexFields.Text;
+using Dignite.Vault.Extract.Documents;
 using Dignite.Vault.Extract.Documents.Fields;
-using Dignite.Vault.Extract.FlexFields.Tags;
+using Dignite.Vault.Extract.FlexFields;
 
 namespace Dignite.Vault.Extract.Documents.Pipelines.FieldExtraction;
 
@@ -30,22 +22,23 @@ namespace Dignite.Vault.Extract.Documents.Pipelines.FieldExtraction;
 /// </para>
 /// <para>
 /// The determinism rules are carried over unchanged from v2, because they are what make the hash stable
-/// rather than merely reproducible on one machine:
-/// <list type="bullet">
-///   <item>unique-key fields in <see cref="Field.Id"/> order, and each field's values in bag order, so
-///   enumeration order never leaks into the hash;</item>
-///   <item>values normalized per field type — text trimmed, whitespace folded, lower-cased; numbers with
-///   trailing zeros stripped; dates in an invariant ISO form — so two scans of the same document that
-///   differ only cosmetically still match;</item>
-///   <item>a <b>partial key</b> (a declared unique-key field with no usable value) returns
-///   <c>null</c>, because an incomplete key would collide unrelated documents.</item>
-/// </list>
+/// rather than merely reproducible on one machine: unique-key fields hash in <see cref="Field.Id"/> order,
+/// and each field's values in bag order, so enumeration order never leaks into the hash; and a
+/// <b>partial key</b> (a declared unique-key field with no usable value) returns <c>null</c>, because an
+/// incomplete key would collide unrelated documents.
+/// </para>
+/// <para>
+/// #564: the value-normalization rules themselves — what counts as "no usable value", and whether a value
+/// is one string or several — now live on each field type's own
+/// <see cref="IVaultExtractFieldTypeExtension.CanonicalizeForFingerprint"/>; this keeps only the
+/// unique-key selection/ordering and the partial-key rule that applies across every type alike.
 /// </para>
 /// </summary>
 public static class FlexFieldFingerprintCalculator
 {
-    // Separators and the number format come from FieldValueFormats, shared with the v2 calculator so the
-    // frozen hash-contract literals cannot drift between the two while both are live.
+    // The separator between the values of one multi-valued field, and the separator between fields,
+    // come from FieldValueFormats, shared with the v2 calculator so the frozen hash-contract literals
+    // cannot drift between the two while both are live.
 
     /// <summary>
     /// Returns the fingerprint for <paramref name="document"/>, or <c>null</c> when its type declares no
@@ -55,7 +48,9 @@ public static class FlexFieldFingerprintCalculator
     /// <param name="definitions">
     /// The document type's current fields. Only <see cref="Field.IsUniqueKey"/> ones participate.
     /// </param>
-    public static string? Compute(IHasFlexFields document, IReadOnlyCollection<Field> definitions)
+    /// <param name="registry">Resolves each unique-key field's own canonicalization rule.</param>
+    public static string? Compute(
+        IHasFlexFields document, IReadOnlyCollection<Field> definitions, IVaultExtractFieldTypeRegistry registry)
     {
         var uniqueKeyFields = definitions
             .Where(d => d.IsUniqueKey)
@@ -71,7 +66,11 @@ public static class FlexFieldFingerprintCalculator
         var builder = new StringBuilder();
         foreach (var field in uniqueKeyFields)
         {
-            var canonicalValues = Canonicalize(document.GetField(field.Name), field.FieldTypeName);
+            var value = document.GetField(field.Name);
+
+            var canonicalValues = value != null && registry.TryGet(field.FieldTypeName, out var extension)
+                ? extension.CanonicalizeForFingerprint(value)
+                : Array.Empty<string>();
 
             // No value, or a value that normalizes to nothing, both make the key partial.
             if (canonicalValues.Count == 0)
@@ -95,200 +94,5 @@ public static class FlexFieldFingerprintCalculator
         }
 
         return ContentHasher.Sha256Hex(Encoding.UTF8.GetBytes(builder.ToString()));
-    }
-
-    /// <summary>
-    /// Normalizes one bag value into the zero, one, or many canonical strings it contributes.
-    /// <para>
-    /// Returns an empty list when any part of the value is unusable, rather than skipping it: a
-    /// multi-valued key whose second element is blank is a partial key, not a shorter key. Silently
-    /// dropping it would let two documents with different data hash identically.
-    /// </para>
-    /// </summary>
-    private static List<string> Canonicalize(object? value, string fieldTypeName)
-    {
-        if (value == null)
-        {
-            return new List<string>();
-        }
-
-        // Multi-valued: every element must normalize, in bag order.
-        //
-        // Select belongs here alongside Tags whenever it is configured Multiple, but this method is not
-        // given the field's configuration - so a Select value is routed by its runtime shape instead: a
-        // JSON array or list means multi-valued. That is sound because the reader only ever stores a list
-        // for a multi-Select and a bare string for a single one, and it keeps a multi-Select unique key
-        // from silently falling through to the scalar path and nulling the whole fingerprint.
-        if (string.Equals(fieldTypeName, TagsFieldType.ControlName, StringComparison.Ordinal) ||
-            (string.Equals(fieldTypeName, SelectFieldType.ControlName, StringComparison.Ordinal) && IsListShaped(value)))
-        {
-            var elements = ReadList(value);
-            if (elements.Count == 0)
-            {
-                return new List<string>();
-            }
-
-            var canonical = new List<string>(elements.Count);
-            foreach (var element in elements)
-            {
-                var normalized = NormalizeText(element);
-                if (normalized == null)
-                {
-                    return new List<string>();
-                }
-
-                canonical.Add(normalized);
-            }
-
-            return canonical;
-        }
-
-        var single = CanonicalizeScalar(value, fieldTypeName);
-        return single == null ? new List<string>() : new List<string> { single };
-    }
-
-    private static string? CanonicalizeScalar(object value, string fieldTypeName)
-    {
-        if (string.Equals(fieldTypeName, TextFieldType.ControlName, StringComparison.Ordinal) ||
-            string.Equals(fieldTypeName, CKEditorFieldType.ControlName, StringComparison.Ordinal) ||
-            // A single-valued Select stores the chosen option's value as a plain string, so it
-            // canonicalizes exactly like text. Without this a Select field marked IsUniqueKey fell
-            // through to the unknown-type null below and silently disabled duplicate detection for its
-            // whole document type - the type is not unknown, it was simply missed.
-            string.Equals(fieldTypeName, SelectFieldType.ControlName, StringComparison.Ordinal))
-        {
-            return NormalizeText(ReadString(value));
-        }
-
-        if (string.Equals(fieldTypeName, NumberFieldType.ControlName, StringComparison.Ordinal))
-        {
-            // Full precision on purpose, unlike the export's rounded cell format: two amounts that differ
-            // beyond six decimals must not hash to the same fingerprint.
-            return TryReadDecimal(value, out var number)
-                ? number.ToString(FieldValueFormats.FingerprintNumber, CultureInfo.InvariantCulture)
-                : null;
-        }
-
-        if (string.Equals(fieldTypeName, BooleanFieldType.ControlName, StringComparison.Ordinal))
-        {
-            return TryReadBoolean(value, out var flag) ? (flag ? "true" : "false") : null;
-        }
-
-        if (string.Equals(fieldTypeName, DateTimeFieldType.ControlName, StringComparison.Ordinal))
-        {
-            if (!TryReadDateTime(value, out var moment))
-            {
-                return null;
-            }
-
-            // One format for both input modes, unlike v2's separate Date / DateTime branches. A Date-mode
-            // value is stored at midnight, so this renders it as "…T00:00:00" - stable, and distinct from
-            // a DateTime-mode value at any other time of day.
-            return moment.ToString(FieldValueFormats.DateTime, CultureInfo.InvariantCulture);
-        }
-
-        // An unrecognized field type contributes nothing, which makes the key partial rather than hashing
-        // an arbitrary ToString(). A field type this calculator does not understand must not silently
-        // produce a fingerprint that a later version would compute differently.
-        return null;
-    }
-
-    /// <summary>
-    /// Whether a bag value carries a list rather than a scalar. Used only to route Select, whose
-    /// arity lives in configuration this method is not handed.
-    /// </summary>
-    private static bool IsListShaped(object value)
-    {
-        return value is JsonElement { ValueKind: JsonValueKind.Array }
-            or IEnumerable<string>
-            or IList;
-    }
-
-    private static string? NormalizeText(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return null;
-        }
-
-        // Fold whitespace runs to one space, trim, lower-case invariantly, so "INV 001" and "inv  001"
-        // are the same key. Identical to v2's rule.
-        var folded = string.Join(' ', raw.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        return folded.ToLowerInvariant();
-    }
-
-    // --- bag readers ---
-    //
-    // A value bag round-trips through JSON, so what comes back depends on who put it back: an in-memory
-    // entity holds the CLR value the writer set, while a reloaded one holds a JsonElement. Both shapes
-    // have to normalize identically, or a document would fingerprint differently before and after a
-    // reload - the single most confusing failure this component could have.
-
-    private static string? ReadString(object value) => value switch
-    {
-        string s => s,
-        JsonElement { ValueKind: JsonValueKind.String } e => e.GetString(),
-        JsonElement e => e.ToString(),
-        _ => Convert.ToString(value, CultureInfo.InvariantCulture)
-    };
-
-    private static bool TryReadDecimal(object value, out decimal result)
-    {
-        switch (value)
-        {
-            case decimal d: result = d; return true;
-            case JsonElement { ValueKind: JsonValueKind.Number } e: return e.TryGetDecimal(out result);
-            case IConvertible:
-                try { result = Convert.ToDecimal(value, CultureInfo.InvariantCulture); return true; }
-                catch { result = 0; return false; }
-            default: result = 0; return false;
-        }
-    }
-
-    private static bool TryReadBoolean(object value, out bool result)
-    {
-        switch (value)
-        {
-            case bool b: result = b; return true;
-            case JsonElement { ValueKind: JsonValueKind.True }: result = true; return true;
-            case JsonElement { ValueKind: JsonValueKind.False }: result = false; return true;
-            default: return bool.TryParse(ReadString(value), out result);
-        }
-    }
-
-    private static bool TryReadDateTime(object value, out DateTime result)
-    {
-        switch (value)
-        {
-            case DateTime dt: result = dt; return true;
-            case JsonElement { ValueKind: JsonValueKind.String } e: return e.TryGetDateTime(out result);
-            default:
-                return DateTime.TryParse(
-                    ReadString(value), CultureInfo.InvariantCulture, DateTimeStyles.None, out result);
-        }
-    }
-
-    private static List<string> ReadList(object value)
-    {
-        switch (value)
-        {
-            case List<string> list:
-                return list;
-            // Before IEnumerable: a string is a sequence of chars, and "abc" is one value, not three.
-            case string single:
-                return new List<string> { single };
-            case JsonElement { ValueKind: JsonValueKind.Array } element:
-                return element.EnumerateArray()
-                    .Select(e => e.ValueKind == JsonValueKind.String ? e.GetString()! : e.ToString())
-                    .ToList();
-            case JsonElement element:
-                return new List<string> { element.ValueKind == JsonValueKind.String ? element.GetString()! : element.ToString() };
-            case IEnumerable items:
-                return items.Cast<object?>()
-                    .Select(i => Convert.ToString(i, CultureInfo.InvariantCulture) ?? string.Empty)
-                    .ToList();
-            default:
-                return new List<string> { Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty };
-        }
     }
 }

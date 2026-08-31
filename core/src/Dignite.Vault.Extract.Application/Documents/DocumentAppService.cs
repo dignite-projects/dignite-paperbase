@@ -38,6 +38,7 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
     private readonly IFlexFieldIndexManager<Document> _flexFieldIndexManager;
     private readonly ICabinetRepository _cabinetRepository;
     private readonly IBlobContainer<VaultExtractDocumentContainer> _blobContainer;
+    private readonly Dignite.Vault.Extract.FlexFields.IVaultExtractFieldTypeRegistry _fieldTypeExtensionRegistry;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
     private readonly DocumentPipelineJobScheduler _pipelineJobScheduler;
     private readonly IDistributedEventBus _distributedEventBus;
@@ -55,7 +56,8 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
         DocumentPipelineRunManager pipelineRunManager,
         DocumentPipelineJobScheduler pipelineJobScheduler,
         IDistributedEventBus distributedEventBus,
-        ReviewStateEvaluator reviewEvaluator)
+        ReviewStateEvaluator reviewEvaluator,
+        Dignite.Vault.Extract.FlexFields.IVaultExtractFieldTypeRegistry fieldTypeExtensionRegistry)
     {
         _documentRepository = documentRepository;
         _documentTypeRepository = documentTypeRepository;
@@ -69,6 +71,7 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
         _pipelineJobScheduler = pipelineJobScheduler;
         _distributedEventBus = distributedEventBus;
         _reviewEvaluator = reviewEvaluator;
+        _fieldTypeExtensionRegistry = fieldTypeExtensionRegistry;
     }
 
     public virtual async Task<DocumentDto> GetAsync(Guid id)
@@ -723,7 +726,8 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
                     .WithData("DocumentTypeCode", documentTypeCode ?? string.Empty);
             }
 
-            if (!FlexFieldValueReader.TryRead(value, definition.FieldTypeName, definition.Configuration, out var read))
+            if (!FlexFieldValueReader.TryRead(
+                    value, definition.FieldTypeName, definition.Configuration, _fieldTypeExtensionRegistry, out var read))
             {
                 throw new BusinessException(VaultExtractErrorCodes.ExtractedField.InvalidValue)
                     .WithData("FieldName", key)
@@ -1304,7 +1308,7 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
                 continue;
             }
 
-            var rendered = FlexFieldValueJsonWriter.Write(entry.Value, field.FieldTypeName, field.Configuration);
+            var rendered = FlexFieldValueJsonWriter.Write(entry.Value, field.FieldTypeName, field.Configuration, _fieldTypeExtensionRegistry);
             if (rendered.HasValue)
             {
                 dict[entry.Key] = rendered.Value;

@@ -6,6 +6,7 @@ using Dignite.Abp.FlexFields;
 using Dignite.Vault.Extract.Abstractions.Documents;
 using Dignite.Vault.Extract.Ai;
 using Dignite.Vault.Extract.Documents.Review;
+using Dignite.Vault.Extract.FlexFields;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Volo.Abp.DependencyInjection;
@@ -72,6 +73,7 @@ public class FieldExtractionService : ITransientDependency
     private readonly ICancellationTokenProvider _cancellationTokenProvider;
     private readonly VaultExtractBehaviorOptions _behaviorOptions;
     private readonly ILogger<FieldExtractionService> _logger;
+    private readonly IVaultExtractFieldTypeRegistry _fieldTypeExtensionRegistry;
 
     public FieldExtractionService(
         IDocumentRepository documentRepository,
@@ -86,7 +88,8 @@ public class FieldExtractionService : ITransientDependency
         IUnitOfWorkManager unitOfWorkManager,
         ICancellationTokenProvider cancellationTokenProvider,
         IOptions<VaultExtractBehaviorOptions> behaviorOptions,
-        ILogger<FieldExtractionService> logger)
+        ILogger<FieldExtractionService> logger,
+        IVaultExtractFieldTypeRegistry fieldTypeExtensionRegistry)
     {
         _documentRepository = documentRepository;
         _documentTypeRepository = documentTypeRepository;
@@ -101,6 +104,7 @@ public class FieldExtractionService : ITransientDependency
         _cancellationTokenProvider = cancellationTokenProvider;
         _behaviorOptions = behaviorOptions.Value;
         _logger = logger;
+        _fieldTypeExtensionRegistry = fieldTypeExtensionRegistry;
     }
 
     /// <summary>
@@ -376,7 +380,8 @@ public class FieldExtractionService : ITransientDependency
                 // than stored - the same "store nothing, say so" trade v2 made, now with one gate instead
                 // of a validator here and a converter in the entity.
                 if (!FlexFieldValueReader.TryRead(
-                        value.Value, currentDefinition.FieldTypeName, currentDefinition.Configuration, out var read))
+                        value.Value, currentDefinition.FieldTypeName, currentDefinition.Configuration,
+                        _fieldTypeExtensionRegistry, out var read))
                 {
                     _logger.LogWarning(
                         "FieldExtractionWorkflow returned a value for field {FieldName} ({FieldId}) on doc {DocumentId} that does not match field type {FieldType} (JSON kind {JsonValueKind}); value skipped.",
@@ -445,7 +450,7 @@ public class FieldExtractionService : ITransientDependency
             // "not a duplicate" override) suppresses re-flagging on re-extraction. The collision query relies on the
             // ambient IMultiTenant + ISoftDelete filters (tenant restored via ICurrentTenant.Change above) and is
             // hard-capped, so it never returns a cross-layer or unbounded set.
-            var fingerprint = FlexFieldFingerprintCalculator.Compute(document, currentDefinitions);
+            var fingerprint = FlexFieldFingerprintCalculator.Compute(document, currentDefinitions, _fieldTypeExtensionRegistry);
             document.SetFieldFingerprint(fingerprint);
 
             var duplicateSuspected = false;

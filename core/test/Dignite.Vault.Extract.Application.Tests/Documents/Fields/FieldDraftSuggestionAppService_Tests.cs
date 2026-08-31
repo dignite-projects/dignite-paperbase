@@ -79,7 +79,7 @@ public class FieldDraftSuggestionAppService_Tests
         draft.Name.ShouldBe("contract_amount");
         draft.FieldTypeName.ShouldBe(NumberFieldType.ControlName);
         draft.IsRequired.ShouldBeTrue();
-        VaultExtractFieldTypes.IsMultiValue(draft.FieldTypeName, draft.Configuration).ShouldBeFalse();
+        TestFieldTypeRegistry.Default.IsMultiValue(draft.FieldTypeName, draft.Configuration).ShouldBeFalse();
     }
 
     [Fact]
@@ -125,7 +125,7 @@ public class FieldDraftSuggestionAppService_Tests
         draft.FieldTypeName.ShouldBe(DateTimeFieldType.ControlName);
         new DateTimeConfiguration(draft.Configuration).InputMode.ShouldBe(DateTimeInputMode.Date);
         // Guardrail 2 is structural now: a non-text kind cannot reach a multi-valued field type at all.
-        VaultExtractFieldTypes.IsMultiValue(draft.FieldTypeName, draft.Configuration).ShouldBeFalse();
+        TestFieldTypeRegistry.Default.IsMultiValue(draft.FieldTypeName, draft.Configuration).ShouldBeFalse();
     }
 
     [Fact]
@@ -138,7 +138,7 @@ public class FieldDraftSuggestionAppService_Tests
 
         // v3 folds "many values" into the type: a multi-valued text field is Tags, the open-vocabulary type.
         draft.FieldTypeName.ShouldBe(TagsFieldType.ControlName);
-        VaultExtractFieldTypes.IsMultiValue(draft.FieldTypeName, draft.Configuration).ShouldBeTrue();
+        TestFieldTypeRegistry.Default.IsMultiValue(draft.FieldTypeName, draft.Configuration).ShouldBeTrue();
     }
 
     [Fact]
@@ -152,7 +152,7 @@ public class FieldDraftSuggestionAppService_Tests
         var draft = await svc.DraftAsync(new DraftFieldDefinitionInput { Prompt = "Amount", ForNewField = true });
 
         draft.IsRequired.ShouldBeTrue();
-        VaultExtractFieldTypes.IsMultiValue(draft.FieldTypeName, draft.Configuration).ShouldBeFalse();
+        TestFieldTypeRegistry.Default.IsMultiValue(draft.FieldTypeName, draft.Configuration).ShouldBeFalse();
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public class FieldDraftSuggestionAppService_Tests
         var draft = await svc.DraftAsync(new DraftFieldDefinitionInput { Prompt = "Tags", ForNewField = true });
 
         draft.IsRequired.ShouldBeFalse();
-        VaultExtractFieldTypes.IsMultiValue(draft.FieldTypeName, draft.Configuration).ShouldBeTrue();
+        TestFieldTypeRegistry.Default.IsMultiValue(draft.FieldTypeName, draft.Configuration).ShouldBeTrue();
     }
 
     [Fact]
@@ -204,7 +204,7 @@ public class FieldDraftSuggestionAppService_Tests
         draft.Name.ShouldBe(string.Empty);
         draft.FieldTypeName.ShouldBe(TextFieldType.ControlName);
         draft.IsRequired.ShouldBeFalse();
-        VaultExtractFieldTypes.IsMultiValue(draft.FieldTypeName, draft.Configuration).ShouldBeFalse();
+        TestFieldTypeRegistry.Default.IsMultiValue(draft.FieldTypeName, draft.Configuration).ShouldBeFalse();
     }
 
     [Fact]

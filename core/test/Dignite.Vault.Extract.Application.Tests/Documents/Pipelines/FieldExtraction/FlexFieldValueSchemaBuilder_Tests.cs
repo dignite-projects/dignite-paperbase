@@ -20,7 +20,8 @@ namespace Dignite.Vault.Extract.Documents.Pipelines.FieldExtraction;
 public class FlexFieldValueSchemaBuilder_Tests
 {
     private static JsonObject Build(string fieldTypeName, FieldConfigurationDictionary? configuration = null)
-        => FlexFieldValueSchemaBuilder.Build(fieldTypeName, configuration ?? new FieldConfigurationDictionary());
+        => FlexFieldValueSchemaBuilder.Build(
+            fieldTypeName, configuration ?? new FieldConfigurationDictionary(), TestFieldTypeRegistry.Default);
 
     private static List<string> Types(JsonObject schema)
         => schema["type"]!.AsArray().Select(t => t!.GetValue<string>()).ToList();
@@ -177,7 +178,7 @@ public class FlexFieldValueSchemaBuilder_Tests
                 Options = new List<SelectListItem> { new("Draft", "draft", false) }
             }.ConfigurationDictionary);
 
-        FlexFieldValueSchemaBuilder.Build(field)["enum"]!.AsArray()
+        FlexFieldValueSchemaBuilder.Build(field, TestFieldTypeRegistry.Default)["enum"]!.AsArray()
             .Select(v => v?.GetValue<string>())
             .ShouldContain("draft");
     }

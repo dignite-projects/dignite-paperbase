@@ -5,6 +5,7 @@ using Dignite.Abp.FlexFields;
 using Dignite.Abp.FlexFields.CKEditor;
 using Dignite.Abp.FlexFields.Date;
 using Dignite.Abp.FlexFields.Select;
+using Dignite.Vault.Extract.Documents.Fields;
 using Dignite.Vault.Extract.FlexFields.Tags;
 using Shouldly;
 using Xunit;
@@ -26,7 +27,7 @@ public class ExportCellRenderer_Tests
     private static readonly FieldConfigurationDictionary NoConfig = new();
 
     private static string? Render(object? value, string fieldTypeName, FieldConfigurationDictionary? config = null)
-        => ExportCellRenderer.RenderCell(value, fieldTypeName, config ?? NoConfig);
+        => ExportCellRenderer.RenderCell(value, fieldTypeName, config ?? NoConfig, TestFieldTypeRegistry.Default);
 
     [Fact]
     public void Renders_a_multi_value_field_in_bag_order()
