@@ -33,8 +33,12 @@ public static class DocumentTypePackV1Upconverter
         field.Configuration = configuration;
         field.Description ??= field.Prompt;
 
-        // v1 had no notion of searchability — every extracted value was indexed — so the default the DTO
-        // already carries (true) is the faithful conversion. Stated here because it is the one v2 member
-        // with no v1 counterpart, and silence would read as an oversight.
+        // v1 had no notion of searchability — every extracted value was indexed — so the DTO's own
+        // default (true) would be the faithful conversion, except for a v3 target type that cannot be
+        // indexed at all (LongText -> CKEditor). Sharing FieldDefinitionToFieldMapper.IsSearchableFor
+        // with the v2 row migrator keeps this in sync with CheckSearchable's own allow/reject rule,
+        // instead of restating it and drifting: a pack with a LongText field used to fail
+        // ImportFieldsAsync's searchable guard outright (#562's CheckSearchable, still enforced above).
+        field.IsSearchable = FieldDefinitionToFieldMapper.IsSearchableFor(fieldTypeName);
     }
 }

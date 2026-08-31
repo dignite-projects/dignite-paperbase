@@ -68,12 +68,25 @@ public class FieldDefinitionToFieldMapper_Tests
 
     /// <summary>
     /// v2 indexed every extracted value with no opt-out, so anything but true here would silently narrow
-    /// what a migrated deployment can filter on.
+    /// what a migrated deployment can filter on - for every v3 target type that can actually be indexed.
     /// </summary>
     [Fact]
     public void Migrated_fields_stay_searchable()
     {
         FieldDefinitionToFieldMapper.Map(Definition(FieldDataType.Text)).IsSearchable.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// LongText's target type, CKEditor, cannot be indexed (IndexValueType is null) - Map must not carry
+    /// v2's unconditional IsSearchable=true onto it. It used to: FieldDefinitionAppService.CheckSearchable
+    /// rejects exactly this combination, so an already-migrated LongText field would fail the very
+    /// rebuild-index / pack-export round trip meant to carry it forward, and a version-1 pack containing
+    /// one would fail ImportFieldsAsync outright (DocumentTypePackV1Upconverter shares this same table).
+    /// </summary>
+    [Fact]
+    public void Long_text_is_migrated_as_not_searchable()
+    {
+        FieldDefinitionToFieldMapper.Map(Definition(FieldDataType.LongText)).IsSearchable.ShouldBeFalse();
     }
 
     [Theory]

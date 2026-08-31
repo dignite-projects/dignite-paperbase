@@ -11,6 +11,7 @@ using Dignite.Abp.FlexFields.Date;
 using Dignite.Abp.FlexFields.Number;
 using Dignite.Abp.FlexFields.Select;
 using Dignite.Abp.FlexFields.Text;
+using Dignite.Vault.Extract.FlexFields;
 using Dignite.Vault.Extract.FlexFields.Tags;
 using Dignite.Vault.Extract.Documents.Fields;
 
@@ -93,14 +94,7 @@ internal static class ExportCellRenderer
         };
     }
 
-    private static bool IsKnown(string fieldTypeName)
-        => fieldTypeName is TextFieldType.ControlName
-            or NumberFieldType.ControlName
-            or BooleanFieldType.ControlName
-            or DateTimeFieldType.ControlName
-            or SelectFieldType.ControlName
-            or CKEditorFieldType.ControlName
-            or TagsFieldType.ControlName;
+    private static bool IsKnown(string fieldTypeName) => VaultExtractFieldTypes.IsSupported(fieldTypeName);
 
     private static bool TryReadList(object value, out List<string> items)
     {

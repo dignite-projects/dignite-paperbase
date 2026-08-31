@@ -27,9 +27,9 @@ public static class FieldDefinitionToFieldMapper
     /// <summary>
     /// Builds the v3 <see cref="Field"/> for <paramref name="definition"/>.
     /// <para>
-    /// <c>IsSearchable</c> is always <c>true</c>: v2 indexed every extracted value unconditionally, with
-    /// no opt-out, so anything else would silently narrow what a migrated deployment can filter on. The
-    /// flag becomes meaningful for fields created after the migration.
+    /// <c>IsSearchable</c> defaults to <c>true</c>: v2 indexed every extracted value unconditionally, with
+    /// no opt-out, so that is the faithful conversion for every v3 target type that can actually be
+    /// indexed. See <see cref="IsSearchableFor"/> for the one exception.
     /// </para>
     /// </summary>
     public static Field Map(FieldDefinition definition)
@@ -49,9 +49,22 @@ public static class FieldDefinitionToFieldMapper
             configuration: configuration,
             displayOrder: definition.DisplayOrder,
             isRequired: definition.IsRequired,
-            isSearchable: true,
+            isSearchable: IsSearchableFor(fieldTypeName),
             isUniqueKey: definition.IsUniqueKey);
     }
+
+    /// <summary>
+    /// Whether a v2-sourced field should carry <c>IsSearchable = true</c> in v3. v2 indexed every
+    /// extracted value unconditionally, so <c>true</c> is the faithful conversion — except for a v3
+    /// target type that structurally cannot be indexed (<see cref="CKEditorFieldType"/>, LongText's
+    /// target, whose <c>IndexValueType</c> is null). Leaving it <c>true</c> there would collide with the
+    /// same searchable/indexable guard that <c>FieldDefinitionAppService</c> and
+    /// <c>DocumentTypePackAppService</c> enforce on every other write path, and fail the very migration
+    /// or pack import meant to carry the field forward. Shared by <see cref="Map"/> and
+    /// <see cref="DocumentTypePackV1Upconverter.Upconvert"/> so the two paths cannot drift apart.
+    /// </summary>
+    public static bool IsSearchableFor(string fieldTypeName)
+        => fieldTypeName != CKEditorFieldType.ControlName;
 
     /// <summary>
     /// Resolves the field type and its configuration. Exposed separately so the pack upconverter, which

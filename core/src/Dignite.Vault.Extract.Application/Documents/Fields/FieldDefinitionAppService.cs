@@ -68,8 +68,17 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
     }
 
     /// <summary>See <see cref="IFieldDefinitionAppService.GetFieldTypesAsync"/>.</summary>
-    public virtual Task<List<FieldTypeDto>> GetFieldTypesAsync()
+    public virtual async Task<List<FieldTypeDto>> GetFieldTypesAsync()
     {
+        // Same fail-closed OR gate as GetListAsync: both the field designer (FieldDefinitions.Default)
+        // and the document filter/detail UI (Documents.Default) need this catalog, and neither widens
+        // visibility by being granted it (see GetListAsync's own comment for why).
+        if (!await AuthorizationService.IsGrantedAsync(VaultExtractPermissions.Documents.Default) &&
+            !await AuthorizationService.IsGrantedAsync(VaultExtractPermissions.FieldDefinitions.Default))
+        {
+            throw new AbpAuthorizationException();
+        }
+
         // Filtered through the same allow-list EnsureFieldTypeRegistered enforces, not everything the
         // kernel resolver knows about — see VaultExtractFieldTypes.SupportedFieldTypeNames for why the
         // two lists can differ (the kernel registers Tree unconditionally; nothing here reads one).
@@ -82,7 +91,7 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
             })
             .ToList();
 
-        return Task.FromResult(fieldTypes);
+        return fieldTypes;
     }
 
     public virtual async Task<List<FieldDefinitionDto>> GetListAsync(GetFieldDefinitionListInput input)
