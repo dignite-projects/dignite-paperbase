@@ -5,7 +5,7 @@ import type { FlexFieldValue } from '@dignite/ng.flex-fields';
 
 /** Displays the value of a `Tags` field read-only, as a comma join in a list cell or as chips in the detail view. */
 @Component({
-  selector: 'ff-tags-view',
+  selector: 'lib-tags-view',
   templateUrl: './tags-view.component.html',
   imports: [CommonModule, CoreModule],
 })

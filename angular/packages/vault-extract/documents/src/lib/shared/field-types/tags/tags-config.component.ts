@@ -6,7 +6,7 @@ import { TagsConfiguration } from './tags-configuration';
 
 /** Designer-side editor for a `Tags` field's configuration: how many values, how long each may be. */
 @Component({
-  selector: 'ff-tags-config',
+  selector: 'lib-tags-config',
   templateUrl: './tags-config.component.html',
   imports: [CoreModule, ReactiveFormsModule],
 })

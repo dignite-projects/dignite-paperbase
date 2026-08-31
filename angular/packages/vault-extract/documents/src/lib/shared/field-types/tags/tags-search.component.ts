@@ -10,7 +10,7 @@ import { TagsConfiguration } from './tags-configuration';
  * is the whole widget — the same reason `ff-text-search` needs no more than that.
  */
 @Component({
-  selector: 'ff-tags-search',
+  selector: 'lib-tags-search',
   templateUrl: './tags-search.component.html',
   imports: [CommonModule, ReactiveFormsModule],
 })

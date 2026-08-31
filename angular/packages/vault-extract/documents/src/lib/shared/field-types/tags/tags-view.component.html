@@ -2,9 +2,11 @@
   {{ tags.join(', ') }}
 } @else {
   <div class="mb-3">
-    <label class="form-label" *ngIf="fields?.field?.displayName">
-      {{ fields!.field.displayName }}
-    </label>
+    @if (fields?.field?.displayName) {
+      <label class="form-label">
+        {{ fields!.field.displayName }}
+      </label>
+    }
     <div>
       @for (tag of tags; track tag) {
         <span class="badge bg-light text-dark border me-1">{{ tag }}</span>

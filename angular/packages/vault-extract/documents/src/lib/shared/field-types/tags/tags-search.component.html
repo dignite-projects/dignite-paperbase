@@ -1,9 +1,11 @@
 <div [formGroup]="entityForm!">
   <div [formGroupName]="parentField!">
     <div class="mb-3">
-      <label class="form-label" *ngIf="fieldValue!.field.displayName">
-        {{ fieldValue!.field.displayName }}
-      </label>
+      @if (fieldValue!.field.displayName) {
+        <label class="form-label">
+          {{ fieldValue!.field.displayName }}
+        </label>
+      }
       <input
         type="text"
         class="form-control"

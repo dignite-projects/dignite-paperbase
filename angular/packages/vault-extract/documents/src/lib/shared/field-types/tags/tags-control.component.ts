@@ -14,7 +14,7 @@ import { TagsConfiguration } from './tags-configuration';
  * whole array rather than truncating it, so a value that slipped past this UI still fails loudly there.
  */
 @Component({
-  selector: 'ff-tags-control',
+  selector: 'lib-tags-control',
   templateUrl: './tags-control.component.html',
   imports: [CommonModule, CoreModule, FormsModule, ReactiveFormsModule],
 })
