@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using Dignite.Abp.FlexFields;
 using Dignite.Vault.Extract.Documents.Pipelines.FieldExtraction;
 using Microsoft.Extensions.Logging;
+using Volo.Abp;
+using Volo.Abp.Data;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Linq;
@@ -56,6 +58,8 @@ public class FieldArchitectureV3Migrator : ITransientDependency
 
     protected IAsyncQueryableExecuter AsyncExecuter { get; }
 
+    protected IDataFilter DataFilter { get; }
+
     protected ILogger<FieldArchitectureV3Migrator> Logger { get; }
 
     public FieldArchitectureV3Migrator(
@@ -67,6 +71,7 @@ public class FieldArchitectureV3Migrator : ITransientDependency
         ICurrentTenant currentTenant,
         IUnitOfWorkManager unitOfWorkManager,
         IAsyncQueryableExecuter asyncExecuter,
+        IDataFilter dataFilter,
         ILogger<FieldArchitectureV3Migrator> logger)
     {
         FieldDefinitionRepository = fieldDefinitionRepository;
@@ -77,6 +82,7 @@ public class FieldArchitectureV3Migrator : ITransientDependency
         CurrentTenant = currentTenant;
         UnitOfWorkManager = unitOfWorkManager;
         AsyncExecuter = asyncExecuter;
+        DataFilter = dataFilter;
         Logger = logger;
     }
 
@@ -141,24 +147,45 @@ public class FieldArchitectureV3Migrator : ITransientDependency
     /// <summary>
     /// v2 definitions to v3, preserving ids. Ones already migrated are skipped, which is what lets an
     /// interrupted run resume.
+    /// <para>
+    /// Runs under <see cref="IDataFilter.Disable{TFilter}"/> for <see cref="ISoftDelete"/> on both the
+    /// source read and the already-migrated check: a field the operator archived before the cutover is
+    /// still a real row in <c>Field</c>'s own recycle bin (<c>FieldDefinitionAppService</c>'s
+    /// <c>OnlyDeleted</c> view, <c>RestoreAsync</c>) and in historical documents' value bags
+    /// (<c>FieldValueBagBuilder</c> resolves field names under the same filter disable) - silently
+    /// skipping it here would make both permanently unreachable, not merely delayed.
+    /// </para>
     /// </summary>
     protected virtual async Task<int> MigrateDefinitionsAsync(CancellationToken cancellationToken)
     {
-        var definitions = await FieldDefinitionRepository.GetListAsync(cancellationToken: cancellationToken);
-        if (definitions.Count == 0)
+        List<FieldDefinition> definitions;
+        HashSet<Guid> existingIds;
+        using (DataFilter.Disable<ISoftDelete>())
         {
-            return 0;
-        }
+            definitions = await FieldDefinitionRepository.GetListAsync(cancellationToken: cancellationToken);
+            if (definitions.Count == 0)
+            {
+                return 0;
+            }
 
-        var existingIds = (await FieldRepository.GetListByIdsAsync(
-                definitions.Select(d => d.Id), cancellationToken))
-            .Select(f => f.Id)
-            .ToHashSet();
+            existingIds = (await FieldRepository.GetListByIdsAsync(
+                    definitions.Select(d => d.Id), cancellationToken))
+                .Select(f => f.Id)
+                .ToHashSet();
+        }
 
         var migrated = new List<Field>();
         foreach (var definition in definitions.Where(d => !existingIds.Contains(d.Id)))
         {
-            migrated.Add(FieldDefinitionToFieldMapper.Map(definition));
+            var field = FieldDefinitionToFieldMapper.Map(definition);
+            if (definition.IsDeleted)
+            {
+                field.IsDeleted = true;
+                field.DeletionTime = definition.DeletionTime;
+                field.DeleterId = definition.DeleterId;
+            }
+
+            migrated.Add(field);
         }
 
         if (migrated.Count > 0)

@@ -72,6 +72,38 @@ public class FieldArchitectureV3Migrator_Tests : VaultExtractEntityFrameworkCore
         });
     }
 
+    /// <summary>
+    /// A field an operator archived before the cutover is still a real row in Field's own recycle bin
+    /// (FieldDefinitionAppService's OnlyDeleted view, RestoreAsync) and in historical documents' value
+    /// bags. Migrating under the default ISoftDelete filter would silently drop it from both: the
+    /// definitions query would never see it, so it could never become a Field, and it would stay
+    /// permanently unreachable rather than merely archived.
+    /// </summary>
+    [Fact]
+    public async Task Migrates_a_soft_deleted_definition_into_the_recycle_bin()
+    {
+        await WithUnitOfWorkAsync(async () =>
+        {
+            await SeedSchemaAsync();
+            await _fieldDefinitionRepository.DeleteAsync(FieldId("signed_on"));
+        });
+
+        var result = await WithMigrationAsync();
+
+        result.DefinitionsMigrated.ShouldBe(4);
+
+        await WithUnitOfWorkAsync(async () =>
+        {
+            using (GetRequiredService<Volo.Abp.Data.IDataFilter>().Disable<Volo.Abp.ISoftDelete>())
+            {
+                var signedOn = await _fieldRepository.GetAsync(FieldId("signed_on"));
+                signedOn.IsDeleted.ShouldBeTrue();
+                signedOn.DeletionTime.ShouldNotBeNull();
+                signedOn.FieldTypeName.ShouldBe("DateTime");
+            }
+        });
+    }
+
     [Fact]
     public async Task Migrates_values_into_the_bag_with_their_types_intact()
     {

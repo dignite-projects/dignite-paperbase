@@ -112,6 +112,26 @@ public class VaultExtractHostDbMigrationService : ITransientDependency
             result.DefinitionsMigrated,
             result.DocumentsMigrated,
             result.FieldValuesMigrated);
+
+        // #561 step 6, the cutover's last step and deliberately separate from MigrateAsync: v3's fingerprint
+        // is hashed from the value bag, v2's from value rows in Order sequence, and duplicate detection
+        // compares fingerprints by string equality. Running this while the v2 extraction pipeline was still
+        // live would have re-split the corpus on the next re-extraction, so the migrator leaves it to the
+        // caller and its own doc comment says to run it "once v3 owns extraction — never before".
+        //
+        // That condition now holds: nothing calls the v2 FieldFingerprintCalculator or Document.SetFields on
+        // any live path, and FieldExtractionService writes v3-shaped fingerprints exclusively. So the safe
+        // moment is here, immediately after this layer's bags exist, rather than in a runbook step nobody
+        // is reminded to run — leaving it unwired is what would silently split the corpus, since every
+        // document keeps its v2 fingerprint until re-extracted and stops matching the ones that were.
+        //
+        // Idempotent, like MigrateAsync: recomputing an already-v3-shaped fingerprint reproduces it.
+        var recomputed = await _fieldArchitectureV3Migrator.RecomputeFingerprintsAsync();
+
+        Logger.LogInformation(
+            "Field architecture v3 fingerprint recomputation ({Layer}): {Recomputed} documents.",
+            result.TenantId?.ToString() ?? "host",
+            recomputed);
     }
 
     private async Task SeedDataAsync()
