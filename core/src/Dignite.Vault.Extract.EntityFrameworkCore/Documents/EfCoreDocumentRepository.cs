@@ -317,6 +317,25 @@ public class EfCoreDocumentRepository
         }
     }
 
+    public virtual async Task<List<Guid>> GetIdsByDocumentTypeAsync(
+        Guid documentTypeId,
+        Guid? afterId,
+        int maxCount,
+        CancellationToken cancellationToken = default)
+    {
+        // Recycle-bin documents are in scope: restoring one after a rename must not bring back values under
+        // the pre-rename key. IMultiTenant stays on, so the scan never leaves this layer.
+        using (DataFilter.Disable<ISoftDelete>())
+        {
+            var dbSet = await GetDbSetAsync();
+            return await ApplyKeysetPage(
+                    dbSet.Where(d => d.DocumentTypeId == documentTypeId),
+                    afterId,
+                    maxCount)
+                .ToListAsync(GetCancellationToken(cancellationToken));
+        }
+    }
+
     /// <summary>
     /// Shared keyset page for the #528 cleanup scans: <c>WHERE Id &gt; afterId ORDER BY Id Take(N)</c>, riding the
     /// primary-key index (O(batch), unlike deep OFFSET paging), projecting Ids only so no full row — especially

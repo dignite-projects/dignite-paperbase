@@ -31,7 +31,7 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
     /// has to move that key on every document — the one thing <c>RebuildAsync</c> explicitly cannot repair,
     /// because re-deriving reads the bag under the same key it is trying to move.
     /// </summary>
-    private readonly IFlexFieldValueMigrator<Document> _valueMigrator;
+    private readonly DocumentFieldValueMigrator _valueMigrator;
 
     /// <summary>
     /// Switching <c>IsSearchable</c> changes which of a field's values belong in the index, and
@@ -51,7 +51,7 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
         IDocumentRepository documentRepository,
         FieldDefinitionManager fieldDefinitionManager,
         IFieldTypeResolver fieldTypeResolver,
-        IFlexFieldValueMigrator<Document> valueMigrator,
+        DocumentFieldValueMigrator valueMigrator,
         IFlexFieldIndexManager<Document> indexManager,
         IBackgroundJobManager backgroundJobManager,
         FieldSchemaPromptBudgetGuard schemaPromptBudget)
@@ -235,7 +235,11 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
             // two steps projects nothing for this field and loses the index rows it had. Nothing here
             // reindexes afterwards either, and nothing needs to: index rows key on field id and value,
             // neither of which a rename touches.
-            await _valueMigrator.RenameFieldAsync(oldName, input.Name);
+            //
+            // Scoped to this field's own document type, NOT IFlexFieldValueMigrator<Document>: a field name
+            // is unique per (TenantId, DocumentTypeId, Name) here, so the kernel's rename-by-name-everywhere
+            // would rewrite another type's identically named field out of reach. See DocumentFieldValueMigrator.
+            await _valueMigrator.RenameFieldAsync(entity.DocumentTypeId, oldName, input.Name);
         }
 
         if (wasSearchable != entity.IsSearchable)

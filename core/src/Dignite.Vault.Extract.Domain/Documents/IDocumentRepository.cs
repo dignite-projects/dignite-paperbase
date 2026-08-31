@@ -300,6 +300,37 @@ public interface IDocumentRepository : IRepository<Document, Guid>
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Keyset-paginated Ids of every document bound to <paramref name="documentTypeId"/> — the scope a field
+    /// rename must rewrite value-bag keys over.
+    /// <para>
+    /// <b>Why this exists rather than the kernel's own walk.</b> <c>IFlexFieldValueMigrator&lt;Document&gt;</c>
+    /// renames by name alone, across every document the tenant has, because the kernel's model is one field
+    /// name per host <i>type</i>. Vault Extract's is not: a field is unique per
+    /// <c>(TenantId, DocumentTypeId, Name)</c>, so two document types may legitimately both define
+    /// <c>invoice_no</c>, and renaming one type's would silently rewrite the other type's values into a key no
+    /// definition backs — invisible on read, still indexed, unrecoverable without knowing the old name. Scoping
+    /// the walk is the whole fix, and only Vault Extract can do it: <c>DocumentTypeId</c> is an indexed column
+    /// here, which is exactly the predicate the kernel says it cannot push down through the provider.
+    /// </para>
+    /// <para>
+    /// <b>Traverses soft delete</b>, like <see cref="GetIdsWithFieldValidationWarningAsync"/>: a recycle-bin
+    /// document restored later must come back with its values under the current name, not the one they were
+    /// stored under before the rename. <c>IMultiTenant</c> still applies by ambient state, so the scan never
+    /// leaves the field's own layer.
+    /// </para>
+    /// <para>
+    /// Ids only (<c>AsNoTracking</c> + <c>Select</c>), so the cursor scan never materializes Markdown; the
+    /// caller loads each page's documents by id to mutate them. Ordered by <c>Id</c> with
+    /// <c>Id &gt; afterId</c> (null = from the beginning).
+    /// </para>
+    /// </summary>
+    Task<List<Guid>> GetIdsByDocumentTypeAsync(
+        Guid documentTypeId,
+        Guid? afterId,
+        int maxCount,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Aggregate overview statistics for the current ambient layer (#333): per-lifecycle document counts,
     /// the needs-review count, and the total original uploaded size (sum of <c>FileOrigin.FileSize</c>).
     /// <para>
