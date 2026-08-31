@@ -1,6 +1,6 @@
 import { RestService, Rest } from '@abp/ng.core';
 import { Injectable, inject } from '@angular/core';
-import type { CreateFieldDefinitionDto, FieldDefinitionDto, GetFieldDefinitionListInput, UpdateFieldDefinitionDto } from '../../../documents/fields/models';
+import type { CreateFieldDefinitionDto, FieldDefinitionDto, FieldTypeDto, GetFieldDefinitionListInput, UpdateFieldDefinitionDto } from '../../../documents/fields/models';
 
 @Injectable({
   providedIn: 'root',
@@ -23,6 +23,14 @@ export class FieldDefinitionService {
     this.restService.request<any, void>({
       method: 'DELETE',
       url: `/api/vault-extract/field-definitions/${id}`,
+    },
+    { apiName: this.apiName,...config });
+  
+
+  getFieldTypes = (config?: Partial<Rest.Config>) =>
+    this.restService.request<any, FieldTypeDto[]>({
+      method: 'GET',
+      url: '/api/vault-extract/field-definitions/field-types',
     },
     { apiName: this.apiName,...config });
   

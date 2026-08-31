@@ -1,20 +1,12 @@
 import type { EntityDto } from '@abp/ng.core';
 
-/**
- * Type-specific field configuration, keyed by the field type's own namespaced constants
- * ("Text.CharLimit", "Select.Options", "DateTime.InputMode", ...). Opaque on the wire on purpose: the
- * field type owns the shape, so the client reads and writes it through the per-type helpers in
- * `field-type-configuration` rather than by reaching for keys directly.
- */
-export type FieldConfigurationDictionary = Record<string, unknown>;
-
 export interface CreateFieldDefinitionDto {
   documentTypeId: string;
   name: string;
   displayName: string;
   description?: string | null;
   fieldTypeName: string;
-  configuration?: FieldConfigurationDictionary | null;
+  configuration?: Record<string, object> | null;
   displayOrder?: number;
   isRequired?: boolean;
   isSearchable?: boolean;
@@ -30,7 +22,7 @@ export interface FieldDefinitionDraftDto {
   displayName?: string;
   name?: string;
   fieldTypeName?: string;
-  configuration?: FieldConfigurationDictionary;
+  configuration?: Record<string, object>;
   isRequired?: boolean;
 }
 
@@ -41,7 +33,7 @@ export interface FieldDefinitionDto extends EntityDto<string> {
   displayName?: string;
   description?: string | null;
   fieldTypeName?: string;
-  configuration?: FieldConfigurationDictionary;
+  configuration?: Record<string, object>;
   displayOrder?: number;
   isRequired?: boolean;
   isSearchable?: boolean;
@@ -56,6 +48,11 @@ export interface FieldPromptPolishResultDto {
   prompt?: string;
 }
 
+export interface FieldTypeDto {
+  name?: string;
+  indexable?: boolean;
+}
+
 export interface GetFieldDefinitionListInput {
   documentTypeId?: string | null;
   onlyDeleted?: boolean;
@@ -66,7 +63,7 @@ export interface UpdateFieldDefinitionDto {
   displayName: string;
   description?: string | null;
   fieldTypeName: string;
-  configuration?: FieldConfigurationDictionary | null;
+  configuration?: Record<string, object> | null;
   displayOrder?: number;
   isRequired?: boolean;
   isSearchable?: boolean;

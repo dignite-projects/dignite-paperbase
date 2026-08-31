@@ -473,13 +473,20 @@
                   } @else {
                     <p class="text-muted small mb-0">{{ '::Document:NoFieldValues' | abpLocalization }}</p>
                   }
-                } @else {
-                  <abp-dynamic-form
-                    [fields]="extractedFieldFormFields()"
-                    [submitInProgress]="isSavingFields()"
-                    (onSubmit)="saveFields($event)"
-                  >
-                    <div actions class="d-flex justify-content-end gap-2">
+                } @else if (fieldsForm(); as form) {
+                  <!-- flex-fields adoption: <ff-flex-field-control> swaps in the right value editor per
+                       field type, writing into form's "values" group - no per-type input/coercion logic
+                       lives here. -->
+                  <form [formGroup]="form" (ngSubmit)="saveFields()">
+                    @for (def of fieldDefinitions(); track def.id) {
+                      <ff-flex-field-control
+                        [fields]="fieldValueOf(def)"
+                        [entity]="form"
+                        parentFieldName="values"
+                        [selected]="fieldValueOf(def).value"
+                      />
+                    }
+                    <div class="d-flex justify-content-end gap-2">
                       <button
                         type="button"
                         class="btn btn-secondary btn-sm"
@@ -491,7 +498,7 @@
                       <button
                         type="submit"
                         class="btn btn-primary btn-sm"
-                        [disabled]="isSavingFields()"
+                        [disabled]="isSavingFields() || form.invalid"
                       >
                         @if (isSavingFields()) {
                           <span class="spinner-border spinner-border-sm me-1"></span>
@@ -499,7 +506,7 @@
                         {{ '::Save' | abpLocalization }}
                       </button>
                     </div>
-                  </abp-dynamic-form>
+                  </form>
                 }
               </div>
             </div>

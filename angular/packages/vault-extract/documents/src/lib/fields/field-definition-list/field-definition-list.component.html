@@ -250,13 +250,10 @@
               <div class="col-md-5">
                 <label class="form-label">{{ '::FieldDefinition:FieldType' | abpLocalization }}</label>
                 <select class="form-select" formControlName="fieldTypeName">
-                  @for (type of fieldTypes; track type.name) {
-                    <option [ngValue]="type.name">{{ '::FieldType:' + type.labelKey | abpLocalization }}</option>
+                  @for (type of fieldTypes(); track type.name) {
+                    <option [value]="type.name">{{ type.displayNameKey | abpLocalization }}</option>
                   }
                 </select>
-                @if (isMultiValue()) {
-                  <div class="form-text">{{ '::FieldDefinition:MultiValueHint' | abpLocalization }}</div>
-                }
               </div>
               <div class="col-md-3">
                 <label class="form-label">{{ '::FieldDefinition:DisplayOrder' | abpLocalization }}</label>
@@ -270,8 +267,9 @@
                   </label>
                 </div>
                 <!-- #559: whether this field's values reach the query index, and are therefore filterable.
-                     A type that indexes nothing (long text) has the control disabled by applyFieldTypePolicy,
-                     and the hint says why rather than leaving a switch that does nothing. -->
+                     A type that indexes nothing (long text) has the control disabled by
+                     applySearchableAvailability, and the hint says why rather than leaving a switch that
+                     does nothing. -->
                 <div class="form-check">
                   <input type="checkbox" class="form-check-input" id="isSearchable" formControlName="isSearchable" />
                   <label class="form-check-label" for="isSearchable">
@@ -279,7 +277,7 @@
                   </label>
                 </div>
                 <div class="form-text">
-                  {{ (isIndexableType() ? '::FieldDefinition:IsSearchableHint' : '::FieldDefinition:NotIndexableHint') | abpLocalization }}
+                  {{ (searchableUnsupported() ? '::FieldDefinition:NotIndexableHint' : '::FieldDefinition:IsSearchableHint') | abpLocalization }}
                 </div>
                 <!-- #411: unique-key fields form the duplicate-detection fingerprint. -->
                 <div class="form-check mt-2">
@@ -292,99 +290,18 @@
               </div>
             </div>
 
-            <!-- #559: per-type configuration. The controls come from the selected field type's descriptor
-                 rather than being written out per type, so adding a field type does not mean editing this
-                 template. Values live beside the form (configuration signal) because their shape changes
-                 with the type. -->
-            @if (configurationOptions().length > 0) {
-              <fieldset class="mt-4 pt-3 border-top">
-                <legend class="fs-6 text-muted">{{ '::FieldDefinition:TypeConfiguration' | abpLocalization }}</legend>
-                <div class="row g-3">
-                  @for (option of configurationOptions(); track option.key) {
-                    @switch (option.kind) {
-                      @case ('options') {
-                        <div class="col-12">
-                          <label class="form-label">{{ '::FieldConfig:' + option.labelKey | abpLocalization }}</label>
-                          @for (row of selectOptions(); track $index) {
-                            <div class="input-group input-group-sm mb-1">
-                              <input
-                                type="text"
-                                class="form-control"
-                                [placeholder]="'::FieldConfig:SelectOptionValue' | abpLocalization"
-                                [ngModel]="row.value"
-                                [ngModelOptions]="{ standalone: true }"
-                                (ngModelChange)="patchSelectOption($index, { value: $any($event) })"
-                              />
-                              <input
-                                type="text"
-                                class="form-control"
-                                [placeholder]="'::FieldConfig:SelectOptionText' | abpLocalization"
-                                [ngModel]="row.text"
-                                [ngModelOptions]="{ standalone: true }"
-                                (ngModelChange)="patchSelectOption($index, { text: $any($event) })"
-                              />
-                              <button type="button" class="btn btn-outline-secondary" (click)="removeSelectOption($index)">
-                                <i class="fas fa-times"></i>
-                              </button>
-                            </div>
-                          }
-                          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="addSelectOption()">
-                            {{ '::FieldConfig:AddOption' | abpLocalization }}
-                          </button>
-                          <div class="form-text">{{ '::FieldConfig:SelectOptionsHint' | abpLocalization }}</div>
-                        </div>
-                      }
-                      @case ('choice') {
-                        <div class="col-md-4">
-                          <label class="form-label">{{ '::FieldConfig:' + option.labelKey | abpLocalization }}</label>
-                          <select
-                            class="form-select"
-                            [ngModel]="configValue(option.key)"
-                            [ngModelOptions]="{ standalone: true }"
-                            (ngModelChange)="setConfigValue(option, $event)"
-                          >
-                            @for (choice of option.choices; track choice.value) {
-                              <option [ngValue]="choice.value">{{ '::FieldConfig:' + choice.labelKey | abpLocalization }}</option>
-                            }
-                          </select>
-                        </div>
-                      }
-                      @case ('boolean') {
-                        <div class="col-md-4">
-                          <div class="form-check mt-4">
-                            <input
-                              type="checkbox"
-                              class="form-check-input"
-                              [id]="option.key"
-                              [ngModel]="configValue(option.key)"
-                              [ngModelOptions]="{ standalone: true }"
-                              (ngModelChange)="setConfigValue(option, $event)"
-                            />
-                            <label class="form-check-label" [for]="option.key">
-                              {{ '::FieldConfig:' + option.labelKey | abpLocalization }}
-                            </label>
-                          </div>
-                        </div>
-                      }
-                      @default {
-                        <div class="col-md-4">
-                          <label class="form-label">{{ '::FieldConfig:' + option.labelKey | abpLocalization }}</label>
-                          <input
-                            class="form-control"
-                            [type]="option.kind === 'number' ? 'number' : option.kind === 'date' ? 'date' : 'text'"
-                            [min]="option.min ?? null"
-                            [max]="option.max ?? null"
-                            [ngModel]="configValue(option.key)"
-                            [ngModelOptions]="{ standalone: true }"
-                            (ngModelChange)="setConfigValue(option, $event)"
-                          />
-                        </div>
-                      }
-                    }
-                  }
-                </div>
-              </fieldset>
-            }
+            <!-- #559 / flex-fields adoption: per-type configuration. <ff-flex-field-config> swaps in the
+                 right editor for whichever type is selected above and writes its settings into this
+                 form's "configuration" group - adding a field type means registering it with
+                 provideFlexFields()/provideFlexFieldTypes(), not editing this template. -->
+            <fieldset class="mt-4 pt-3 border-top">
+              <legend class="fs-6 text-muted">{{ '::FieldDefinition:TypeConfiguration' | abpLocalization }}</legend>
+              <ff-flex-field-config
+                [type]="form.controls.fieldTypeName.value"
+                [selected]="configSeed()"
+                [form]="form"
+              />
+            </fieldset>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" (click)="closeModal()">

@@ -1,22 +1,26 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   EventEmitter,
   Input,
   Output,
   computed,
+  inject,
   signal,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LocalizationPipe } from '@abp/ng.core';
-import { DocumentFieldFilter, FieldDefinitionDto } from '@dignite/vault-extract';
-import { FIELD_TYPES, isDateOnly, isFilterableField } from '../field-types/field-type-catalog';
-
+import { DocumentFieldFilter, FieldDefinitionDto, FieldDefinitionService } from '@dignite/vault-extract';
+
 import {
   FilterMode,
   FilterRow,
   composeFieldFilters,
+  dateInputType,
+  isFilterableField,
   rangeSupported,
 } from './field-value-filter.model';
 
@@ -46,6 +50,9 @@ const MAX_FIELD_VALUE_LENGTH = 512;
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FieldValueFilterComponent {
+  private readonly service = inject(FieldDefinitionService);
+  private readonly destroyRef = inject(DestroyRef);
+
   private nextKey = 0;
 
   private readonly _fields = signal<FieldDefinitionDto[]>([]);
@@ -63,20 +70,39 @@ export class FieldValueFilterComponent {
   // per keystroke: the consumer re-queries on each emit, so per-edit emission would spam the list endpoint.
   @Output() filtersChange = new EventEmitter<DocumentFieldFilter[]>();
 
-  readonly FIELD_TYPES = FIELD_TYPES;
   readonly maxValueLength = MAX_FIELD_VALUE_LENGTH;
 
   readonly rows = signal<FilterRow[]>([]);
+
+  // Which field types index anything at all, keyed by registration name - straight from the server via
+  // FieldDefinitionAppService.GetFieldTypesAsync (IFieldType.IndexValueType). Empty until the request
+  // lands, which reads as "nothing is filterable yet" - conservative, since offering a field the server
+  // would reject beats a filter list that briefly includes one it will not.
+  //
+  // A signal, not a plain field: filterableFields below is a computed that must re-run once this
+  // arrives. Reassigning a plain field after construction does not invalidate a computed that read it
+  // earlier, so the picker would stay stuck on whatever it saw before this request landed.
+  private readonly indexableByFieldType = signal(new Map<string, boolean>());
 
   // A field the server would reject as a filter never appears in the picker: long text indexes nothing,
   // and neither does a field whose admin turned searchability off. Both loud-fail server-side, so offering
   // them here would only turn a choice into an error.
   readonly filterableFields = computed(() =>
-    this._fields().filter(f => isFilterableField(f.fieldTypeName, f.isSearchable)),
+    this._fields().filter(f => isFilterableField(f.fieldTypeName, f.isSearchable, this.indexableByFieldType())),
   );
 
   readonly hasFilterableFields = computed(() => this.filterableFields().length > 0);
   readonly canAddRow = computed(() => this.rows().length < MAX_FIELD_FILTERS);
+
+  constructor() {
+    this.service.getFieldTypes()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(fieldTypes => {
+        this.indexableByFieldType.set(
+          new Map(fieldTypes.map(fieldType => [fieldType.name ?? '', fieldType.indexable ?? true])),
+        );
+      });
+  }
 
   addRow(): void {
     if (!this.canAddRow()) {
@@ -87,7 +113,7 @@ export class FieldValueFilterComponent {
       {
         key: this.nextKey++,
         fieldName: '',
-        fieldTypeName: FIELD_TYPES.text,
+        fieldTypeName: '',
         configuration: {},
         mode: 'eq',
         value: '',
@@ -106,7 +132,7 @@ export class FieldValueFilterComponent {
   // mistyped. Start clean at equality.
   onFieldChange(key: number, fieldName: string): void {
     const field = this.filterableFields().find(f => f.name === fieldName);
-    const fieldTypeName = field?.fieldTypeName ?? FIELD_TYPES.text;
+    const fieldTypeName = field?.fieldTypeName ?? '';
     // The row carries the configuration too, because Date and DateTime are one field type in v3 and only
     // its InputMode says which of the two a given field is - and that decides the input control.
     const configuration = field?.configuration ?? {};
@@ -150,10 +176,10 @@ export class FieldValueFilterComponent {
   // switch on, v3 has one plus an InputMode, so the row's configuration decides.
   inputType(row: Pick<FilterRow, 'fieldTypeName' | 'configuration'>): string {
     switch (row.fieldTypeName) {
-      case FIELD_TYPES.number:
+      case 'Number':
         return 'number';
-      case FIELD_TYPES.dateTime:
-        return isDateOnly(row.configuration) ? "date" : "datetime-local";
+      case 'DateTime':
+        return dateInputType(row.configuration);
       default:
         return 'text';
     }

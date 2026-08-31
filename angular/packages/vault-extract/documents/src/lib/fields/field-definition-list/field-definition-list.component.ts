@@ -9,7 +9,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
-import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { escapeHtmlChars, ListService, LocalizationPipe, LocalizationService, PermissionService } from '@abp/ng.core';
 import type { ABP } from '@abp/ng.core';
 import {
@@ -23,10 +23,10 @@ import { Confirmation, ConfirmationService, ToasterService } from '@abp/ng.theme
 import { NgbDropdownModule } from '@ng-bootstrap/ng-bootstrap';
 import { map, of, Subject, takeUntil } from 'rxjs';
 import { marked } from 'marked';
+import { FieldTypeDefinition, FieldTypeResolver, FlexFieldConfigComponent, FlexFieldData } from '@dignite/ng.flex-fields';
 import {
   CreateFieldDefinitionDto,
   DocumentTypeService,
-  FieldConfigurationDictionary,
   FieldDefinitionDraftDto,
   FieldDefinitionDto,
   FieldDefinitionService,
@@ -44,15 +44,6 @@ import {
 } from '../../shared/extensible-table';
 import { FieldReextractionModalComponent } from '../../reprocessing/field-reextraction-modal/field-reextraction-modal.component';
 import { SlugSuggestionHandle, wireSlugSuggestion } from '../../shared/slug-suggestion';
-import {
-  FIELD_TYPE_CATALOG,
-  FIELD_TYPES,
-  FieldConfigurationOption,
-  defaultConfiguration,
-  findFieldType,
-  isMultiValueField,
-} from '../../shared/field-types/field-type-catalog';
-import { SelectOptionRow, readSelectOptions, writeSelectOptions } from '../../shared/field-types/select-options';
 
 // Mirrors FieldDefinitionConsts (Domain.Shared): Name whitelist + length caps.
 // #447: Prompt has no length cap — it is admin-authored Markdown configuration, persisted uncapped.
@@ -76,11 +67,11 @@ const FIELD_DEFINITION_SORTS: SortAccessors<FieldDefinitionDto> = {
   imports: [
     CommonModule,
     ReactiveFormsModule,
-    FormsModule,
     LocalizationPipe,
     ExtensibleTableComponent,
     NgbDropdownModule,
     FieldReextractionModalComponent,
+    FlexFieldConfigComponent,
   ],
   providers: [
     ListService,
@@ -99,6 +90,7 @@ export class FieldDefinitionListComponent implements OnInit {
   private readonly slugService = inject(SlugSuggestionService);
   private readonly draftService = inject(FieldDraftSuggestionService);
   private readonly polishService = inject(FieldPromptPolishService);
+  private readonly fieldTypeResolver = inject(FieldTypeResolver);
   private readonly fb = inject(FormBuilder);
   private readonly confirmation = inject(ConfirmationService);
   private readonly toaster = inject(ToasterService);
@@ -120,7 +112,6 @@ export class FieldDefinitionListComponent implements OnInit {
   );
   // null/false means the re-extraction modal is closed.
   showReextract = signal(false);
-  readonly FIELD_TYPES = FIELD_TYPES;
 
   // Route binding uses immutable DocumentTypeId (#207). The header badge primarily shows the
   // user-friendly DisplayName (#261), while TypeCode is demoted to hover text. Both are resolved by id
@@ -169,39 +160,39 @@ export class FieldDefinitionListComponent implements OnInit {
     // it is admin-authored Markdown configuration, persisted uncapped. The server converges blank to null.
     // Named `description` since #559: it maps to the FlexFields contract member of that name.
     description: [''],
-    fieldTypeName: [FIELD_TYPES.text as string, [Validators.required]],
+    fieldTypeName: ['', [Validators.required]],
     displayOrder: [0, [Validators.required]],
     isRequired: [false],
     // #559: whether this field's values reach the query index, and are therefore filterable. Meaningless
-    // for a type that indexes nothing, where applyFieldTypePolicy disables the control.
+    // for a type that indexes nothing, where applySearchableAvailability disables the control.
     isSearchable: [true],
     // #411: whether this field participates in the type's duplicate-detection unique key.
     isUniqueKey: [false],
   });
 
-  // The field-type picker's vocabulary. A fixed catalog rather than a server round trip: these are the
-  // types Vault Extract ships, and the editor needs their configuration shapes, which no endpoint exposes.
-  readonly fieldTypes = FIELD_TYPE_CATALOG;
+  // The field-type picker's vocabulary: every type flex-fields has registered (built-ins + bolt-ons)
+  // that this deployment's backend also supports (VaultExtractFieldTypes.SupportedFieldTypeNames, via
+  // GetFieldTypesAsync — the kernel registers Tree unconditionally as a built-in, but nothing in this
+  // app's read/write/schema pipeline supports it). Populated once that request lands; see the
+  // constructor.
+  readonly fieldTypes = signal<readonly FieldTypeDefinition[]>([]);
 
-  // Type-specific configuration, held beside the form rather than in it: the shape changes with the
-  // selected type, and a FormGroup whose controls come and go is harder to reason about than one bag the
-  // template reads through configValue().
-  readonly configuration = signal<FieldConfigurationDictionary>(defaultConfiguration(FIELD_TYPES.text));
+  // Seeds <ff-flex-field-config>'s "selected" input: the stored field being edited (so it restores
+  // saved configuration values), or a synthetic draft result (so an AI-drafted type suggestion — a
+  // date-only DateTime, a Tags MaxCount — carries its suggested configuration too), or undefined for a
+  // plain new field.
+  readonly configSeed = signal<FlexFieldData | undefined>(undefined);
 
-  // Which configuration controls the panel renders, straight off the selected type's descriptor.
-  readonly configurationOptions = signal<readonly FieldConfigurationOption[]>(
-    findFieldType(FIELD_TYPES.text)?.configuration ?? [],
-  );
+  // Which field types can be searched at all, keyed by registration name - straight from the server, via
+  // FieldDefinitionAppService.GetFieldTypesAsync. It has to come from there: the answer is
+  // IFieldType.IndexValueType, and the Angular library deliberately does not restate it (see
+  // FieldTypeDefinition's doc). Empty until the request lands, which reads as "no restriction" - the
+  // server rejects the combination anyway, so a slow response can at worst let a save fail loudly.
+  private indexableByFieldType = new Map<string, boolean>();
 
-  // Select's option list, edited as rows and written back into Select.Options on every change.
-  readonly selectOptions = signal<SelectOptionRow[]>([]);
-
-  // Drives the template: a type that indexes nothing cannot be searchable, whatever the switch says.
-  readonly isIndexableType = signal(true);
-
-  // Drives the template hint: this field holds a list, either because the type always does (Tags) or
-  // because Select was configured Multiple.
-  readonly isMultiValue = signal(false);
+  // Drives the template: whether the currently selected field type rules out searching. Disables the
+  // "可筛选" checkbox and swaps in the hint that explains why.
+  readonly searchableUnsupported = signal(false);
 
   constructor() {
     configureEntityTable<FieldDefinitionDto>(this.extensions, EXTRACT_TABLES.FieldDefinitions, [
@@ -234,14 +225,13 @@ export class FieldDefinitionListComponent implements OnInit {
         columnWidth: 170,
         valueResolver: data => {
           const localization = data.getInjected(LocalizationService);
-          const descriptor = findFieldType(data.record.fieldTypeName);
+          const fieldType = this.fieldTypeResolver.find(data.record.fieldTypeName ?? '');
           // An unknown key still renders, as itself: a field can name a type this deployment no longer
           // registers, and showing the raw key is what lets an admin see why it stopped working.
-          const label = descriptor
-            ? localization.instant('::FieldType:' + descriptor.labelKey)
+          const label = fieldType
+            ? localization.instant(fieldType.displayNameKey)
             : (data.record.fieldTypeName ?? '');
-          const suffix = isMultiValueField(data.record.fieldTypeName, data.record.configuration) ? '[]' : '';
-          return of(`<span class="badge bg-light text-dark border">${escapeHtmlChars(label)}${suffix}</span>`);
+          return of(`<span class="badge bg-light text-dark border">${escapeHtmlChars(label)}</span>`);
         },
       }),
       EntityProp.create<FieldDefinitionDto>({
@@ -284,6 +274,19 @@ export class FieldDefinitionListComponent implements OnInit {
         },
       }),
     ]);
+
+    this.service.getFieldTypes()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(fieldTypes => {
+        const supported = new Set(fieldTypes.map(fieldType => fieldType.name ?? ''));
+        this.fieldTypes.set(this.fieldTypeResolver.getAll().filter(fieldType => supported.has(fieldType.name)));
+        this.indexableByFieldType = new Map(
+          fieldTypes.map(fieldType => [fieldType.name ?? '', fieldType.indexable ?? true]),
+        );
+        // A modal opened before this landed was built against an empty map/list - re-apply so it
+        // catches up.
+        this.applySearchableAvailability(this.form.controls.fieldTypeName.value);
+      });
   }
 
   ngOnInit(): void {
@@ -298,83 +301,67 @@ export class FieldDefinitionListComponent implements OnInit {
       destroyRef: this.destroyRef,
       onPending: pending => this.isSuggesting.set(pending),
     });
-    // Changing the field type replaces the configuration panel wholesale: the options belong to the type,
-    // and carrying values across would leave keys of the old type in the bag, where nothing reads them and
-    // the server would store them verbatim.
+    // Changing the field type replaces the configuration panel wholesale (<ff-flex-field-config> swaps
+    // in a fresh configComponent and rebuilds the "configuration" form group from scratch): carrying a
+    // previously-seeded selection across would let it resurrect a stale type's values on switching back.
     this.form.controls.fieldTypeName.valueChanges
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(fieldTypeName => this.applyFieldTypePolicy(fieldTypeName, defaultConfiguration(fieldTypeName)));
+      .subscribe(fieldTypeName => {
+        this.configSeed.set(undefined);
+        this.applySearchableAvailability(fieldTypeName);
+      });
     this.load();
   }
 
   /**
-   * Re-points the editor at one field type: which configuration controls to render, what they currently
-   * hold, and whether searchability is even a question. Called on every path that sets the type - the
-   * picker, opening a field, and applying a draft - because a type set with emitEvent:false fires no
-   * valueChanges, and the panel would then describe the previous type.
+   * A field type with no query-index slot cannot actually be searched however the switch is set, so the
+   * switch is pinned off and disabled rather than left as a control with no effect - the hint beside it
+   * says why. getRawValue still returns the (forced-false) value.
    */
-  private applyFieldTypePolicy(fieldTypeName: string, configuration: FieldConfigurationDictionary): void {
-    const descriptor = findFieldType(fieldTypeName);
-    this.configurationOptions.set(descriptor?.configuration ?? []);
-    this.configuration.set(configuration);
-    this.selectOptions.set(readSelectOptions(configuration));
-    this.isMultiValue.set(isMultiValueField(fieldTypeName, configuration));
-
-    // A type that indexes nothing cannot be searchable however the switch is set, so the switch is pinned
-    // off and disabled rather than left as a control with no effect. getRawValue still returns the value.
-    const indexable = descriptor?.indexable ?? false;
-    this.isIndexableType.set(indexable);
+  private applySearchableAvailability(fieldTypeName?: string): void {
+    this.searchableUnsupported.set(
+      !!fieldTypeName && this.indexableByFieldType.get(fieldTypeName) === false,
+    );
     const control = this.form.controls.isSearchable;
-    if (indexable) {
-      control.enable({ emitEvent: false });
-    } else {
+    if (this.searchableUnsupported()) {
       control.setValue(false, { emitEvent: false });
       control.disable({ emitEvent: false });
+    } else if (control.disabled) {
+      // Restore the default now that the switch is meaningful again - it was pinned to false and
+      // locked by a previous, non-indexable type selection, not by the operator.
+      control.setValue(true, { emitEvent: false });
+      control.enable({ emitEvent: false });
     }
   }
 
-  /** Current value of one configuration key, for the template. */
-  configValue(key: string): unknown {
-    return this.configuration()[key];
+  /**
+   * The "configuration" form group is injected dynamically by <ff-flex-field-config> (its shape depends
+   * on whichever field type is currently selected), so it does not exist on this.form's own declared
+   * shape.
+   */
+  private configurationValue(): Record<string, object> {
+    return (this.form as FormGroup).get('configuration')?.value ?? {};
   }
 
   /**
-   * Writes one configuration value. An empty text box removes the key rather than storing an empty
-   * string, so the field type falls back to its own default instead of being told "explicitly nothing".
+   * Bridges a server-returned FieldDefinitionDto into the plain object <ff-flex-field-config> needs.
+   *
+   * Deliberately rebuilt field-by-field rather than cast: the DTO instance carries ABP's own
+   * validation-tracking properties (ngx-validate decorates every HTTP-response object with per-field
+   * `_name`/`_displayName`/... entries holding live RxJS subjects), and FlexFieldConfigComponent.render()
+   * hands `selected` to structuredClone() before patching it into the editor's form - which throws on
+   * those subjects (functions can never be cloned) and silently aborts the whole render, leaving the
+   * config panel blank as if nothing were stored. A hand-built plain object carries none of that.
    */
-  setConfigValue(option: FieldConfigurationOption, raw: unknown): void {
-    this.configuration.update(configuration => {
-      const next = { ...configuration };
-      if (raw === null || raw === undefined || raw === '') {
-        delete next[option.key];
-      } else {
-        next[option.key] = option.kind === 'choice' || option.kind === 'number' ? Number(raw) : raw;
-      }
-      return next;
-    });
-    this.isMultiValue.set(
-      isMultiValueField(this.form.controls.fieldTypeName.value, this.configuration()),
-    );
-    this.form.markAsDirty();
-  }
-
-  addSelectOption(): void {
-    this.selectOptions.update(rows => [...rows, { text: '', value: '' }]);
-  }
-
-  removeSelectOption(index: number): void {
-    this.selectOptions.update(rows => rows.filter((_, i) => i !== index));
-    this.commitSelectOptions();
-  }
-
-  patchSelectOption(index: number, patch: Partial<SelectOptionRow>): void {
-    this.selectOptions.update(rows => rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
-    this.commitSelectOptions();
-  }
-
-  private commitSelectOptions(): void {
-    this.configuration.update(configuration => writeSelectOptions(configuration, this.selectOptions()));
-    this.form.markAsDirty();
+  private toFieldData(field: FieldDefinitionDto): FlexFieldData {
+    return {
+      id: field.id ?? '',
+      name: field.name ?? '',
+      displayName: field.displayName ?? '',
+      description: field.description ?? undefined,
+      fieldTypeName: field.fieldTypeName ?? '',
+      configuration: field.configuration ?? {},
+    };
   }
 
   // For the header badge: resolve the current type by immutable id from types visible in the current
@@ -454,18 +441,25 @@ export class FieldDefinitionListComponent implements OnInit {
 
   openCreate(): void {
     const nextOrder = this.allFields().reduce((max, f) => Math.max(max, f.displayOrder ?? 0), -1) + 1;
+    const fieldTypeName = this.fieldTypes()[0]?.name ?? '';
     this.form.reset({
       name: '',
       displayName: '',
       description: '',
-      fieldTypeName: FIELD_TYPES.text,
+      fieldTypeName,
       displayOrder: nextOrder,
       isRequired: false,
       isSearchable: true,
       isUniqueKey: false,
     });
     this.form.controls.name.enable();
-    this.applyFieldTypePolicy(FIELD_TYPES.text, defaultConfiguration(FIELD_TYPES.text));
+    // reset() does not change a control's disabled status (Angular only does that for a per-control
+    // {value, disabled} form-state object, not a plain value map) - so a switch left disabled by the
+    // PREVIOUS modal instance's non-indexable type would otherwise survive into this one and make
+    // applySearchableAvailability below misread it as "locked by this field's own type".
+    this.form.controls.isSearchable.enable({ emitEvent: false });
+    this.configSeed.set(undefined);
+    this.applySearchableAvailability(fieldTypeName);
     // Must be called after form.reset()/enable(): both trigger valueChanges that can be misread as
     // "manual edit". reset() clears that marker and resets suggestion state, including the spinner.
     this.slugHandle?.reset();
@@ -484,22 +478,40 @@ export class FieldDefinitionListComponent implements OnInit {
       name: field.name,
       displayName: field.displayName,
       description: field.description ?? '',
-      fieldTypeName: field.fieldTypeName ?? FIELD_TYPES.text,
+      fieldTypeName: field.fieldTypeName ?? '',
       displayOrder: field.displayOrder,
       isRequired: field.isRequired,
       isSearchable: field.isSearchable ?? true,
       isUniqueKey: field.isUniqueKey ?? false,
     });
     this.form.controls.name.enable();
-    // The stored configuration, not the type's defaults: an existing field keeps what an admin set, and
-    // re-defaulting here would quietly rewrite it on the next save.
-    this.applyFieldTypePolicy(field.fieldTypeName ?? FIELD_TYPES.text, { ...(field.configuration ?? {}) });
+    // Same reason as openCreate: reset() preserves whatever disabled status the control already had, so
+    // a previous edit's non-indexable type would otherwise leave this disabled and make
+    // applySearchableAvailability below stomp this field's own real IsSearchable back to true.
+    this.form.controls.isSearchable.enable({ emitEvent: false });
+    // The stored field, not just its type: <ff-flex-field-config> only restores saved configuration
+    // values when selected.fieldTypeName matches the type currently being rendered, so handing it the
+    // whole field lets it patch what an admin previously set instead of quietly re-defaulting. Rebuilt
+    // as a plain object (not the DTO instance itself) - see toFieldData.
+    this.configSeed.set(this.toFieldData(field));
+    this.applySearchableAvailability(field.fieldTypeName);
     this.slugHandle?.markManual();
     this.justDrafted.set(false);
     this.isDrafting.set(false);
     this.isPolishing.set(false);
     this.showPromptPreview.set(false);
     this.editing.set(field);
+    // The field-type <select> is freshly mounted by the @if above, with fieldTypeName already set to a
+    // non-first option: Angular writes that value into the native select before its own <option>s finish
+    // registering (a select-with-preset-value-on-first-render gap, independent of @for vs *ngFor and
+    // [value] vs [ngValue] - tried both), so the select silently displays the first option while the
+    // control itself - and everything else reading it, like <ff-flex-field-config> - already holds the
+    // real one. Re-push the same value once the view has settled (setTimeout, not queueMicrotask: this
+    // needs to run after Angular's own view-creation microtasks, not just after this function's own
+    // synchronous scope) to force a fresh sync. emitEvent:false: this is a display fixup, not a change -
+    // it must not re-clear configSeed via the fieldTypeName.valueChanges subscription in ngOnInit.
+    const fieldTypeName = field.fieldTypeName ?? '';
+    setTimeout(() => this.form.controls.fieldTypeName.setValue(fieldTypeName, { emitEvent: false }));
   }
 
   // #264: draft field metadata from the prompt. The prompt is the primary input; one LLM call drafts the
@@ -544,14 +556,22 @@ export class FieldDefinitionListComponent implements OnInit {
       this.toaster.info('::FieldDefinition:DraftUnavailable', '::Info');
       return;
     }
-    const fieldTypeName = draft.fieldTypeName ?? FIELD_TYPES.text;
+    const fieldTypeName = draft.fieldTypeName ?? this.fieldTypes()[0]?.name ?? '';
     this.form.controls.displayName.setValue(draft.displayName, { emitEvent: false });
     this.form.controls.fieldTypeName.setValue(fieldTypeName, { emitEvent: false });
     this.form.controls.isRequired.setValue(draft.isRequired ?? false, { emitEvent: false });
-    // setValue used emitEvent:false, so valueChanges does not fire and the configuration panel would still
-    // describe the previous type. The server drafts a configuration alongside the type - a date-only
-    // DateTime, a Tags MaxCount - so take that rather than re-defaulting and losing the distinction.
-    this.applyFieldTypePolicy(fieldTypeName, { ...(draft.configuration ?? defaultConfiguration(fieldTypeName)) });
+    // setValue used emitEvent:false, so the config panel would still describe the previous type unless
+    // told directly. The server can draft a configuration alongside the type - a date-only DateTime, a
+    // Tags MaxCount - so seed <ff-flex-field-config> with it via the same "selected" channel it uses to
+    // restore a stored field's configuration.
+    this.configSeed.set({
+      id: '',
+      name: '',
+      displayName: draft.displayName,
+      fieldTypeName,
+      configuration: draft.configuration ?? {},
+    });
+    this.applySearchableAvailability(fieldTypeName);
     if (forNewField) {
       // Create mode: overwrite the machine key as part of the group. Use the suggested value, or fall
       // back to local placeholder field_{n} when missing, such as when pure CJK sanitizes to empty after
@@ -662,6 +682,7 @@ export class FieldDefinitionListComponent implements OnInit {
 
     this.isSubmitting.set(true);
     const raw = this.form.getRawValue();
+    const configuration = this.configurationValue();
 
     if (mode === 'create') {
       const input: CreateFieldDefinitionDto = {
@@ -670,7 +691,7 @@ export class FieldDefinitionListComponent implements OnInit {
         displayName: raw.displayName,
         description: raw.description,
         fieldTypeName: raw.fieldTypeName,
-        configuration: this.configuration(),
+        configuration,
         displayOrder: raw.displayOrder,
         isRequired: raw.isRequired,
         // Disabled for a non-indexable type, but getRawValue still carries it back after the policy has
@@ -690,7 +711,7 @@ export class FieldDefinitionListComponent implements OnInit {
         displayName: raw.displayName,
         description: raw.description,
         fieldTypeName: raw.fieldTypeName,
-        configuration: this.configuration(),
+        configuration,
         displayOrder: raw.displayOrder,
         isRequired: raw.isRequired,
         isSearchable: raw.isSearchable,
