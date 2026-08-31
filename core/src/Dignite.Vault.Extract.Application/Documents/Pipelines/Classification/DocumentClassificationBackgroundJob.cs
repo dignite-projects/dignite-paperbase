@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Dignite.Abp.FlexFields;
 using Dignite.Vault.Extract.Abstractions.Documents;
 using Dignite.Vault.Extract.Abstractions.Parse;
 using Dignite.Vault.Extract.Ai;
@@ -30,6 +31,7 @@ public class DocumentClassificationBackgroundJob
     private readonly ICurrentTenant _currentTenant;
     private readonly IBackgroundJobManager _backgroundJobManager;
     private readonly DocumentPipelineJobScheduler _pipelineJobScheduler;
+    private readonly IFlexFieldIndexManager<Document> _indexManager;
 
     public DocumentClassificationBackgroundJob(
         IDocumentRepository documentRepository,
@@ -44,7 +46,8 @@ public class DocumentClassificationBackgroundJob
         IOptions<VaultExtractBehaviorOptions> aiOptions,
         ICurrentTenant currentTenant,
         IBackgroundJobManager backgroundJobManager,
-        DocumentPipelineJobScheduler pipelineJobScheduler)
+        DocumentPipelineJobScheduler pipelineJobScheduler,
+        IFlexFieldIndexManager<Document> indexManager)
         : base(documentRepository, runRepository, pipelineRunManager, pipelineRunAccessor, unitOfWorkManager)
     {
         _documentTypeRepository = documentTypeRepository;
@@ -55,6 +58,7 @@ public class DocumentClassificationBackgroundJob
         _currentTenant = currentTenant;
         _backgroundJobManager = backgroundJobManager;
         _pipelineJobScheduler = pipelineJobScheduler;
+        _indexManager = indexManager;
     }
 
     public override async Task ExecuteAsync(DocumentClassificationJobArgs args)
@@ -154,6 +158,11 @@ public class DocumentClassificationBackgroundJob
 
         await ApplyClassificationResultAsync(document, run, outcome, hasFigures);
         await DocumentRepository.UpdateAsync(document, autoSave: true);
+        // The container and low-confidence-review branches both clear Document.FlexFields (Document.MarkAsContainer /
+        // RequestClassificationReview) without re-extracting - unlike FieldExtractionService's write, nothing else in
+        // this path would otherwise resync the derived index, leaving stale rows behind. A confirmed classification
+        // (fields untouched here, extraction cascades separately) makes this a no-op sync, which is cheap and correct.
+        await _indexManager.SynchronizeAsync(document);
 
         await uow.CompleteAsync();
     }

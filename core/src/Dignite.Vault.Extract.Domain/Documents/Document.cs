@@ -584,7 +584,8 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
     /// <see cref="DocumentReviewReasons.UnresolvedClassification"/> (blocking), preventing stale values from polluting external read models.
     /// <para>
     /// Invariant: "no confirmed type implies no type-bound field values". Once the type is retracted (<see cref="DocumentTypeId"/> = null),
-    /// old <see cref="ExtractedFieldValues"/> no longer belong to any confirmed type and must be cleared together. Otherwise export DTO / MCP /
+    /// old field values — both the legacy <see cref="ExtractedFieldValues"/> rows and the v3 <see cref="FlexFields"/> bag — no longer
+    /// belong to any confirmed type and must be cleared together. Otherwise export DTO / MCP /
     /// export paths would expose a dirty model with fields but no type (#267 first exposed this when automatic reclassification fell to low confidence).
     /// Re-confirming a type (<see cref="ConfirmClassification"/> or high-confidence reclassification -> <c>DocumentClassifiedEto</c> -> field re-extraction) will restore fields.
     /// Centralizing this invariant in the aggregate root avoids per-read-path type filtering and special-case buildup.
@@ -607,6 +608,7 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
         ReviewDisposition = DocumentReviewDisposition.NotReviewed;
         RejectionReason = null; // #284 review-fix: leaving Rejected disposition -> clear stale rejection reason.
         _extractedFieldValues.Clear();
+        SetFlexFields(null);
     }
 
     /// <summary>
@@ -659,6 +661,7 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
         ReviewDisposition = DocumentReviewDisposition.NotReviewed;
         RejectionReason = null;
         _extractedFieldValues.Clear();
+        SetFlexFields(null);
 
         // #355: mirror of the container→type retraction (#349 ContainerMarkerClearedEvent). The in-process handler
         // publishes DocumentReclassifiedToContainerEto so downstream retracts the record derived from the former type.

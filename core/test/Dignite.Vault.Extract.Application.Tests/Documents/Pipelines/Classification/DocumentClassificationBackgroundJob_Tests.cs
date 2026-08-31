@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Abp.FlexFields;
 using Dignite.Vault.Extract.Abstractions.Documents;
 using Dignite.Vault.Extract.Abstractions.Parse;
 using Dignite.Vault.Extract.Ai;
@@ -81,6 +82,7 @@ public class DocumentClassificationBackgroundJob_Tests
     private readonly DocumentClassificationWorkflow _workflow;
     private readonly IDistributedEventBus _eventBus;
     private readonly IBackgroundJobManager _backgroundJobManager;
+    private readonly IFlexFieldIndexManager<Document> _indexManager;
 
     public DocumentClassificationBackgroundJob_Tests()
     {
@@ -90,6 +92,7 @@ public class DocumentClassificationBackgroundJob_Tests
         _workflow = GetRequiredService<DocumentClassificationWorkflow>();
         _eventBus = GetRequiredService<IDistributedEventBus>();
         _backgroundJobManager = GetRequiredService<IBackgroundJobManager>();
+        _indexManager = GetRequiredService<IFlexFieldIndexManager<Document>>();
     }
 
     [Fact]
@@ -213,6 +216,11 @@ public class DocumentClassificationBackgroundJob_Tests
         await _backgroundJobManager.Received(1).EnqueueAsync(
             Arg.Is<DocumentSegmentationJobArgs>(a => a.SourceDocumentId == doc.Id),
             Arg.Any<BackgroundJobPriority>(), Arg.Any<TimeSpan?>());
+
+        // Document.MarkAsContainer() clears FlexFields in memory, but only a resync makes that visible to
+        // DocumentFlexFieldIndex-backed filters. Without this call, the only thing that would go red if it
+        // were deleted is a document silently still matching its old field-value filters.
+        await _indexManager.Received(1).SynchronizeAsync(doc, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -438,6 +446,11 @@ public class DocumentClassificationBackgroundJob_Tests
 
         await _eventBus.DidNotReceive().PublishAsync(
             Arg.Any<DocumentClassifiedEto>(), Arg.Any<bool>());
+
+        // Document.RequestClassificationReview() clears FlexFields in memory, but only a resync makes that
+        // visible to DocumentFlexFieldIndex-backed filters. Without this call, the only thing that would go
+        // red if it were deleted is a document silently still matching its old field-value filters.
+        await _indexManager.Received(1).SynchronizeAsync(doc, Arg.Any<CancellationToken>());
     }
 
     [Fact]

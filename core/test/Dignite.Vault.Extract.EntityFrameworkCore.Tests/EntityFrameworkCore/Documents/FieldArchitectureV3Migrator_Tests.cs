@@ -322,6 +322,46 @@ public class FieldArchitectureV3Migrator_Tests : VaultExtractEntityFrameworkCore
         });
     }
 
+    /// <summary>
+    /// #528: archiving one of several unique-key fields narrows the key - it must never resurrect that
+    /// field back into the hash for a document that (correctly, per the live extraction path) has no bag
+    /// value for it. <see cref="FlexFieldFingerprintCalculator.Compute"/> nulls the WHOLE fingerprint on a
+    /// partial key, so if the recompute's own field lookup saw the archived field as still active, this
+    /// document - which only ever held a value for the still-active "title" key - would silently lose
+    /// duplicate detection even though nothing about its own data changed.
+    /// </summary>
+    [Fact]
+    public async Task Recompute_Does_Not_Null_The_Fingerprint_For_A_Document_Missing_An_Archived_Unique_Key_Field()
+    {
+        var id = _guidGenerator.Create();
+        await WithUnitOfWorkAsync(async () =>
+        {
+            await SeedSchemaAsync(uniqueKey: true); // both "title" and "amount" are unique-key
+            await SeedDocumentAsync(id);
+        });
+
+        await WithMigrationAsync();
+
+        // Archive one of the two unique-key fields, then drop its value - exactly what a document
+        // extracted after the archival would look like: live extraction never asks for a value it no
+        // longer defines.
+        await WithUnitOfWorkAsync(() => _fieldRepository.DeleteAsync(FieldId("amount")));
+        await WithUnitOfWorkAsync(async () =>
+        {
+            var doc = await _documentRepository.FindAsync(id);
+            doc!.SetFlexFields(new Dictionary<string, object?> { ["title"] = "Service Agreement" });
+            await _documentRepository.UpdateAsync(doc, autoSave: true);
+        });
+
+        await WithUnitOfWorkAsync(async () => await _migrator.RecomputeFingerprintsAsync());
+
+        await WithUnitOfWorkAsync(async () =>
+        {
+            var doc = await _documentRepository.FindAsync(id);
+            doc!.FieldFingerprint.ShouldNotBeNullOrWhiteSpace();
+        });
+    }
+
     // --- helpers ---
 
     private async Task<FieldArchitectureV3MigrationResult> WithMigrationAsync()

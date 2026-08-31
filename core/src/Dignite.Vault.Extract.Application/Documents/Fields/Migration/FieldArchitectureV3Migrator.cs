@@ -207,69 +207,78 @@ public class FieldArchitectureV3Migrator : ITransientDependency
     /// </summary>
     protected virtual async Task<(int Documents, int Values)> MigrateValuesAsync(CancellationToken cancellationToken)
     {
-        // Cached across the whole pass: definitions are few and every document needs them to resolve a
-        // field id to its bag key.
-        var fields = await FieldRepository.GetListAsync(cancellationToken: cancellationToken);
-        if (fields.Count == 0)
+        // Disabled for the whole method, the same reason MigrateDefinitionsAsync disables it: a field
+        // archived before cutover must still resolve below (both in the definitions list and inside
+        // FieldValueBagBuilder.Build), and a document soft-deleted before cutover must still be found and
+        // loaded - otherwise its historical values are silently dropped, and once the v2 tables are
+        // dropped that is permanent. Flows through PageDocumentIdsAsync and FindWithFieldValuesAsync via
+        // ABP's ambient filter state, so neither needs its own disable.
+        using (DataFilter.Disable<ISoftDelete>())
         {
-            return (0, 0);
-        }
-
-        var documentsMigrated = 0;
-        var valuesMigrated = 0;
-        var skip = 0;
-
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var page = await PageDocumentIdsAsync(skip, cancellationToken);
-
-            if (page.Count == 0)
+            // Cached across the whole pass: definitions are few and every document needs them to resolve a
+            // field id to its bag key.
+            var fields = await FieldRepository.GetListAsync(cancellationToken: cancellationToken);
+            if (fields.Count == 0)
             {
-                break;
+                return (0, 0);
             }
 
-            foreach (var documentId in page)
+            var documentsMigrated = 0;
+            var valuesMigrated = 0;
+            var skip = 0;
+
+            while (true)
             {
-                var document = await DocumentRepository.FindWithFieldValuesAsync(documentId, cancellationToken);
-                if (document == null || document.ExtractedFieldValues.Count == 0)
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var page = await PageDocumentIdsAsync(skip, cancellationToken);
+
+                if (page.Count == 0)
                 {
-                    continue;
+                    break;
                 }
 
-                // Already migrated - re-running must not rewrite a bag an operator may since have edited.
-                if (document.FlexFields.Count > 0)
+                foreach (var documentId in page)
                 {
-                    continue;
+                    var document = await DocumentRepository.FindWithFieldValuesAsync(documentId, cancellationToken);
+                    if (document == null || document.ExtractedFieldValues.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    // Already migrated - re-running must not rewrite a bag an operator may since have edited.
+                    if (document.FlexFields.Count > 0)
+                    {
+                        continue;
+                    }
+
+                    var bag = FieldValueBagBuilder.Build(document.ExtractedFieldValues, fields);
+                    if (bag.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    foreach (var entry in bag)
+                    {
+                        document.SetField(entry.Key, entry.Value);
+                    }
+
+                    // autoSave: false - one flush per page below, not one per document. Each flush is its own
+                    // round trip through ABP's audit and event plumbing, and nothing in this loop reads back
+                    // what an earlier iteration wrote.
+                    await DocumentRepository.UpdateAsync(document, autoSave: false, cancellationToken);
+
+                    documentsMigrated++;
+                    valuesMigrated += bag.Count;
                 }
 
-                var bag = FieldValueBagBuilder.Build(document.ExtractedFieldValues, fields);
-                if (bag.Count == 0)
-                {
-                    continue;
-                }
+                await UnitOfWorkManager.Current!.SaveChangesAsync(cancellationToken);
 
-                foreach (var entry in bag)
-                {
-                    document.SetField(entry.Key, entry.Value);
-                }
-
-                // autoSave: false - one flush per page below, not one per document. Each flush is its own
-                // round trip through ABP's audit and event plumbing, and nothing in this loop reads back
-                // what an earlier iteration wrote.
-                await DocumentRepository.UpdateAsync(document, autoSave: false, cancellationToken);
-
-                documentsMigrated++;
-                valuesMigrated += bag.Count;
+                skip += page.Count;
             }
 
-            await UnitOfWorkManager.Current!.SaveChangesAsync(cancellationToken);
-
-            skip += page.Count;
+            return (documentsMigrated, valuesMigrated);
         }
-
-        return (documentsMigrated, valuesMigrated);
     }
 
     /// <summary>
@@ -310,8 +319,22 @@ public class FieldArchitectureV3Migrator : ITransientDependency
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var page = await DocumentGenericRepository.GetPagedListAsync(
-                skip, BatchSize, sorting: nameof(Document.Id), includeDetails: false, cancellationToken);
+            // Disabled for this call only, so a document soft-deleted before cutover is still found and
+            // recomputed - otherwise restoring it later leaves a stale v2-shaped fingerprint that can never
+            // match an otherwise-identical live document again (#411 compares fingerprints by plain string
+            // equality). Scoped to just the page fetch: the per-type field lookup below must stay under the
+            // default filter. Widening this to soft-deleted fields would pull an archived unique-key field
+            // back into every document's hash - not just the recycle-bin ones this fix targets -  and
+            // FlexFieldFingerprintCalculator.Compute nulls the WHOLE fingerprint on a partial key, so every
+            // live document that (correctly) never held a value for the now-archived field would silently
+            // lose duplicate detection. That is also the reverse of #528's rule that an archived unique-key
+            // field narrows the key rather than resurrecting it.
+            List<Document> page;
+            using (DataFilter.Disable<ISoftDelete>())
+            {
+                page = await DocumentGenericRepository.GetPagedListAsync(
+                    skip, BatchSize, sorting: nameof(Document.Id), includeDetails: false, cancellationToken);
+            }
 
             if (page.Count == 0)
             {
