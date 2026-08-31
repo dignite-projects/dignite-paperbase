@@ -1,3 +1,4 @@
+using Dignite.Abp.FlexFields;
 using System;
 using System.Collections.Generic;
 using Dignite.Vault.Extract.Documents.Fields;
@@ -28,7 +29,11 @@ internal sealed class ExportProjection
     /// <summary>Reason axis (#287). Documents with non-blocking MissingRequiredFields still enter type-bound export normally, but the export must expose the "missing required fields" quality signal because the disposition axis ReviewDisposition does not.</summary>
     public DocumentReviewReasons ReviewReasons { get; init; }
 
-    public List<ExtractedFieldProjection> ExtractedFields { get; init; } = new();
+    /// <summary>
+    /// The document's field value bag, projected as-is. Keyed by field name, which is what the column
+    /// definitions carry, so a cell is a direct lookup rather than a bucketed scan.
+    /// </summary>
+    public FlexFieldDictionary FlexFields { get; init; } = new();
 }
 
 /// <summary>

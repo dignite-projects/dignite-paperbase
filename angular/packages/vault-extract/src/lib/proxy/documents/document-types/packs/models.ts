@@ -15,12 +15,16 @@ export interface DocumentTypePackDto {
 export interface DocumentTypePackFieldDto {
   name: string;
   displayName: string;
-  prompt?: string | null;
-  dataType?: FieldDataType;
+  description?: string | null;
+  fieldTypeName?: string | null;
+  configuration?: Record<string, object> | null;
   displayOrder?: number;
   isRequired?: boolean;
-  allowMultiple?: boolean;
+  isSearchable?: boolean;
   isUniqueKey?: boolean;
+  prompt?: string | null;
+  dataType?: FieldDataType | null;
+  allowMultiple?: boolean;
 }
 
 export interface DocumentTypePackImportResultDto {

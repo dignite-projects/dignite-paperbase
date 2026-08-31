@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\..\..\common.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Dignite.Vault.Extract.FlexFields</RootNamespace>
+    <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
+    <Description>Vault Extract's own extensions to the Dignite.Abp.FlexFields kernel: field types the kernel does not ship, starting with Tags (open-vocabulary multi-value, the complement of the kernel's closed-vocabulary Select). Depends only on FlexFields.Abstractions, so it carries none of Vault Extract's own domain and can be referenced by anything needing the field-type vocabulary.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Abstractions only, deliberately. This project exists because
+      Dignite.Vault.Extract.Abstractions promises to depend on ABP base packages alone, and a field
+      type needs the FlexFields vocabulary - so the two cannot be merged. It is the counterpart of
+      Dignite.FlexFields.Site in the site repository: a downstream's own field types live next to the
+      downstream, never in the kernel.
+    -->
+    <PackageReference Include="Dignite.Abp.FlexFields.Abstractions" />
+    <!-- Serves v2 LongText in v3 (#559 resolution 1): CKEditorFieldType.IndexValueType is null, so
+         "never indexed" stays structural, and ContentFormat=Markdown persists a plain GFM string. -->
+    <PackageReference Include="Dignite.Abp.FlexFields.CKEditor" />
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Localization\FlexFields\*.json" />
+    <Content Remove="Localization\FlexFields\*.json" />
+  </ItemGroup>
+
+</Project>

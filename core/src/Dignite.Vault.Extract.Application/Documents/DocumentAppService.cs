@@ -1,3 +1,4 @@
+using Dignite.Abp.FlexFields;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -26,7 +27,15 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
 {
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentTypeRepository _documentTypeRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldRepository;
+    private readonly IFieldTypeResolver _fieldTypeResolver;
+    private readonly IFlexFieldQueryExecutor<Document> _flexFieldQueryExecutor;
+    /// <summary>
+    /// An operator edit writes the same value bag the extraction pipeline writes, so it owes the query
+    /// index the same re-derivation — otherwise a hand-corrected value would read back correctly on the
+    /// detail page while quietly failing to match its own field filter.
+    /// </summary>
+    private readonly IFlexFieldIndexManager<Document> _flexFieldIndexManager;
     private readonly ICabinetRepository _cabinetRepository;
     private readonly IBlobContainer<VaultExtractDocumentContainer> _blobContainer;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
@@ -37,7 +46,10 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
     public DocumentAppService(
         IDocumentRepository documentRepository,
         IDocumentTypeRepository documentTypeRepository,
-        IFieldDefinitionRepository fieldDefinitionRepository,
+        IFieldRepository fieldRepository,
+        IFieldTypeResolver fieldTypeResolver,
+        IFlexFieldQueryExecutor<Document> flexFieldQueryExecutor,
+        IFlexFieldIndexManager<Document> flexFieldIndexManager,
         ICabinetRepository cabinetRepository,
         IBlobContainer<VaultExtractDocumentContainer> blobContainer,
         DocumentPipelineRunManager pipelineRunManager,
@@ -47,7 +59,10 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
     {
         _documentRepository = documentRepository;
         _documentTypeRepository = documentTypeRepository;
-        _fieldDefinitionRepository = fieldDefinitionRepository;
+        _fieldRepository = fieldRepository;
+        _fieldTypeResolver = fieldTypeResolver;
+        _flexFieldQueryExecutor = flexFieldQueryExecutor;
+        _flexFieldIndexManager = flexFieldIndexManager;
         _cabinetRepository = cabinetRepository;
         _blobContainer = blobContainer;
         _pipelineRunManager = pipelineRunManager;
@@ -113,7 +128,7 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
         return await ExecuteListQueryAsync(input, documentTypeId, onlyDeleted: false, fieldQueries);
     }
 
-    protected virtual async Task<List<DocumentFieldQuery>?> ResolveFieldQueriesAsync(
+    protected virtual async Task<List<FlexFieldQueryCondition>?> ResolveFieldQueriesAsync(
         GetDocumentListInput input, Guid? documentTypeId)
     {
         if (input.FieldFilters is not { Count: > 0 })
@@ -124,28 +139,25 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
         // DTO validation already guarantees DocumentTypeCode is non-empty when FieldFilters exist; documentTypeId was resolved above and is non-null, otherwise we already threw or returned.
         // Shared with DocumentExportAppService.ExportAsync so the unknown-field loud-fail stays single-sourced.
         return await DocumentFieldQueryResolver.ResolveAsync(
-            _fieldDefinitionRepository, input.FieldFilters, documentTypeId!.Value, input.DocumentTypeCode!);
+            _fieldRepository, _fieldTypeResolver, input.FieldFilters, documentTypeId!.Value, input.DocumentTypeCode!);
     }
 
     protected virtual async Task<PagedResultDto<DocumentListItemDto>> ExecuteListQueryAsync(
         GetDocumentListInput input,
         Guid? documentTypeId,
         bool onlyDeleted,
-        List<DocumentFieldQuery>? fieldQueries)
+        List<FlexFieldQueryCondition>? fieldQueries)
     {
-        // Use WithDetailsAsync(selector) to eager-load only ExtractedFieldValues child rows, excluding PipelineRuns.
-        // This is persistence-agnostic through the ABP repository API and avoids direct EF Core .Include dependency in the App layer.
-        // A single JOIN retrieves the data for assembling the ExtractedFields dictionary, preventing per-document N+1 / lazy loading
-        // (Issue #206 review guardrail).
-        var query = await _documentRepository.WithDetailsAsync(d => d.ExtractedFieldValues);
+        // No child-collection include: v3 field values live in a column on Document itself, so the JOIN
+        // that used to feed ExtractedFields assembly is gone along with the rows it loaded.
+        var query = await _documentRepository.GetQueryableAsync();
 
         // ExtractedFields value filtering: the repository uses Documents-anchored LINQ (child EXISTS + typed-column comparison)
         // to get the matching Id set anchored to DocumentTypeId, then intersects it with this query. This keeps ApplyFilter
         // as the single source for metadata filtering.
         if (fieldQueries is { Count: > 0 })
         {
-            var matchedIds = await _documentRepository.GetFieldMatchedIdsAsync(documentTypeId!.Value, fieldQueries);
-            query = query.Where(d => matchedIds.Contains(d.Id));
+            query = await _flexFieldQueryExecutor.ApplyFilterAsync(query, fieldQueries);
         }
 
         query = ApplyFilter(query, input, documentTypeId);
@@ -693,16 +705,15 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
 
         // Validate that each key is a field name defined under this document's layer and DocumentType.
         // GetListAsync reads a single layer by ambient CurrentTenant.Id (already asserted == document.TenantId) and matches by internal DocumentTypeId.
-        var definitions = await _fieldDefinitionRepository.GetListAsync(document.DocumentTypeId.Value);
+        var definitions = await _fieldRepository.GetListAsync(document.DocumentTypeId.Value);
         var definitionsByName = definitions.ToDictionary(d => d.Name, StringComparer.Ordinal);
         var fields = input.Fields ?? new Dictionary<string, JsonElement>();
 
-        // After validating each value against the declared type, expand into typed DocumentFieldValue instances
-        // (FieldDefinitionId + DataType come from FieldDefinition). Validated values can be passed directly to the aggregate root,
-        // no longer through an intermediate JSON dictionary; conversion from value type to aligned columns is centralized in DocumentExtractedField.
-        // #212: JSON arrays for multi-value text fields are split by DocumentFieldValueFactory into multiple rows (Order 0,1,2...);
-        // single-value fields produce one row (Order 0).
-        var fieldValues = new List<DocumentFieldValue>(fields.Count);
+        // Each submitted value is validated and converted in one step by the same reader the extraction
+        // path uses, so an operator edit and an LLM write can never disagree about what a field accepts.
+        // The difference is only in what happens on rejection: interactive here (a correctable error),
+        // logged-and-skipped there.
+        var fieldValues = new Dictionary<string, object?>(fields.Count, StringComparer.Ordinal);
         foreach (var (key, value) in fields)
         {
             if (!definitionsByName.TryGetValue(key, out var definition))
@@ -712,27 +723,29 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
                     .WithData("DocumentTypeCode", documentTypeCode ?? string.Empty);
             }
 
-            if (!ExtractedFieldValueValidator.IsValid(value, definition.DataType, definition.AllowMultiple))
+            if (!FlexFieldValueReader.TryRead(value, definition.FieldTypeName, definition.Configuration, out var read))
             {
                 throw new BusinessException(VaultExtractErrorCodes.ExtractedField.InvalidValue)
                     .WithData("FieldName", key)
                     .WithData("DocumentTypeCode", documentTypeCode ?? string.Empty)
-                    .WithData("DataType", definition.DataType.ToString())
-                    .WithData("AllowMultiple", definition.AllowMultiple.ToString())
+                    .WithData("DataType", definition.FieldTypeName)
+                    .WithData("AllowMultiple", bool.FalseString)
                     .WithData("JsonValueKind", value.ValueKind.ToString());
             }
 
-            fieldValues.AddRange(DocumentFieldValueFactory.Expand(
-                definition.Id, definition.DataType, definition.AllowMultiple, value));
+            if (read != null)
+            {
+                fieldValues[key] = read;
+            }
         }
 
-        // Whole-set replacement, consistent with FieldExtractionService: empty means clear all field rows.
-        document.SetFields(fieldValues);
+        // Whole-set replacement, consistent with FieldExtractionService: empty means clear every value.
+        document.SetFlexFields(fieldValues);
 
         // #284: after operator entry, reevaluate missing required fields. If filled, clear MissingRequiredFields to close the review-queue loop;
-        // if still missing, keep it. Reuse loaded definitions filtered by IsRequired plus the written ExtractedFieldValues.
+        // if still missing, keep it. Reuse loaded definitions filtered by IsRequired plus the keys now in the bag.
         var requiredIds = definitions.Where(d => d.IsRequired).Select(d => d.Id).ToList();
-        var extractedIds = document.ExtractedFieldValues.Select(f => f.FieldDefinitionId).Distinct().ToList();
+        var extractedIds = definitions.Where(d => document.FlexFields.ContainsKey(d.Name)).Select(d => d.Id).ToList();
         document.SetReviewReason(
             DocumentReviewReasons.MissingRequiredFields,
             _reviewEvaluator.MissingRequiredFieldsPresent(requiredIds, extractedIds));
@@ -751,12 +764,13 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
         await _pipelineRunManager.ReDeriveLifecycleAsync(document);
 
         await _documentRepository.UpdateAsync(document, autoSave: true);
+        await _flexFieldIndexManager.SynchronizeAsync(document);
 
-        // FieldsExtractedEto.FieldCount is the logical field count (distinct fields that produced >= 1 value), not the expanded row count.
-        // Use the same algorithm as FieldExtractionService so both write paths emit the same thin signal for the same final state.
-        // Empty arrays for multi-value fields expand to 0 rows and do not count, avoiding divergence from the LLM path.
+        // FieldsExtractedEto.FieldCount is the logical field count - fields that hold a value. One bag entry
+        // is one field, so this is simply the count, and it matches FieldExtractionService exactly: both
+        // write paths emit the same thin signal for the same final state.
         // Downstream consumers are idempotent by (DocumentId, EventType, EventTime) and pull back the latest field values.
-        var fieldCount = fieldValues.Select(v => v.FieldDefinitionId).Distinct().Count();
+        var fieldCount = fieldValues.Count;
         await _distributedEventBus.PublishAsync(
             new FieldsExtractedEto
             {
@@ -985,9 +999,9 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
     protected virtual async Task<DocumentDto> MapToDtoAsync(Document document)
     {
         var dto = ObjectMapper.Map<Document, DocumentDto>(document);
-        var (typeCodes, fieldNames) = await ResolveReferenceMapsAsync(new[] { document });
+        var (typeCodes, fieldsByType) = await ResolveReferenceMapsAsync(new[] { document });
         dto.DocumentTypeCode = ResolveTypeCode(document.DocumentTypeId, typeCodes);
-        dto.ExtractedFields = AssembleExtractedFields(document.ExtractedFieldValues, fieldNames);
+        dto.ExtractedFields = AssembleExtractedFields(document, fieldsByType);
         // #268: expose extraction integrity quality signal, not provenance. Null metadata (historical / digital-native / not extracted) is treated as complete.
         dto.ExtractionIsComplete = document.ExtractionMetadata?.IsComplete ?? true;
         dto.ExtractionIncompleteReason = document.ExtractionMetadata?.IncompleteReason;
@@ -1008,11 +1022,11 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
             return;
         }
 
-        var (typeCodes, fieldNames) = await ResolveReferenceMapsAsync(documents);
+        var (typeCodes, fieldsByType) = await ResolveReferenceMapsAsync(documents);
         for (var i = 0; i < documents.Count; i++)
         {
             dtos[i].DocumentTypeCode = ResolveTypeCode(documents[i].DocumentTypeId, typeCodes);
-            dtos[i].ExtractedFields = AssembleExtractedFields(documents[i].ExtractedFieldValues, fieldNames);
+            dtos[i].ExtractedFields = AssembleExtractedFields(documents[i], fieldsByType);
             // #284: thin list: expose only RequiresReview for badges and do not assemble details. Details are for the detail page to avoid list N+1.
             dtos[i].RequiresReview = ReviewReasonPolicy.RequiresAttention(documents[i].ReviewReasons, documents[i].ReviewDisposition);
         }
@@ -1111,15 +1125,20 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
     }
 
     /// <summary>
-    /// DisplayName values for missing required fields: current IsRequired definitions for this type that are absent from the extracted value set.
+    /// DisplayName values for missing required fields: current IsRequired definitions for this type that are absent from the value bag.
     /// <para>
-    /// #284: this method intentionally does <b>not</b> reuse <see cref="ResolveReferenceMapsAsync"/>. They have opposite soft-delete semantics and different keys.
-    /// <c>ResolveReferenceMaps</c> uses <c>Disable&lt;ISoftDelete&gt;</c> and looks up by <b>FieldDefinitionId of extracted values</b>
-    /// so archived fields referenced by historical documents can still resolve to field names at export time, preventing orphaned values.
+    /// #284: this method intentionally does <b>not</b> reuse <see cref="ResolveReferenceMapsAsync"/>. They have opposite soft-delete semantics.
+    /// <c>ResolveReferenceMaps</c> uses <c>Disable&lt;ISoftDelete&gt;</c> so archived fields a historical document still holds values for can
+    /// resolve to field names at export time, preventing orphaned values.
     /// This method looks for fields that are "currently still required but <b>missing</b>", so it must read only <b>active</b> definitions
-    /// and query all definitions by <b>DocumentTypeId</b>; missing items are naturally absent from by-id maps.
+    /// and query all definitions by <b>DocumentTypeId</b>; missing items are naturally absent from the bag.
     /// Soft-deleted fields are no longer required and must never be reported as pending entry.
     /// This method is called once for a single document on the detail page, not in lists and not as N+1, so there is no performance reason to merge it.
+    /// </para>
+    /// <para>
+    /// Presence is tested by <b>name</b>, because the bag keys on the field name (#559). Under v2 it was tested by
+    /// field id against the value rows; leaving it that way after the cutover would have reported every required
+    /// field of every document as missing, since nothing writes those rows any more.
     /// </para>
     /// </summary>
     protected virtual async Task<List<string>> BuildMissingRequiredFieldNamesAsync(Document document)
@@ -1129,10 +1148,9 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
             return new List<string>();
         }
 
-        var definitions = await _fieldDefinitionRepository.GetListAsync(document.DocumentTypeId.Value);
-        var extractedIds = document.ExtractedFieldValues.Select(f => f.FieldDefinitionId).ToHashSet();
+        var definitions = await _fieldRepository.GetListAsync(document.DocumentTypeId.Value);
         return definitions
-            .Where(d => d.IsRequired && !extractedIds.Contains(d.Id))
+            .Where(d => d.IsRequired && !document.FlexFields.ContainsKey(d.Name))
             .Select(d => d.DisplayName)
             .ToList();
     }
@@ -1179,7 +1197,7 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
         Dictionary<Guid, (string Name, string DisplayName)> byId;
         using (DataFilter.Disable<ISoftDelete>())
         {
-            var defs = await _fieldDefinitionRepository.GetListAsync(d => fieldIds.Contains(d.Id));
+            var defs = await _fieldRepository.GetListAsync(d => fieldIds.Contains(d.Id));
             byId = defs.ToDictionary(d => d.Id, d => (d.Name, d.DisplayName));
         }
 
@@ -1199,13 +1217,18 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
     }
 
     /// <summary>
-    /// Resolves all DocumentTypeId -> TypeCode and FieldDefinitionId -> (Name, DataType, AllowMultiple) mappings for this document batch at once.
-    /// Traverses soft-delete so archived types / fields still resolve; IMultiTenant still isolates by ambient tenant because this batch belongs to one layer.
-    /// DataType is loaded with Name (#208: field type is determined by FieldDefinition and is not persisted on field value rows) so
-    /// <see cref="DocumentExtractedField.ToJsonElement"/> can reconstruct export JSON. AllowMultiple (#212) decides whether the field renders as a JSON array
-    /// (multi-value) or scalar (single-value) in exports.
+    /// Resolves this document batch's DocumentTypeId -> TypeCode and DocumentTypeId -> its fields by name,
+    /// in one pass. Traverses soft-delete so archived types and fields referenced by historical documents
+    /// still resolve; <c>IMultiTenant</c> still isolates by ambient tenant, because a batch belongs to one
+    /// layer.
+    /// <para>
+    /// Fields are grouped <b>by document type</b>, not by name alone. The value bag is keyed by field name,
+    /// but a name is only unique within its type — <c>(TenantId, DocumentTypeId, Name)</c> — so a flat
+    /// name map would let one type's <c>amount</c> render another type's <c>amount</c> with the wrong
+    /// field type, which for a Date field is a differently-shaped string rather than an error.
+    /// </para>
     /// </summary>
-    protected virtual async Task<(Dictionary<Guid, string> TypeCodes, Dictionary<Guid, (string Name, FieldDataType DataType, bool AllowMultiple)> Fields)>
+    protected virtual async Task<(Dictionary<Guid, string> TypeCodes, Dictionary<Guid, Dictionary<string, Field>> FieldsByType)>
         ResolveReferenceMapsAsync(IReadOnlyCollection<Document> documents)
     {
         var typeIds = documents
@@ -1213,14 +1236,9 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
             .Select(d => d.DocumentTypeId!.Value)
             .Distinct()
             .ToList();
-        var fieldIds = documents
-            .SelectMany(d => d.ExtractedFieldValues)
-            .Select(f => f.FieldDefinitionId)
-            .Distinct()
-            .ToList();
 
         var typeCodes = new Dictionary<Guid, string>();
-        var fields = new Dictionary<Guid, (string Name, FieldDataType DataType, bool AllowMultiple)>();
+        var fieldsByType = new Dictionary<Guid, Dictionary<string, Field>>();
 
         using (DataFilter.Disable<ISoftDelete>())
         {
@@ -1230,60 +1248,66 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
                 {
                     typeCodes[t.Id] = t.TypeCode;
                 }
-            }
 
-            if (fieldIds.Count > 0)
-            {
-                foreach (var f in await _fieldDefinitionRepository.GetListAsync(f => fieldIds.Contains(f.Id)))
+                foreach (var f in await _fieldRepository.GetListAsync(f => typeIds.Contains(f.DocumentTypeId)))
                 {
-                    fields[f.Id] = (f.Name, f.DataType, f.AllowMultiple);
+                    if (!fieldsByType.TryGetValue(f.DocumentTypeId, out var byName))
+                    {
+                        byName = new Dictionary<string, Field>(StringComparer.Ordinal);
+                        fieldsByType[f.DocumentTypeId] = byName;
+                    }
+
+                    byName[f.Name] = f;
                 }
             }
         }
 
-        return (typeCodes, fields);
+        return (typeCodes, fieldsByType);
     }
 
     protected virtual string? ResolveTypeCode(Guid? documentTypeId, IReadOnlyDictionary<Guid, string> typeCodes)
         => documentTypeId.HasValue && typeCodes.TryGetValue(documentTypeId.Value, out var code) ? code : null;
 
+    /// <summary>
+    /// Assembles the <c>ExtractedFields</c> dictionary of the egress from a document's value bag.
+    /// <para>
+    /// The bag is already keyed by field name, so this is a rendering step rather than a join: each value
+    /// goes through <see cref="FlexFieldValueJsonWriter"/>, which is what keeps the wire shapes identical
+    /// to v2 — a Date field still emits <c>"2026-03-14"</c> rather than the midnight <c>DateTime</c> the
+    /// bag actually holds.
+    /// </para>
+    /// <para>
+    /// A bag key with no surviving field definition is skipped rather than emitted raw. It means the field
+    /// was hard-deleted out from under its values, and a key whose type nothing can state would render by
+    /// guesswork.
+    /// </para>
+    /// </summary>
     protected virtual Dictionary<string, JsonElement>? AssembleExtractedFields(
-        IReadOnlyCollection<DocumentExtractedField> values,
-        IReadOnlyDictionary<Guid, (string Name, FieldDataType DataType, bool AllowMultiple)> fieldDefs)
+        Document document,
+        IReadOnlyDictionary<Guid, Dictionary<string, Field>> fieldsByType)
     {
-        if (values.Count == 0)
+        if (document.FlexFields.Count == 0 || document.DocumentTypeId == null)
         {
             return null;
         }
 
-        // Group by FieldDefinitionId (#212): multi-value text fields have multiple rows per field (Order 0,1,2...), single-value fields have one row (Order 0).
-        // Preallocate capacity by values.Count as an upper bound (deduplicated count <= this), avoiding dictionary growth for documents with many fields.
-        var dict = new Dictionary<string, JsonElement>(values.Count, StringComparer.Ordinal);
-        foreach (var group in values.GroupBy(v => v.FieldDefinitionId))
+        if (!fieldsByType.TryGetValue(document.DocumentTypeId.Value, out var byName))
         {
-            // FK RESTRICT ensures referenced field definitions cannot be hard-deleted; soft-deleted definitions are resolved by the traversing join.
-            // In extreme missing cases, skip instead of emitting a half-baked key. Export JSON type is determined by FieldDefinition.DataType
-            // (#208: not persisted on field value rows).
-            if (!fieldDefs.TryGetValue(group.Key, out var def))
+            return null;
+        }
+
+        var dict = new Dictionary<string, JsonElement>(document.FlexFields.Count, StringComparer.Ordinal);
+        foreach (var entry in document.FlexFields)
+        {
+            if (!byName.TryGetValue(entry.Key, out var field))
             {
                 continue;
             }
 
-            if (def.AllowMultiple)
+            var rendered = FlexFieldValueJsonWriter.Write(entry.Value, field.FieldTypeName, field.Configuration);
+            if (rendered.HasValue)
             {
-                // Multi-value field (#212): render as a JSON array ordered by Order ascending (export wire-shape: string[]).
-                // This is symmetric with write paths (UpdateExtractedFieldsAsync / extraction both accept arrays), keeping operator read-edit-save round trips consistent.
-                var array = group
-                    .OrderBy(v => v.Order)
-                    .Select(v => v.ToJsonElement(def.DataType))
-                    .ToArray();
-                dict[def.Name] = JsonSerializer.SerializeToElement(array);
-            }
-            else
-            {
-                // Single-value field: render the row with the smallest Order as a scalar. MinBy finds it in one pass without full sorting, preserving the existing wire-shape.
-                var primary = group.MinBy(v => v.Order)!;
-                dict[def.Name] = primary.ToJsonElement(def.DataType);
+                dict[entry.Key] = rendered.Value;
             }
         }
 

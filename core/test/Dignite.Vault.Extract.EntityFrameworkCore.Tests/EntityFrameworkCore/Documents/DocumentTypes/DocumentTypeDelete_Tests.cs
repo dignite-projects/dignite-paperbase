@@ -1,4 +1,5 @@
 using System;
+using Dignite.Abp.FlexFields.Text;
 using System.Threading.Tasks;
 using Dignite.Vault.Extract.Abstractions.Documents;
 using Dignite.Vault.Extract.Documents;
@@ -52,7 +53,7 @@ public class DocumentTypeDelete_Tests : VaultExtractTestBase<DocumentTypeDeleteT
     private readonly IDocumentAppService _documentAppService;
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentTypeRepository _documentTypeRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldDefinitionRepository;
     private readonly IDistributedEventBus _eventBus;
     private readonly IGuidGenerator _guidGenerator;
     private readonly IDataFilter _dataFilter;
@@ -66,7 +67,7 @@ public class DocumentTypeDelete_Tests : VaultExtractTestBase<DocumentTypeDeleteT
         _documentAppService = GetRequiredService<IDocumentAppService>();
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _documentTypeRepository = GetRequiredService<IDocumentTypeRepository>();
-        _fieldDefinitionRepository = GetRequiredService<IFieldDefinitionRepository>();
+        _fieldDefinitionRepository = GetRequiredService<IFieldRepository>();
         _eventBus = GetRequiredService<IDistributedEventBus>();
         _guidGenerator = GetRequiredService<IGuidGenerator>();
         _dataFilter = GetRequiredService<IDataFilter>();
@@ -239,14 +240,13 @@ public class DocumentTypeDelete_Tests : VaultExtractTestBase<DocumentTypeDeleteT
         var fieldId = _guidGenerator.Create();
         await WithUnitOfWorkAsync(() =>
             _fieldDefinitionRepository.InsertAsync(
-                new FieldDefinition(
+                new Field(
                     fieldId,
                     tenantId: null,
                     documentTypeId,
                     name: "party_a_name",
                     displayName: "Party A",
-                    prompt: null,
-                    FieldDataType.Text),
+                    fieldTypeName: TextFieldType.ControlName),
                 autoSave: true));
         return fieldId;
     }

@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Vault.Extract.Ai;
+using Dignite.Vault.Extract.Documents.Fields.Migration;
 using Dignite.Vault.Extract.Permissions;
 using Dignite.Vault.Extract.Slugging;
 using Microsoft.AspNetCore.Authorization;
@@ -17,7 +18,7 @@ namespace Dignite.Vault.Extract.Documents.Fields;
 
 /// <summary>
 /// "Draft field metadata from prompt" service (issue #264). Admins provide extraction instructions (prompt) as the primary input.
-/// This service uses **one** LLM call to draft DisplayName / DataType / IsRequired / AllowMultiple, and additionally suggests Name for new fields.
+/// This service uses **one** LLM call to draft DisplayName / field type / IsRequired, and additionally suggests Name for new fields.
 /// It returns an **editable draft** that admins review and adjust field by field before saving.
 ///
 /// <para>
@@ -34,7 +35,7 @@ namespace Dignite.Vault.Extract.Documents.Fields;
 ///         and <see cref="PromptBoundary.BoundaryRule"/> is appended.</item>
 ///   <item>**Compile-time constant instructions**: <see cref="DraftSystemPrompt"/> is <c>const</c> and concatenates no runtime strings.</item>
 ///   <item>**Do not trust LLM output**: Name is constrained to <c>[a-z0-9_]</c> by <see cref="SlugNormalizer.Sanitize"/>; DataType maps through an allow-list;
-///         AllowMultiple is forced false for non-Text, mirroring the <c>FieldDefinition.ValidateMultiValue</c> invariant;
+///         multi-value is forced off for non-Text before the coarse kind is mapped to a field type, mirroring the same invariant;
 ///         DisplayName is normalized by <see cref="FieldDefinition.NormalizeDisplayName"/> from the same source as entity validation.
 ///         All values are only **suggestions** editable by admins; final Create / Update still goes through FieldDefinition entity allow-list validation.</item>
 /// </list>
@@ -145,6 +146,12 @@ public class FieldDraftSuggestionAppService : VaultExtractAppService, IFieldDraf
         try
         {
             var dataType = ParseDataType(GetString(root, "dataType"));
+            // Guardrail 2, now structural: multi-value is a property of the field type in v3, so the "is this a
+            // list" decision is made here and folded into the type. MapType rejects AllowMultiple on anything
+            // but Text, which is the same invariant the v2 entity enforced, so it is applied before the call
+            // rather than trusted from the model.
+            var allowMultiple = dataType == FieldDataType.Text && GetBool(root, "allowMultiple");
+            var (fieldTypeName, configuration) = FieldDefinitionToFieldMapper.MapType(dataType, allowMultiple);
             return new FieldDefinitionDraftDto
             {
                 // DisplayName normalization policy lives in the entity in one place (control chars -> spaces, whitespace folding, truncation),
@@ -152,10 +159,9 @@ public class FieldDraftSuggestionAppService : VaultExtractAppService, IFieldDraf
                 DisplayName = FieldDefinition.NormalizeDisplayName(GetString(root, "displayName")),
                 // Guardrail 1: suggest Name only for new fields; editing an existing field always returns empty Name, freezing the contract-level identity key against AI overwrite.
                 Name = forNewField ? SlugNormalizer.Sanitize(GetString(root, "name")) : string.Empty,
-                DataType = dataType,
-                IsRequired = GetBool(root, "isRequired"),
-                // Guardrail 2: mirror FieldDefinition.ValidateMultiValue. Multi-value is valid only for Text; non-text is always clamped to false, so drafts never suggest illegal combinations.
-                AllowMultiple = dataType == FieldDataType.Text && GetBool(root, "allowMultiple")
+                FieldTypeName = fieldTypeName,
+                Configuration = configuration,
+                IsRequired = GetBool(root, "isRequired")
             };
         }
         finally

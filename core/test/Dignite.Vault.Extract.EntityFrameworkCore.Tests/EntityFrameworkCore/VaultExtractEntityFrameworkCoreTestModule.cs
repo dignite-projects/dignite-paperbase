@@ -1,3 +1,7 @@
+using Dignite.Abp.FlexFields;
+using Dignite.Vault.Extract.Documents;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -24,6 +28,15 @@ public class VaultExtractEntityFrameworkCoreTestModule : AbpModule
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
         context.Services.AddAlwaysDisableUnitOfWorkTransaction();
+
+        // VaultExtractApplicationTestModule stands in for the FlexFields services that need real
+        // persistence, because that stack has none. This one does, so the migrator stand-in has to go.
+        // Unlike the index manager and query executor — implemented in VaultExtractEntityFrameworkCoreModule,
+        // which configures after the Application test module and therefore wins — the migrator is the
+        // kernel's open-generic FlexFieldValueMigrator<T>, registered by FlexFieldsDomainModule long before
+        // the substitute. Leave it and the substitute wins here: a field rename becomes a silent no-op, the
+        // bag keeps the old key, and every value under it turns unreachable.
+        context.Services.RemoveAll<IFlexFieldValueMigrator<Document>>();
 
         var sqliteConnection = CreateDatabaseAndGetConnection();
 

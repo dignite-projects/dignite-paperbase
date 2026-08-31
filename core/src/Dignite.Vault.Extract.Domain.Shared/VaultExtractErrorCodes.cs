@@ -81,6 +81,19 @@ public static class VaultExtractErrorCodes
         public const string MultiValueRequiresStringType = "Extract:FieldDefinitionMultiValueRequiresStringType";
         public const string MultiValueChangeNotAllowed = "Extract:FieldDefinitionMultiValueChangeNotAllowed";
         public const string SchemaPromptBudgetExceeded = "Extract:FieldDefinitionSchemaPromptBudgetExceeded";
+
+        /// <summary>
+        /// The submitted <c>FieldTypeName</c> matches no registered field type (#559). A registration key
+        /// rather than a closed enum is what buys v3 its extensibility, and this is the cost: the value is
+        /// only checkable at runtime, so it is checked at the write boundary.
+        /// </summary>
+        public const string UnknownFieldType = "Extract:UnknownFieldType";
+
+        /// <summary>
+        /// A field marked <c>IsSearchable</c> whose field type has no query-index slot (#562) — e.g.
+        /// long text. The value would never reach the index, so the flag would silently do nothing.
+        /// </summary>
+        public const string FieldTypeNotSearchable = "Extract:FieldTypeNotSearchable";
     }
 
     public static class ExtractedField

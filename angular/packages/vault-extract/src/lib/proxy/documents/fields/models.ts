@@ -1,15 +1,15 @@
-import type { FieldDataType } from './field-data-type.enum';
 import type { EntityDto } from '@abp/ng.core';
 
 export interface CreateFieldDefinitionDto {
   documentTypeId: string;
   name: string;
   displayName: string;
-  prompt?: string | null;
-  dataType?: FieldDataType;
+  description?: string | null;
+  fieldTypeName: string;
+  configuration?: Record<string, object> | null;
   displayOrder?: number;
   isRequired?: boolean;
-  allowMultiple?: boolean;
+  isSearchable?: boolean;
   isUniqueKey?: boolean;
 }
 
@@ -21,9 +21,9 @@ export interface DraftFieldDefinitionInput {
 export interface FieldDefinitionDraftDto {
   displayName?: string;
   name?: string;
-  dataType?: FieldDataType;
+  fieldTypeName?: string;
+  configuration?: Record<string, object>;
   isRequired?: boolean;
-  allowMultiple?: boolean;
 }
 
 export interface FieldDefinitionDto extends EntityDto<string> {
@@ -31,11 +31,12 @@ export interface FieldDefinitionDto extends EntityDto<string> {
   documentTypeId?: string;
   name?: string;
   displayName?: string;
-  prompt?: string | null;
-  dataType?: FieldDataType;
+  description?: string | null;
+  fieldTypeName?: string;
+  configuration?: Record<string, object>;
   displayOrder?: number;
   isRequired?: boolean;
-  allowMultiple?: boolean;
+  isSearchable?: boolean;
   isUniqueKey?: boolean;
 }
 
@@ -47,6 +48,11 @@ export interface FieldPromptPolishResultDto {
   prompt?: string;
 }
 
+export interface FieldTypeDto {
+  name?: string;
+  indexable?: boolean;
+}
+
 export interface GetFieldDefinitionListInput {
   documentTypeId?: string | null;
   onlyDeleted?: boolean;
@@ -55,10 +61,11 @@ export interface GetFieldDefinitionListInput {
 export interface UpdateFieldDefinitionDto {
   name: string;
   displayName: string;
-  prompt?: string | null;
-  dataType?: FieldDataType;
+  description?: string | null;
+  fieldTypeName: string;
+  configuration?: Record<string, object> | null;
   displayOrder?: number;
   isRequired?: boolean;
-  allowMultiple?: boolean;
+  isSearchable?: boolean;
   isUniqueKey?: boolean;
 }

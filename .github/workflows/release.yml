@@ -71,8 +71,12 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # See ci.yml: NuGet.Config routes Dignite.Abp.FlexFields.* to GitHub Packages, which needs auth
+      # even for public packages. The built-in GITHUB_TOKEN has packages:read for this org.
       - name: Restore
         run: dotnet restore Dignite.Vault.Extract.slnx
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build
         run: dotnet build Dignite.Vault.Extract.slnx --no-restore --configuration Release

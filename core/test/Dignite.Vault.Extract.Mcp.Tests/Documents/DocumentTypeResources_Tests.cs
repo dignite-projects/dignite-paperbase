@@ -3,7 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Dignite.Abp.FlexFields;
+using Dignite.Abp.FlexFields.CKEditor;
+using Dignite.Abp.FlexFields.Number;
+using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.Ai;
+using Dignite.Vault.Extract.FlexFields.Tags;
 using Dignite.Vault.Extract.Documents;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol;
@@ -16,7 +21,10 @@ using Xunit;
 
 namespace Dignite.Vault.Extract.Mcp.Documents;
 
-[DependsOn(typeof(VaultExtractTestBaseModule))]
+// VaultExtractFlexFieldsModule brings the field-type registry the schema projection reads: it decides
+// isMultiValue / isFilterable, so stubbing it would let the projection agree with a registry that does
+// not exist.
+[DependsOn(typeof(VaultExtractTestBaseModule), typeof(Extract.FlexFields.VaultExtractFlexFieldsModule))]
 public class DocumentTypeResourcesTestModule : AbpModule
 {
     public override void ConfigureServices(ServiceConfigurationContext context)
@@ -43,11 +51,16 @@ public class DocumentTypeResources_Tests : VaultExtractTestBase<DocumentTypeReso
 {
     private readonly IDocumentTypeAppService _documentTypeAppService;
     private readonly IFieldDefinitionAppService _fieldDefinitionAppService;
+    private readonly IFieldTypeResolver _fieldTypeResolver;
 
     public DocumentTypeResources_Tests()
     {
         _documentTypeAppService = GetRequiredService<IDocumentTypeAppService>();
         _fieldDefinitionAppService = GetRequiredService<IFieldDefinitionAppService>();
+        // The real resolver, not a substitute: the schema's isMultiValue / isFilterable come from the field
+        // types actually registered, and a stubbed resolver would let a type this deployment does not have
+        // pass for a filterable one.
+        _fieldTypeResolver = GetRequiredService<IFieldTypeResolver>();
     }
 
     [Fact]
@@ -70,6 +83,7 @@ public class DocumentTypeResources_Tests : VaultExtractTestBase<DocumentTypeReso
             "contract.general",
             _documentTypeAppService,
             _fieldDefinitionAppService,
+            _fieldTypeResolver,
             serviceProvider: ServiceProvider);
 
         var contents = (TextResourceContents)result;
@@ -101,18 +115,18 @@ public class DocumentTypeResources_Tests : VaultExtractTestBase<DocumentTypeReso
                 new()
                 {
                     Id = Guid.NewGuid(), DocumentTypeId = typeId, Name = "amount", DisplayName = "合同金额",
-                    Prompt = "Extract the total contract amount", DataType = FieldDataType.Number,
+                    Description = "Extract the total contract amount", FieldTypeName = NumberFieldType.ControlName,
                     DisplayOrder = 1, IsRequired = true
                 },
                 new()
                 {
                     Id = Guid.NewGuid(), DocumentTypeId = typeId, Name = "partyName", DisplayName = "甲方",
-                    Prompt = "Extract party A name", DataType = FieldDataType.Text, DisplayOrder = 0
+                    Description = "Extract party A name", FieldTypeName = TextFieldType.ControlName, DisplayOrder = 0
                 }
             });
 
         var result = await DocumentTypeResources.ReadAsync(
-            "contract.general", _documentTypeAppService, _fieldDefinitionAppService);
+            "contract.general", _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver);
 
         var schema = JsonSerializer.Deserialize<DocumentTypeSchema>(((TextResourceContents)result).Text)!;
 
@@ -124,18 +138,20 @@ public class DocumentTypeResources_Tests : VaultExtractTestBase<DocumentTypeReso
         // Fields sort by DisplayOrder ascending: partyName(0) before amount(1).
         schema.Fields.Count.ShouldBe(2);
         schema.Fields[0].Name.ShouldBe("partyName");
-        schema.Fields[0].DataType.ShouldBe("Text");
+        schema.Fields[0].FieldType.ShouldBe(TextFieldType.ControlName);
         schema.Fields[0].DisplayName.ShouldBe(PromptBoundary.WrapField("甲方"));
         schema.Fields[1].Name.ShouldBe("amount");
-        schema.Fields[1].DataType.ShouldBe("Number");
+        schema.Fields[1].FieldType.ShouldBe(NumberFieldType.ControlName);
         schema.Fields[1].IsRequired.ShouldBeTrue();
     }
 
     [Fact]
-    public async Task Exposes_AllowMultiple_so_clients_know_a_field_returns_an_array()
+    public async Task Exposes_IsMultiValue_so_clients_know_a_field_returns_an_array()
     {
-        // #212: multi-value fields are string[] in search result extractedFields. Schema must expose
-        // AllowMultiple, otherwise MCP clients would parse arrays as "text scalar" and fail.
+        // #212: multi-value fields are string[] in search result extractedFields. The schema must say so,
+        // or MCP clients parse an array as a text scalar and fail. In v3 the fact lives in the field type
+        // (Tags) rather than in a flag beside it, and the schema keeps exposing it as its own boolean so a
+        // client never has to know which registration keys happen to be multi-valued.
         var typeId = Guid.NewGuid();
         _documentTypeAppService
             .GetVisibleAsync()
@@ -150,25 +166,25 @@ public class DocumentTypeResources_Tests : VaultExtractTestBase<DocumentTypeReso
                 new()
                 {
                     Id = Guid.NewGuid(), DocumentTypeId = typeId, Name = "tags", DisplayName = "标签",
-                    Prompt = "Extract tags", DataType = FieldDataType.Text, DisplayOrder = 0,
-                    IsRequired = false, AllowMultiple = true
+                    Description = "Extract tags", FieldTypeName = TagsFieldType.ControlName, DisplayOrder = 0,
+                    IsRequired = false
                 },
                 new()
                 {
                     Id = Guid.NewGuid(), DocumentTypeId = typeId, Name = "partyName", DisplayName = "甲方",
-                    Prompt = "Extract party A name", DataType = FieldDataType.Text, DisplayOrder = 1
+                    Description = "Extract party A name", FieldTypeName = TextFieldType.ControlName, DisplayOrder = 1
                 }
             });
 
         var result = await DocumentTypeResources.ReadAsync(
-            "contract.general", _documentTypeAppService, _fieldDefinitionAppService);
+            "contract.general", _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver);
 
         var schema = JsonSerializer.Deserialize<DocumentTypeSchema>(((TextResourceContents)result).Text)!;
 
         schema.Fields[0].Name.ShouldBe("tags");
-        schema.Fields[0].AllowMultiple.ShouldBeTrue();
+        schema.Fields[0].IsMultiValue.ShouldBeTrue();
         schema.Fields[1].Name.ShouldBe("partyName");
-        schema.Fields[1].AllowMultiple.ShouldBeFalse();
+        schema.Fields[1].IsMultiValue.ShouldBeFalse();
     }
 
     [Fact]
@@ -182,7 +198,7 @@ public class DocumentTypeResources_Tests : VaultExtractTestBase<DocumentTypeReso
 
         await Should.ThrowAsync<McpException>(async () =>
             await DocumentTypeResources.ReadAsync(
-                "nonexistent", _documentTypeAppService, _fieldDefinitionAppService));
+                "nonexistent", _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver));
     }
 
     [Fact]

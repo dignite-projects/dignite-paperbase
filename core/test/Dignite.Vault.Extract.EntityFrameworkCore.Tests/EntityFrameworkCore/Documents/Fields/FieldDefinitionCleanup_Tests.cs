@@ -1,4 +1,5 @@
 using System;
+using Dignite.Abp.FlexFields.Text;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Dignite.Vault.Extract.Abstractions.Documents;
@@ -51,7 +52,7 @@ public class FieldDefinitionCleanup_Tests : VaultExtractTestBase<FieldDefinition
     private readonly DuplicateBasisCleanupJob _duplicateBasisCleanupJob;
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentTypeRepository _documentTypeRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldDefinitionRepository;
     private readonly IBackgroundJobManager _backgroundJobManager;
     private readonly IGuidGenerator _guidGenerator;
     private readonly IDataFilter _dataFilter;
@@ -63,7 +64,7 @@ public class FieldDefinitionCleanup_Tests : VaultExtractTestBase<FieldDefinition
         _duplicateBasisCleanupJob = GetRequiredService<DuplicateBasisCleanupJob>();
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _documentTypeRepository = GetRequiredService<IDocumentTypeRepository>();
-        _fieldDefinitionRepository = GetRequiredService<IFieldDefinitionRepository>();
+        _fieldDefinitionRepository = GetRequiredService<IFieldRepository>();
         _backgroundJobManager = GetRequiredService<IBackgroundJobManager>();
         _guidGenerator = GetRequiredService<IGuidGenerator>();
         _dataFilter = GetRequiredService<IDataFilter>();
@@ -330,14 +331,13 @@ public class FieldDefinitionCleanup_Tests : VaultExtractTestBase<FieldDefinition
         var fieldId = _guidGenerator.Create();
         await WithUnitOfWorkAsync(() =>
             _fieldDefinitionRepository.InsertAsync(
-                new FieldDefinition(
+                new Field(
                     fieldId,
                     tenantId: null,
                     documentTypeId,
                     name,
                     displayName: name,
-                    prompt: null,
-                    FieldDataType.Text,
+                    fieldTypeName: TextFieldType.ControlName,
                     isUniqueKey: isUniqueKey),
                 autoSave: true));
         return fieldId;

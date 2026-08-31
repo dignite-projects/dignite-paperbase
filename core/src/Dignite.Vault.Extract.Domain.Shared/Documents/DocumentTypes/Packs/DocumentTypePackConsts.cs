@@ -8,9 +8,21 @@ namespace Dignite.Vault.Extract.Documents.DocumentTypes.Packs;
 /// </summary>
 public static class DocumentTypePackConsts
 {
-    /// <summary>Current pack schema version emitted by export and required by import. A pack with any other
-    /// version loud-fails on import (<c>DocumentTypePackUnsupportedVersion</c>) rather than being mis-mapped.</summary>
-    public const int CurrentVersion = 1;
+    /// <summary>
+    /// Current pack schema version emitted by export. Version 2 is field architecture v3 (#559): a field
+    /// carries <c>fieldTypeName</c> + <c>configuration</c> + <c>description</c> + <c>isSearchable</c> where
+    /// version 1 carried <c>dataType</c> + <c>allowMultiple</c> + <c>prompt</c>.
+    /// </summary>
+    public const int CurrentVersion = 2;
+
+    /// <summary>
+    /// Oldest pack schema version import still accepts. A version-1 pack is upconverted on the way in by
+    /// the same v2-to-v3 type mapping that migrated the live rows, so packs already exported and committed
+    /// to people's repositories keep working. Anything outside
+    /// [<see cref="MinSupportedVersion"/>, <see cref="CurrentVersion"/>] loud-fails on import
+    /// (<c>DocumentTypePackUnsupportedVersion</c>) rather than being mis-mapped.
+    /// </summary>
+    public const int MinSupportedVersion = 1;
 
     /// <summary>Fail-closed cap on how many packs one import call may carry.</summary>
     public const int MaxPacksPerImport = 100;

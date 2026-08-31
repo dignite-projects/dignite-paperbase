@@ -3,6 +3,7 @@
 
     <Folder Name="/core/src/">
         <Project Path="core/src/Dignite.Vault.Extract.Abstractions/Dignite.Vault.Extract.Abstractions.csproj" />
+        <Project Path="core/src/Dignite.Vault.Extract.FlexFields/Dignite.Vault.Extract.FlexFields.csproj" />
         <Project Path="core/src/Dignite.Vault.Extract.Domain.Shared/Dignite.Vault.Extract.Domain.Shared.csproj" />
         <Project Path="core/src/Dignite.Vault.Extract.Domain/Dignite.Vault.Extract.Domain.csproj" />
         <Project Path="core/src/Dignite.Vault.Extract.Application.Contracts/Dignite.Vault.Extract.Application.Contracts.csproj" />
@@ -24,6 +25,7 @@
 
     <Folder Name="/core/test/">
         <Project Path="core/test/Dignite.Vault.Extract.TestBase/Dignite.Vault.Extract.TestBase.csproj" />
+        <Project Path="core/test/Dignite.Vault.Extract.FlexFields.Tests/Dignite.Vault.Extract.FlexFields.Tests.csproj" />
         <Project Path="core/test/Dignite.Vault.Extract.Domain.Tests/Dignite.Vault.Extract.Domain.Tests.csproj" />
         <Project Path="core/test/Dignite.Vault.Extract.EntityFrameworkCore.Tests/Dignite.Vault.Extract.EntityFrameworkCore.Tests.csproj" />
         <Project Path="core/test/Dignite.Vault.Extract.Application.Tests/Dignite.Vault.Extract.Application.Tests.csproj" />

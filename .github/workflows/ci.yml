@@ -31,14 +31,25 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # NuGet.Config routes Dignite.Abp.FlexFields.* to GitHub Packages, which requires auth even for
+      # public packages, and reads the credential from GITHUB_PACKAGES_TOKEN. The built-in GITHUB_TOKEN
+      # cannot be used here: it only grants packages:read for packages published by THIS repository,
+      # never for packages published by a sibling repo in the same org (abp-modules/flex-fields is where
+      # Dignite.Abp.FlexFields.* actually ships from) - that boundary holds regardless of this workflow's
+      # own `permissions:` block. A real PAT with the read:packages scope is required, stored as the
+      # PACKAGES_READ_TOKEN repository secret (see NuGet.config's own comment on the same requirement).
       - name: Restore core
         run: dotnet restore Dignite.Vault.Extract.slnx
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
 
       - name: Build core
         run: dotnet build Dignite.Vault.Extract.slnx --no-restore --configuration Release
 
       - name: Restore host
         run: dotnet restore host/src/Dignite.Vault.Extract.Host.csproj
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
 
       - name: Build host
         run: dotnet build host/src/Dignite.Vault.Extract.Host.csproj --no-restore --configuration Release
@@ -86,9 +97,14 @@ jobs:
           cache: 'npm'
           cache-dependency-path: angular/package-lock.json
 
+      # angular/.npmrc routes @dignite-projects:* to GitHub Packages and reads the credential from the
+      # plain GITHUB_TOKEN env var (npm's own ${VAR} substitution, not a GitHub Actions expression) -
+      # same cross-repo access boundary as the .NET restore above, so it needs the same real PAT.
       - name: Install dependencies
         run: npm ci
         working-directory: angular
+        env:
+          GITHUB_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
 
       - name: Build extract library
         run: npx nx build vault-extract --configuration production

@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Dignite.Abp.FlexFields;
+using Dignite.Vault.Extract.FlexFields;
 using Dignite.Vault.Extract.Documents.Fields;
 using Dignite.Vault.Extract.Permissions;
 using Microsoft.AspNetCore.Authorization;
@@ -13,12 +15,12 @@ namespace Dignite.Vault.Extract.Documents.DocumentTypes.Packs;
 
 /// <summary>
 /// Config import/export "pack" engine (#444). Serializes a <see cref="DocumentType"/> + its
-/// <see cref="FieldDefinition"/>s to a portable declarative pack and applies a pack back idempotently.
+/// <see cref="Field"/>s to a portable declarative pack and applies a pack back idempotently.
 /// <para>
 /// Everything goes through the domain entities + managers (never a raw DbContext), so every invariant holds:
 /// code/name layer-uniqueness (<see cref="DocumentTypeManager"/> / <see cref="FieldDefinitionManager"/>),
-/// entity validation (name pattern, lengths, multi-value-only-for-text), and the data-safety guard that
-/// forbids changing a field's data type or narrowing multi→single once extracted values exist.
+/// entity validation (name pattern, lengths), and the data-safety guard that forbids changing a field's
+/// type once extracted values exist.
 /// </para>
 /// <para>
 /// Layer-aware: reads and writes only the caller's current layer (Host = <c>TenantId</c> null, tenant = its
@@ -31,26 +33,34 @@ namespace Dignite.Vault.Extract.Documents.DocumentTypes.Packs;
 public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypePackAppService
 {
     private readonly IDocumentTypeRepository _documentTypeRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldDefinitionRepository;
+    private readonly IFieldTypeResolver _fieldTypeResolver;
     private readonly IDocumentRepository _documentRepository;
     private readonly DocumentTypeManager _documentTypeManager;
     private readonly FieldDefinitionManager _fieldDefinitionManager;
     private readonly FieldSchemaPromptBudgetGuard _schemaPromptBudget;
 
+    /// <summary>See <see cref="FieldDefinitionAppService"/>'s field of the same name — same reason: a searchability flip is a complete reindex, not a per-row patch.</summary>
+    private readonly IFlexFieldIndexManager<Document> _indexManager;
+
     public DocumentTypePackAppService(
         IDocumentTypeRepository documentTypeRepository,
-        IFieldDefinitionRepository fieldDefinitionRepository,
+        IFieldRepository fieldDefinitionRepository,
+        IFieldTypeResolver fieldTypeResolver,
         IDocumentRepository documentRepository,
         DocumentTypeManager documentTypeManager,
         FieldDefinitionManager fieldDefinitionManager,
-        FieldSchemaPromptBudgetGuard schemaPromptBudget)
+        FieldSchemaPromptBudgetGuard schemaPromptBudget,
+        IFlexFieldIndexManager<Document> indexManager)
     {
         _documentTypeRepository = documentTypeRepository;
         _fieldDefinitionRepository = fieldDefinitionRepository;
+        _fieldTypeResolver = fieldTypeResolver;
         _documentRepository = documentRepository;
         _documentTypeManager = documentTypeManager;
         _fieldDefinitionManager = fieldDefinitionManager;
         _schemaPromptBudget = schemaPromptBudget;
+        _indexManager = indexManager;
     }
 
     [Authorize(VaultExtractPermissions.DocumentTypes.Default)]
@@ -95,12 +105,24 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
         // test harness disables the transaction — pre-validation makes the guarantee unconditional).
         foreach (var pack in input.Packs)
         {
-            if (pack.Version != DocumentTypePackConsts.CurrentVersion)
+            if (pack.Version < DocumentTypePackConsts.MinSupportedVersion ||
+                pack.Version > DocumentTypePackConsts.CurrentVersion)
             {
                 throw new BusinessException(VaultExtractErrorCodes.DocumentTypePack.UnsupportedVersion)
                     .WithData("TypeCode", pack.TypeCode)
                     .WithData("Version", pack.Version)
                     .WithData("Supported", DocumentTypePackConsts.CurrentVersion);
+            }
+
+            // Upconvert before anything else reads a field, so the budget validation below and the import
+            // itself both see one shape. A version-1 pack reaching ImportFieldsAsync unconverted would
+            // create every field as the default Text type, silently discarding its declared types.
+            if (pack.Version < DocumentTypePackConsts.CurrentVersion)
+            {
+                foreach (var field in pack.Fields)
+                {
+                    DocumentTypePackV1Upconverter.Upconvert(field);
+                }
             }
         }
 
@@ -110,10 +132,12 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
         await ValidateSchemaPromptBudgetsAsync(input.Packs, input.Mode);
 
         var result = new DocumentTypePackImportResultDto();
+        var searchabilityChanged = false;
         foreach (var pack in input.Packs)
         {
-            var item = await ImportPackAsync(pack, input.Mode);
+            var (item, packSearchabilityChanged) = await ImportPackAsync(pack, input.Mode);
             result.Items.Add(item);
+            searchabilityChanged |= packSearchabilityChanged;
 
             switch (item.TypeAction)
             {
@@ -125,6 +149,14 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
             result.FieldsCreated += item.FieldsCreated;
             result.FieldsUpdated += item.FieldsUpdated;
             result.FieldsSkipped += item.FieldsSkipped;
+        }
+
+        if (searchabilityChanged)
+        {
+            // One rebuild for the whole import, not one per field: an import can touch many fields across
+            // many types in a single call, and RebuildAsync already walks every document once regardless
+            // of how many fields changed.
+            await _indexManager.RebuildAsync();
         }
 
         return result;
@@ -148,7 +180,7 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
                     var existingFields = await _fieldDefinitionRepository.GetListAsync(existingType.Id);
                     foreach (var field in existingFields)
                     {
-                        projectedFields[field.Name] = field.Prompt;
+                        projectedFields[field.Name] = field.Description;
                     }
                 }
 
@@ -159,7 +191,7 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
             {
                 if (!projectedFields.ContainsKey(field.Name) || mode == PackImportMode.CreateOrUpdate)
                 {
-                    projectedFields[field.Name] = field.Prompt;
+                    projectedFields[field.Name] = field.Description;
                 }
             }
 
@@ -167,7 +199,7 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
         }
     }
 
-    protected virtual async Task<DocumentTypePackItemResultDto> ImportPackAsync(
+    protected virtual async Task<(DocumentTypePackItemResultDto Item, bool SearchabilityChanged)> ImportPackAsync(
         DocumentTypePackDto pack, PackImportMode mode)
     {
         var item = new DocumentTypePackItemResultDto { TypeCode = pack.TypeCode };
@@ -208,92 +240,127 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
             item.TypeAction = PackItemAction.Skipped;
         }
 
-        await ImportFieldsAsync(type.Id, pack.Fields, mode, pack.Version, item);
-        return item;
+        var searchabilityChanged = await ImportFieldsAsync(type.Id, pack.Fields, mode, pack.Version, item);
+        return (item, searchabilityChanged);
     }
 
-    protected virtual async Task ImportFieldsAsync(
+    /// <summary>Returns whether any existing field's <c>IsSearchable</c> flipped, so the caller can rebuild the index once for the whole import.</summary>
+    protected virtual async Task<bool> ImportFieldsAsync(
         Guid documentTypeId,
         List<DocumentTypePackFieldDto> fields,
         PackImportMode mode,
         int version,
         DocumentTypePackItemResultDto item)
     {
+        var searchabilityChanged = false;
+
         foreach (var f in fields)
         {
             var existing = await _fieldDefinitionRepository.FindByNameAsync(documentTypeId, f.Name);
 
             if (existing == null)
             {
+                EnsureFieldTypeRegistered(f.FieldTypeName!);
                 await _fieldDefinitionManager.CheckNameAvailableAsync(documentTypeId, f.Name);
-                var field = new FieldDefinition(
+                CheckSearchable(f.FieldTypeName!, f.IsSearchable);
+                var field = new Field(
                     GuidGenerator.Create(),
                     CurrentTenant.Id,
                     documentTypeId,
                     f.Name,
                     f.DisplayName,
-                    f.Prompt,
-                    f.DataType,
+                    f.FieldTypeName!,
+                    f.Description,
+                    f.Configuration,
                     f.DisplayOrder,
                     f.IsRequired,
-                    f.AllowMultiple,
+                    f.IsSearchable,
                     f.IsUniqueKey);
                 StampProvenance(field, version);
                 await _fieldDefinitionRepository.InsertAsync(field, autoSave: true);
                 item.FieldsCreated++;
+                // Never needs a rebuild: a field that did not exist a moment ago cannot have values on any
+                // existing document to backfill.
             }
             else if (mode == PackImportMode.CreateOrUpdate)
             {
                 // Updating an existing field needs the Update permission — asserted lazily; a CreateOnly or
                 // all-new import never reaches here.
                 await CheckPolicyAsync(VaultExtractPermissions.FieldDefinitions.Update);
+                EnsureFieldTypeRegistered(f.FieldTypeName!);
                 await GuardFieldMutationAsync(existing, f);
-                existing.Update(
-                    f.Name,
-                    f.DisplayName,
-                    f.Prompt,
-                    f.DataType,
-                    f.DisplayOrder,
-                    f.IsRequired,
-                    f.AllowMultiple,
-                    f.IsUniqueKey);
+                CheckSearchable(f.FieldTypeName!, f.IsSearchable);
+                var wasSearchable = existing.IsSearchable;
+                existing.SetDisplayName(f.DisplayName);
+                existing.SetDescription(f.Description);
+                existing.SetFieldTypeName(f.FieldTypeName!);
+                existing.SetConfiguration(f.Configuration);
+                existing.SetDisplayOrder(f.DisplayOrder);
+                existing.SetIsRequired(f.IsRequired);
+                existing.SetIsSearchable(f.IsSearchable);
+                existing.SetIsUniqueKey(f.IsUniqueKey);
                 StampProvenance(existing, version);
                 await _fieldDefinitionRepository.UpdateAsync(existing, autoSave: true);
                 item.FieldsUpdated++;
+                searchabilityChanged |= wasSearchable != existing.IsSearchable;
             }
             else
             {
                 item.FieldsSkipped++;
             }
         }
+
+        return searchabilityChanged;
     }
 
     /// <summary>
     /// Mirror of the <see cref="FieldDefinitionAppService"/> data-safety guard: never break already-extracted
-    /// values by changing a field's data type or narrowing it from multi- to single-valued. A pack that
-    /// would do so loud-fails (the whole import rolls back in the ambient UoW) instead of silently
-    /// corrupting stored values.
+    /// values by changing the field type under them. A pack that would do so loud-fails (the whole import
+    /// rolls back in the ambient UoW) instead of leaving values nothing can render or index.
+    /// <para>
+    /// One guard where v2 had two: "one value or many" is a property of the field type in v3 (Tags versus
+    /// Text), so narrowing a multi-valued field <b>is</b> a field-type change and is covered here.
+    /// </para>
     /// </summary>
-    protected virtual async Task GuardFieldMutationAsync(FieldDefinition existing, DocumentTypePackFieldDto pack)
+    protected virtual async Task GuardFieldMutationAsync(Field existing, DocumentTypePackFieldDto pack)
     {
-        var dataTypeChanged = pack.DataType != existing.DataType;
-        var multiValueNarrowed = existing.AllowMultiple && !pack.AllowMultiple;
-        if (!dataTypeChanged && !multiValueNarrowed)
+        if (string.Equals(pack.FieldTypeName, existing.FieldTypeName, StringComparison.Ordinal))
         {
             return;
         }
 
-        var hasValues = await _documentRepository.AnyExtractedFieldValueAsync(existing.Id);
-        if (dataTypeChanged && hasValues)
+        if (await _documentRepository.AnyFlexFieldValueAsync(existing, IsIndexable(existing.FieldTypeName)))
         {
             throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.DataTypeChangeNotAllowed)
                 .WithData("Name", existing.Name);
         }
+    }
 
-        if (multiValueNarrowed && hasValues)
+    /// <summary>Whether values of this field type reach the query index at all; see <see cref="FieldDefinitionAppService"/>.</summary>
+    protected virtual bool IsIndexable(string fieldTypeName)
+        => _fieldTypeResolver.GetAll()
+            .FirstOrDefault(t => string.Equals(t.Name, fieldTypeName, StringComparison.Ordinal))?.IndexValueType != null;
+
+    /// <summary>Same guard as <see cref="FieldDefinitionAppService.EnsureFieldTypeRegistered"/> — a pack is another write path into the same fields, and owes them the same fail-closed check against Vault Extract's own supported set, not just the kernel's full registry.</summary>
+    protected virtual void EnsureFieldTypeRegistered(string fieldTypeName)
+    {
+        var registered = _fieldTypeResolver.GetAll()
+            .Any(t => string.Equals(t.Name, fieldTypeName, StringComparison.Ordinal));
+
+        if (!registered || !VaultExtractFieldTypes.IsSupported(fieldTypeName))
         {
-            throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.MultiValueChangeNotAllowed)
-                .WithData("Name", existing.Name);
+            throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.UnknownFieldType)
+                .WithData("FieldTypeName", fieldTypeName);
+        }
+    }
+
+    /// <summary>Same guard as <see cref="FieldDefinitionAppService.CheckSearchable"/> — a pack is another write path into the same fields, and owes them the same fail-closed check.</summary>
+    protected virtual void CheckSearchable(string fieldTypeName, bool isSearchable)
+    {
+        if (isSearchable && !IsIndexable(fieldTypeName))
+        {
+            throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.FieldTypeNotSearchable)
+                .WithData("FieldTypeName", fieldTypeName);
         }
     }
 
@@ -305,7 +372,7 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
         entity.SetProperty(DocumentTypePackConsts.ProvenanceVersionKey, version);
     }
 
-    protected virtual DocumentTypePackDto MapToPack(DocumentType type, List<FieldDefinition> fields)
+    protected virtual DocumentTypePackDto MapToPack(DocumentType type, List<Field> fields)
     {
         return new DocumentTypePackDto
         {
@@ -322,11 +389,12 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
                 {
                     Name = f.Name,
                     DisplayName = f.DisplayName,
-                    Prompt = f.Prompt,
-                    DataType = f.DataType,
+                    Description = f.Description,
+                    FieldTypeName = f.FieldTypeName,
+                    Configuration = f.Configuration,
                     DisplayOrder = f.DisplayOrder,
                     IsRequired = f.IsRequired,
-                    AllowMultiple = f.AllowMultiple,
+                    IsSearchable = f.IsSearchable,
                     IsUniqueKey = f.IsUniqueKey
                 })
                 .ToList()

@@ -9,7 +9,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { escapeHtmlChars, ListService, LocalizationPipe, LocalizationService, PermissionService } from '@abp/ng.core';
 import type { ABP } from '@abp/ng.core';
 import {
@@ -23,16 +23,15 @@ import { Confirmation, ConfirmationService, ToasterService } from '@abp/ng.theme
 import { NgbDropdownModule } from '@ng-bootstrap/ng-bootstrap';
 import { map, of, Subject, takeUntil } from 'rxjs';
 import { marked } from 'marked';
+import { FieldTypeDefinition, FieldTypeResolver, FlexFieldConfigComponent, FlexFieldData } from '@dignite/ng.flex-fields';
 import {
   CreateFieldDefinitionDto,
   DocumentTypeService,
-  FieldDataType,
   FieldDefinitionDraftDto,
   FieldDefinitionDto,
   FieldDefinitionService,
   FieldDraftSuggestionService,
   FieldPromptPolishService,
-  fieldDataTypeOptions,
   EXTRACT_PERMISSIONS,
   SlugSuggestionService,
 } from '@dignite/vault-extract';
@@ -56,9 +55,9 @@ const FIELD_DEFINITION_SORTS: SortAccessors<FieldDefinitionDto> = {
   displayOrder: field => field.displayOrder,
   name: field => field.name,
   displayName: field => field.displayName,
-  dataType: field => field.dataType,
+  fieldTypeName: field => field.fieldTypeName,
   isRequired: field => field.isRequired,
-  prompt: field => field.prompt,
+  description: field => field.description,
 };
 
 @Component({
@@ -72,6 +71,7 @@ const FIELD_DEFINITION_SORTS: SortAccessors<FieldDefinitionDto> = {
     ExtensibleTableComponent,
     NgbDropdownModule,
     FieldReextractionModalComponent,
+    FlexFieldConfigComponent,
   ],
   providers: [
     ListService,
@@ -90,6 +90,7 @@ export class FieldDefinitionListComponent implements OnInit {
   private readonly slugService = inject(SlugSuggestionService);
   private readonly draftService = inject(FieldDraftSuggestionService);
   private readonly polishService = inject(FieldPromptPolishService);
+  private readonly fieldTypeResolver = inject(FieldTypeResolver);
   private readonly fb = inject(FormBuilder);
   private readonly confirmation = inject(ConfirmationService);
   private readonly toaster = inject(ToasterService);
@@ -111,8 +112,6 @@ export class FieldDefinitionListComponent implements OnInit {
   );
   // null/false means the re-extraction modal is closed.
   showReextract = signal(false);
-  readonly dataTypeOptions = fieldDataTypeOptions;
-  readonly FieldDataType = FieldDataType;
 
   // Route binding uses immutable DocumentTypeId (#207). The header badge primarily shows the
   // user-friendly DisplayName (#261), while TypeCode is demoted to hover text. Both are resolved by id
@@ -157,23 +156,43 @@ export class FieldDefinitionListComponent implements OnInit {
       [Validators.required, Validators.maxLength(MAX_NAME_LENGTH), Validators.pattern(NAME_PATTERN)],
     ],
     displayName: ['', [Validators.required, Validators.maxLength(MAX_DISPLAY_NAME_LENGTH)]],
-    // Extraction instruction is optional (measured feedback: no Validators.required). #447: no maxLength —
-    // Prompt is admin-authored Markdown configuration, persisted uncapped. Backend NormalizePrompt
-    // converges blank values to null.
-    prompt: [''],
-    dataType: [FieldDataType.Text, [Validators.required]],
+    // Extraction instruction is optional (measured feedback: no Validators.required). #447: no maxLength -
+    // it is admin-authored Markdown configuration, persisted uncapped. The server converges blank to null.
+    // Named `description` since #559: it maps to the FlexFields contract member of that name.
+    description: [''],
+    fieldTypeName: ['', [Validators.required]],
     displayOrder: [0, [Validators.required]],
     isRequired: [false],
-    // #212: multiple values are valid only for text, mirroring the backend
-    // FieldDefinition.ValidateMultiValue invariant. For non-text fields, applyAllowMultiplePolicy forces
-    // false and disables the control; getRawValue still returns false before submit.
-    allowMultiple: [false],
+    // #559: whether this field's values reach the query index, and are therefore filterable. Meaningless
+    // for a type that indexes nothing, where applySearchableAvailability disables the control.
+    isSearchable: [true],
     // #411: whether this field participates in the type's duplicate-detection unique key.
     isUniqueKey: [false],
   });
 
-  // Drives the template: allow checking "multiple values" only when dataType === Text.
-  readonly isTextType = signal(true);
+  // The field-type picker's vocabulary: every type flex-fields has registered (built-ins + bolt-ons)
+  // that this deployment's backend also supports (VaultExtractFieldTypes.SupportedFieldTypeNames, via
+  // GetFieldTypesAsync — the kernel registers Tree unconditionally as a built-in, but nothing in this
+  // app's read/write/schema pipeline supports it). Populated once that request lands; see the
+  // constructor.
+  readonly fieldTypes = signal<readonly FieldTypeDefinition[]>([]);
+
+  // Seeds <ff-flex-field-config>'s "selected" input: the stored field being edited (so it restores
+  // saved configuration values), or a synthetic draft result (so an AI-drafted type suggestion — a
+  // date-only DateTime, a Tags MaxCount — carries its suggested configuration too), or undefined for a
+  // plain new field.
+  readonly configSeed = signal<FlexFieldData | undefined>(undefined);
+
+  // Which field types can be searched at all, keyed by registration name - straight from the server, via
+  // FieldDefinitionAppService.GetFieldTypesAsync. It has to come from there: the answer is
+  // IFieldType.IndexValueType, and the Angular library deliberately does not restate it (see
+  // FieldTypeDefinition's doc). Empty until the request lands, which reads as "no restriction" - the
+  // server rejects the combination anyway, so a slow response can at worst let a save fail loudly.
+  private indexableByFieldType = new Map<string, boolean>();
+
+  // Drives the template: whether the currently selected field type rules out searching. Disables the
+  // "可筛选" checkbox and swaps in the hint that explains why.
+  readonly searchableUnsupported = signal(false);
 
   constructor() {
     configureEntityTable<FieldDefinitionDto>(this.extensions, EXTRACT_TABLES.FieldDefinitions, [
@@ -200,15 +219,19 @@ export class FieldDefinitionListComponent implements OnInit {
       }),
       EntityProp.create<FieldDefinitionDto>({
         type: ePropType.String,
-        name: 'dataType',
-        displayName: '::FieldDefinition:DataType',
+        name: 'fieldTypeName',
+        displayName: '::FieldDefinition:FieldType',
         sortable: true,
         columnWidth: 170,
         valueResolver: data => {
           const localization = data.getInjected(LocalizationService);
-          const label = fieldDataTypeOptions.find(o => o.value === data.record.dataType)?.key ?? String(data.record.dataType);
-          const suffix = data.record.allowMultiple ? '[]' : '';
-          return of(`<span class="badge bg-light text-dark border">${escapeHtmlChars(localization.instant('::FieldDataType:' + label))}${suffix}</span>`);
+          const fieldType = this.fieldTypeResolver.find(data.record.fieldTypeName ?? '');
+          // An unknown key still renders, as itself: a field can name a type this deployment no longer
+          // registers, and showing the raw key is what lets an admin see why it stopped working.
+          const label = fieldType
+            ? localization.instant(fieldType.displayNameKey)
+            : (data.record.fieldTypeName ?? '');
+          return of(`<span class="badge bg-light text-dark border">${escapeHtmlChars(label)}</span>`);
         },
       }),
       EntityProp.create<FieldDefinitionDto>({
@@ -239,18 +262,31 @@ export class FieldDefinitionListComponent implements OnInit {
       }),
       EntityProp.create<FieldDefinitionDto>({
         type: ePropType.String,
-        name: 'prompt',
+        name: 'description',
         displayName: '::FieldDefinition:Prompt',
         sortable: true,
         columnWidth: 320,
         valueResolver: data => {
-          const prompt = data.record.prompt;
+          const prompt = data.record.description;
           return of(prompt
             ? `<span class="d-inline-block text-truncate" style="max-width:280px" title="${escapeHtmlChars(prompt)}">${escapeHtmlChars(prompt)}</span>`
             : '<span class="text-muted">-</span>');
         },
       }),
     ]);
+
+    this.service.getFieldTypes()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(fieldTypes => {
+        const supported = new Set(fieldTypes.map(fieldType => fieldType.name ?? ''));
+        this.fieldTypes.set(this.fieldTypeResolver.getAll().filter(fieldType => supported.has(fieldType.name)));
+        this.indexableByFieldType = new Map(
+          fieldTypes.map(fieldType => [fieldType.name ?? '', fieldType.indexable ?? true]),
+        );
+        // A modal opened before this landed was built against an empty map/list - re-apply so it
+        // catches up.
+        this.applySearchableAvailability(this.form.controls.fieldTypeName.value);
+      });
   }
 
   ngOnInit(): void {
@@ -265,29 +301,67 @@ export class FieldDefinitionListComponent implements OnInit {
       destroyRef: this.destroyRef,
       onPending: pending => this.isSuggesting.set(pending),
     });
-    // #212: apply the "multiple values only for text" policy whenever dataType changes, mirroring the
-    // backend invariant and preventing illegal combinations from failing loudly on submit.
-    this.form.controls.dataType.valueChanges
+    // Changing the field type replaces the configuration panel wholesale (<ff-flex-field-config> swaps
+    // in a fresh configComponent and rebuilds the "configuration" form group from scratch): carrying a
+    // previously-seeded selection across would let it resurrect a stale type's values on switching back.
+    this.form.controls.fieldTypeName.valueChanges
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(dataType => this.applyAllowMultiplePolicy(dataType));
+      .subscribe(fieldTypeName => {
+        this.configSeed.set(undefined);
+        this.applySearchableAvailability(fieldTypeName);
+      });
     this.load();
   }
 
-  // Non-text fields force allowMultiple=false and disable the checkbox. Switching back to text re-enables
-  // it while preserving the current value.
-  // Text plus multiple values is the only combination allowed by the backend entity layer
-  // (FieldDefinition.MultiValueRequiresStringType), and the client mirrors that constraint for UX
-  // guardrails.
-  private applyAllowMultiplePolicy(dataType: FieldDataType): void {
-    const isText = dataType === FieldDataType.Text;
-    this.isTextType.set(isText);
-    const control = this.form.controls.allowMultiple;
-    if (isText) {
-      control.enable({ emitEvent: false });
-    } else {
+  /**
+   * A field type with no query-index slot cannot actually be searched however the switch is set, so the
+   * switch is pinned off and disabled rather than left as a control with no effect - the hint beside it
+   * says why. getRawValue still returns the (forced-false) value.
+   */
+  private applySearchableAvailability(fieldTypeName?: string): void {
+    this.searchableUnsupported.set(
+      !!fieldTypeName && this.indexableByFieldType.get(fieldTypeName) === false,
+    );
+    const control = this.form.controls.isSearchable;
+    if (this.searchableUnsupported()) {
       control.setValue(false, { emitEvent: false });
       control.disable({ emitEvent: false });
+    } else if (control.disabled) {
+      // Restore the default now that the switch is meaningful again - it was pinned to false and
+      // locked by a previous, non-indexable type selection, not by the operator.
+      control.setValue(true, { emitEvent: false });
+      control.enable({ emitEvent: false });
     }
+  }
+
+  /**
+   * The "configuration" form group is injected dynamically by <ff-flex-field-config> (its shape depends
+   * on whichever field type is currently selected), so it does not exist on this.form's own declared
+   * shape.
+   */
+  private configurationValue(): Record<string, object> {
+    return (this.form as FormGroup).get('configuration')?.value ?? {};
+  }
+
+  /**
+   * Bridges a server-returned FieldDefinitionDto into the plain object <ff-flex-field-config> needs.
+   *
+   * Deliberately rebuilt field-by-field rather than cast: the DTO instance carries ABP's own
+   * validation-tracking properties (ngx-validate decorates every HTTP-response object with per-field
+   * `_name`/`_displayName`/... entries holding live RxJS subjects), and FlexFieldConfigComponent.render()
+   * hands `selected` to structuredClone() before patching it into the editor's form - which throws on
+   * those subjects (functions can never be cloned) and silently aborts the whole render, leaving the
+   * config panel blank as if nothing were stored. A hand-built plain object carries none of that.
+   */
+  private toFieldData(field: FieldDefinitionDto): FlexFieldData {
+    return {
+      id: field.id ?? '',
+      name: field.name ?? '',
+      displayName: field.displayName ?? '',
+      description: field.description ?? undefined,
+      fieldTypeName: field.fieldTypeName ?? '',
+      configuration: field.configuration ?? {},
+    };
   }
 
   // For the header badge: resolve the current type by immutable id from types visible in the current
@@ -367,18 +441,25 @@ export class FieldDefinitionListComponent implements OnInit {
 
   openCreate(): void {
     const nextOrder = this.allFields().reduce((max, f) => Math.max(max, f.displayOrder ?? 0), -1) + 1;
+    const fieldTypeName = this.fieldTypes()[0]?.name ?? '';
     this.form.reset({
       name: '',
       displayName: '',
-      prompt: '',
-      dataType: FieldDataType.Text,
+      description: '',
+      fieldTypeName,
       displayOrder: nextOrder,
       isRequired: false,
-      allowMultiple: false,
+      isSearchable: true,
       isUniqueKey: false,
     });
     this.form.controls.name.enable();
-    this.applyAllowMultiplePolicy(FieldDataType.Text);
+    // reset() does not change a control's disabled status (Angular only does that for a per-control
+    // {value, disabled} form-state object, not a plain value map) - so a switch left disabled by the
+    // PREVIOUS modal instance's non-indexable type would otherwise survive into this one and make
+    // applySearchableAvailability below misread it as "locked by this field's own type".
+    this.form.controls.isSearchable.enable({ emitEvent: false });
+    this.configSeed.set(undefined);
+    this.applySearchableAvailability(fieldTypeName);
     // Must be called after form.reset()/enable(): both trigger valueChanges that can be misread as
     // "manual edit". reset() clears that marker and resets suggestion state, including the spinner.
     this.slugHandle?.reset();
@@ -396,27 +477,47 @@ export class FieldDefinitionListComponent implements OnInit {
     this.form.reset({
       name: field.name,
       displayName: field.displayName,
-      prompt: field.prompt ?? '',
-      dataType: field.dataType,
+      description: field.description ?? '',
+      fieldTypeName: field.fieldTypeName ?? '',
       displayOrder: field.displayOrder,
       isRequired: field.isRequired,
-      allowMultiple: field.allowMultiple,
+      isSearchable: field.isSearchable ?? true,
       isUniqueKey: field.isUniqueKey ?? false,
     });
     this.form.controls.name.enable();
-    this.applyAllowMultiplePolicy(field.dataType ?? FieldDataType.Text);
+    // Same reason as openCreate: reset() preserves whatever disabled status the control already had, so
+    // a previous edit's non-indexable type would otherwise leave this disabled and make
+    // applySearchableAvailability below stomp this field's own real IsSearchable back to true.
+    this.form.controls.isSearchable.enable({ emitEvent: false });
+    // The stored field, not just its type: <ff-flex-field-config> only restores saved configuration
+    // values when selected.fieldTypeName matches the type currently being rendered, so handing it the
+    // whole field lets it patch what an admin previously set instead of quietly re-defaulting. Rebuilt
+    // as a plain object (not the DTO instance itself) - see toFieldData.
+    this.configSeed.set(this.toFieldData(field));
+    this.applySearchableAvailability(field.fieldTypeName);
     this.slugHandle?.markManual();
     this.justDrafted.set(false);
     this.isDrafting.set(false);
     this.isPolishing.set(false);
     this.showPromptPreview.set(false);
     this.editing.set(field);
+    // The field-type <select> is freshly mounted by the @if above, with fieldTypeName already set to a
+    // non-first option: Angular writes that value into the native select before its own <option>s finish
+    // registering (a select-with-preset-value-on-first-render gap, independent of @for vs *ngFor and
+    // [value] vs [ngValue] - tried both), so the select silently displays the first option while the
+    // control itself - and everything else reading it, like <ff-flex-field-config> - already holds the
+    // real one. Re-push the same value once the view has settled (setTimeout, not queueMicrotask: this
+    // needs to run after Angular's own view-creation microtasks, not just after this function's own
+    // synchronous scope) to force a fresh sync. emitEvent:false: this is a display fixup, not a change -
+    // it must not re-clear configSeed via the fieldTypeName.valueChanges subscription in ngOnInit.
+    const fieldTypeName = field.fieldTypeName ?? '';
+    setTimeout(() => this.form.controls.fieldTypeName.setValue(fieldTypeName, { emitEvent: false }));
   }
 
   // #264: draft field metadata from the prompt. The prompt is the primary input; one LLM call drafts the
   // remaining fields, applies them as a group, and lets the user review or modify each item.
   draft(): void {
-    const prompt = (this.form.controls.prompt.value ?? '').trim();
+    const prompt = (this.form.controls.description.value ?? '').trim();
     if (!prompt || this.isDrafting()) return;
     // forNewField controls whether the backend also suggests the machine key Name. When editing an
     // existing field, Name is a contract-level frozen identity key and is not overwritten by drafting
@@ -455,17 +556,22 @@ export class FieldDefinitionListComponent implements OnInit {
       this.toaster.info('::FieldDefinition:DraftUnavailable', '::Info');
       return;
     }
-    const dataType = draft.dataType ?? FieldDataType.Text;
+    const fieldTypeName = draft.fieldTypeName ?? this.fieldTypes()[0]?.name ?? '';
     this.form.controls.displayName.setValue(draft.displayName, { emitEvent: false });
-    this.form.controls.dataType.setValue(dataType, { emitEvent: false });
+    this.form.controls.fieldTypeName.setValue(fieldTypeName, { emitEvent: false });
     this.form.controls.isRequired.setValue(draft.isRequired ?? false, { emitEvent: false });
-    // setValue(dataType) used emitEvent:false, so valueChanges does not fire; manually apply the
-    // "multiple values only for text" policy to enable/disable the checkbox.
-    this.applyAllowMultiplePolicy(dataType);
-    this.form.controls.allowMultiple.setValue(
-      dataType === FieldDataType.Text && (draft.allowMultiple ?? false),
-      { emitEvent: false },
-    );
+    // setValue used emitEvent:false, so the config panel would still describe the previous type unless
+    // told directly. The server can draft a configuration alongside the type - a date-only DateTime, a
+    // Tags MaxCount - so seed <ff-flex-field-config> with it via the same "selected" channel it uses to
+    // restore a stored field's configuration.
+    this.configSeed.set({
+      id: '',
+      name: '',
+      displayName: draft.displayName,
+      fieldTypeName,
+      configuration: draft.configuration ?? {},
+    });
+    this.applySearchableAvailability(fieldTypeName);
     if (forNewField) {
       // Create mode: overwrite the machine key as part of the group. Use the suggested value, or fall
       // back to local placeholder field_{n} when missing, such as when pure CJK sanitizes to empty after
@@ -485,7 +591,7 @@ export class FieldDefinitionListComponent implements OnInit {
   // editor for review. Fail-open: the backend returns the original prompt unchanged on provider failure,
   // and errors surface as a non-destructive toast — the operator's input is never lost.
   polish(): void {
-    const prompt = (this.form.controls.prompt.value ?? '').trim();
+    const prompt = (this.form.controls.description.value ?? '').trim();
     if (!prompt || this.isPolishing()) return;
     this.isPolishing.set(true);
     // `undefined` for the generated `cancellationToken` parameter, as `draftService.draft` and
@@ -499,8 +605,8 @@ export class FieldDefinitionListComponent implements OnInit {
           this.isPolishing.set(false);
           if (result.prompt && result.prompt !== prompt) {
             // emitEvent:false so the displayName→slug wiring is not disturbed.
-            this.form.controls.prompt.setValue(result.prompt, { emitEvent: false });
-            this.form.controls.prompt.markAsDirty();
+            this.form.controls.description.setValue(result.prompt, { emitEvent: false });
+            this.form.controls.description.markAsDirty();
             this.showPromptPreview.set(true);
             this.toaster.success('::FieldDefinition:PolishDone', '::Success');
           } else {
@@ -518,7 +624,7 @@ export class FieldDefinitionListComponent implements OnInit {
   // [innerHTML], so marked's output is safe to render. Read straight from the control (not a valueChanges
   // signal) so polish()'s emitEvent:false write-back is reflected; re-parse only when the prompt changed.
   promptPreviewHtml(): string {
-    const prompt = this.form.controls.prompt.value ?? '';
+    const prompt = this.form.controls.description.value ?? '';
     if (prompt !== this.promptPreviewSource) {
       this.promptPreviewSource = prompt;
       this.promptPreviewCache = marked.parse(prompt, { gfm: true, async: false }) as string;
@@ -576,19 +682,21 @@ export class FieldDefinitionListComponent implements OnInit {
 
     this.isSubmitting.set(true);
     const raw = this.form.getRawValue();
+    const configuration = this.configurationValue();
 
     if (mode === 'create') {
       const input: CreateFieldDefinitionDto = {
         documentTypeId: this.documentTypeId,
         name: raw.name,
         displayName: raw.displayName,
-        prompt: raw.prompt,
-        dataType: raw.dataType,
+        description: raw.description,
+        fieldTypeName: raw.fieldTypeName,
+        configuration,
         displayOrder: raw.displayOrder,
         isRequired: raw.isRequired,
-        // For non-text fields the control is disabled, but getRawValue still carries it back after the
-        // policy has set it to false.
-        allowMultiple: raw.allowMultiple,
+        // Disabled for a non-indexable type, but getRawValue still carries it back after the policy has
+        // set it to false.
+        isSearchable: raw.isSearchable,
         isUniqueKey: raw.isUniqueKey,
       };
       this.service.create(input)
@@ -601,11 +709,12 @@ export class FieldDefinitionListComponent implements OnInit {
       this.service.update(mode.id!, {
         name: raw.name,
         displayName: raw.displayName,
-        prompt: raw.prompt,
-        dataType: raw.dataType,
+        description: raw.description,
+        fieldTypeName: raw.fieldTypeName,
+        configuration,
         displayOrder: raw.displayOrder,
         isRequired: raw.isRequired,
-        allowMultiple: raw.allowMultiple,
+        isSearchable: raw.isSearchable,
         isUniqueKey: raw.isUniqueKey,
       })
         .pipe(takeUntilDestroyed(this.destroyRef))

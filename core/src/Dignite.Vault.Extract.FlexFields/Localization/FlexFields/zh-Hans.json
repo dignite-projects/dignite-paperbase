@@ -1,0 +1,12 @@
+{
+  "culture": "zh-Hans",
+  "texts": {
+    "FieldType:Tags": "标签",
+    "FieldType:Tags:MaxCount": "最大值数量",
+    "FieldType:Tags:MaxLength": "单个值最大长度",
+    "FieldType:Tags:Placeholder": "占位提示",
+    "Validate:Required": "{0} 为必填项。",
+    "Validate:Tags:CountExceedsLimit": "{0} 最多允许 {1} 个值。",
+    "Validate:Tags:LengthExceedsLimit": "{0} 的每个值最多 {1} 个字符。"
+  }
+}

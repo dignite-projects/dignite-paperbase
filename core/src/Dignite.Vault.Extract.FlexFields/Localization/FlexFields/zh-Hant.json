@@ -1,0 +1,12 @@
+{
+  "culture": "zh-Hant",
+  "texts": {
+    "FieldType:Tags": "標籤",
+    "FieldType:Tags:MaxCount": "最大值數量",
+    "FieldType:Tags:MaxLength": "單一值最大長度",
+    "FieldType:Tags:Placeholder": "佔位提示",
+    "Validate:Required": "{0} 為必填項。",
+    "Validate:Tags:CountExceedsLimit": "{0} 最多允許 {1} 個值。",
+    "Validate:Tags:LengthExceedsLimit": "{0} 的每個值最多 {1} 個字元。"
+  }
+}

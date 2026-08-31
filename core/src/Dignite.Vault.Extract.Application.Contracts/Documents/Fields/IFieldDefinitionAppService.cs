@@ -24,6 +24,21 @@ public interface IFieldDefinitionAppService : IApplicationService
     /// </summary>
     Task<List<FieldDefinitionDto>> GetListAsync(GetFieldDefinitionListInput input);
 
+    /// <summary>
+    /// The registered field types, and what a client cannot work out for itself about each one (#562).
+    /// <para>
+    /// The FlexFields kernel ships no application layer, so nothing serves this by default — every
+    /// downstream that builds a field designer writes this same endpoint. Modeled on the kernel's own
+    /// worked example, <c>ProductFieldAppService.GetFieldTypesAsync</c> in its demo host.
+    /// </para>
+    /// <para>
+    /// It exists so the designer's "filterable" switch is driven by the server's own
+    /// <see cref="IFieldType.IndexValueType"/> (via <c>IsIndexable()</c>) instead of a copy of it
+    /// maintained by hand on the client — a copy nothing in either build could catch drifting.
+    /// </para>
+    /// </summary>
+    Task<List<FieldTypeDto>> GetFieldTypesAsync();
+
     Task<FieldDefinitionDto> CreateAsync(CreateFieldDefinitionDto input);
 
     Task<FieldDefinitionDto> UpdateAsync(Guid id, UpdateFieldDefinitionDto input);

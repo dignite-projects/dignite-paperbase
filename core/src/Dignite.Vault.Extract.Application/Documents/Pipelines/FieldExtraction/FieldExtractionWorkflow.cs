@@ -6,7 +6,11 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Abp.FlexFields.CKEditor;
+using Dignite.Abp.FlexFields.Select;
+using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.Ai;
+using Dignite.Vault.Extract.FlexFields.Tags;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -147,21 +151,57 @@ public class FieldExtractionWorkflow : ITransientDependency
         var chars = 0;
         foreach (var field in fields)
         {
-            chars += field.DataType switch
-            {
-                FieldDataType.LongText => DocumentExtractedFieldConsts.MaxLongTextValueLength * CjkTokenSafetyMultiplier,
-                FieldDataType.Text when field.AllowMultiple =>
-                    DocumentExtractedFieldConsts.MaxMultiValueCount *
-                    ((DocumentExtractedFieldConsts.MaxTextValueLength * CjkTokenSafetyMultiplier) + 4),
-                FieldDataType.Text => DocumentExtractedFieldConsts.MaxTextValueLength * CjkTokenSafetyMultiplier,
-                _ => 40 // Number / Boolean / Date / DateTime: a short scalar plus its JSON key and quotes (ASCII).
-            };
+            chars += EstimateFieldChars(field);
         }
 
         chars += DocumentFieldValidationWarningConsts.MaxWarningsPerExtraction *
             ((DocumentFieldValidationWarningConsts.MaxMessageLength * CjkTokenSafetyMultiplier) + 60); // + fieldName enum value + JSON overhead
 
         return chars + 2048; // + fixed margin for JSON structure (braces, field-name keys repeated per property).
+    }
+
+    /// <summary>
+    /// Worst-case output characters for one field, from its field type and configuration.
+    /// <para>
+    /// The ceilings come from the same configuration the extraction schema and the value reader enforce,
+    /// so a field whose limits an admin has widened is budgeted for what it can actually return rather
+    /// than for a constant this method happens to hold.
+    /// </para>
+    /// </summary>
+    private static int EstimateFieldChars(FieldExtractionDescriptor field)
+    {
+        if (string.Equals(field.FieldTypeName, TagsFieldType.ControlName, StringComparison.Ordinal))
+        {
+            var tags = new TagsConfiguration(field.Configuration);
+            // + 4 for the quotes, comma and spacing around each element.
+            return tags.MaxCount * ((tags.MaxLength * CjkTokenSafetyMultiplier) + 4);
+        }
+
+        if (string.Equals(field.FieldTypeName, CKEditorFieldType.ControlName, StringComparison.Ordinal))
+        {
+            return DocumentExtractedFieldConsts.MaxLongTextValueLength * CjkTokenSafetyMultiplier;
+        }
+
+        if (string.Equals(field.FieldTypeName, TextFieldType.ControlName, StringComparison.Ordinal))
+        {
+            return new TextConfiguration(field.Configuration).CharLimit * CjkTokenSafetyMultiplier;
+        }
+
+        if (string.Equals(field.FieldTypeName, SelectFieldType.ControlName, StringComparison.Ordinal))
+        {
+            var select = new SelectConfiguration(field.Configuration);
+            var longest = select.Options.Count == 0
+                ? DocumentExtractedFieldConsts.MaxTextValueLength
+                : select.Options.Max(o => o.Value?.Length ?? 0);
+
+            // A multi-Select can return every option; a single one returns at most the longest.
+            return select.Multiple
+                ? select.Options.Count * ((longest * CjkTokenSafetyMultiplier) + 4)
+                : longest * CjkTokenSafetyMultiplier;
+        }
+
+        // Number / Boolean / DateTime: a short scalar plus its JSON key and quotes, all ASCII.
+        return 40;
     }
 
     /// <summary>
@@ -208,7 +248,9 @@ public class FieldExtractionWorkflow : ITransientDependency
             // f.Prompt comes from Host compile-time constants or tenant user input. PromptBoundary.WrapField explicitly marks it as data,
             // and BoundaryRule tells the model to treat it as non-instruction content.
             // #212: multi-value fields append "[]" after the type label, such as "Text[]", to tell the model to return an array.
-            var typeLabel = f.AllowMultiple ? $"{f.DataType}[]" : f.DataType.ToString();
+            // The field type's registration key is a system-controlled value from a fixed set, never user
+            // input, so it goes into the prompt raw - same standing as v2's DataType enum name.
+            var typeLabel = f.FieldTypeName;
             var header = $"- \"{f.Name}\" ({typeLabel}, {(f.IsRequired ? "required" : "optional")})";
             // Prompt is optional. When empty, provide only "field name + type" and let the model infer what to extract from Name semantics.
             // Never output an empty PromptBoundary-wrapped block: WrapField("") would produce an empty data boundary marker,
@@ -286,7 +328,7 @@ public class FieldExtractionWorkflow : ITransientDependency
 
         foreach (var field in fields)
         {
-            properties[field.Name] = BuildFieldValueSchema(field.DataType, field.AllowMultiple);
+            properties[field.Name] = FlexFieldValueSchemaBuilder.Build(field.FieldTypeName, field.Configuration);
             required.Add(field.Name);
         }
 
@@ -298,66 +340,6 @@ public class FieldExtractionWorkflow : ITransientDependency
             ["additionalProperties"] = false
         };
     }
-
-    private static JsonObject BuildFieldValueSchema(FieldDataType dataType, bool allowMultiple)
-    {
-        // #212: multi-value fields (text only, guaranteed by the FieldDefinition entity layer) -> array-or-null, with length-limited string elements.
-        if (allowMultiple)
-        {
-            return new JsonObject
-            {
-                ["type"] = JsonTypes("array", "null"),
-                ["maxItems"] = DocumentExtractedFieldConsts.MaxMultiValueCount,
-                ["items"] = new JsonObject
-                {
-                    ["type"] = "string",
-                    ["maxLength"] = DocumentExtractedFieldConsts.MaxTextValueLength
-                },
-                ["description"] = "A JSON array of short structured string values, or null/empty array when absent."
-            };
-        }
-
-        var schema = new JsonObject
-        {
-            ["type"] = JsonTypes(JsonTypeName(dataType), "null")
-        };
-
-        switch (dataType)
-        {
-            case FieldDataType.Text:
-                schema["maxLength"] = DocumentExtractedFieldConsts.MaxTextValueLength;
-                schema["description"] = "A short structured string value, or null when absent.";
-                break;
-            case FieldDataType.LongText:
-                schema["maxLength"] = DocumentExtractedFieldConsts.MaxLongTextValueLength;
-                schema["description"] = "A long-form text value (e.g. a summary or description), or null when absent.";
-                break;
-            case FieldDataType.Number:
-                schema["description"] = "A JSON number, or null when absent.";
-                break;
-            case FieldDataType.Boolean:
-                schema["description"] = "A JSON boolean, or null when absent.";
-                break;
-            case FieldDataType.Date:
-                schema["pattern"] = @"^\d{4}-\d{2}-\d{2}$";
-                schema["description"] = "An ISO-8601 date string in YYYY-MM-DD format, or null when absent.";
-                break;
-            case FieldDataType.DateTime:
-                schema["pattern"] = @"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$";
-                schema["description"] = "An offset-free ISO-8601 local date-time string in YYYY-MM-DDThh:mm:ss format, or null when absent.";
-                break;
-        }
-
-        return schema;
-    }
-
-    private static string JsonTypeName(FieldDataType dataType)
-        => dataType switch
-        {
-            FieldDataType.Number => "number",
-            FieldDataType.Boolean => "boolean",
-            _ => "string"
-        };
 
     private static JsonArray JsonTypes(params string[] types)
     {
@@ -423,21 +405,14 @@ public class FieldExtractionWorkflow : ITransientDependency
                 continue;
             }
 
-            // Strict validation: the value must match the declared FieldDataType, using the same ExtractedFieldValueValidator
-            // as the operator-edit path DocumentAppService.UpdateExtractedFieldsAsync.
-            // Normalization responsibility belongs to the prompt (AI outputs canonical shape); this is the fallback guard and does not coerce.
-            // Values that do not match the declared type are written as null and logged, ensuring field value type consistency
-            // so typed-column queries over DocumentExtractedField are built on clean data.
-            if (!ExtractedFieldValueValidator.IsValid(prop, field.DataType, field.AllowMultiple))
-            {
-                _logger.LogWarning(
-                    "Field extraction value for '{FieldName}' did not match declared type {DataType} (multi={AllowMultiple}, JSON kind {JsonValueKind}); storing null.",
-                    field.Name, field.DataType, field.AllowMultiple, prop.ValueKind);
-                result[field.Name] = null;
-                continue;
-            }
-
-            // Validation passed: keep the original JsonElement, already in canonical JSON type, avoiding double conversion and precision loss.
+            // Deliberately NOT validated here. Under v2 this method checked the value against the declared
+            // FieldDataType and the service then converted it separately, so the same rules lived in two
+            // places that only agreed because both switched on the same enum. v3's FlexFieldValueReader
+            // validates and converts in one step against the field type's configuration, and the service
+            // has to call it anyway — a second gate here could only diverge from it.
+            //
+            // The raw JsonElement is kept as-is: it is already the canonical JSON shape, and re-encoding it
+            // would cost precision on decimals for nothing.
             result[field.Name] = prop;
         }
 

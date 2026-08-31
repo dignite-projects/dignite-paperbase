@@ -13,7 +13,10 @@ import { provideLogo, withEnvironmentOptions } from "@abp/ng.theme.shared";
 import { ApplicationConfig } from '@angular/core';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
+import { provideFlexFields } from '@dignite/ng.flex-fields';
+import { provideCKEditorFieldType } from '@dignite/ng.flex-fields-ckeditor';
 import { provideExtract } from '@dignite/vault-extract/config';
+import { provideTagsFieldType } from '@dignite/vault-extract/documents';
 import { environment } from '../environments/environment';
 import { APP_ROUTES } from './app.routes';
 import { HOME_MENU_PROVIDER } from './home/home.menu.provider';
@@ -42,5 +45,12 @@ export const appConfig: ApplicationConfig = {
     provideSideMenuLayout(),
     provideLogo(withEnvironmentOptions(environment)),
     provideExtract(),
+    // Registers the field-type designer/control/search/view components <ff-flex-field-*> dispatches
+    // to. provideFlexFields() supplies the six kernel built-ins (Text/Number/Boolean/DateTime/Select/
+    // Tree); the two bolt-ons after it add CKEditor (long text) and Vault Extract's own Tags. Order
+    // matters only for same-name overrides, which neither bolt-on is.
+    provideFlexFields(),
+    provideCKEditorFieldType(),
+    provideTagsFieldType(),
   ]
 };

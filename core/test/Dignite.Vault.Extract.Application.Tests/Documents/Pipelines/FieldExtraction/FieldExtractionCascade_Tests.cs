@@ -1,3 +1,7 @@
+using Dignite.Abp.FlexFields.Date;
+using Dignite.Abp.FlexFields.Boolean;
+using Dignite.Abp.FlexFields.Number;
+using Dignite.Abp.FlexFields.Text;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -31,7 +35,7 @@ public class FieldExtractionCascadeTestModule : AbpModule
     {
         context.Services.AddSingleton(Substitute.For<IDocumentRepository>());
         context.Services.AddSingleton(Substitute.For<IDocumentTypeRepository>());
-        context.Services.AddSingleton(Substitute.For<IFieldDefinitionRepository>());
+        context.Services.AddSingleton(Substitute.For<IFieldRepository>());
         context.Services.AddSingleton(Substitute.For<IDistributedEventBus>());
 
         // FieldExtractionWorkflow is a concrete class, so use ForPartsOf with fake constructor dependencies.
@@ -59,7 +63,7 @@ public class FieldExtractionCascade_Tests
     private readonly FieldExtractionService _service;
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentTypeRepository _documentTypeRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldRepository;
     private readonly FieldExtractionWorkflow _workflow;
     private readonly IDistributedEventBus _eventBus;
 
@@ -68,7 +72,7 @@ public class FieldExtractionCascade_Tests
         _service = GetRequiredService<FieldExtractionService>();
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _documentTypeRepository = GetRequiredService<IDocumentTypeRepository>();
-        _fieldDefinitionRepository = GetRequiredService<IFieldDefinitionRepository>();
+        _fieldRepository = GetRequiredService<IFieldRepository>();
         _workflow = GetRequiredService<FieldExtractionWorkflow>();
         _eventBus = GetRequiredService<IDistributedEventBus>();
     }
@@ -82,8 +86,8 @@ public class FieldExtractionCascade_Tests
         SetupType("contract.general");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition>());
+        _fieldRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field>());
 
         await Extract(doc.Id, null, "contract.general");
 
@@ -103,21 +107,18 @@ public class FieldExtractionCascade_Tests
     {
         // Reclassifying to a type with no field definitions must clear stale field rows from the old schema (#206).
         var doc = CreateDocument(tenantId: null, typeCode: "blank.type");
-        doc.SetFields(new[]
-        {
-            new DocumentFieldValue(FieldId("amount"), FieldDataType.Number, JsonDocument.Parse("100").RootElement)
-        });
-        doc.ExtractedFieldValues.ShouldNotBeEmpty();
+        doc.SetFlexFields(new Dictionary<string, object?> { ["amount"] = 100m });
+        doc.FlexFields.ShouldNotBeEmpty();
 
         SetupType("blank.type");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("blank.type"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition>());
+        _fieldRepository.GetListAsync(TypeId("blank.type"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field>());
 
         await Extract(doc.Id, null, "blank.type");
 
-        doc.ExtractedFieldValues.ShouldBeEmpty();
+        doc.FlexFields.ShouldBeEmpty();
         await _documentRepository.Received().UpdateAsync(doc, Arg.Any<bool>(), Arg.Any<CancellationToken>());
         await _eventBus.Received(1).PublishAsync(
             Arg.Is<FieldsExtractedEto>(e => e.DocumentId == doc.Id && e.FieldCount == 0),
@@ -129,8 +130,8 @@ public class FieldExtractionCascade_Tests
     {
         var docId = Guid.NewGuid();
         SetupType("contract.general");
-        _fieldDefinitionRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { CreateFieldDefinition("contract.general", "amount") });
+        _fieldRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { CreateFieldDefinition("contract.general", "amount") });
         _documentRepository.FindAsync(docId, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns((Document?)null);
 
         await Extract(docId, null, "contract.general");
@@ -150,14 +151,14 @@ public class FieldExtractionCascade_Tests
         SetupType("contract.general");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { CreateFieldDefinition("contract.general", "amount", tenantId: eventTenant) });
+        _fieldRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { CreateFieldDefinition("contract.general", "amount", tenantId: eventTenant) });
         _workflow.ExtractAsync(Arg.Any<IReadOnlyList<FieldExtractionDescriptor>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(WorkflowResult(new Dictionary<string, JsonElement?> { ["amount"] = JsonDocument.Parse("1000").RootElement }));
 
         await Extract(doc.Id, eventTenant, "contract.general");
 
-        doc.ExtractedFieldValues.ShouldBeEmpty();
+        doc.FlexFields.ShouldBeEmpty();
         await _documentRepository.DidNotReceive().UpdateAsync(
             Arg.Any<Document>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
         await _eventBus.DidNotReceive().PublishAsync(
@@ -174,14 +175,14 @@ public class FieldExtractionCascade_Tests
         SetupType("invoice.general");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { CreateFieldDefinition("contract.general", "amount") });
+        _fieldRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { CreateFieldDefinition("contract.general", "amount") });
         _workflow.ExtractAsync(Arg.Any<IReadOnlyList<FieldExtractionDescriptor>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(WorkflowResult(new Dictionary<string, JsonElement?> { ["amount"] = JsonDocument.Parse("1000").RootElement }));
 
         await Extract(doc.Id, null, "contract.general"); // stale typeCode resolves to a different typeId than the doc
 
-        doc.ExtractedFieldValues.ShouldBeEmpty();
+        doc.FlexFields.ShouldBeEmpty();
         await _documentRepository.DidNotReceive().UpdateAsync(
             Arg.Any<Document>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
         await _eventBus.DidNotReceive().PublishAsync(
@@ -196,13 +197,13 @@ public class FieldExtractionCascade_Tests
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
 
-        var defs = new List<FieldDefinition>
+        var defs = new List<Field>
         {
-            CreateFieldDefinition("contract.general", "amount", FieldDataType.Number),
-            CreateFieldDefinition("contract.general", "party", FieldDataType.Text),
-            CreateFieldDefinition("contract.general", "date", FieldDataType.Date)
+            CreateFieldDefinition("contract.general", "amount", NumberFieldType.ControlName),
+            CreateFieldDefinition("contract.general", "party", TextFieldType.ControlName),
+            CreateFieldDefinition("contract.general", "date", DateTimeFieldType.ControlName)
         };
-        _fieldDefinitionRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>()).Returns(defs);
+        _fieldRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>()).Returns(defs);
         _workflow.ExtractAsync(Arg.Any<IReadOnlyList<FieldExtractionDescriptor>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(WorkflowResult(new Dictionary<string, JsonElement?>
             {
@@ -213,11 +214,9 @@ public class FieldExtractionCascade_Tests
 
         await Extract(doc.Id, null, "contract.general");
 
-        var fieldIds = doc.ExtractedFieldValues.Select(f => f.FieldDefinitionId).ToList();
-        fieldIds.Count.ShouldBe(2);
-        fieldIds.ShouldContain(FieldId("amount"));
-        fieldIds.ShouldContain(FieldId("party"));
-        fieldIds.ShouldNotContain(FieldId("date"));
+        // v3 keys the bag by field name; a field the LLM could not extract contributes no entry at all,
+        // which is what keeps FieldCount at 2.
+        doc.FlexFields.Keys.ShouldBe(new[] { "amount", "party" }, ignoreOrder: true);
 
         await _documentRepository.Received(1).UpdateAsync(doc, Arg.Any<bool>(), Arg.Any<CancellationToken>());
         await _eventBus.Received(1).PublishAsync(
@@ -236,15 +235,14 @@ public class FieldExtractionCascade_Tests
         SetupType("contract.renamed", typeId: typeId);
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(typeId, Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { CreateFieldDefinition(typeId, "amount", FieldDataType.Number) });
+        _fieldRepository.GetListAsync(typeId, Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { CreateFieldDefinition(typeId, "amount", NumberFieldType.ControlName) });
         _workflow.ExtractAsync(Arg.Any<IReadOnlyList<FieldExtractionDescriptor>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(WorkflowResult(new Dictionary<string, JsonElement?> { ["amount"] = JsonDocument.Parse("1500").RootElement }));
 
         await Extract(doc.Id, null, "contract.general"); // old, now-unresolvable code
 
-        doc.ExtractedFieldValues.Count.ShouldBe(1);
-        doc.ExtractedFieldValues.Single().FieldDefinitionId.ShouldBe(FieldId("amount"));
+        doc.FlexFields.Keys.ShouldBe(new[] { "amount" });
         await _eventBus.Received(1).PublishAsync(
             Arg.Is<FieldsExtractedEto>(e =>
                 e.DocumentId == doc.Id && e.DocumentTypeCode == "contract.renamed" && e.FieldCount == 1),
@@ -261,18 +259,18 @@ public class FieldExtractionCascade_Tests
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
 
-        var initialDefs = new List<FieldDefinition> { CreateFieldDefinition("contract.general", "amount", FieldDataType.Number) };
-        var currentDefs = new List<FieldDefinition> { CreateFieldDefinition("contract.general", "amount", FieldDataType.Text) };
-        _fieldDefinitionRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
+        var initialDefs = new List<Field> { CreateFieldDefinition("contract.general", "amount", NumberFieldType.ControlName) };
+        var currentDefs = new List<Field> { CreateFieldDefinition("contract.general", "amount", TextFieldType.ControlName) };
+        _fieldRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
             .Returns(initialDefs, currentDefs);
         _workflow.ExtractAsync(
-                Arg.Is<IReadOnlyList<FieldExtractionDescriptor>>(d => d.Count == 1 && d[0].Name == "amount" && d[0].DataType == FieldDataType.Number),
+                Arg.Is<IReadOnlyList<FieldExtractionDescriptor>>(d => d.Count == 1 && d[0].Name == "amount" && d[0].FieldTypeName == NumberFieldType.ControlName),
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(WorkflowResult(new Dictionary<string, JsonElement?> { ["amount"] = JsonDocument.Parse("1500").RootElement }));
 
         await Extract(doc.Id, null, "contract.general");
 
-        doc.ExtractedFieldValues.ShouldBeEmpty();
+        doc.FlexFields.ShouldBeEmpty();
         await _documentRepository.Received(1).UpdateAsync(doc, Arg.Any<bool>(), Arg.Any<CancellationToken>());
         await _eventBus.Received(1).PublishAsync(
             Arg.Is<FieldsExtractedEto>(e =>
@@ -288,11 +286,11 @@ public class FieldExtractionCascade_Tests
         SetupType("contract.general");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition>
+        _fieldRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field>
             {
-                CreateFieldDefinition("contract.general", "amount", FieldDataType.Number, isRequired: true),
-                CreateFieldDefinition("contract.general", "party", FieldDataType.Text)
+                CreateFieldDefinition("contract.general", "amount", NumberFieldType.ControlName, isRequired: true),
+                CreateFieldDefinition("contract.general", "party", TextFieldType.ControlName)
             });
         _workflow.ExtractAsync(Arg.Any<IReadOnlyList<FieldExtractionDescriptor>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(WorkflowResult(new Dictionary<string, JsonElement?>
@@ -314,8 +312,8 @@ public class FieldExtractionCascade_Tests
         SetupType("contract.general");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { CreateFieldDefinition("contract.general", "amount", FieldDataType.Number, isRequired: true) });
+        _fieldRepository.GetListAsync(TypeId("contract.general"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { CreateFieldDefinition("contract.general", "amount", NumberFieldType.ControlName, isRequired: true) });
         _workflow.ExtractAsync(Arg.Any<IReadOnlyList<FieldExtractionDescriptor>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(WorkflowResult(new Dictionary<string, JsonElement?> { ["amount"] = JsonDocument.Parse("1500").RootElement }));
 
@@ -333,8 +331,8 @@ public class FieldExtractionCascade_Tests
         SetupType("receipt.general");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("receipt.general"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { CreateFieldDefinition("receipt.general", "receipt_no", FieldDataType.Text, isUniqueKey: true) });
+        _fieldRepository.GetListAsync(TypeId("receipt.general"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { CreateFieldDefinition("receipt.general", "receipt_no", TextFieldType.ControlName, isUniqueKey: true) });
         _workflow.ExtractAsync(Arg.Any<IReadOnlyList<FieldExtractionDescriptor>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(WorkflowResult(new Dictionary<string, JsonElement?> { ["receipt_no"] = JsonDocument.Parse("\"R-001\"").RootElement }));
         // A colliding document exists in the same layer + type.
@@ -355,8 +353,8 @@ public class FieldExtractionCascade_Tests
         SetupType("receipt.general");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("receipt.general"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { CreateFieldDefinition("receipt.general", "receipt_no", FieldDataType.Text, isUniqueKey: true) });
+        _fieldRepository.GetListAsync(TypeId("receipt.general"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { CreateFieldDefinition("receipt.general", "receipt_no", TextFieldType.ControlName, isUniqueKey: true) });
         _workflow.ExtractAsync(Arg.Any<IReadOnlyList<FieldExtractionDescriptor>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(WorkflowResult(new Dictionary<string, JsonElement?> { ["receipt_no"] = JsonDocument.Parse("\"R-001\"").RootElement }));
         _documentRepository.FindDuplicateCandidatesAsync(
@@ -377,8 +375,8 @@ public class FieldExtractionCascade_Tests
         SetupType("receipt.general");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("receipt.general"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { CreateFieldDefinition("receipt.general", "receipt_no", FieldDataType.Text, isUniqueKey: true) });
+        _fieldRepository.GetListAsync(TypeId("receipt.general"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { CreateFieldDefinition("receipt.general", "receipt_no", TextFieldType.ControlName, isUniqueKey: true) });
         _workflow.ExtractAsync(Arg.Any<IReadOnlyList<FieldExtractionDescriptor>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(WorkflowResult(new Dictionary<string, JsonElement?> { ["receipt_no"] = JsonDocument.Parse("\"R-001\"").RootElement }));
 
@@ -398,11 +396,11 @@ public class FieldExtractionCascade_Tests
         SetupType("receipt.general");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("receipt.general"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition>
+        _fieldRepository.GetListAsync(TypeId("receipt.general"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field>
             {
-                CreateFieldDefinition("receipt.general", "receipt_no", FieldDataType.Text, isUniqueKey: true),
-                CreateFieldDefinition("receipt.general", "amount", FieldDataType.Number, isUniqueKey: true)
+                CreateFieldDefinition("receipt.general", "receipt_no", TextFieldType.ControlName, isUniqueKey: true),
+                CreateFieldDefinition("receipt.general", "amount", NumberFieldType.ControlName, isUniqueKey: true)
             });
         _workflow.ExtractAsync(Arg.Any<IReadOnlyList<FieldExtractionDescriptor>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(WorkflowResult(new Dictionary<string, JsonElement?>
@@ -428,8 +426,8 @@ public class FieldExtractionCascade_Tests
         SetupType("bank.statement");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("bank.statement"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { CreateFieldDefinition("bank.statement", "transactions", FieldDataType.Text) });
+        _fieldRepository.GetListAsync(TypeId("bank.statement"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { CreateFieldDefinition("bank.statement", "transactions", TextFieldType.ControlName) });
         _workflow.ExtractAsync(Arg.Any<IReadOnlyList<FieldExtractionDescriptor>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(WorkflowResultWith(
                 new Dictionary<string, JsonElement?> { ["transactions"] = JsonDocument.Parse("\"| a | b |\"").RootElement },
@@ -438,7 +436,7 @@ public class FieldExtractionCascade_Tests
         await Extract(doc.Id, null, "bank.statement");
 
         // The value is kept (a warning never nulls the value)...
-        doc.ExtractedFieldValues.Select(v => v.FieldDefinitionId).ShouldContain(FieldId("transactions"));
+        doc.FlexFields.Keys.ShouldContain("transactions");
         // ...and the warning is persisted for the resolved FieldDefinitionId, with the blocking bit set.
         doc.FieldValidationWarnings.Count.ShouldBe(1);
         doc.FieldValidationWarnings.Single().FieldDefinitionId.ShouldBe(FieldId("transactions"));
@@ -455,8 +453,8 @@ public class FieldExtractionCascade_Tests
         SetupType("bank.statement");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("bank.statement"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { CreateFieldDefinition("bank.statement", "transactions", FieldDataType.Text) });
+        _fieldRepository.GetListAsync(TypeId("bank.statement"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { CreateFieldDefinition("bank.statement", "transactions", TextFieldType.ControlName) });
         _workflow.ExtractAsync(Arg.Any<IReadOnlyList<FieldExtractionDescriptor>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(WorkflowResult(new Dictionary<string, JsonElement?>
             {
@@ -478,9 +476,9 @@ public class FieldExtractionCascade_Tests
         SetupType("bank.statement");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        var initialDefs = new List<FieldDefinition> { CreateFieldDefinition("bank.statement", "amount", FieldDataType.Number) };
-        var currentDefs = new List<FieldDefinition> { CreateFieldDefinition("bank.statement", "amount", FieldDataType.Text) };
-        _fieldDefinitionRepository.GetListAsync(TypeId("bank.statement"), Arg.Any<CancellationToken>())
+        var initialDefs = new List<Field> { CreateFieldDefinition("bank.statement", "amount", NumberFieldType.ControlName) };
+        var currentDefs = new List<Field> { CreateFieldDefinition("bank.statement", "amount", TextFieldType.ControlName) };
+        _fieldRepository.GetListAsync(TypeId("bank.statement"), Arg.Any<CancellationToken>())
             .Returns(initialDefs, currentDefs);
         _workflow.ExtractAsync(Arg.Any<IReadOnlyList<FieldExtractionDescriptor>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(WorkflowResultWith(
@@ -502,8 +500,8 @@ public class FieldExtractionCascade_Tests
         SetupType("blank.type");
         _documentRepository.FindAsync(doc.Id, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(doc);
         _documentRepository.FindWithFieldValuesAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(doc);
-        _fieldDefinitionRepository.GetListAsync(TypeId("blank.type"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition>());
+        _fieldRepository.GetListAsync(TypeId("blank.type"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field>());
 
         await Extract(doc.Id, null, "blank.type");
 
@@ -557,13 +555,13 @@ public class FieldExtractionCascade_Tests
             .GetMethod(method, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
             .Invoke(doc, args);
 
-    private static FieldDefinition CreateFieldDefinition(
-        string documentTypeCode, string name, FieldDataType dataType = FieldDataType.Text,
+    private static Field CreateFieldDefinition(
+        string documentTypeCode, string name, string fieldTypeName = TextFieldType.ControlName,
         Guid? tenantId = null, bool isRequired = false, bool isUniqueKey = false) =>
-        CreateFieldDefinition(TypeId(documentTypeCode), name, dataType, tenantId, isRequired, isUniqueKey);
+        CreateFieldDefinition(TypeId(documentTypeCode), name, fieldTypeName, tenantId, isRequired, isUniqueKey);
 
-    private static FieldDefinition CreateFieldDefinition(
-        Guid documentTypeId, string name, FieldDataType dataType = FieldDataType.Text,
+    private static Field CreateFieldDefinition(
+        Guid documentTypeId, string name, string fieldTypeName = TextFieldType.ControlName,
         Guid? tenantId = null, bool isRequired = false, bool isUniqueKey = false) =>
         new(
             id: FieldId(name),
@@ -571,11 +569,10 @@ public class FieldExtractionCascade_Tests
             documentTypeId: documentTypeId,
             name: name,
             displayName: name,
-            prompt: $"Extract the {name}.",
-            dataType: dataType,
+            fieldTypeName: fieldTypeName,
+            description: $"Extract the {name}.",
             displayOrder: 0,
             isRequired: isRequired,
-            allowMultiple: false,
             isUniqueKey: isUniqueKey);
 
     private static Guid TypeId(string code) => new(MD5.HashData(Encoding.UTF8.GetBytes("type:" + code)));

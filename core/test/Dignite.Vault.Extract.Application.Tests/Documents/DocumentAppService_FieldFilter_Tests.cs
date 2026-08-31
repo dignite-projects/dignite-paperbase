@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Vault.Extract.Documents.Fields;
 using NSubstitute;
 using Shouldly;
 using Volo.Abp;
@@ -26,13 +27,13 @@ public class DocumentAppService_FieldFilter_Tests
 {
     private readonly IDocumentAppService _appService;
     private readonly IDocumentTypeRepository _documentTypeRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldRepository;
 
     public DocumentAppService_FieldFilter_Tests()
     {
         _appService = GetRequiredService<IDocumentAppService>();
         _documentTypeRepository = GetRequiredService<IDocumentTypeRepository>();
-        _fieldDefinitionRepository = GetRequiredService<IFieldDefinitionRepository>();
+        _fieldRepository = GetRequiredService<IFieldRepository>();
     }
 
     [Fact]
@@ -91,9 +92,9 @@ public class DocumentAppService_FieldFilter_Tests
         _documentTypeRepository
             .FindByTypeCodeAsync("host.contract", Arg.Any<CancellationToken>())
             .Returns(new DocumentType(typeId, null, "host.contract", "Contract"));
-        _fieldDefinitionRepository
+        _fieldRepository
             .FindByNameAsync(typeId, "ghost", Arg.Any<CancellationToken>())
-            .Returns((FieldDefinition?)null);
+            .Returns((Field?)null);
 
         // DTO validation passes, but this type has no "ghost" field, so fail loudly with
         // UnknownExtractedField, a correctable error, instead of silently returning empty.

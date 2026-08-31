@@ -28,18 +28,18 @@ public class DocumentReprocessingAppService : VaultExtractAppService, IDocumentR
 {
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentTypeRepository _documentTypeRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldRepository;
     private readonly IBackgroundJobManager _backgroundJobManager;
 
     public DocumentReprocessingAppService(
         IDocumentRepository documentRepository,
         IDocumentTypeRepository documentTypeRepository,
-        IFieldDefinitionRepository fieldDefinitionRepository,
+        IFieldRepository fieldRepository,
         IBackgroundJobManager backgroundJobManager)
     {
         _documentRepository = documentRepository;
         _documentTypeRepository = documentTypeRepository;
-        _fieldDefinitionRepository = fieldDefinitionRepository;
+        _fieldRepository = fieldRepository;
         _backgroundJobManager = backgroundJobManager;
     }
 
@@ -50,7 +50,7 @@ public class DocumentReprocessingAppService : VaultExtractAppService, IDocumentR
 
         var count = await _documentRepository.CountForReprocessingAsync(
             documentTypeId, withReason: null, excludeManuallyConfirmed: false);
-        var definitions = await _fieldDefinitionRepository.GetListAsync(documentTypeId);
+        var definitions = await _fieldRepository.GetListAsync(documentTypeId);
 
         return new FieldReextractionPreviewDto
         {

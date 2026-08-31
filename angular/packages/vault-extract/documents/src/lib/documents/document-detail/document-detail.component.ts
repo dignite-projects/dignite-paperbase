@@ -12,11 +12,11 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { forkJoin, of, switchMap, tap, timer, Subscription } from 'rxjs';
 import { ActivatedRoute, Router } from '@angular/router';
 import { CommonModule, DOCUMENT, Location } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { marked } from 'marked';
-import { LocalizationPipe, LocalizationService, PermissionService } from '@abp/ng.core';
-import { DynamicFormComponent, type FormFieldConfig } from '@abp/ng.components/dynamic-form';
+import { LocalizationPipe, PermissionService } from '@abp/ng.core';
 import { Confirmation, ConfirmationService, ToasterService } from '@abp/ng.theme.shared';
+import { FlexFieldControlComponent, FlexFieldData, FlexFieldValue } from '@dignite/ng.flex-fields';
 import {
   CabinetDto,
   CabinetService,
@@ -29,7 +29,6 @@ import {
   DocumentService,
   DocumentTypeDto,
   DocumentTypeService,
-  FieldDataType,
   FieldDefinitionDto,
   FieldDefinitionService,
   FieldValidationWarningDto,
@@ -76,7 +75,7 @@ const POLL_MAX_INTERVAL_MS = 10000;
   selector: 'lib-document-detail',
   templateUrl: './document-detail.component.html',
   styleUrls: ['./document-detail.component.scss'],
-  imports: [CommonModule, FormsModule, DynamicFormComponent, LocalizationPipe],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, FlexFieldControlComponent, LocalizationPipe],
   providers: [DocumentFileBlobService],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -89,10 +88,10 @@ export class DocumentDetailComponent implements OnInit {
   private readonly documentTypeService = inject(DocumentTypeService);
   private readonly fieldDefinitionService = inject(FieldDefinitionService);
   private readonly cabinetService = inject(CabinetService);
+  private readonly fb = inject(FormBuilder);
   private readonly toaster = inject(ToasterService);
   private readonly confirmation = inject(ConfirmationService);
   private readonly permissionService = inject(PermissionService);
-  private readonly localization = inject(LocalizationService);
   private readonly destroyRef = inject(DestroyRef);
   // #440: DOM document handle for the Page Visibility check that pauses background polling on a hidden tab.
   private readonly domDocument = inject(DOCUMENT);
@@ -132,7 +131,10 @@ export class DocumentDetailComponent implements OnInit {
   isEditingFields = signal(false);
   isSavingFields = signal(false);
   fieldDefinitions = signal<FieldDefinitionDto[]>([]);
-  extractedFieldFormFields = signal<FormFieldConfig[]>([]);
+  // The extracted-fields edit form. Its "values" group is where each <ff-flex-field-control> registers
+  // its own field's control (FieldTypeControlBase.rebuild); undefined means the fields card is not in
+  // edit mode.
+  fieldsForm = signal<FormGroup | undefined>(undefined);
   // Candidate cabinets for the document: cabinetId-to-name display mapping plus reassignment dropdown
   // options (#257). Loaded only with Cabinets.Default permission.
   cabinets = signal<CabinetDto[]>([]);
@@ -396,13 +398,13 @@ export class DocumentDetailComponent implements OnInit {
         const def = defByName.get(key)!;
         const raw = fields[key];
         const value = this.formatFieldValue(raw);
-        // #418: a LongText value is rendered as Markdown here in the detail view (never in the compact
-        // list, so multi-paragraph content cannot blow apart table rows). LongText is an explicit
-        // config-time choice on FieldDefinition.DataType — a declared type, not a runtime guess. Only
-        // render when there is real string content; a null / empty value (formatted as "—") stays plain
-        // text. renderedHtml keeps the sanitize-on-bind contract via renderMarkdown + [innerHTML].
+        // #418: a long-text value is rendered as Markdown here in the detail view (never in the compact
+        // list, so multi-paragraph content cannot blow apart table rows). The long-text field type is an
+        // explicit config-time choice - a declared type, not a runtime guess. Only render when there is
+        // real string content; a null / empty value (formatted as "-") stays plain text. renderedHtml keeps
+        // the sanitize-on-bind contract via renderMarkdown + [innerHTML].
         const isMarkdown =
-          def.dataType === FieldDataType.LongText &&
+          def.fieldTypeName === 'CKEditor' &&
           typeof raw === 'string' &&
           raw.trim().length > 0;
         return {
@@ -421,6 +423,56 @@ export class DocumentDetailComponent implements OnInit {
     this.extractedFieldEntries().length > 0 ||
     (this.canEditFields && this.fieldDefinitions().length > 0)
   );
+
+  // Snapshot of the document being edited, captured once by startEditFields() and held fixed until
+  // editing ends. fieldValues below must not track the live, polling-refreshed document() signal: a
+  // document mid-pipeline is silently re-fetched every few seconds (pollReload), and picking that up
+  // while a field-edit form is open would reseed every <ff-flex-field-control> from the server value on
+  // the next poll tick, wiping out whatever the operator had typed but not yet saved.
+  private readonly editingDocument = signal<DocumentDto | undefined>(undefined);
+
+  // Stable per-field FlexFieldValue for the extracted-fields edit form, one entry per current field
+  // definition. Memoized by computed() and rebuilt only when editingDocument or the field definitions
+  // actually change - never per change-detection pass, and never off the live-polled document(). See
+  // editingDocument's own comment for why the source is a frozen snapshot rather than document() itself.
+  // <ff-flex-field-control> re-renders its dynamic per-type sub-component whenever the object identity of
+  // its "fields" input changes (OnChanges), so a fresh object on every CD pass would make it tear down
+  // and recreate that sub-component every cycle and never settle (NG0103) - see the flex-fields demo's
+  // own such cache, and site's content-editor.component.ts for the same rule applied to its own fields.
+  private readonly fieldValues = computed<ReadonlyMap<string, FlexFieldValue>>(() => {
+    const rawValues = this.editingDocument()?.extractedFields ?? {};
+    return new Map(
+      this.fieldDefinitions().map(def => {
+        const name = def.name ?? '';
+        return [name, this.toFlexFieldValue(def, rawValues[name])] as const;
+      }),
+    );
+  });
+
+  /** The stable FlexFieldValue for one field definition, for the extracted-fields edit form. */
+  fieldValueOf(def: FieldDefinitionDto): FlexFieldValue {
+    return this.fieldValues().get(def.name ?? '') ?? this.toFlexFieldValue(def, undefined);
+  }
+
+  private toFlexFieldValue(def: FieldDefinitionDto, value: unknown): FlexFieldValue {
+    return {
+      field: this.toFieldData(def),
+      required: !!def.isRequired,
+      searchable: !!def.isSearchable,
+      value,
+    };
+  }
+
+  private toFieldData(def: FieldDefinitionDto): FlexFieldData {
+    return {
+      id: def.id ?? '',
+      name: def.name ?? '',
+      displayName: def.displayName ?? '',
+      description: def.description ?? undefined,
+      fieldTypeName: def.fieldTypeName ?? '',
+      configuration: def.configuration ?? {},
+    };
+  }
 
   private documentId!: string;
   // If the blob has not loaded when Download File is clicked, set this flag and trigger one download
@@ -1134,27 +1186,30 @@ export class DocumentDetailComponent implements OnInit {
   }
 
   startEditFields(): void {
-    this.extractedFieldFormFields.set(this.createExtractedFieldFormFields());
+    this.editingDocument.set(this.document() ?? undefined);
+    this.fieldsForm.set(this.fb.group({ values: this.fb.group({}) }));
     this.isEditingFields.set(true);
   }
 
   cancelEditFields(): void {
     this.isEditingFields.set(false);
-    this.extractedFieldFormFields.set([]);
+    this.fieldsForm.set(undefined);
+    this.editingDocument.set(undefined);
   }
 
-  saveFields(formValue: Record<string, unknown>): void {
+  saveFields(): void {
     const doc = this.document();
-    if (!doc) return;
+    const form = this.fieldsForm();
+    if (!doc || !form) return;
     this.isSavingFields.set(true);
 
+    const raw = (form.get('values')?.getRawValue() ?? {}) as Record<string, unknown>;
     const fields: Record<string, unknown> = {};
     for (const def of this.fieldDefinitions()) {
       const key = def.name ?? '';
-      const value = formValue[key];
-
+      const value = raw[key];
       if (this.shouldOmitFieldValue(value)) continue;
-      fields[key] = this.coerceValue(def, value);
+      fields[key] = value;
     }
 
     this.documentService.updateExtractedFields(doc.id!, { fields })
@@ -1164,7 +1219,8 @@ export class DocumentDetailComponent implements OnInit {
           this.document.set(updated);
           this.isSavingFields.set(false);
           this.isEditingFields.set(false);
-          this.extractedFieldFormFields.set([]);
+          this.fieldsForm.set(undefined);
+          this.editingDocument.set(undefined);
           this.toaster.success('::Document:FieldsUpdated', '::Success');
         },
         error: () => {
@@ -1174,146 +1230,15 @@ export class DocumentDetailComponent implements OnInit {
       });
   }
 
-  private createExtractedFieldFormFields(): FormFieldConfig[] {
-    const values = this.document()?.extractedFields ?? {};
-
-    return this.fieldDefinitions().map(def => {
-      const config: FormFieldConfig = {
-        key: def.name ?? '',
-        label: `${def.displayName} (${def.name})`,
-        // Multi-value fields (#212, text only) use a textarea with one value per line; single-value fields
-        // choose input type by DataType.
-        type: def.allowMultiple ? 'textarea' : this.toFormFieldType(def.dataType),
-        value: this.toFormInitialValue(def, values[def.name ?? '']),
-        required: def.isRequired,
-        order: def.displayOrder,
-        gridSize: 12,
-        validators: def.isRequired
-          ? [{ type: 'required', message: '::FieldDefinition:Required' }]
-          : [],
-      };
-
-      if (def.allowMultiple) {
-        config.placeholder = this.localization.instant('::FieldDefinition:AllowMultipleEditHint');
-      } else if (def.dataType === FieldDataType.Number) {
-        config.step = 'any';
-      } else if (def.dataType === FieldDataType.Boolean) {
-        config.options = {
-          defaultValues: [
-            { key: 'true', value: 'true' },
-            { key: 'false', value: 'false' },
-          ],
-        };
-      }
-
-      return config;
-    });
-  }
-
-  private toFormFieldType(dataType: FieldDataType | undefined): FormFieldConfig['type'] {
-    switch (dataType) {
-      // Long text, such as summaries or descriptions, uses a multiline editor. The default branch of
-      // toFormInitialValue already fills it back as a string unchanged.
-      case FieldDataType.LongText:
-        return 'textarea';
-      case FieldDataType.Number:
-        return 'number';
-      case FieldDataType.Boolean:
-        return 'select';
-      case FieldDataType.Date:
-        return 'date';
-      case FieldDataType.DateTime:
-        return 'datetime-local';
-      default:
-        return 'text';
-    }
-  }
-
-  private toFormInitialValue(def: FieldDefinitionDto, value: unknown): unknown {
-    // Multi-value fields (#212): output array becomes one textarea line per value. Non-arrays, including
-    // null or unextracted values, become empty.
-    if (def.allowMultiple) {
-      return Array.isArray(value) ? value.map(v => String(v)).join('\n') : '';
-    }
-
-    if (value === null || value === undefined) return '';
-
-    switch (def.dataType) {
-      case FieldDataType.Number:
-        return this.toNumberInputValue(value);
-      case FieldDataType.Boolean:
-        return this.parseBoolean(value) ? 'true' : 'false';
-      case FieldDataType.Date:
-        return this.toDateInputValue(value);
-      case FieldDataType.DateTime:
-        return this.toDateTimeLocalInputValue(value);
-      default:
-        return typeof value === 'object' ? JSON.stringify(value) : String(value);
-    }
-  }
-
+  // Omit a field entirely rather than sending an explicit empty value, so the server treats "nothing
+  // entered" as not provided. An empty array covers a multi-valued field (Tags, multi-Select) left with
+  // no chips - <ff-flex-field-control> always yields a real (possibly empty) array for those, never the
+  // blank string this check used to see pre-flex-fields.
   private shouldOmitFieldValue(value: unknown): boolean {
-    return value === null ||
-      value === undefined ||
-      (typeof value === 'string' && value.trim() === '');
-  }
-
-  // Convert to the corresponding JSON type by field DataType. Date/DateTime/Text are always stored as
-  // strings.
-  private coerceValue(def: FieldDefinitionDto, value: unknown): unknown {
-    // Multi-value fields (#212): textarea one value per line, trimmed and with empty lines removed,
-    // becomes string[], symmetric with backend UpdateExtractedFieldsAsync receiving arrays.
-    if (def.allowMultiple) {
-      return String(value ?? '')
-        .split(/\r?\n/)
-        .map(s => s.trim())
-        .filter(s => s.length > 0);
-    }
-
-    switch (def.dataType) {
-      case FieldDataType.Number: {
-        const n = typeof value === 'number' ? value : Number(value);
-        return !Number.isNaN(n) ? n : value;
-      }
-      case FieldDataType.Boolean:
-        return this.parseBoolean(value);
-      default:
-        return value;
-    }
-  }
-
-  private toNumberInputValue(value: unknown): string {
-    const raw = String(value).trim();
-    if (raw === '') return '';
-    const n = Number(raw);
-    return Number.isNaN(n) ? '' : raw;
-  }
-
-  private parseBoolean(value: unknown): boolean {
-    if (typeof value === 'boolean') return value;
-    if (typeof value === 'number') return value !== 0;
-    const normalized = String(value).trim().toLowerCase();
-    return normalized === 'true' || normalized === '1' || normalized === 'yes';
-  }
-
-  private toDateInputValue(value: unknown): string {
-    const raw = String(value);
-    return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : raw;
-  }
-
-  private toDateTimeLocalInputValue(value: unknown): string {
-    const raw = String(value);
-    if (!raw) return '';
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw)) {
-      return raw.slice(0, 16);
-    }
-
-    const parsed = new Date(raw);
-    if (Number.isNaN(parsed.getTime())) return raw;
-
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}` +
-      `T${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
+    if (value === null || value === undefined) return true;
+    if (typeof value === 'string') return value.trim() === '';
+    if (Array.isArray(value)) return value.length === 0;
+    return false;
   }
 
   formatElapsed(run: DocumentPipelineRunDto): string {

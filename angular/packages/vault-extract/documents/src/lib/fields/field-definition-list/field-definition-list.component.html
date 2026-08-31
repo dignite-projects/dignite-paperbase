@@ -155,7 +155,7 @@
                     [class.btn-secondary]="showPromptPreview()"
                     [class.btn-outline-secondary]="!showPromptPreview()"
                     (click)="showPromptPreview.set(true)"
-                    [disabled]="!form.controls.prompt.value.trim()"
+                    [disabled]="!form.controls.description.value.trim()"
                   >
                     {{ '::FieldDefinition:Prompt:Preview' | abpLocalization }}
                   </button>
@@ -165,7 +165,7 @@
                   type="button"
                   class="btn btn-sm btn-outline-primary"
                   (click)="polish()"
-                  [disabled]="!form.controls.prompt.value.trim() || isPolishing()"
+                  [disabled]="!form.controls.description.value.trim() || isPolishing()"
                   title="{{ '::FieldDefinition:PolishHint' | abpLocalization }}"
                 >
                   @if (isPolishing()) {
@@ -180,7 +180,7 @@
                   type="button"
                   class="btn btn-sm btn-outline-primary"
                   (click)="draft()"
-                  [disabled]="!form.controls.prompt.value.trim() || isDrafting()"
+                  [disabled]="!form.controls.description.value.trim() || isDrafting()"
                   title="{{ '::FieldDefinition:DraftHint' | abpLocalization }}"
                 >
                   @if (isDrafting()) {
@@ -197,7 +197,7 @@
                 <textarea
                   class="form-control"
                   rows="5"
-                  formControlName="prompt"
+                  formControlName="description"
                   placeholder="{{ '::FieldDefinition:PromptHint' | abpLocalization }}"
                 ></textarea>
               }
@@ -248,10 +248,10 @@
 
             <div class="row g-3 align-items-start mt-3">
               <div class="col-md-5">
-                <label class="form-label">{{ '::FieldDefinition:DataType' | abpLocalization }}</label>
-                <select class="form-select" formControlName="dataType">
-                  @for (opt of dataTypeOptions; track opt.value) {
-                    <option [ngValue]="opt.value">{{ '::FieldDataType:' + opt.key | abpLocalization }}</option>
+                <label class="form-label">{{ '::FieldDefinition:FieldType' | abpLocalization }}</label>
+                <select class="form-select" formControlName="fieldTypeName">
+                  @for (type of fieldTypes(); track type.name) {
+                    <option [value]="type.name">{{ type.displayNameKey | abpLocalization }}</option>
                   }
                 </select>
               </div>
@@ -266,14 +266,19 @@
                     {{ '::FieldDefinition:Required' | abpLocalization }}
                   </label>
                 </div>
-                <!-- #212: Multiple values are valid only for text. Non-text controls are disabled by applyAllowMultiplePolicy, and the persistent hint explains the constraint, matching backend FieldDefinition.MultiValueRequiresStringType. -->
+                <!-- #559: whether this field's values reach the query index, and are therefore filterable.
+                     A type that indexes nothing (long text) has the control disabled by
+                     applySearchableAvailability, and the hint says why rather than leaving a switch that
+                     does nothing. -->
                 <div class="form-check">
-                  <input type="checkbox" class="form-check-input" id="allowMultiple" formControlName="allowMultiple" />
-                  <label class="form-check-label" for="allowMultiple">
-                    {{ '::FieldDefinition:AllowMultiple' | abpLocalization }}
+                  <input type="checkbox" class="form-check-input" id="isSearchable" formControlName="isSearchable" />
+                  <label class="form-check-label" for="isSearchable">
+                    {{ '::FieldDefinition:IsSearchable' | abpLocalization }}
                   </label>
                 </div>
-                <div class="form-text">{{ '::FieldDefinition:AllowMultipleHint' | abpLocalization }}</div>
+                <div class="form-text">
+                  {{ (searchableUnsupported() ? '::FieldDefinition:NotIndexableHint' : '::FieldDefinition:IsSearchableHint') | abpLocalization }}
+                </div>
                 <!-- #411: unique-key fields form the duplicate-detection fingerprint. -->
                 <div class="form-check mt-2">
                   <input type="checkbox" class="form-check-input" id="isUniqueKey" formControlName="isUniqueKey" />
@@ -284,6 +289,19 @@
                 <div class="form-text">{{ '::FieldDefinition:IsUniqueKeyHint' | abpLocalization }}</div>
               </div>
             </div>
+
+            <!-- #559 / flex-fields adoption: per-type configuration. <ff-flex-field-config> swaps in the
+                 right editor for whichever type is selected above and writes its settings into this
+                 form's "configuration" group - adding a field type means registering it with
+                 provideFlexFields()/provideFlexFieldTypes(), not editing this template. -->
+            <fieldset class="mt-4 pt-3 border-top">
+              <legend class="fs-6 text-muted">{{ '::FieldDefinition:TypeConfiguration' | abpLocalization }}</legend>
+              <ff-flex-field-config
+                [type]="form.controls.fieldTypeName.value"
+                [selected]="configSeed()"
+                [form]="form"
+              />
+            </fieldset>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" (click)="closeModal()">

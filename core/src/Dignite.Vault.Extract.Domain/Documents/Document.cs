@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Dignite.Abp.FlexFields;
 using Dignite.Vault.Extract.Documents;
 using Dignite.Vault.Extract.Documents.Cabinets;
 using Dignite.Vault.Extract.Documents.DocumentTypes;
@@ -12,7 +13,7 @@ using Volo.Abp.MultiTenancy;
 
 namespace Dignite.Vault.Extract.Documents;
 
-public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
+public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFields
 {
     // Multi-tenancy
     public virtual Guid? TenantId { get; private set; }
@@ -212,6 +213,32 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
     /// </summary>
     public virtual IReadOnlyCollection<DocumentFieldValidationWarning> FieldValidationWarnings => _fieldValidationWarnings.AsReadOnly();
 
+    // --- Field architecture v3 value bag (#558) ---
+
+    /// <summary>
+    /// Authoritative storage for type-bound field values under field architecture v3: one entry per field,
+    /// keyed by <see cref="Fields.Field.Name"/>, persisted as a single JSON column.
+    /// <para>
+    /// <b>Not yet in use.</b> <see cref="ExtractedFieldValues"/> above is still the truth source; this
+    /// property exists so the schema and the v2 rows can coexist while the migration is written and
+    /// verified (#561's expand-then-contract plan). The rollback before the final drop is therefore
+    /// "revert the code", not "restore a backup".
+    /// </para>
+    /// <para>
+    /// This is FlexFields' own dictionary, deliberately <b>not</b> ABP's <c>ExtraProperties</c>: kept
+    /// isolated from that shared bag so no other module can collide with a tenant's field names. Note
+    /// that it is not the untyped extension bag CLAUDE.md forbids on this aggregate either — every key in
+    /// it is constrained by a real <see cref="Fields.Field"/> definition, which is exactly what the
+    /// forbidden <c>Dictionary&lt;string, object&gt;</c> extension bag would not have been.
+    /// </para>
+    /// <para>
+    /// The derived <c>DocumentFlexFieldIndex</c> table alongside it is never authoritative: every row in
+    /// it is re-derivable from this bag, which is what lets a field's type or searchability change be
+    /// repaired by a rebuild rather than a data migration.
+    /// </para>
+    /// </summary>
+    public virtual FlexFieldDictionary FlexFields { get; protected set; } = new();
+
     protected Document()
     {
     }
@@ -357,6 +384,42 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
     /// Atomic state change without DomainService mediation, unlike internal setters such as <see cref="SetMarkdown"/> that must be composed with pipeline completion transactions.
     /// <b>Precondition</b>: <see cref="DocumentTypeId"/> is not null because fields hang off document types; both caller paths run after classification completes.
     /// </summary>
+    /// <summary>
+    /// Replaces the whole type-bound field value set (field architecture v3, #562) — the v3 successor to
+    /// <see cref="SetFields"/>.
+    /// <para>
+    /// Whole-set replacement, not a merge: extraction produces the complete set for a document's type in
+    /// one call, so a field absent from <paramref name="values"/> means "this document has no value for
+    /// it", not "leave whatever was there". Merging would let a value from a previous type survive a
+    /// reclassification.
+    /// </para>
+    /// <para>
+    /// Keyed by <see cref="Fields.Field.Name"/>, because that is the bag's key. The caller resolves names
+    /// from the field definitions and is responsible for having validated each value against its field
+    /// type first — the aggregate stores what it is given, exactly as <see cref="SetFields"/> did.
+    /// </para>
+    /// </summary>
+    public void SetFlexFields(IReadOnlyDictionary<string, object?>? values)
+    {
+        FlexFields.Clear();
+
+        if (values == null)
+        {
+            return;
+        }
+
+        foreach (var pair in values)
+        {
+            // A null value is an absent field, not a stored null: keeping the key would make "extracted as
+            // empty" and "never extracted" indistinguishable on the egress, and would put an entry in the
+            // index for a value that does not exist.
+            if (pair.Value != null)
+            {
+                FlexFields[pair.Key] = pair.Value;
+            }
+        }
+    }
+
     public void SetFields(IEnumerable<DocumentFieldValue>? values)
     {
         var incoming = values?.ToList() ?? new List<DocumentFieldValue>();
@@ -521,7 +584,8 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
     /// <see cref="DocumentReviewReasons.UnresolvedClassification"/> (blocking), preventing stale values from polluting external read models.
     /// <para>
     /// Invariant: "no confirmed type implies no type-bound field values". Once the type is retracted (<see cref="DocumentTypeId"/> = null),
-    /// old <see cref="ExtractedFieldValues"/> no longer belong to any confirmed type and must be cleared together. Otherwise export DTO / MCP /
+    /// old field values — both the legacy <see cref="ExtractedFieldValues"/> rows and the v3 <see cref="FlexFields"/> bag — no longer
+    /// belong to any confirmed type and must be cleared together. Otherwise export DTO / MCP /
     /// export paths would expose a dirty model with fields but no type (#267 first exposed this when automatic reclassification fell to low confidence).
     /// Re-confirming a type (<see cref="ConfirmClassification"/> or high-confidence reclassification -> <c>DocumentClassifiedEto</c> -> field re-extraction) will restore fields.
     /// Centralizing this invariant in the aggregate root avoids per-read-path type filtering and special-case buildup.
@@ -544,6 +608,7 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
         ReviewDisposition = DocumentReviewDisposition.NotReviewed;
         RejectionReason = null; // #284 review-fix: leaving Rejected disposition -> clear stale rejection reason.
         _extractedFieldValues.Clear();
+        SetFlexFields(null);
     }
 
     /// <summary>
@@ -596,6 +661,7 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant
         ReviewDisposition = DocumentReviewDisposition.NotReviewed;
         RejectionReason = null;
         _extractedFieldValues.Clear();
+        SetFlexFields(null);
 
         // #355: mirror of the container→type retraction (#349 ContainerMarkerClearedEvent). The in-process handler
         // publishes DocumentReclassifiedToContainerEto so downstream retracts the record derived from the former type.

@@ -188,6 +188,38 @@ public interface IDocumentRepository : IRepository<Document, Guid>
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The v3 answer to the same question: whether any document holds a value for <paramref name="field"/>
+    /// (#559). Same guard, same fail-closed direction — a field whose values already exist may not change
+    /// its field type, because those values were validated against the old type and would render and index
+    /// as nothing under the new one.
+    /// <para>
+    /// Two paths, because the value bag is an opaque JSON column and no provider can push a bag-key
+    /// predicate into it:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item>
+    ///     <b>Indexable and searchable field</b> — answered from the derived index by <c>FieldId</c>, one
+    ///     indexed lookup. Exact, because every value of such a field has an index row by construction.
+    ///   </item>
+    ///   <item>
+    ///     <b>Otherwise</b> (the field type is not indexable at all, e.g. long text, or the admin turned
+    ///     <c>IsSearchable</c> off) — the index is legitimately empty regardless of the values, so it
+    ///     cannot answer, and this falls back to paging the type's documents and testing the bag key in
+    ///     memory, stopping at the first hit. Confined to that minority of fields on purpose: the scan is
+    ///     bounded only by the type's document count.
+    ///   </item>
+    /// </list>
+    /// <para>
+    /// Soft-deleted documents count, as they did under v2: their values survive deletion and come back on
+    /// restore. <c>IMultiTenant</c> stays on, so the answer is scoped to the field's own layer.
+    /// </para>
+    /// </summary>
+    Task<bool> AnyFlexFieldValueAsync(
+        Fields.Field field,
+        bool isIndexable,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Scope count for bulk reprocessing (#289), used by preview modals. Returns the number of documents in the current ambient layer
     /// (<c>IMultiTenant</c> + <c>ISoftDelete</c> global filters isolate automatically by ambient state; soft-deleted / trash documents do not count),
     /// with completed text extraction (<c>Markdown</c> non-empty because reclassification / field extraction both require text payload),
@@ -262,6 +294,37 @@ public interface IDocumentRepository : IRepository<Document, Guid>
     /// </para>
     /// </summary>
     Task<List<Guid>> GetIdsWithDuplicateBasisAsync(
+        Guid documentTypeId,
+        Guid? afterId,
+        int maxCount,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Keyset-paginated Ids of every document bound to <paramref name="documentTypeId"/> — the scope a field
+    /// rename must rewrite value-bag keys over.
+    /// <para>
+    /// <b>Why this exists rather than the kernel's own walk.</b> <c>IFlexFieldValueMigrator&lt;Document&gt;</c>
+    /// renames by name alone, across every document the tenant has, because the kernel's model is one field
+    /// name per host <i>type</i>. Vault Extract's is not: a field is unique per
+    /// <c>(TenantId, DocumentTypeId, Name)</c>, so two document types may legitimately both define
+    /// <c>invoice_no</c>, and renaming one type's would silently rewrite the other type's values into a key no
+    /// definition backs — invisible on read, still indexed, unrecoverable without knowing the old name. Scoping
+    /// the walk is the whole fix, and only Vault Extract can do it: <c>DocumentTypeId</c> is an indexed column
+    /// here, which is exactly the predicate the kernel says it cannot push down through the provider.
+    /// </para>
+    /// <para>
+    /// <b>Traverses soft delete</b>, like <see cref="GetIdsWithFieldValidationWarningAsync"/>: a recycle-bin
+    /// document restored later must come back with its values under the current name, not the one they were
+    /// stored under before the rename. <c>IMultiTenant</c> still applies by ambient state, so the scan never
+    /// leaves the field's own layer.
+    /// </para>
+    /// <para>
+    /// Ids only (<c>AsNoTracking</c> + <c>Select</c>), so the cursor scan never materializes Markdown; the
+    /// caller loads each page's documents by id to mutate them. Ordered by <c>Id</c> with
+    /// <c>Id &gt; afterId</c> (null = from the beginning).
+    /// </para>
+    /// </summary>
+    Task<List<Guid>> GetIdsByDocumentTypeAsync(
         Guid documentTypeId,
         Guid? afterId,
         int maxCount,

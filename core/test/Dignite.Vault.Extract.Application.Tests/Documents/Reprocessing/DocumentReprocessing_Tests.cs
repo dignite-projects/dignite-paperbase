@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Abp.FlexFields.Number;
+using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.Documents.DocumentTypes;
 using Dignite.Vault.Extract.Documents.Fields;
 using Dignite.Vault.Extract.Documents.Pipelines.FieldExtraction;
@@ -25,7 +27,7 @@ public class ReprocessingTestModule : AbpModule
     {
         context.Services.AddSingleton(Substitute.For<IDocumentRepository>());
         context.Services.AddSingleton(Substitute.For<IDocumentTypeRepository>());
-        context.Services.AddSingleton(Substitute.For<IFieldDefinitionRepository>());
+        context.Services.AddSingleton(Substitute.For<IFieldRepository>());
         context.Services.AddSingleton(Substitute.For<IBackgroundJobManager>());
     }
 }
@@ -37,7 +39,7 @@ public class DocumentReprocessingAppService_Tests
     private readonly IDocumentReprocessingAppService _appService;
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentTypeRepository _documentTypeRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldRepository;
     private readonly IBackgroundJobManager _backgroundJobManager;
 
     public DocumentReprocessingAppService_Tests()
@@ -45,7 +47,7 @@ public class DocumentReprocessingAppService_Tests
         _appService = GetRequiredService<IDocumentReprocessingAppService>();
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _documentTypeRepository = GetRequiredService<IDocumentTypeRepository>();
-        _fieldDefinitionRepository = GetRequiredService<IFieldDefinitionRepository>();
+        _fieldRepository = GetRequiredService<IFieldRepository>();
         _backgroundJobManager = GetRequiredService<IBackgroundJobManager>();
 
         // Type exists in the current layer, so EnsureTypeInCurrentLayerAsync passes.
@@ -60,11 +62,11 @@ public class DocumentReprocessingAppService_Tests
     public async Task PreviewFieldExtraction_Returns_Count_And_FieldNames()
     {
         var typeId = Guid.NewGuid();
-        _fieldDefinitionRepository.GetListAsync(typeId, Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition>
+        _fieldRepository.GetListAsync(typeId, Arg.Any<CancellationToken>())
+            .Returns(new List<Field>
             {
-                new(Guid.NewGuid(), null, typeId, "amount", "Amount", "p", FieldDataType.Number),
-                new(Guid.NewGuid(), null, typeId, "party", "Party", "p", FieldDataType.Text)
+                new(Guid.NewGuid(), null, typeId, "amount", "Amount", NumberFieldType.ControlName, "p"),
+                new(Guid.NewGuid(), null, typeId, "party", "Party", TextFieldType.ControlName, "p")
             });
 
         var dto = await _appService.PreviewFieldExtractionAsync(typeId);

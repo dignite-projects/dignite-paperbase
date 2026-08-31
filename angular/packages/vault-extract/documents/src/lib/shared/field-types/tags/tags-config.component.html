@@ -1,0 +1,17 @@
+<form [formGroup]="formEntity!">
+  <div formGroupName="configuration">
+    <div class="mb-3">
+      <label class="form-label">{{ 'VaultExtractFlexFields::FieldType:Tags:MaxCount' | abpLocalization }}</label>
+      <input type="number" class="form-control" formControlName="Tags.MaxCount" min="1" />
+    </div>
+    <div class="mb-3">
+      <label class="form-label">{{ 'VaultExtractFlexFields::FieldType:Tags:MaxLength' | abpLocalization }}</label>
+      <input type="number" class="form-control" formControlName="Tags.MaxLength" min="1" />
+    </div>
+    <div class="mb-3">
+      <label class="form-label">{{ 'VaultExtractFlexFields::FieldType:Tags:Placeholder' | abpLocalization }}</label>
+      <input type="text" class="form-control" formControlName="Tags.Placeholder" />
+    </div>
+    <button type="submit" style="display: none" #submitclick></button>
+  </div>
+</form>

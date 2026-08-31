@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Dignite.Vault.Extract.Ai;
 using Dignite.Vault.Extract.Documents;
 using Dignite.Vault.Extract.Documents.DocumentTypes;
+using Dignite.Abp.FlexFields.Number;
 using Dignite.Vault.Extract.Documents.Fields;
 using Dignite.Vault.Extract.Documents.Pipelines;
 using Dignite.Vault.Extract.Documents.Pipelines.FieldExtraction;
@@ -64,7 +65,7 @@ public class DocumentFieldExtractionBackgroundJob_Tests
     private readonly IUnitOfWorkManager _unitOfWorkManager;
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentTypeRepository _documentTypeRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldRepository;
     private readonly IDocumentPipelineRunRepository _runRepository;
     private readonly IGuidGenerator _guidGenerator;
 
@@ -75,7 +76,7 @@ public class DocumentFieldExtractionBackgroundJob_Tests
         _unitOfWorkManager = GetRequiredService<IUnitOfWorkManager>();
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _documentTypeRepository = GetRequiredService<IDocumentTypeRepository>();
-        _fieldDefinitionRepository = GetRequiredService<IFieldDefinitionRepository>();
+        _fieldRepository = GetRequiredService<IFieldRepository>();
         _runRepository = GetRequiredService<IDocumentPipelineRunRepository>();
         _guidGenerator = GetRequiredService<IGuidGenerator>();
     }
@@ -91,8 +92,10 @@ public class DocumentFieldExtractionBackgroundJob_Tests
         {
             await _documentTypeRepository.InsertAsync(
                 new DocumentType(typeId, null, "type.a", "Type A"), autoSave: true);
-            await _fieldDefinitionRepository.InsertAsync(
-                new FieldDefinition(fieldId, null, typeId, "amount", "Amount", "extract", FieldDataType.Number),
+            await _fieldRepository.InsertAsync(
+                new Field(
+                    fieldId, null, typeId, "amount", "Amount",
+                    NumberFieldType.ControlName, description: "extract"),
                 autoSave: true);
 
             var doc = NewDocument(documentId);
@@ -126,7 +129,7 @@ public class DocumentFieldExtractionBackgroundJob_Tests
             run!.Status.ShouldBe(PipelineRunStatus.Succeeded);
 
             var doc = await _documentRepository.FindWithFieldValuesAsync(documentId);
-            doc!.ExtractedFieldValues.Single().FieldDefinitionId.ShouldBe(fieldId);
+            doc!.FlexFields["amount"].ShouldBe(1500m);
 
             // Lifecycle-neutral: field-extraction is not a key pipeline and does not advance or roll back the document.
             doc.LifecycleStatus.ShouldBe(DocumentLifecycleStatus.Processing);
@@ -150,8 +153,10 @@ public class DocumentFieldExtractionBackgroundJob_Tests
         {
             await _documentTypeRepository.InsertAsync(
                 new DocumentType(typeId, null, "type.b", "Type B"), autoSave: true);
-            await _fieldDefinitionRepository.InsertAsync(
-                new FieldDefinition(fieldId, null, typeId, "amount", "Amount", "extract", FieldDataType.Number),
+            await _fieldRepository.InsertAsync(
+                new Field(
+                    fieldId, null, typeId, "amount", "Amount",
+                    NumberFieldType.ControlName, description: "extract"),
                 autoSave: true);
 
             var doc = NewDocument(documentId);
@@ -173,7 +178,7 @@ public class DocumentFieldExtractionBackgroundJob_Tests
             run!.Status.ShouldBe(PipelineRunStatus.Succeeded);
 
             var doc = await _documentRepository.FindWithFieldValuesAsync(documentId);
-            doc!.ExtractedFieldValues.ShouldBeEmpty();
+            doc!.FlexFields.ShouldBeEmpty();
             doc.ReviewReasons.HasFlag(DocumentReviewReasons.FieldExtractionIncomplete).ShouldBeTrue();
             ReviewReasonPolicy.HasBlocking(doc.ReviewReasons).ShouldBeTrue();
             // #510: a blocking reason (FieldExtractionIncomplete) withholds Ready -> PendingReview, not Processing.

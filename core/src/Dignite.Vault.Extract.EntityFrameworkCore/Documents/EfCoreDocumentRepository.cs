@@ -20,6 +20,12 @@ namespace Dignite.Vault.Extract.Documents;
 public class EfCoreDocumentRepository
     : EfCoreRepository<VaultExtractDbContext, Document, Guid>, IDocumentRepository
 {
+    /// <summary>
+    /// Page size of the value-bag probe in <see cref="AnyFlexFieldValueAsync"/>. Each row carries a whole
+    /// serialized bag, so this trades round trips against how much JSON is materialized at once.
+    /// </summary>
+    protected const int FlexFieldValueProbePageSize = 200;
+
     public EfCoreDocumentRepository(
         IDbContextProvider<VaultExtractDbContext> dbContextProvider)
         : base(dbContextProvider)
@@ -219,6 +225,59 @@ public class EfCoreDocumentRepository
             .AnyAsync(f => f.FieldDefinitionId == fieldDefinitionId, GetCancellationToken(cancellationToken));
     }
 
+    public virtual async Task<bool> AnyFlexFieldValueAsync(
+        Field field,
+        bool isIndexable,
+        CancellationToken cancellationToken = default)
+    {
+        var token = GetCancellationToken(cancellationToken);
+        var dbContext = await GetDbContextAsync();
+
+        // A soft-deleted document keeps its values and gets them back on restore, so it counts — the same
+        // conservative rule AnyExtractedFieldValueAsync got for free from scanning a child DbSet that never
+        // had the parent's filter applied. IMultiTenant stays on either way.
+        using (DataFilter.Disable<ISoftDelete>())
+        {
+            if (isIndexable && field.IsSearchable)
+            {
+                // Every value of an indexable, searchable field has an index row, so the index is exact here
+                // and this is one indexed lookup rather than a scan.
+                return await dbContext.Set<DocumentFlexFieldIndex>()
+                    .AnyAsync(i => i.FieldId == field.Id, token);
+            }
+
+            // The index is legitimately empty for this field whatever its values are, so it cannot answer.
+            // Page the type's documents and test the bag key in memory, stopping at the first hit. Only the
+            // "no values" answer pays for the whole type; that is the answer that permits the change, and
+            // this runs on an interactive admin edit rather than any pipeline path.
+            var dbSet = await GetDbSetAsync();
+            Guid? afterId = null;
+            while (true)
+            {
+                var page = await dbSet
+                    .AsNoTracking()
+                    .Where(d => d.DocumentTypeId == field.DocumentTypeId)
+                    .Where(d => afterId == null || d.Id.CompareTo(afterId.Value) > 0)
+                    .OrderBy(d => d.Id)
+                    .Take(FlexFieldValueProbePageSize)
+                    .Select(d => new { d.Id, d.FlexFields })
+                    .ToListAsync(token);
+
+                if (page.Count == 0)
+                {
+                    return false;
+                }
+
+                if (page.Any(d => d.FlexFields.ContainsKey(field.Name)))
+                {
+                    return true;
+                }
+
+                afterId = page[^1].Id;
+            }
+        }
+    }
+
     public virtual async Task<List<Guid>> GetIdsWithFieldValidationWarningAsync(
         Guid fieldDefinitionId,
         Guid? afterId,
@@ -252,6 +311,25 @@ public class EfCoreDocumentRepository
                         d.DocumentTypeId == documentTypeId &&
                         (d.FieldFingerprint != null ||
                          (d.ReviewReasons & DocumentReviewReasons.DuplicateSuspected) != DocumentReviewReasons.None)),
+                    afterId,
+                    maxCount)
+                .ToListAsync(GetCancellationToken(cancellationToken));
+        }
+    }
+
+    public virtual async Task<List<Guid>> GetIdsByDocumentTypeAsync(
+        Guid documentTypeId,
+        Guid? afterId,
+        int maxCount,
+        CancellationToken cancellationToken = default)
+    {
+        // Recycle-bin documents are in scope: restoring one after a rename must not bring back values under
+        // the pre-rename key. IMultiTenant stays on, so the scan never leaves this layer.
+        using (DataFilter.Disable<ISoftDelete>())
+        {
+            var dbSet = await GetDbSetAsync();
+            return await ApplyKeysetPage(
+                    dbSet.Where(d => d.DocumentTypeId == documentTypeId),
                     afterId,
                     maxCount)
                 .ToListAsync(GetCancellationToken(cancellationToken));

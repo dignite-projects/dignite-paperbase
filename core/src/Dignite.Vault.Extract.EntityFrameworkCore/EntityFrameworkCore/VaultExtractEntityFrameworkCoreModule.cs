@@ -1,5 +1,6 @@
 using Dignite.Vault.Extract.Documents;
 using Dignite.Vault.Extract.Documents.Exports;
+using Dignite.Vault.Extract.Documents.Fields;
 using Dignite.Vault.Extract.Documents.Pipelines;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.EntityFrameworkCore;
@@ -9,7 +10,10 @@ namespace Dignite.Vault.Extract.EntityFrameworkCore;
 
 [DependsOn(
     typeof(VaultExtractDomainModule),
-    typeof(AbpEntityFrameworkCoreModule)
+    typeof(AbpEntityFrameworkCoreModule),
+    // Field architecture v3 (#558): the relational index/query base classes DocumentFlexFieldIndexManager
+    // and DocumentFlexFieldQueryExecutor derive from.
+    typeof(Abp.FlexFields.EntityFrameworkCore.FlexFieldsEntityFrameworkCoreModule)
 )]
 public class VaultExtractEntityFrameworkCoreModule : AbpModule
 {
@@ -22,6 +26,8 @@ public class VaultExtractEntityFrameworkCoreModule : AbpModule
             options.AddRepository<Document, EfCoreDocumentRepository>();
             options.AddRepository<DocumentType, EfCoreDocumentTypeRepository>();
             options.AddRepository<FieldDefinition, EfCoreFieldDefinitionRepository>();
+            // Field architecture v3 (#558), alongside FieldDefinition until #561's migration retires it.
+            options.AddRepository<Field, EfCoreFieldRepository>();
             options.AddRepository<Cabinet, EfCoreCabinetRepository>();
             // #216: PipelineRun was promoted to an independent aggregate root.
             options.AddRepository<DocumentPipelineRun, EfCoreDocumentPipelineRunRepository>();

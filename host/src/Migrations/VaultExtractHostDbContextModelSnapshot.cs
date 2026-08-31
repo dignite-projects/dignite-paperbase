@@ -19,7 +19,7 @@ namespace Dignite.Vault.Extract.Host.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasAnnotation("_Abp_DatabaseProvider", EfCoreDatabaseProvider.SqlServer)
-                .HasAnnotation("ProductVersion", "10.0.2")
+                .HasAnnotation("ProductVersion", "10.0.7")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -142,6 +142,13 @@ namespace Dignite.Vault.Extract.Host.Migrations
                     b.Property<string>("FieldFingerprint")
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("FlexFields")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("FlexFields")
+                        .HasDefaultValueSql("'{}'");
 
                     b.Property<bool>("IsContainer")
                         .HasColumnType("bit");
@@ -293,6 +300,64 @@ namespace Dignite.Vault.Extract.Host.Migrations
                     b.ToTable("VaultDocumentFieldValidationWarnings", (string)null);
                 });
 
+            modelBuilder.Entity("Dignite.Vault.Extract.Documents.DocumentFlexFieldIndex", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("BooleanValue")
+                        .HasColumnType("bit")
+                        .HasColumnName("BooleanValue");
+
+                    b.Property<DateTime?>("DateTimeValue")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("DateTimeValue");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FieldId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("FieldId");
+
+                    b.Property<Guid?>("GuidValue")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("GuidValue");
+
+                    b.Property<decimal?>("NumberValue")
+                        .HasPrecision(38, 6)
+                        .HasColumnType("decimal(38,6)")
+                        .HasColumnName("NumberValue");
+
+                    b.Property<string>("StringValue")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)")
+                        .HasColumnName("StringValue");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("TenantId");
+
+                    b.Property<int>("ValueType")
+                        .HasColumnType("int")
+                        .HasColumnName("ValueType");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("TenantId", "FieldId", "DateTimeValue", "DocumentId");
+
+                    b.HasIndex("TenantId", "FieldId", "GuidValue", "DocumentId");
+
+                    b.HasIndex("TenantId", "FieldId", "NumberValue", "DocumentId");
+
+                    b.HasIndex("TenantId", "FieldId", "StringValue", "DocumentId");
+
+                    b.ToTable("VaultDocumentFlexFieldIndexes", (string)null);
+                });
+
             modelBuilder.Entity("Dignite.Vault.Extract.Documents.DocumentTypes.DocumentType", b =>
                 {
                     b.Property<Guid>("Id")
@@ -368,6 +433,109 @@ namespace Dignite.Vault.Extract.Host.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("VaultDocumentTypes", (string)null);
+                });
+
+            modelBuilder.Entity("Dignite.Vault.Extract.Documents.Fields.Field", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)")
+                        .HasColumnName("ConcurrencyStamp");
+
+                    b.Property<string>("Configuration")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("Configuration");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("CreationTime");
+
+                    b.Property<Guid?>("CreatorId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("CreatorId");
+
+                    b.Property<Guid?>("DeleterId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("DeleterId");
+
+                    b.Property<DateTime?>("DeletionTime")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("DeletionTime");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("Description");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .HasColumnName("DisplayName");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("DocumentTypeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ExtraProperties")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("ExtraProperties");
+
+                    b.Property<string>("FieldTypeName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("FieldTypeName");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("IsDeleted");
+
+                    b.Property<bool>("IsRequired")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsSearchable")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsUniqueKey")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastModificationTime")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("LastModificationTime");
+
+                    b.Property<Guid?>("LastModifierId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("LastModifierId");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)")
+                        .HasColumnName("Name");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("TenantId");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentTypeId");
+
+                    b.HasIndex("TenantId", "DocumentTypeId");
+
+                    b.ToTable("VaultFields", (string)null);
                 });
 
             modelBuilder.Entity("Dignite.Vault.Extract.Documents.Fields.FieldDefinition", b =>
@@ -2635,9 +2803,27 @@ namespace Dignite.Vault.Extract.Host.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Dignite.Vault.Extract.Documents.Fields.FieldDefinition", null)
+                    b.HasOne("Dignite.Vault.Extract.Documents.Fields.Field", null)
                         .WithMany()
                         .HasForeignKey("FieldDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dignite.Vault.Extract.Documents.DocumentFlexFieldIndex", b =>
+                {
+                    b.HasOne("Dignite.Vault.Extract.Documents.Document", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dignite.Vault.Extract.Documents.Fields.Field", b =>
+                {
+                    b.HasOne("Dignite.Vault.Extract.Documents.DocumentTypes.DocumentType", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentTypeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

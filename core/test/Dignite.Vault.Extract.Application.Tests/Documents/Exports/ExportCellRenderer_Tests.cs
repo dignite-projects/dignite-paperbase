@@ -1,6 +1,11 @@
 using System;
 using System.Collections.Generic;
-using Dignite.Vault.Extract.Documents.Fields;
+using System.Text.Json;
+using Dignite.Abp.FlexFields;
+using Dignite.Abp.FlexFields.CKEditor;
+using Dignite.Abp.FlexFields.Date;
+using Dignite.Abp.FlexFields.Select;
+using Dignite.Vault.Extract.FlexFields.Tags;
 using Shouldly;
 using Xunit;
 
@@ -10,87 +15,115 @@ namespace Dignite.Vault.Extract.Documents.Exports;
 /// Unit tests for <see cref="ExportCellRenderer"/>. Internal and visible through InternalsVisibleTo; a pure
 /// function, so no DB and no mocks.
 /// <para>
-/// These exist because the equivalent assertions could not be made through the EF export tests. SQLite hands
-/// back <c>DocumentExtractedField</c> child rows in primary-key order <c>(DocumentId, FieldDefinitionId, Order)</c>,
-/// which is already ascending by <c>Order</c> — so the integration test that claims to prove the multi-value
-/// join "never relies on the DB's return order" stayed green with the sort deleted. Here the input sequence is
-/// the test's to choose, so the sort is genuinely pinned.
+/// Under v2 these existed because the EF export tests could not pin the multi-value sort: SQLite returned
+/// child rows already ascending by <c>Order</c>, so the integration test stayed green with the sort deleted.
+/// v3 removes that hazard at the root — order is the bag's list order, not a column the database happens to
+/// sort by — but the rendering rules still need pinning somewhere, and a pure function is the place.
 /// </para>
 /// </summary>
 public class ExportCellRenderer_Tests
 {
-    [Fact]
-    public void Renders_a_multi_value_field_ascending_by_Order_whatever_order_the_rows_arrive_in()
-    {
-        // Deliberately 2, 0, 1 — the sequence a caller could receive from an unordered child subquery.
-        var values = new List<ExtractedFieldProjection>
-        {
-            new() { Order = 2, TextValue = "2026" },
-            new() { Order = 0, TextValue = "urgent" },
-            new() { Order = 1, TextValue = "legal" },
-        };
+    private static readonly FieldConfigurationDictionary NoConfig = new();
 
-        ExportCellRenderer.RenderCell(values, FieldDataType.Text).ShouldBe("urgent; legal; 2026");
+    private static string? Render(object? value, string fieldTypeName, FieldConfigurationDictionary? config = null)
+        => ExportCellRenderer.RenderCell(value, fieldTypeName, config ?? NoConfig);
+
+    [Fact]
+    public void Renders_a_multi_value_field_in_bag_order()
+    {
+        var value = new List<string> { "urgent", "legal", "2026" };
+
+        Render(value, TagsFieldType.ControlName).ShouldBe("urgent; legal; 2026");
     }
 
     [Fact]
     public void Renders_a_single_value_field_as_the_bare_value_with_no_separator()
     {
-        var values = new List<ExtractedFieldProjection> { new() { Order = 0, TextValue = "sole" } };
-
-        ExportCellRenderer.RenderCell(values, FieldDataType.Text).ShouldBe("sole");
+        Render("sole", "Text").ShouldBe("sole");
     }
 
     [Fact]
-    public void Renders_no_values_as_an_empty_cell()
+    public void Renders_a_missing_value_as_an_empty_cell()
     {
-        ExportCellRenderer.RenderCell(Array.Empty<ExtractedFieldProjection>(), FieldDataType.Text).ShouldBeNull();
+        Render(null, "Text").ShouldBeNull();
     }
 
     [Fact]
-    public void Skips_a_row_whose_typed_column_for_this_data_type_is_null()
+    public void Renders_an_empty_multi_value_field_as_an_empty_cell()
     {
-        // A row carrying no value for the declared type contributes nothing — and must not leave a stray
-        // separator behind.
-        var values = new List<ExtractedFieldProjection>
-        {
-            new() { Order = 0, TextValue = "kept" },
-            new() { Order = 1, TextValue = null },
-        };
+        Render(new List<string>(), TagsFieldType.ControlName).ShouldBeNull();
+    }
 
-        ExportCellRenderer.RenderCell(values, FieldDataType.Text).ShouldBe("kept");
+    /// <summary>An empty element contributes nothing and must not leave a stray separator behind.</summary>
+    [Fact]
+    public void Skips_empty_elements_of_a_multi_value_field()
+    {
+        Render(new List<string> { "kept", "" }, TagsFieldType.ControlName).ShouldBe("kept");
     }
 
     [Fact]
-    public void Renders_each_data_type_in_its_canonical_shape()
+    public void Renders_each_field_type_in_its_canonical_shape()
     {
-        // ExtractedFieldProjection is internal, so rows are built inline rather than passed as theory data —
-        // an internal type may not appear in a public test method's signature.
-        Render(new() { TextValue = "hello" }, FieldDataType.Text).ShouldBe("hello");
-        Render(new() { LongTextValue = "body" }, FieldDataType.LongText).ShouldBe("body");
+        Render("hello", "Text").ShouldBe("hello");
+        Render("body", CKEditorFieldType.ControlName).ShouldBe("body");
 
         // Minimal shape: no six trailing zeros from decimal(38,6).
-        Render(new() { NumberValue = 1000m }, FieldDataType.Number).ShouldBe("1000");
-        Render(new() { NumberValue = 10.50m }, FieldDataType.Number).ShouldBe("10.5");
+        Render(1000m, "Number").ShouldBe("1000");
+        Render(10.50m, "Number").ShouldBe("10.5");
 
-        Render(new() { BooleanValue = true }, FieldDataType.Boolean).ShouldBe("true");
-        Render(new() { BooleanValue = false }, FieldDataType.Boolean).ShouldBe("false");
-
-        Render(new() { DateValue = new DateOnly(2026, 3, 4) }, FieldDataType.Date).ShouldBe("2026-03-04");
-        Render(new() { DateTimeValue = new DateTime(2026, 3, 4, 5, 6, 7) }, FieldDataType.DateTime)
-            .ShouldBe("2026-03-04T05:06:07");
+        Render(true, "Boolean").ShouldBe("true");
+        Render(false, "Boolean").ShouldBe("false");
     }
 
-    private static string? Render(ExtractedFieldProjection row, FieldDataType dataType)
-        => ExportCellRenderer.RenderCell(new[] { row }, dataType);
+    /// <summary>
+    /// Date and DateTime share one field type in v3, so the cell shape follows InputMode. A Date-mode field
+    /// must still export the bare date it exported under v2, not the midnight instant the bag stores.
+    /// </summary>
+    [Fact]
+    public void Date_and_datetime_modes_render_differently()
+    {
+        var date = new DateTimeConfiguration { InputMode = DateTimeInputMode.Date }.ConfigurationDictionary;
+        var dateTime = new DateTimeConfiguration { InputMode = DateTimeInputMode.DateTime }.ConfigurationDictionary;
+
+        Render(new DateTime(2026, 3, 4), "DateTime", date).ShouldBe("2026-03-04");
+        Render(new DateTime(2026, 3, 4, 5, 6, 7), "DateTime", dateTime).ShouldBe("2026-03-04T05:06:07");
+    }
+
+    /// <summary>
+    /// A bag reloaded from the database holds JsonElements rather than CLR values, and an export runs over
+    /// exactly those. Both shapes must render identically or the file differs depending on whether the
+    /// document happened to be freshly written.
+    /// </summary>
+    [Fact]
+    public void Renders_json_round_tripped_values_identically()
+    {
+        Render(Json("\"hello\""), "Text").ShouldBe("hello");
+        Render(Json("10.50"), "Number").ShouldBe("10.5");
+        Render(Json("true"), "Boolean").ShouldBe("true");
+        Render(Json("[\"a\",\"b\"]"), TagsFieldType.ControlName).ShouldBe("a; b");
+
+        var date = new DateTimeConfiguration { InputMode = DateTimeInputMode.Date }.ConfigurationDictionary;
+        Render(Json("\"2026-03-04T00:00:00\""), "DateTime", date).ShouldBe("2026-03-04");
+    }
 
     [Fact]
-    public void Loud_fails_on_a_data_type_it_does_not_know_rather_than_exporting_an_empty_cell()
+    public void Renders_a_multi_select_as_a_joined_list()
     {
-        // A new FieldDataType member that misses the switch must break loudly. A silently empty cell in a file
-        // handed to an accountant is worse than an error.
-        var values = new[] { new ExtractedFieldProjection { TextValue = "x" } };
+        var config = new SelectConfiguration { Multiple = true }.ConfigurationDictionary;
 
-        Should.Throw<ArgumentOutOfRangeException>(() => ExportCellRenderer.RenderCell(values, (FieldDataType)99));
+        Render(new List<string> { "draft", "signed" }, SelectFieldType.ControlName, config)
+            .ShouldBe("draft; signed");
     }
+
+    /// <summary>
+    /// A field type this renderer does not know must break loudly. Carried over from v2's switch: a silently
+    /// wrong cell in a file handed to an accountant is worse than an error.
+    /// </summary>
+    [Fact]
+    public void Loud_fails_on_a_field_type_it_does_not_know()
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => Render("x", "SomeFutureType"));
+    }
+
+    private static JsonElement Json(string raw) => JsonSerializer.Deserialize<JsonElement>(raw);
 }

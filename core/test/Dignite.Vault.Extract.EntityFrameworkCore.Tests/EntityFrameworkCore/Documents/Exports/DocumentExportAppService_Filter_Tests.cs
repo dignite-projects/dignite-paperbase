@@ -31,7 +31,9 @@ public class DocumentExportAppService_Filter_Tests : VaultExtractEntityFramework
     private readonly IDocumentExportAppService _exportAppService;
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentTypeRepository _documentTypeRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldRepository;
+    private readonly Dignite.Abp.FlexFields.IFlexFieldIndexManager<Document> _indexManager;
+    private readonly Dignite.Abp.FlexFields.IFieldTypeResolver _fieldTypeResolver;
     private readonly ICurrentTenant _currentTenant;
 
     public DocumentExportAppService_Filter_Tests()
@@ -39,7 +41,9 @@ public class DocumentExportAppService_Filter_Tests : VaultExtractEntityFramework
         _exportAppService = GetRequiredService<IDocumentExportAppService>();
         _documentRepository = GetRequiredService<IDocumentRepository>();
         _documentTypeRepository = GetRequiredService<IDocumentTypeRepository>();
-        _fieldDefinitionRepository = GetRequiredService<IFieldDefinitionRepository>();
+        _fieldRepository = GetRequiredService<IFieldRepository>();
+        _indexManager = GetRequiredService<Dignite.Abp.FlexFields.IFlexFieldIndexManager<Document>>();
+        _fieldTypeResolver = GetRequiredService<Dignite.Abp.FlexFields.IFieldTypeResolver>();
         _currentTenant = GetRequiredService<ICurrentTenant>();
     }
 
@@ -191,13 +195,14 @@ public class DocumentExportAppService_Filter_Tests : VaultExtractEntityFramework
         await WithUnitOfWorkAsync(async () =>
         {
             var queries = await DocumentFieldQueryResolver.ResolveAsync(
-                _fieldDefinitionRepository,
+                _fieldRepository,
+                _fieldTypeResolver,
                 new List<DocumentFieldFilter> { new() { Name = "amount", Value = "100" } },
                 TypeId,
                 TypeCode,
-                knownDefinitions: new List<FieldDefinition>());
+                knownDefinitions: new List<Field>());
 
-            queries.ShouldHaveSingleItem().FieldDefinitionId.ShouldBe(AmountFieldId);
+            queries.ShouldHaveSingleItem().FieldId.ShouldBe(AmountFieldId);
         });
     }
 
@@ -210,16 +215,17 @@ public class DocumentExportAppService_Filter_Tests : VaultExtractEntityFramework
 
         await WithUnitOfWorkAsync(async () =>
         {
-            var definitions = await _fieldDefinitionRepository.GetListAsync(TypeId);
+            var definitions = await _fieldRepository.GetListAsync(TypeId);
 
             var queries = await DocumentFieldQueryResolver.ResolveAsync(
-                _fieldDefinitionRepository,
+                _fieldRepository,
+                _fieldTypeResolver,
                 new List<DocumentFieldFilter> { new() { Name = "amount", Value = "100" } },
                 TypeId,
                 TypeCode,
                 knownDefinitions: definitions);
 
-            queries.ShouldHaveSingleItem().FieldDefinitionId.ShouldBe(AmountFieldId);
+            queries.ShouldHaveSingleItem().FieldId.ShouldBe(AmountFieldId);
         });
     }
 
@@ -241,10 +247,11 @@ public class DocumentExportAppService_Filter_Tests : VaultExtractEntityFramework
     {
         await _documentTypeRepository.InsertAsync(
             new DocumentType(TypeId, _currentTenant.Id, TypeCode, TypeCode), autoSave: true);
-        await _fieldDefinitionRepository.InsertAsync(
-            new FieldDefinition(
+        await _fieldRepository.InsertAsync(
+            new Field(
                 AmountFieldId, _currentTenant.Id, TypeId,
-                name: "amount", displayName: "Amount", prompt: null, dataType: FieldDataType.Number),
+                name: "amount", displayName: "Amount",
+                fieldTypeName: Dignite.Abp.FlexFields.Number.NumberFieldType.ControlName),
             autoSave: true);
     }
 
@@ -268,14 +275,16 @@ public class DocumentExportAppService_Filter_Tests : VaultExtractEntityFramework
     private async Task PersistAsync(Document doc, decimal amount, Action<Document>? configure)
     {
         DocumentTestData.MarkClassified(doc, TypeId);
-        doc.SetFields(new[]
-        {
-            new DocumentFieldValue(AmountFieldId, FieldDataType.Number, JsonSerializer.SerializeToElement(amount)),
-        });
+        doc.SetFlexFields(new Dictionary<string, object?> { ["amount"] = amount });
 
         configure?.Invoke(doc);
 
         await _documentRepository.InsertAsync(doc, autoSave: true);
+
+        // The filters under test read the derived index, not the bag, so the seed owes it the same
+        // SynchronizeAsync the production write paths do. Without it every field filter here would match
+        // nothing and the tests would fail for a reason that has nothing to do with filtering.
+        await _indexManager.SynchronizeAsync(doc);
     }
 
     private static Guid TypeId => DocumentTestData.DeterministicGuid("type:" + TypeCode);

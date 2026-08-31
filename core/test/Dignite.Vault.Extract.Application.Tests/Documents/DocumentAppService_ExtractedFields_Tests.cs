@@ -5,7 +5,14 @@ using System.Linq.Expressions;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Dignite.Abp.FlexFields;
+using Dignite.Abp.FlexFields.Boolean;
+using Dignite.Abp.FlexFields.Date;
+using Dignite.Abp.FlexFields.Number;
+using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.Abstractions.Documents;
+using Dignite.Vault.Extract.Documents.Fields;
+using Dignite.Vault.Extract.FlexFields.Tags;
 using Dignite.Vault.Extract.Documents.Pipelines;
 using NSubstitute;
 using Shouldly;
@@ -25,7 +32,7 @@ public class DocumentAppService_ExtractedFields_Tests
 {
     private readonly IDocumentAppService _appService;
     private readonly IDocumentRepository _documentRepository;
-    private readonly IFieldDefinitionRepository _fieldDefinitionRepository;
+    private readonly IFieldRepository _fieldRepository;
     private readonly IDistributedEventBus _eventBus;
     private readonly DocumentPipelineRunManager _pipelineRunManager;
 
@@ -33,7 +40,7 @@ public class DocumentAppService_ExtractedFields_Tests
     {
         _appService = GetRequiredService<IDocumentAppService>();
         _documentRepository = GetRequiredService<IDocumentRepository>();
-        _fieldDefinitionRepository = GetRequiredService<IFieldDefinitionRepository>();
+        _fieldRepository = GetRequiredService<IFieldRepository>();
         _eventBus = GetRequiredService<IDistributedEventBus>();
         _pipelineRunManager = GetRequiredService<DocumentPipelineRunManager>();
     }
@@ -77,7 +84,7 @@ public class DocumentAppService_ExtractedFields_Tests
             }
         });
 
-        doc.ExtractedFieldValues.Count.ShouldBe(2);
+        doc.FlexFields.Count.ShouldBe(2);
         await _documentRepository.Received().UpdateAsync(doc, Arg.Any<bool>(), Arg.Any<CancellationToken>());
         await _eventBus.Received().PublishAsync(
             Arg.Is<FieldsExtractedEto>(e => e.DocumentId == doc.Id && e.FieldCount == 2),
@@ -108,12 +115,12 @@ public class DocumentAppService_ExtractedFields_Tests
         StubGet(doc);
         StubFields(
             "host.contract",
-            ("title", FieldDataType.Text),
-            ("count", FieldDataType.Number),
-            ("amount", FieldDataType.Number),
-            ("approved", FieldDataType.Boolean),
-            ("date", FieldDataType.Date),
-            ("occurredAt", FieldDataType.DateTime));
+            ("title", TextFieldType.ControlName, TextConfig()),
+            ("count", NumberFieldType.ControlName, Empty()),
+            ("amount", NumberFieldType.ControlName, Empty()),
+            ("approved", BooleanFieldType.ControlName, Empty()),
+            ("date", DateTimeFieldType.ControlName, DateConfig(DateTimeInputMode.Date)),
+            ("occurredAt", DateTimeFieldType.ControlName, DateConfig(DateTimeInputMode.DateTime)));
 
         await _appService.UpdateExtractedFieldsAsync(doc.Id, new UpdateExtractedFieldsInput
         {
@@ -128,7 +135,7 @@ public class DocumentAppService_ExtractedFields_Tests
             }
         });
 
-        doc.ExtractedFieldValues.Count.ShouldBe(6);
+        doc.FlexFields.Count.ShouldBe(6);
     }
 
     [Fact]
@@ -136,7 +143,7 @@ public class DocumentAppService_ExtractedFields_Tests
     {
         var doc = CreateClassifiedDocument("host.contract");
         StubGet(doc);
-        StubFields("host.contract", ("amount", FieldDataType.Number));
+        StubFields("host.contract", ("amount", NumberFieldType.ControlName, Empty()));
 
         var ex = await Should.ThrowAsync<BusinessException>(() =>
             _appService.UpdateExtractedFieldsAsync(doc.Id, new UpdateExtractedFieldsInput
@@ -159,7 +166,7 @@ public class DocumentAppService_ExtractedFields_Tests
         // shares ExtractedFieldValueValidator with the LLM extraction path (Codex review finding 2).
         var doc = CreateClassifiedDocument("host.contract");
         StubGet(doc);
-        StubFields("host.contract", ("occurredAt", FieldDataType.DateTime));
+        StubFields("host.contract", ("occurredAt", DateTimeFieldType.ControlName, DateConfig(DateTimeInputMode.DateTime)));
 
         var ex = await Should.ThrowAsync<BusinessException>(() =>
             _appService.UpdateExtractedFieldsAsync(doc.Id, new UpdateExtractedFieldsInput
@@ -178,8 +185,8 @@ public class DocumentAppService_ExtractedFields_Tests
     public async Task Should_Clear_All_Fields_When_Input_Is_Empty()
     {
         var doc = CreateClassifiedDocument("host.contract");
-        doc.SetFields(new[] { new DocumentFieldValue(Guid.NewGuid(), FieldDataType.Text, JsonString("1000")) });
-        doc.ExtractedFieldValues.Count.ShouldBe(1);
+        doc.SetFlexFields(new Dictionary<string, object?> { ["amount"] = "1000" });
+        doc.FlexFields.Count.ShouldBe(1);
         StubGet(doc);
         StubFields("host.contract", "amount");
 
@@ -190,7 +197,7 @@ public class DocumentAppService_ExtractedFields_Tests
 
         // Empty input clears all field rows as a group; FieldsExtractedEto is republished with
         // FieldCount = 0.
-        doc.ExtractedFieldValues.ShouldBeEmpty();
+        doc.FlexFields.ShouldBeEmpty();
         await _eventBus.Received().PublishAsync(
             Arg.Is<FieldsExtractedEto>(e => e.DocumentId == doc.Id && e.FieldCount == 0),
             Arg.Any<bool>(),
@@ -214,9 +221,10 @@ public class DocumentAppService_ExtractedFields_Tests
             }
         });
 
-        // Array becomes 3 rows and is restored by Order.
-        doc.ExtractedFieldValues.Count.ShouldBe(3);
-        doc.ExtractedFieldValues.OrderBy(f => f.Order).Select(f => f.TextValue)
+        // v3: the whole array is one bag entry keyed by the field name, in submitted order — the
+        // per-item Order column v2 needed is gone with the value rows it ordered.
+        doc.FlexFields.Count.ShouldBe(1);
+        doc.FlexFields["tags"].ShouldBeOfType<List<string>>()
             .ShouldBe(new[] { "urgent", "legal", "2026" });
 
         // FieldsExtractedEto.FieldCount is logical field count (1), not expanded row count (3).
@@ -233,18 +241,15 @@ public class DocumentAppService_ExtractedFields_Tests
         // arrays too, keeping operator read-edit-save round trips consistent.
         var doc = CreateClassifiedDocument("host.contract");
         StubGet(doc);
-        var tags = new FieldDefinition(
-            Guid.NewGuid(), tenantId: null, documentTypeId: TypeId("host.contract"),
-            name: "tags", displayName: "Tags", prompt: "extract tags",
-            dataType: FieldDataType.Text, allowMultiple: true);
+        var tags = MultiField(TypeId("host.contract"), "tags");
         // Write-path resolution by looking up definitions by typeId.
-        _fieldDefinitionRepository.GetListAsync(TypeId("host.contract"), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { tags });
+        _fieldRepository.GetListAsync(TypeId("host.contract"), Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { tags });
         // Read-path resolution: MapToDtoAsync -> ResolveReferenceMapsAsync queries definitions by
         // predicate for Name/DataType/AllowMultiple.
-        _fieldDefinitionRepository.GetListAsync(
-            Arg.Any<Expression<Func<FieldDefinition, bool>>>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition> { tags });
+        _fieldRepository.GetListAsync(
+            Arg.Any<Expression<Func<Field, bool>>>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { tags });
 
         var dto = await _appService.UpdateExtractedFieldsAsync(doc.Id, new UpdateExtractedFieldsInput
         {
@@ -367,12 +372,13 @@ public class DocumentAppService_ExtractedFields_Tests
         doc.ReplaceFieldValidationWarnings(new[] { new FieldValidationWarning(amountFieldId, "does not reconcile") });
         StubFindWithFieldValues(doc);
         // Warned-field name/display-name resolution (soft-delete-disabled predicate lookup).
-        _fieldDefinitionRepository
-            .GetListAsync(Arg.Any<Expression<Func<FieldDefinition, bool>>>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(new List<FieldDefinition>
+        _fieldRepository
+            .GetListAsync(Arg.Any<Expression<Func<Field, bool>>>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(new List<Field>
             {
                 new(amountFieldId, tenantId: null, documentTypeId: TypeId("host.contract"),
-                    name: "amount", displayName: "Amount", prompt: "extract amount", dataType: FieldDataType.Number)
+                    name: "amount", displayName: "Amount",
+                    fieldTypeName: NumberFieldType.ControlName, description: "extract amount")
             });
 
         var dto = await _appService.GetAsync(doc.Id);
@@ -407,32 +413,45 @@ public class DocumentAppService_ExtractedFields_Tests
     {
         StubFields(
             typeCode,
-            names.Select(n => (Name: n, DataType: FieldDataType.Text)).ToArray());
+            names.Select(n => (Name: n, TypeName: TextFieldType.ControlName, Config: TextConfig())).ToArray());
     }
 
-    private void StubFields(string typeCode, params (string Name, FieldDataType DataType)[] fields)
+    private void StubFields(
+        string typeCode,
+        params (string Name, string TypeName, FieldConfigurationDictionary Config)[] fields)
     {
         var defs = fields
-            .Select(f => new FieldDefinition(
+            .Select(f => new Field(
                 Guid.NewGuid(), tenantId: null, documentTypeId: TypeId(typeCode),
-                name: f.Name, displayName: f.Name, prompt: "extract " + f.Name, dataType: f.DataType))
+                name: f.Name, displayName: f.Name,
+                fieldTypeName: f.TypeName, description: "extract " + f.Name, configuration: f.Config))
             .ToList();
-        _fieldDefinitionRepository.GetListAsync(TypeId(typeCode), Arg.Any<CancellationToken>())
+        _fieldRepository.GetListAsync(TypeId(typeCode), Arg.Any<CancellationToken>())
             .Returns(defs);
     }
 
-    // #212: stub a multi-value text field definition (AllowMultiple = true).
+    // #212, now #559 resolution 6: multi-value is a property of the field type rather than a flag beside
+    // it, so v2's AllowMultiple text field is Tags — the open-vocabulary type, as the migrator maps it.
     private void StubMultiField(string typeCode, string name)
     {
-        var defs = new List<FieldDefinition>
-        {
-            new(Guid.NewGuid(), tenantId: null, documentTypeId: TypeId(typeCode),
-                name: name, displayName: name, prompt: "extract " + name,
-                dataType: FieldDataType.Text, allowMultiple: true)
-        };
-        _fieldDefinitionRepository.GetListAsync(TypeId(typeCode), Arg.Any<CancellationToken>())
-            .Returns(defs);
+        _fieldRepository.GetListAsync(TypeId(typeCode), Arg.Any<CancellationToken>())
+            .Returns(new List<Field> { MultiField(TypeId(typeCode), name) });
     }
+
+    private static Field MultiField(Guid typeId, string name)
+        => new(
+            Guid.NewGuid(), tenantId: null, documentTypeId: typeId,
+            name: name, displayName: name,
+            fieldTypeName: TagsFieldType.ControlName, description: "extract " + name,
+            configuration: new TagsConfiguration().ConfigurationDictionary);
+
+    private static FieldConfigurationDictionary Empty() => new();
+
+    private static FieldConfigurationDictionary TextConfig()
+        => new TextConfiguration { Mode = TextMode.SingleLine }.ConfigurationDictionary;
+
+    private static FieldConfigurationDictionary DateConfig(DateTimeInputMode mode)
+        => new DateTimeConfiguration { InputMode = mode }.ConfigurationDictionary;
 
     private static Document CreateDocument()
     {

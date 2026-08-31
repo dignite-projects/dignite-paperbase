@@ -141,14 +141,15 @@ public partial class DocumentTypeToDtoMapper : MapperBase<DocumentType, Document
 }
 
 /// <summary>
-/// FieldDefinition -> FieldDefinitionDto. All scalar values, including immutable <see cref="FieldDefinition.DocumentTypeId"/> (#207),
-/// are mapped directly by Mapperly with no lookup projection.
+/// Field -> FieldDefinitionDto. All scalar values, including the immutable <see cref="Field.DocumentTypeId"/>
+/// (#207), are mapped directly by Mapperly with no lookup projection. The DTO keeps the v2 name because it
+/// names the concept the egress exposes; only the entity behind it changed (#559).
 /// </summary>
 [Mapper(RequiredMappingStrategy = RequiredMappingStrategy.Target)]
-public partial class FieldDefinitionToDtoMapper : MapperBase<FieldDefinition, FieldDefinitionDto>
+public partial class FieldDefinitionToDtoMapper : MapperBase<Field, FieldDefinitionDto>
 {
-    public override partial FieldDefinitionDto Map(FieldDefinition source);
-    public override partial void Map(FieldDefinition source, FieldDefinitionDto destination);
+    public override partial FieldDefinitionDto Map(Field source);
+    public override partial void Map(Field source, FieldDefinitionDto destination);
 }
 
 [Mapper(RequiredMappingStrategy = RequiredMappingStrategy.Target)]

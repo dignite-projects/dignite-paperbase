@@ -1,3 +1,8 @@
+using Dignite.Abp.FlexFields.CKEditor;
+using Dignite.Abp.FlexFields.Date;
+using Dignite.Abp.FlexFields.Number;
+using Dignite.Abp.FlexFields.Text;
+using Dignite.Vault.Extract.FlexFields.Tags;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -231,7 +236,7 @@ public class LayeredUniqueness_Tests : VaultExtractEntityFrameworkCoreTestBase
         DocumentTypeId = documentTypeId,
         Name = name,
         DisplayName = name,
-        DataType = FieldDataType.Text
+        FieldTypeName = TextFieldType.ControlName
     };
 
 }

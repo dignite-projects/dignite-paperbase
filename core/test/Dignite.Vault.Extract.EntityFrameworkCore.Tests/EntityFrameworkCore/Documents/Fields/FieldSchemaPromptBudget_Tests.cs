@@ -1,3 +1,8 @@
+using Dignite.Abp.FlexFields.CKEditor;
+using Dignite.Abp.FlexFields.Date;
+using Dignite.Abp.FlexFields.Number;
+using Dignite.Abp.FlexFields.Text;
+using Dignite.Vault.Extract.FlexFields.Tags;
 using System;
 using System.Threading.Tasks;
 using Dignite.Vault.Extract.Ai;
@@ -32,14 +37,14 @@ public class FieldSchemaPromptBudget_Tests : VaultExtractTestBase<FieldSchemaPro
 {
     private readonly IFieldDefinitionAppService _fieldAppService;
     private readonly IDocumentTypeAppService _typeAppService;
-    private readonly IFieldDefinitionRepository _fieldRepository;
+    private readonly IFieldRepository _fieldRepository;
     private readonly VaultExtractBehaviorOptions _options;
 
     public FieldSchemaPromptBudget_Tests()
     {
         _fieldAppService = GetRequiredService<IFieldDefinitionAppService>();
         _typeAppService = GetRequiredService<IDocumentTypeAppService>();
-        _fieldRepository = GetRequiredService<IFieldDefinitionRepository>();
+        _fieldRepository = GetRequiredService<IFieldRepository>();
         _options = GetRequiredService<IOptions<VaultExtractBehaviorOptions>>().Value;
     }
 
@@ -65,7 +70,7 @@ public class FieldSchemaPromptBudget_Tests : VaultExtractTestBase<FieldSchemaPro
         var second = await CreateFieldAsync(type.Id, "second", new string('b', 3));
 
         var atLimit = await _fieldAppService.UpdateAsync(second.Id, Update(second, new string('b', 4)));
-        atLimit.Prompt!.Length.ShouldBe(FieldSchemaPromptBudgetTestModule.PromptBudget - 6);
+        atLimit.Description!.Length.ShouldBe(FieldSchemaPromptBudgetTestModule.PromptBudget - 6);
 
         var ex = await Should.ThrowAsync<BusinessException>(
             () => _fieldAppService.UpdateAsync(second.Id, Update(second, new string('b', 5))));
@@ -122,14 +127,14 @@ public class FieldSchemaPromptBudget_Tests : VaultExtractTestBase<FieldSchemaPro
         var activeFieldId = Guid.NewGuid();
         await WithUnitOfWorkAsync(() =>
             _fieldRepository.InsertAsync(
-                new FieldDefinition(
+                new Field(
                     activeFieldId,
                     tenantId: null,
                     type.Id,
                     "conflicting_name",
                     "active",
-                    prompt: "b",
-                    dataType: FieldDataType.Text),
+                    fieldTypeName: TextFieldType.ControlName,
+                    description: "b"),
                 autoSave: true));
 
         await _typeAppService.RestoreAsync(type.Id);
@@ -153,8 +158,8 @@ public class FieldSchemaPromptBudget_Tests : VaultExtractTestBase<FieldSchemaPro
             DocumentTypeId = documentTypeId,
             Name = name,
             DisplayName = name,
-            Prompt = prompt,
-            DataType = FieldDataType.Text
+            Description = prompt,
+            FieldTypeName = TextFieldType.ControlName
         });
 
     private static UpdateFieldDefinitionDto Update(FieldDefinitionDto field, string? prompt)
@@ -162,11 +167,10 @@ public class FieldSchemaPromptBudget_Tests : VaultExtractTestBase<FieldSchemaPro
         {
             Name = field.Name,
             DisplayName = field.DisplayName,
-            Prompt = prompt,
-            DataType = field.DataType,
+            Description = prompt,
+            FieldTypeName = field.FieldTypeName,
             DisplayOrder = field.DisplayOrder,
             IsRequired = field.IsRequired,
-            AllowMultiple = field.AllowMultiple,
             IsUniqueKey = field.IsUniqueKey
         };
 }

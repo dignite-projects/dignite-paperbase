@@ -2,7 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Dignite.Abp.FlexFields;
+using Dignite.Abp.FlexFields.CKEditor;
+using Dignite.Abp.FlexFields.Number;
+using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.Ai;
+using Dignite.Vault.Extract.FlexFields.Tags;
 using Dignite.Vault.Extract.Documents;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
@@ -13,7 +18,10 @@ using Xunit;
 
 namespace Dignite.Vault.Extract.Mcp.Documents;
 
-[DependsOn(typeof(VaultExtractTestBaseModule))]
+// VaultExtractFlexFieldsModule brings the field-type registry the schema projection reads: it decides
+// isMultiValue / isFilterable, so stubbing it would let the projection agree with a registry that does
+// not exist.
+[DependsOn(typeof(VaultExtractTestBaseModule), typeof(Extract.FlexFields.VaultExtractFlexFieldsModule))]
 public class DocumentTypeToolsTestModule : AbpModule
 {
     public override void ConfigureServices(ServiceConfigurationContext context)
@@ -36,11 +44,16 @@ public class DocumentTypeTools_Tests : VaultExtractTestBase<DocumentTypeToolsTes
 {
     private readonly IDocumentTypeAppService _documentTypeAppService;
     private readonly IFieldDefinitionAppService _fieldDefinitionAppService;
+    private readonly IFieldTypeResolver _fieldTypeResolver;
 
     public DocumentTypeTools_Tests()
     {
         _documentTypeAppService = GetRequiredService<IDocumentTypeAppService>();
         _fieldDefinitionAppService = GetRequiredService<IFieldDefinitionAppService>();
+        // The real resolver, not a substitute: the schema's isMultiValue / isFilterable come from the field
+        // types actually registered, and a stubbed resolver would let a type this deployment does not have
+        // pass for a filterable one.
+        _fieldTypeResolver = GetRequiredService<IFieldTypeResolver>();
     }
 
     [Fact]
@@ -68,6 +81,7 @@ public class DocumentTypeTools_Tests : VaultExtractTestBase<DocumentTypeToolsTes
         var result = await DocumentTypeTools.ListAsync(
             _documentTypeAppService,
             _fieldDefinitionAppService,
+            _fieldTypeResolver,
             tenantId: tenantId.ToString(),
             serviceProvider: ServiceProvider);
 
@@ -103,8 +117,7 @@ public class DocumentTypeTools_Tests : VaultExtractTestBase<DocumentTypeToolsTes
                 {
                     DocumentTypeId = typeId,
                     Name = "amount",
-                    DataType = FieldDataType.Number,
-                    AllowMultiple = false,
+                    FieldTypeName = NumberFieldType.ControlName,
                     DisplayName = "Amount",
                     IsRequired = true,
                     DisplayOrder = 0
@@ -113,8 +126,7 @@ public class DocumentTypeTools_Tests : VaultExtractTestBase<DocumentTypeToolsTes
                 {
                     DocumentTypeId = typeId,
                     Name = "party_name",
-                    DataType = FieldDataType.Text,
-                    AllowMultiple = false,
+                    FieldTypeName = TextFieldType.ControlName,
                     DisplayName = "Party Name",
                     IsRequired = false,
                     DisplayOrder = 1
@@ -122,7 +134,7 @@ public class DocumentTypeTools_Tests : VaultExtractTestBase<DocumentTypeToolsTes
             });
 
         var result = await DocumentTypeTools.ListAsync(
-            _documentTypeAppService, _fieldDefinitionAppService);
+            _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver);
 
         result.TotalCount.ShouldBe(1);
         result.Truncated.ShouldBeFalse();
@@ -136,14 +148,14 @@ public class DocumentTypeTools_Tests : VaultExtractTestBase<DocumentTypeToolsTes
 
         var amountField = schema.Fields[0];
         amountField.Name.ShouldBe("amount");
-        amountField.DataType.ShouldBe("Number");
-        amountField.AllowMultiple.ShouldBeFalse();
+        amountField.FieldType.ShouldBe(NumberFieldType.ControlName);
+        amountField.IsMultiValue.ShouldBeFalse();
         amountField.IsRequired.ShouldBeTrue();
         amountField.DisplayName.ShouldBe(PromptBoundary.WrapField("Amount"));
 
         var partyField = schema.Fields[1];
         partyField.Name.ShouldBe("party_name");
-        partyField.DataType.ShouldBe("Text");
+        partyField.FieldType.ShouldBe(TextFieldType.ControlName);
         partyField.IsRequired.ShouldBeFalse();
 
         // N+1 guard: field definitions are allowed only one batch call, with no per-type query loop.
@@ -156,7 +168,7 @@ public class DocumentTypeTools_Tests : VaultExtractTestBase<DocumentTypeToolsTes
         _documentTypeAppService.GetVisibleAsync().Returns(new List<DocumentTypeDto>());
 
         var result = await DocumentTypeTools.ListAsync(
-            _documentTypeAppService, _fieldDefinitionAppService);
+            _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver);
 
         result.Types.ShouldBeEmpty();
         result.TotalCount.ShouldBe(0);
@@ -176,7 +188,7 @@ public class DocumentTypeTools_Tests : VaultExtractTestBase<DocumentTypeToolsTes
             .Returns(new List<FieldDefinitionDto>());
 
         var result = await DocumentTypeTools.ListAsync(
-            _documentTypeAppService, _fieldDefinitionAppService);
+            _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver);
 
         result.Types.Count.ShouldBe(total);
         result.TotalCount.ShouldBe(total);
@@ -196,7 +208,7 @@ public class DocumentTypeTools_Tests : VaultExtractTestBase<DocumentTypeToolsTes
             .Returns(new List<FieldDefinitionDto>());
 
         var result = await DocumentTypeTools.ListAsync(
-            _documentTypeAppService, _fieldDefinitionAppService);
+            _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver);
 
         result.Types.Count.ShouldBe(VaultExtractMcpConsts.MaxDocumentTypeResults);
         result.TotalCount.ShouldBe(total);
