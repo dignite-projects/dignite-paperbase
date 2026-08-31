@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text.Json;
 using Dignite.Abp.FlexFields;
 using Dignite.Abp.FlexFields.CKEditor;
@@ -133,6 +134,110 @@ public class FlexFieldValueReader_Tests
 
         TryRead("\"2026-03-14T10:30:00\"", "DateTime", out var result, configuration).ShouldBeTrue();
         result.ShouldBe(new DateTime(2026, 3, 14, 10, 30, 0));
+    }
+
+    /// <summary>
+    /// The shapes a browser actually produces for a DateTime-mode field, both of which used to be rejected —
+    /// which meant such a field could not be saved from the operator UI at all. Seeding
+    /// <c>&lt;input type="datetime-local"&gt;</c> writes the space-separated form, and editing it hands back a
+    /// <c>T</c>-separated one with the seconds dropped when they are zero. Both denote the same wall-clock
+    /// moment as the canonical form and are normalized to it, so nothing downstream — the bag, the egress
+    /// rendering, the #411 fingerprint — can tell which shape arrived.
+    /// </summary>
+    [Theory]
+    [InlineData("\"2026-03-14T10:30\"")]
+    [InlineData("\"2026-03-14 10:30:00\"")]
+    [InlineData("\"2026-03-14 10:30\"")]
+    public void Datetime_mode_normalizes_the_shapes_a_browser_produces(string json)
+    {
+        var configuration = new DateTimeConfiguration { InputMode = DateTimeInputMode.DateTime }.ConfigurationDictionary;
+
+        TryRead(json, "DateTime", out var result, configuration).ShouldBeTrue();
+        result.ShouldBe(new DateTime(2026, 3, 14, 10, 30, 0));
+    }
+
+    /// <summary>
+    /// Widening the accepted input shapes must not widen what a <i>Date</i>-mode field takes: its stored
+    /// value is midnight so an equality filter stays an equality filter, and letting a time component in
+    /// through the back door would break that quietly.
+    /// </summary>
+    [Theory]
+    [InlineData("\"2026-03-14 10:30:00\"")]
+    [InlineData("\"2026-03-14T10:30\"")]
+    public void Date_mode_still_rejects_a_time_component(string json)
+    {
+        var configuration = new DateTimeConfiguration { InputMode = DateTimeInputMode.Date }.ConfigurationDictionary;
+
+        TryRead(json, "DateTime", out _, configuration).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Month mode is a date whose day carries no information, so it is stored as the first of the month at
+    /// midnight — an ordinary DateTime that sorts, ranges and indexes like any other, with the day pinned
+    /// rather than left to whatever the parser happened to fill in.
+    /// </summary>
+    [Fact]
+    public void Month_mode_stores_the_first_of_the_month_at_midnight()
+    {
+        var configuration = new DateTimeConfiguration { InputMode = DateTimeInputMode.Month }.ConfigurationDictionary;
+
+        TryRead("\"2026-03\"", "DateTime", out var result, configuration).ShouldBeTrue();
+        result.ShouldBe(new DateTime(2026, 3, 1, 0, 0, 0));
+    }
+
+    /// <summary>
+    /// The day is pinned explicitly rather than trusted to the parser. Guards the property that actually
+    /// matters — that the stored day never depends on when the value was saved — independently of whatever
+    /// <c>DateOnly.TryParseExact</c> does with a format that has no day component.
+    /// </summary>
+    [Fact]
+    public void Month_mode_stores_the_same_day_whatever_today_is()
+    {
+        var configuration = new DateTimeConfiguration { InputMode = DateTimeInputMode.Month }.ConfigurationDictionary;
+
+        // February, so a parser that filled the day from "today" would land on an invalid date for most
+        // of the month and on the 29th at best.
+        TryRead("\"2026-02\"", "DateTime", out var result, configuration).ShouldBeTrue();
+        ((DateTime)result!).Day.ShouldBe(1);
+    }
+
+    /// <summary>
+    /// A month field must not accept a full date: the day would be silently discarded, so a document
+    /// stating the 14th would be stored as the 1st with nothing recording that a day was ever given.
+    /// </summary>
+    [Theory]
+    [InlineData("\"2026-03-14\"")]
+    [InlineData("\"2026-03-14T10:30:00\"")]
+    public void Month_mode_rejects_a_full_date(string json)
+    {
+        var configuration = new DateTimeConfiguration { InputMode = DateTimeInputMode.Month }.ConfigurationDictionary;
+
+        TryRead(json, "DateTime", out _, configuration).ShouldBeFalse();
+    }
+
+    /// <summary>Conversely, a Date-mode field must not accept a bare month.</summary>
+    [Fact]
+    public void Date_mode_rejects_a_bare_month()
+    {
+        var configuration = new DateTimeConfiguration { InputMode = DateTimeInputMode.Date }.ConfigurationDictionary;
+
+        TryRead("\"2026-03\"", "DateTime", out _, configuration).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Characterizes the framework behaviour the reader's Month branch sits on: parsing a day-less format
+    /// already defaults the day to the 1st, independently of today's date. The reader pins the day anyway
+    /// — this test is what says the pinning is belt-and-braces rather than load-bearing, and it reddens if
+    /// a future runtime changes the default instead of the Month tests failing for an unexplained reason.
+    /// </summary>
+    [Fact]
+    public void DateOnly_defaults_a_missing_day_to_the_first()
+    {
+        DateOnly.TryParseExact(
+                "2026-02", FieldValueFormats.Month, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+            .ShouldBeTrue();
+
+        date.ShouldBe(new DateOnly(2026, 2, 1));
     }
 
     [Fact]

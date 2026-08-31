@@ -59,11 +59,11 @@ public static class FlexFieldValueJsonWriter
             }
 
             // The format follows InputMode, which is what preserves v2's split: a Date field emitted a
-            // bare date and a DateTime field emitted the offset-free local shape. Both formats are frozen
-            // in FieldValueFormats precisely because they are the egress contract.
-            var format = new DateTimeConfiguration(configuration).InputMode == DateTimeInputMode.DateTime
-                ? FieldValueFormats.DateTime
-                : FieldValueFormats.Date;
+            // bare date and a DateTime field emitted the offset-free local shape. A Month field emits
+            // year and month only — its stored day is pinned to 1 and carries nothing. All three formats
+            // are frozen in FieldValueFormats precisely because they are the egress contract.
+            var format = DateTimeInputModeFormats.Format(
+                new DateTimeConfiguration(configuration).InputMode);
 
             return JsonSerializer.SerializeToElement(moment.ToString(format, CultureInfo.InvariantCulture));
         }

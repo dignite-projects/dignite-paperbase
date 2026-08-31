@@ -78,6 +78,14 @@ public static class FieldValueFormats
     public const string DateTime = "yyyy-MM-ddTHH:mm:ss";
 
     /// <summary>
+    /// Canonical month shape, in and out — the third <c>DateTime.InputMode</c>. A month field is a date
+    /// field whose day carries no information: the value is stored as the first of the month at midnight
+    /// (so it stays an ordinary <c>DateTime</c> that sorts, ranges and indexes like any other), and only
+    /// the year and month are ever emitted. Frozen wire contract, like the two above.
+    /// </summary>
+    public const string Month = "yyyy-MM";
+
+    /// <summary>
     /// Minimal shape for a Number in an exported cell: integer 1000 -> "1000", decimal 10.50 -> "10.5", without
     /// the six trailing zeros of <c>decimal(38,6)</c>. Presentation only — deliberately <b>not</b> the fingerprint's
     /// number format, which keeps full precision so two values that differ beyond six decimals do not collide.

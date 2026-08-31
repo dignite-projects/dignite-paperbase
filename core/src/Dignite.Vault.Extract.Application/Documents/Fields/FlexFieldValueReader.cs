@@ -234,6 +234,33 @@ public static class FlexFieldValueReader
         return true;
     }
 
+    /// <summary>
+    /// The date-time shapes accepted <b>on the way in</b>. Output stays
+    /// <see cref="FieldValueFormats.DateTime"/> alone — that one is a frozen wire contract and this does not
+    /// widen it; every accepted shape parses to the same <see cref="DateTime"/> and is re-emitted canonically.
+    /// <para>
+    /// The extra three exist because a browser owns the value before the server sees it, and
+    /// <c>&lt;input type="datetime-local"&gt;</c> normalizes what it is handed. Seeding the control writes the
+    /// space-separated form (the flex-fields kernel's <c>DatePipe</c> format), and the moment an operator edits
+    /// the field the browser hands back <c>T</c>-separated but with <b>the seconds dropped</b> when they are
+    /// zero — so with only the canonical format accepted, a DateTime-mode field could not be saved at all:
+    /// untouched it failed on the separator, touched it failed on the missing seconds.
+    /// </para>
+    /// <para>
+    /// Normalizing on the server rather than coercing in the Angular client is deliberate, and follows the
+    /// same shape as <c>Dignite.FlexFields.Site</c>'s <c>INormalizesValue</c>: the client is not the only
+    /// caller (REST and MCP write here too), and a per-client coercion layer would have to be rewritten for
+    /// each of them and drift from this gate.
+    /// </para>
+    /// </summary>
+    private static readonly string[] AcceptedDateTimeFormats =
+    {
+        FieldValueFormats.DateTime,
+        "yyyy-MM-ddTHH:mm",
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-dd HH:mm"
+    };
+
     private static bool TryReadDateTime(JsonElement value, DateTimeConfiguration configuration, out object? result)
     {
         result = null;
@@ -252,7 +279,7 @@ public static class FlexFieldValueReader
         if (configuration.InputMode == DateTimeInputMode.DateTime)
         {
             if (!DateTime.TryParseExact(
-                    text, FieldValueFormats.DateTime, CultureInfo.InvariantCulture,
+                    text, AcceptedDateTimeFormats, CultureInfo.InvariantCulture,
                     DateTimeStyles.None, out var moment)
                 || IsOutOfRange(moment, configuration))
             {
@@ -264,11 +291,30 @@ public static class FlexFieldValueReader
         }
 
         // Date mode stores midnight, which is what keeps an equality filter on a date an equality filter
-        // now that Date and DateTime share one field type (#559 resolution 5).
+        // now that Date and DateTime share one field type (#559 resolution 5). Month mode stores the first
+        // of the month at midnight for the same reason and by the same rule: the day simply carries no
+        // information, so pinning it to 1 keeps the value an ordinary DateTime that sorts, ranges and
+        // indexes like every other, and the egress reads only the year and month back out.
+        var isMonth = configuration.InputMode == DateTimeInputMode.Month;
+
         if (!DateOnly.TryParseExact(
-                text, FieldValueFormats.Date, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+                text,
+                DateTimeInputModeFormats.Format(configuration.InputMode),
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var date))
         {
             return false;
+        }
+
+        // Belt-and-braces, not load-bearing: DateOnly.TryParseExact already defaults a day-less format's
+        // day to the 1st regardless of today's date (characterized by
+        // FlexFieldValueReader_Tests.DateOnly_defaults_a_missing_day_to_the_first). Stated here anyway
+        // because "the day is always 1" is this mode's storage contract, and a contract that holds only
+        // because of a framework default nothing in this repo controls is one worth writing down.
+        if (isMonth)
+        {
+            date = new DateOnly(date.Year, date.Month, 1);
         }
 
         var midnight = date.ToDateTime(TimeOnly.MinValue);

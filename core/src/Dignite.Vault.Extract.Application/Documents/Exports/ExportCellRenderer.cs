@@ -73,9 +73,8 @@ internal static class ExportCellRenderer
                 return null;
             }
 
-            var format = new DateTimeConfiguration(configuration).InputMode == DateTimeInputMode.DateTime
-                ? FieldValueFormats.DateTime
-                : FieldValueFormats.Date;
+            var format = DateTimeInputModeFormats.Format(
+                new DateTimeConfiguration(configuration).InputMode);
             return moment.ToString(format, CultureInfo.InvariantCulture);
         }
 

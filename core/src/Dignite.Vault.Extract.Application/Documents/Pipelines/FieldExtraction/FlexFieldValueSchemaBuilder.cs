@@ -171,22 +171,32 @@ public static class FlexFieldValueSchemaBuilder
     {
         var dateTime = new DateTimeConfiguration(configuration);
 
-        // Date and DateTime are one field type in v3, told apart by InputMode - so the pattern the model
-        // is held to comes from configuration rather than from the type. Asking a date-only field for
-        // hours and minutes would invent precision the document does not have.
-        return dateTime.InputMode == DateTimeInputMode.DateTime
-            ? new JsonObject
+        // Date, DateTime and Month are one field type in v3, told apart by InputMode - so the pattern the
+        // model is held to comes from configuration rather than from the type. Asking a date-only field
+        // for hours and minutes would invent precision the document does not have, and asking a month
+        // field for a day would invent one outright: the model would have to pick a day the document never
+        // stated, and FlexFieldValueReader would then reject the value for not being a month.
+        return dateTime.InputMode switch
+        {
+            DateTimeInputMode.DateTime => new JsonObject
             {
                 ["type"] = JsonTypes("string", "null"),
                 ["pattern"] = @"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$",
                 ["description"] = "An offset-free ISO-8601 local date-time string in YYYY-MM-DDThh:mm:ss format, or null when absent."
-            }
-            : new JsonObject
+            },
+            DateTimeInputMode.Month => new JsonObject
+            {
+                ["type"] = JsonTypes("string", "null"),
+                ["pattern"] = @"^\d{4}-\d{2}$",
+                ["description"] = "An ISO-8601 year and month in YYYY-MM format, with no day, or null when absent."
+            },
+            _ => new JsonObject
             {
                 ["type"] = JsonTypes("string", "null"),
                 ["pattern"] = @"^\d{4}-\d{2}-\d{2}$",
                 ["description"] = "An ISO-8601 date string in YYYY-MM-DD format, or null when absent."
-            };
+            }
+        };
     }
 
     private static JsonArray WithNull(JsonArray options)
