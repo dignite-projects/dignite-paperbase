@@ -69,23 +69,23 @@ public class FlexFieldFingerprintCalculator_Tests
     [Fact]
     public void Same_values_hash_the_same()
     {
-        FlexFieldFingerprintCalculator.Compute(Complete(), Schema)
-            .ShouldBe(FlexFieldFingerprintCalculator.Compute(Complete(), Schema));
+        FlexFieldFingerprintCalculator.Compute(Complete(), Schema, TestFieldTypeRegistry.Default)
+            .ShouldBe(FlexFieldFingerprintCalculator.Compute(Complete(), Schema, TestFieldTypeRegistry.Default));
     }
 
     [Fact]
     public void Different_values_hash_differently()
     {
-        FlexFieldFingerprintCalculator.Compute(Complete(invoiceNo: "INV-001"), Schema)
-            .ShouldNotBe(FlexFieldFingerprintCalculator.Compute(Complete(invoiceNo: "INV-002"), Schema));
+        FlexFieldFingerprintCalculator.Compute(Complete(invoiceNo: "INV-001"), Schema, TestFieldTypeRegistry.Default)
+            .ShouldNotBe(FlexFieldFingerprintCalculator.Compute(Complete(invoiceNo: "INV-002"), Schema, TestFieldTypeRegistry.Default));
     }
 
     /// <summary>Non-key fields must not participate, or an edited note would break duplicate detection.</summary>
     [Fact]
     public void Non_key_fields_do_not_participate()
     {
-        FlexFieldFingerprintCalculator.Compute(Complete(notes: "first scan"), Schema)
-            .ShouldBe(FlexFieldFingerprintCalculator.Compute(Complete(notes: "second scan"), Schema));
+        FlexFieldFingerprintCalculator.Compute(Complete(notes: "first scan"), Schema, TestFieldTypeRegistry.Default)
+            .ShouldBe(FlexFieldFingerprintCalculator.Compute(Complete(notes: "second scan"), Schema, TestFieldTypeRegistry.Default));
     }
 
     /// <summary>Cosmetic differences between two scans of the same document must still match.</summary>
@@ -95,15 +95,15 @@ public class FlexFieldFingerprintCalculator_Tests
     [InlineData("INV-001", "  INV-001  ")]
     public void Text_is_normalized(string a, string b)
     {
-        FlexFieldFingerprintCalculator.Compute(Complete(invoiceNo: a), Schema)
-            .ShouldBe(FlexFieldFingerprintCalculator.Compute(Complete(invoiceNo: b), Schema));
+        FlexFieldFingerprintCalculator.Compute(Complete(invoiceNo: a), Schema, TestFieldTypeRegistry.Default)
+            .ShouldBe(FlexFieldFingerprintCalculator.Compute(Complete(invoiceNo: b), Schema, TestFieldTypeRegistry.Default));
     }
 
     [Fact]
     public void Numbers_ignore_trailing_zeros()
     {
-        FlexFieldFingerprintCalculator.Compute(Complete(amount: 100m), Schema)
-            .ShouldBe(FlexFieldFingerprintCalculator.Compute(Complete(amount: 100.00m), Schema));
+        FlexFieldFingerprintCalculator.Compute(Complete(amount: 100m), Schema, TestFieldTypeRegistry.Default)
+            .ShouldBe(FlexFieldFingerprintCalculator.Compute(Complete(amount: 100.00m), Schema, TestFieldTypeRegistry.Default));
     }
 
     /// <summary>
@@ -113,8 +113,8 @@ public class FlexFieldFingerprintCalculator_Tests
     [Fact]
     public void Numbers_keep_full_precision()
     {
-        FlexFieldFingerprintCalculator.Compute(Complete(amount: 100.0000001m), Schema)
-            .ShouldNotBe(FlexFieldFingerprintCalculator.Compute(Complete(amount: 100.0000002m), Schema));
+        FlexFieldFingerprintCalculator.Compute(Complete(amount: 100.0000001m), Schema, TestFieldTypeRegistry.Default)
+            .ShouldNotBe(FlexFieldFingerprintCalculator.Compute(Complete(amount: 100.0000002m), Schema, TestFieldTypeRegistry.Default));
     }
 
     [Fact]
@@ -122,7 +122,7 @@ public class FlexFieldFingerprintCalculator_Tests
     {
         var schema = new List<Field> { Ordinary("invoice_no", "Text") };
 
-        FlexFieldFingerprintCalculator.Compute(Complete(), schema).ShouldBeNull();
+        FlexFieldFingerprintCalculator.Compute(Complete(), schema, TestFieldTypeRegistry.Default).ShouldBeNull();
     }
 
     /// <summary>
@@ -134,13 +134,13 @@ public class FlexFieldFingerprintCalculator_Tests
     {
         var doc = Doc(("invoice_no", "INV-001"), ("amount", 100m));
 
-        FlexFieldFingerprintCalculator.Compute(doc, Schema).ShouldBeNull();
+        FlexFieldFingerprintCalculator.Compute(doc, Schema, TestFieldTypeRegistry.Default).ShouldBeNull();
     }
 
     [Fact]
     public void A_blank_key_value_makes_the_key_partial()
     {
-        FlexFieldFingerprintCalculator.Compute(Complete(invoiceNo: "   "), Schema).ShouldBeNull();
+        FlexFieldFingerprintCalculator.Compute(Complete(invoiceNo: "   "), Schema, TestFieldTypeRegistry.Default).ShouldBeNull();
     }
 
     /// <summary>
@@ -164,8 +164,8 @@ public class FlexFieldFingerprintCalculator_Tests
             reloaded.SetField(pair.Key, pair.Value);
         }
 
-        FlexFieldFingerprintCalculator.Compute(reloaded, Schema)
-            .ShouldBe(FlexFieldFingerprintCalculator.Compute(inMemory, Schema));
+        FlexFieldFingerprintCalculator.Compute(reloaded, Schema, TestFieldTypeRegistry.Default)
+            .ShouldBe(FlexFieldFingerprintCalculator.Compute(inMemory, Schema, TestFieldTypeRegistry.Default));
     }
 
     // --- multi-valued keys ---
@@ -183,8 +183,8 @@ public class FlexFieldFingerprintCalculator_Tests
 
         // Order is part of the value, not incidental: the bag preserves it, so two documents whose party
         // lists differ only in order are genuinely different extractions.
-        FlexFieldFingerprintCalculator.Compute(ab, TagSchema)
-            .ShouldNotBe(FlexFieldFingerprintCalculator.Compute(ba, TagSchema));
+        FlexFieldFingerprintCalculator.Compute(ab, TagSchema, TestFieldTypeRegistry.Default)
+            .ShouldNotBe(FlexFieldFingerprintCalculator.Compute(ba, TagSchema, TestFieldTypeRegistry.Default));
     }
 
     /// <summary>
@@ -196,13 +196,13 @@ public class FlexFieldFingerprintCalculator_Tests
     {
         var doc = Doc(("parties", new List<string> { "Acme", "  " }));
 
-        FlexFieldFingerprintCalculator.Compute(doc, TagSchema).ShouldBeNull();
+        FlexFieldFingerprintCalculator.Compute(doc, TagSchema, TestFieldTypeRegistry.Default).ShouldBeNull();
     }
 
     [Fact]
     public void An_empty_multi_valued_key_is_partial()
     {
-        FlexFieldFingerprintCalculator.Compute(Doc(("parties", new List<string>())), TagSchema).ShouldBeNull();
+        FlexFieldFingerprintCalculator.Compute(Doc(("parties", new List<string>())), TagSchema, TestFieldTypeRegistry.Default).ShouldBeNull();
     }
 
     /// <summary>
@@ -215,6 +215,6 @@ public class FlexFieldFingerprintCalculator_Tests
     {
         var schema = new List<Field> { UniqueKey(InvoiceNoId, "mystery", "SomeFutureType") };
 
-        FlexFieldFingerprintCalculator.Compute(Doc(("mystery", "value")), schema).ShouldBeNull();
+        FlexFieldFingerprintCalculator.Compute(Doc(("mystery", "value")), schema, TestFieldTypeRegistry.Default).ShouldBeNull();
     }
 }

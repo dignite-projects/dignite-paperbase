@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Dignite.Vault.Extract.Documents.DocumentTypes;
 using Dignite.Vault.Extract.Documents.Fields;
+using Dignite.Vault.Extract.FlexFields;
 using Dignite.Vault.Extract.Permissions;
 using Microsoft.AspNetCore.Authorization;
 using Volo.Abp;
@@ -34,19 +35,22 @@ public class DocumentExportAppService : VaultExtractAppService, IDocumentExportA
     private readonly IFieldRepository _fieldRepository;
     private readonly IFieldTypeResolver _fieldTypeResolver;
     private readonly IFlexFieldQueryExecutor<Document> _flexFieldQueryExecutor;
+    private readonly IVaultExtractFieldTypeRegistry _fieldTypeExtensionRegistry;
 
     public DocumentExportAppService(
         IDocumentRepository documentRepository,
         IDocumentTypeRepository documentTypeRepository,
         IFieldRepository fieldRepository,
         IFieldTypeResolver fieldTypeResolver,
-        IFlexFieldQueryExecutor<Document> flexFieldQueryExecutor)
+        IFlexFieldQueryExecutor<Document> flexFieldQueryExecutor,
+        IVaultExtractFieldTypeRegistry fieldTypeExtensionRegistry)
     {
         _documentRepository = documentRepository;
         _documentTypeRepository = documentTypeRepository;
         _fieldRepository = fieldRepository;
         _fieldTypeResolver = fieldTypeResolver;
         _flexFieldQueryExecutor = flexFieldQueryExecutor;
+        _fieldTypeExtensionRegistry = fieldTypeExtensionRegistry;
     }
 
     public virtual async Task<IRemoteStreamContent> ExportAsync(ExportDocumentsInput input)
@@ -162,7 +166,7 @@ public class DocumentExportAppService : VaultExtractAppService, IDocumentExportA
                     // A missing key means this document holds no value for that field: an empty cell.
                     r.FlexFields.TryGetValue(field.Name, out var value);
                     cells[systemCount + i] = ExportCellRenderer.RenderCell(
-                        value, field.FieldTypeName, field.Configuration);
+                        value, field.FieldTypeName, field.Configuration, _fieldTypeExtensionRegistry);
                 }
                 return cells;
             })

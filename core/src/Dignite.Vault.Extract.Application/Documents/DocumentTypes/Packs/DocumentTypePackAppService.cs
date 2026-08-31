@@ -43,6 +43,8 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
     /// <summary>See <see cref="FieldDefinitionAppService"/>'s field of the same name — same reason: a searchability flip is a complete reindex, not a per-row patch.</summary>
     private readonly IFlexFieldIndexManager<Document> _indexManager;
 
+    private readonly IVaultExtractFieldTypeRegistry _fieldTypeExtensionRegistry;
+
     public DocumentTypePackAppService(
         IDocumentTypeRepository documentTypeRepository,
         IFieldRepository fieldDefinitionRepository,
@@ -51,7 +53,8 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
         DocumentTypeManager documentTypeManager,
         FieldDefinitionManager fieldDefinitionManager,
         FieldSchemaPromptBudgetGuard schemaPromptBudget,
-        IFlexFieldIndexManager<Document> indexManager)
+        IFlexFieldIndexManager<Document> indexManager,
+        IVaultExtractFieldTypeRegistry fieldTypeExtensionRegistry)
     {
         _documentTypeRepository = documentTypeRepository;
         _fieldDefinitionRepository = fieldDefinitionRepository;
@@ -61,6 +64,7 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
         _fieldDefinitionManager = fieldDefinitionManager;
         _schemaPromptBudget = schemaPromptBudget;
         _indexManager = indexManager;
+        _fieldTypeExtensionRegistry = fieldTypeExtensionRegistry;
     }
 
     [Authorize(VaultExtractPermissions.DocumentTypes.Default)]
@@ -347,7 +351,7 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
         var registered = _fieldTypeResolver.GetAll()
             .Any(t => string.Equals(t.Name, fieldTypeName, StringComparison.Ordinal));
 
-        if (!registered || !VaultExtractFieldTypes.IsSupported(fieldTypeName))
+        if (!registered || !_fieldTypeExtensionRegistry.IsSupported(fieldTypeName))
         {
             throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.UnknownFieldType)
                 .WithData("FieldTypeName", fieldTypeName);

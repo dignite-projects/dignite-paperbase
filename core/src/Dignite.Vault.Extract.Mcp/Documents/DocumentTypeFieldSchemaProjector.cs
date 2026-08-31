@@ -18,17 +18,19 @@ public static class DocumentTypeFieldSchemaProjector
 {
     public static List<DocumentTypeFieldSchema> Project(
         IEnumerable<FieldDefinitionDto> fields,
-        IFieldTypeResolver fieldTypeResolver)
+        IFieldTypeResolver fieldTypeResolver,
+        IVaultExtractFieldTypeRegistry fieldTypeExtensionRegistry)
     {
         return fields
             .OrderBy(f => f.DisplayOrder)
-            .Select(f => Project(f, fieldTypeResolver))
+            .Select(f => Project(f, fieldTypeResolver, fieldTypeExtensionRegistry))
             .ToList();
     }
 
     public static DocumentTypeFieldSchema Project(
         FieldDefinitionDto field,
-        IFieldTypeResolver fieldTypeResolver)
+        IFieldTypeResolver fieldTypeResolver,
+        IVaultExtractFieldTypeRegistry fieldTypeExtensionRegistry)
     {
         // GetAll rather than Get: a stored field could name a type this deployment no longer registers
         // (a package downgrade, a renamed key), and Get throws on that. Describing such a field as
@@ -41,7 +43,7 @@ public static class DocumentTypeFieldSchemaProjector
         {
             Name = field.Name,
             FieldType = field.FieldTypeName,
-            IsMultiValue = VaultExtractFieldTypes.IsMultiValue(field.FieldTypeName, field.Configuration),
+            IsMultiValue = fieldTypeExtensionRegistry.IsMultiValue(field.FieldTypeName, field.Configuration),
             IsFilterable = field.IsSearchable && fieldType?.IndexValueType != null,
             // DisplayName is admin-configured user-derived text, so PromptBoundary wrapping prevents
             // indirect prompt injection. Name and FieldType are system-controlled (allow-listed name

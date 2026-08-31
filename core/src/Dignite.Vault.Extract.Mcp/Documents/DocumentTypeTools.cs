@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Dignite.Abp.FlexFields;
 using Dignite.Vault.Extract.Ai;
 using Dignite.Vault.Extract.Documents;
+using Dignite.Vault.Extract.FlexFields;
 using ModelContextProtocol.Server;
 
 namespace Dignite.Vault.Extract.Mcp.Documents;
@@ -36,6 +37,7 @@ public sealed class DocumentTypeTools
         IDocumentTypeAppService documentTypeAppService,
         IFieldDefinitionAppService fieldDefinitionAppService,
         IFieldTypeResolver fieldTypeResolver,
+        IVaultExtractFieldTypeRegistry fieldTypeExtensionRegistry,
         [Description("Optional tenant id (UUID). When supplied, list only that tenant and return tenant-scoped resource URIs.")]
         string? tenantId = null,
         CancellationToken cancellationToken = default,
@@ -79,7 +81,7 @@ public sealed class DocumentTypeTools
                 // DisplayName is admin-configured user-derived text; PromptBoundary wrapping prevents
                 // indirect prompt injection.
                 DisplayName = PromptBoundary.WrapField(type.DisplayName),
-                Fields = DocumentTypeFieldSchemaProjector.Project(fields, fieldTypeResolver)
+                Fields = DocumentTypeFieldSchemaProjector.Project(fields, fieldTypeResolver, fieldTypeExtensionRegistry)
             });
         }
 

@@ -1,16 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Linq;
 using System.Text.Json;
 using Dignite.Abp.FlexFields;
-using Dignite.Abp.FlexFields.Boolean;
-using Dignite.Abp.FlexFields.CKEditor;
-using Dignite.Abp.FlexFields.Date;
-using Dignite.Abp.FlexFields.Number;
-using Dignite.Abp.FlexFields.Select;
-using Dignite.Abp.FlexFields.Text;
-using Dignite.Vault.Extract.FlexFields.Tags;
+using Dignite.Vault.Extract.FlexFields;
 
 namespace Dignite.Vault.Extract.Documents.Fields;
 
@@ -27,15 +17,14 @@ namespace Dignite.Vault.Extract.Documents.Fields;
 /// stored, and they cannot drift.
 /// </para>
 /// <para>
-/// Strict, with no coercion: a Number field takes a JSON number, not a numeric string. The field type is
-/// a promise about the shape of the value, and quietly accepting "1500.50" for a number would make the
-/// promise untrue for anything reading the bag afterwards — including the index, which types each value
-/// into a typed column.
-/// </para>
-/// <para>
 /// Both write paths share it, as v2's did: operator edits surface a rejection as a correctable error,
 /// while LLM extraction logs it and stores nothing for that field. Normalization belongs in the prompt;
 /// this is the last guardrail.
+/// </para>
+/// <para>
+/// #564: the per-field-type strictness/no-coercion rules themselves live on each
+/// <see cref="IVaultExtractFieldTypeExtension"/> now — this only owns the "field absent" short-circuit that
+/// applies before any type is even looked up, and the lookup itself.
 /// </para>
 /// </summary>
 public static class FlexFieldValueReader
@@ -52,6 +41,7 @@ public static class FlexFieldValueReader
         JsonElement value,
         string fieldTypeName,
         FieldConfigurationDictionary configuration,
+        IVaultExtractFieldTypeRegistry registry,
         out object? result)
     {
         result = null;
@@ -63,280 +53,9 @@ public static class FlexFieldValueReader
             return true;
         }
 
-        if (string.Equals(fieldTypeName, TagsFieldType.ControlName, StringComparison.Ordinal))
-        {
-            return TryReadTags(value, new TagsConfiguration(configuration), out result);
-        }
-
-        if (string.Equals(fieldTypeName, SelectFieldType.ControlName, StringComparison.Ordinal))
-        {
-            return TryReadSelect(value, new SelectConfiguration(configuration), out result);
-        }
-
-        if (string.Equals(fieldTypeName, TextFieldType.ControlName, StringComparison.Ordinal))
-        {
-            return TryReadString(value, new TextConfiguration(configuration).CharLimit, out result);
-        }
-
-        if (string.Equals(fieldTypeName, CKEditorFieldType.ControlName, StringComparison.Ordinal))
-        {
-            return TryReadString(value, DocumentExtractedFieldConsts.MaxLongTextValueLength, out result);
-        }
-
-        if (string.Equals(fieldTypeName, NumberFieldType.ControlName, StringComparison.Ordinal))
-        {
-            if (value.ValueKind != JsonValueKind.Number || !value.TryGetDecimal(out var number))
-            {
-                return false;
-            }
-
-            result = number;
-            return true;
-        }
-
-        if (string.Equals(fieldTypeName, BooleanFieldType.ControlName, StringComparison.Ordinal))
-        {
-            if (value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-            {
-                return false;
-            }
-
-            result = value.GetBoolean();
-            return true;
-        }
-
-        if (string.Equals(fieldTypeName, DateTimeFieldType.ControlName, StringComparison.Ordinal))
-        {
-            return TryReadDateTime(value, new DateTimeConfiguration(configuration), out result);
-        }
-
         // An unknown field type is a programming error, not bad data: the value cannot be validated, and
         // storing it unvalidated would put an untyped value into a bag every later reader trusts.
-        return false;
-    }
-
-    private static bool TryReadString(JsonElement value, int maxLength, out object? result)
-    {
-        result = null;
-
-        if (value.ValueKind != JsonValueKind.String)
-        {
-            return false;
-        }
-
-        var text = value.GetString();
-        if (text == null || text.Length > maxLength)
-        {
-            return false;
-        }
-
-        result = text;
-        return true;
-    }
-
-    private static bool TryReadTags(JsonElement value, TagsConfiguration configuration, out object? result)
-    {
-        result = null;
-
-        if (value.ValueKind != JsonValueKind.Array)
-        {
-            return false;
-        }
-
-        var items = new List<string>();
-        foreach (var element in value.EnumerateArray())
-        {
-            if (element.ValueKind != JsonValueKind.String)
-            {
-                return false;
-            }
-
-            var text = element.GetString();
-            if (text == null || text.Length > configuration.MaxLength)
-            {
-                return false;
-            }
-
-            items.Add(text);
-        }
-
-        // The whole group is rejected rather than truncated: dropping the tail would present a partial
-        // extraction as a complete one, which is the failure mode the cap exists to prevent.
-        if (items.Count > configuration.MaxCount)
-        {
-            return false;
-        }
-
-        // An empty array is a legitimate "no values", stored as an empty list rather than as absent, so a
-        // multi-valued field keeps its shape on the egress.
-        result = items;
-        return true;
-    }
-
-    private static bool TryReadSelect(JsonElement value, SelectConfiguration configuration, out object? result)
-    {
-        result = null;
-
-        var allowed = configuration.Options
-            .Where(o => !string.IsNullOrWhiteSpace(o.Value))
-            .Select(o => o.Value)
-            .ToHashSet(StringComparer.Ordinal);
-
-        if (configuration.Multiple)
-        {
-            if (value.ValueKind != JsonValueKind.Array)
-            {
-                return false;
-            }
-
-            var items = new List<string>();
-            foreach (var element in value.EnumerateArray())
-            {
-                if (element.ValueKind != JsonValueKind.String)
-                {
-                    return false;
-                }
-
-                var text = element.GetString()!;
-                // Enforced even though the extraction schema already emits an enum: the schema constrains
-                // the model, this constrains everything - an operator edit, a replayed payload, a provider
-                // that ignores the enum.
-                //
-                // Membership is required unconditionally, including when the option list is empty. The
-                // kernel's own SelectFieldType.Validate does the same (`value.Except(options).Any()`
-                // rejects everything when options are empty), and an earlier `allowed.Count > 0 &&` guard
-                // here inverted that: a misconfigured Select accepted anything through extraction and
-                // would then have been rejected the moment kernel validation ran over the same value.
-                if (!allowed.Contains(text))
-                {
-                    return false;
-                }
-
-                items.Add(text);
-            }
-
-            result = items;
-            return true;
-        }
-
-        if (value.ValueKind != JsonValueKind.String)
-        {
-            return false;
-        }
-
-        var single = value.GetString()!;
-        if (!allowed.Contains(single))
-        {
-            return false;
-        }
-
-        result = single;
-        return true;
-    }
-
-    /// <summary>
-    /// The date-time shapes accepted <b>on the way in</b>. Output stays
-    /// <see cref="FieldValueFormats.DateTime"/> alone — that one is a frozen wire contract and this does not
-    /// widen it; every accepted shape parses to the same <see cref="DateTime"/> and is re-emitted canonically.
-    /// <para>
-    /// The extra three exist because a browser owns the value before the server sees it, and
-    /// <c>&lt;input type="datetime-local"&gt;</c> normalizes what it is handed. Seeding the control writes the
-    /// space-separated form (the flex-fields kernel's <c>DatePipe</c> format), and the moment an operator edits
-    /// the field the browser hands back <c>T</c>-separated but with <b>the seconds dropped</b> when they are
-    /// zero — so with only the canonical format accepted, a DateTime-mode field could not be saved at all:
-    /// untouched it failed on the separator, touched it failed on the missing seconds.
-    /// </para>
-    /// <para>
-    /// Normalizing on the server rather than coercing in the Angular client is deliberate, and follows the
-    /// same shape as <c>Dignite.FlexFields.Site</c>'s <c>INormalizesValue</c>: the client is not the only
-    /// caller (REST and MCP write here too), and a per-client coercion layer would have to be rewritten for
-    /// each of them and drift from this gate.
-    /// </para>
-    /// </summary>
-    private static readonly string[] AcceptedDateTimeFormats =
-    {
-        FieldValueFormats.DateTime,
-        "yyyy-MM-ddTHH:mm",
-        "yyyy-MM-dd HH:mm:ss",
-        "yyyy-MM-dd HH:mm"
-    };
-
-    private static bool TryReadDateTime(JsonElement value, DateTimeConfiguration configuration, out object? result)
-    {
-        result = null;
-
-        if (value.ValueKind != JsonValueKind.String)
-        {
-            return false;
-        }
-
-        var text = value.GetString();
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return false;
-        }
-
-        if (configuration.InputMode == DateTimeInputMode.DateTime)
-        {
-            if (!DateTime.TryParseExact(
-                    text, AcceptedDateTimeFormats, CultureInfo.InvariantCulture,
-                    DateTimeStyles.None, out var moment)
-                || IsOutOfRange(moment, configuration))
-            {
-                return false;
-            }
-
-            result = moment;
-            return true;
-        }
-
-        // Date mode stores midnight, which is what keeps an equality filter on a date an equality filter
-        // now that Date and DateTime share one field type (#559 resolution 5). Month mode stores the first
-        // of the month at midnight for the same reason and by the same rule: the day simply carries no
-        // information, so pinning it to 1 keeps the value an ordinary DateTime that sorts, ranges and
-        // indexes like every other, and the egress reads only the year and month back out.
-        var isMonth = configuration.InputMode == DateTimeInputMode.Month;
-
-        if (!DateOnly.TryParseExact(
-                text,
-                DateTimeInputModeFormats.Format(configuration.InputMode),
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.None,
-                out var date))
-        {
-            return false;
-        }
-
-        // Belt-and-braces, not load-bearing: DateOnly.TryParseExact already defaults a day-less format's
-        // day to the 1st regardless of today's date (characterized by
-        // FlexFieldValueReader_Tests.DateOnly_defaults_a_missing_day_to_the_first). Stated here anyway
-        // because "the day is always 1" is this mode's storage contract, and a contract that holds only
-        // because of a framework default nothing in this repo controls is one worth writing down.
-        if (isMonth)
-        {
-            date = new DateOnly(date.Year, date.Month, 1);
-        }
-
-        var midnight = date.ToDateTime(TimeOnly.MinValue);
-        if (IsOutOfRange(midnight, configuration))
-        {
-            return false;
-        }
-
-        result = midnight;
-        return true;
-    }
-
-    /// <summary>
-    /// Applies the field type's configured bounds, which the kernel's own
-    /// <c>DateTimeFieldType.Validate</c> enforces. Without this the extraction path accepted a value that
-    /// kernel validation would reject the moment it ran over the same bag — a divergence that would only
-    /// surface once the cutover wires <c>IFlexFieldValidator</c>, and then only as an operator edit
-    /// failing on a value extraction had already stored.
-    /// </summary>
-    private static bool IsOutOfRange(DateTime value, DateTimeConfiguration configuration)
-    {
-        return (configuration.Max.HasValue && value > configuration.Max.Value)
-            || (configuration.Min.HasValue && value < configuration.Min.Value);
+        return registry.TryGet(fieldTypeName, out var extension)
+               && extension!.TryRead(value, configuration, out result);
     }
 }

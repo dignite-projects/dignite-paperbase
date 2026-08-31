@@ -7,6 +7,8 @@ using Dignite.Abp.FlexFields.CKEditor;
 using Dignite.Abp.FlexFields.Number;
 using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.Ai;
+using Dignite.Vault.Extract.Documents.Fields.FieldTypeExtensions;
+using Dignite.Vault.Extract.FlexFields;
 using Dignite.Vault.Extract.FlexFields.Tags;
 using Dignite.Vault.Extract.Documents;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,9 +20,11 @@ using Xunit;
 
 namespace Dignite.Vault.Extract.Mcp.Documents;
 
-// VaultExtractFlexFieldsModule brings the field-type registry the schema projection reads: it decides
-// isMultiValue / isFilterable, so stubbing it would let the projection agree with a registry that does
-// not exist.
+// VaultExtractFlexFieldsModule brings the kernel field-type registry the schema projection reads (isFilterable);
+// stubbing it would let the projection agree with a registry that does not exist. IVaultExtractFieldTypeRegistry
+// (isMultiValue) is Vault Extract's own, built-in extensions constructed directly here rather than via
+// [DependsOn(VaultExtractApplicationModule)] - that module's own EF Core / background-job registration is not
+// needed just to get the same 7 stateless extension classes it would auto-register.
 [DependsOn(typeof(VaultExtractTestBaseModule), typeof(Extract.FlexFields.VaultExtractFlexFieldsModule))]
 public class DocumentTypeToolsTestModule : AbpModule
 {
@@ -28,6 +32,13 @@ public class DocumentTypeToolsTestModule : AbpModule
     {
         context.Services.AddSingleton(Substitute.For<IDocumentTypeAppService>());
         context.Services.AddSingleton(Substitute.For<IFieldDefinitionAppService>());
+        context.Services.AddSingleton<IVaultExtractFieldTypeRegistry>(new VaultExtractFieldTypeRegistry(
+            new IVaultExtractFieldTypeExtension[]
+            {
+                new TextFieldTypeExtension(), new NumberFieldTypeExtension(), new BooleanFieldTypeExtension(),
+                new DateTimeFieldTypeExtension(), new SelectFieldTypeExtension(), new CKEditorFieldTypeExtension(),
+                new TagsFieldTypeExtension()
+            }));
     }
 }
 
@@ -45,6 +56,7 @@ public class DocumentTypeTools_Tests : VaultExtractTestBase<DocumentTypeToolsTes
     private readonly IDocumentTypeAppService _documentTypeAppService;
     private readonly IFieldDefinitionAppService _fieldDefinitionAppService;
     private readonly IFieldTypeResolver _fieldTypeResolver;
+    private readonly IVaultExtractFieldTypeRegistry _fieldTypeExtensionRegistry;
 
     public DocumentTypeTools_Tests()
     {
@@ -54,6 +66,7 @@ public class DocumentTypeTools_Tests : VaultExtractTestBase<DocumentTypeToolsTes
         // types actually registered, and a stubbed resolver would let a type this deployment does not have
         // pass for a filterable one.
         _fieldTypeResolver = GetRequiredService<IFieldTypeResolver>();
+        _fieldTypeExtensionRegistry = GetRequiredService<IVaultExtractFieldTypeRegistry>();
     }
 
     [Fact]
@@ -82,6 +95,7 @@ public class DocumentTypeTools_Tests : VaultExtractTestBase<DocumentTypeToolsTes
             _documentTypeAppService,
             _fieldDefinitionAppService,
             _fieldTypeResolver,
+            _fieldTypeExtensionRegistry,
             tenantId: tenantId.ToString(),
             serviceProvider: ServiceProvider);
 
@@ -134,7 +148,7 @@ public class DocumentTypeTools_Tests : VaultExtractTestBase<DocumentTypeToolsTes
             });
 
         var result = await DocumentTypeTools.ListAsync(
-            _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver);
+            _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver, _fieldTypeExtensionRegistry);
 
         result.TotalCount.ShouldBe(1);
         result.Truncated.ShouldBeFalse();
@@ -168,7 +182,7 @@ public class DocumentTypeTools_Tests : VaultExtractTestBase<DocumentTypeToolsTes
         _documentTypeAppService.GetVisibleAsync().Returns(new List<DocumentTypeDto>());
 
         var result = await DocumentTypeTools.ListAsync(
-            _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver);
+            _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver, _fieldTypeExtensionRegistry);
 
         result.Types.ShouldBeEmpty();
         result.TotalCount.ShouldBe(0);
@@ -188,7 +202,7 @@ public class DocumentTypeTools_Tests : VaultExtractTestBase<DocumentTypeToolsTes
             .Returns(new List<FieldDefinitionDto>());
 
         var result = await DocumentTypeTools.ListAsync(
-            _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver);
+            _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver, _fieldTypeExtensionRegistry);
 
         result.Types.Count.ShouldBe(total);
         result.TotalCount.ShouldBe(total);
@@ -208,7 +222,7 @@ public class DocumentTypeTools_Tests : VaultExtractTestBase<DocumentTypeToolsTes
             .Returns(new List<FieldDefinitionDto>());
 
         var result = await DocumentTypeTools.ListAsync(
-            _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver);
+            _documentTypeAppService, _fieldDefinitionAppService, _fieldTypeResolver, _fieldTypeExtensionRegistry);
 
         result.Types.Count.ShouldBe(VaultExtractMcpConsts.MaxDocumentTypeResults);
         result.TotalCount.ShouldBe(total);

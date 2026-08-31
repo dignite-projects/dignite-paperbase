@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Dignite.Vault.Extract.Ai;
+using Dignite.Vault.Extract.Documents.Fields;
 using Dignite.Vault.Extract.Documents.Pipelines.FieldExtraction;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -41,7 +42,8 @@ public class FieldExtractionWorkflow_Tests
         return new FieldExtractionWorkflow(
             chatClient,
             NullLogger<FieldExtractionWorkflow>.Instance,
-            new FieldSchemaPromptBudgetGuard(Options.Create(new VaultExtractBehaviorOptions())));
+            new FieldSchemaPromptBudgetGuard(Options.Create(new VaultExtractBehaviorOptions())),
+            TestFieldTypeRegistry.Default);
     }
 
     private static FieldExtractionDescriptor Field(
@@ -83,7 +85,8 @@ public class FieldExtractionWorkflow_Tests
         var workflow = new FieldExtractionWorkflow(
             chatClient,
             NullLogger<FieldExtractionWorkflow>.Instance,
-            new FieldSchemaPromptBudgetGuard(Options.Create(new VaultExtractBehaviorOptions())));
+            new FieldSchemaPromptBudgetGuard(Options.Create(new VaultExtractBehaviorOptions())),
+            TestFieldTypeRegistry.Default);
 
         return (workflow, () => captured);
     }
@@ -301,7 +304,8 @@ public class FieldExtractionWorkflow_Tests
             new FieldSchemaPromptBudgetGuard(Options.Create(new VaultExtractBehaviorOptions
             {
                 MaxFieldSchemaPromptLength = 4
-            })));
+            })),
+            TestFieldTypeRegistry.Default);
         var fields = new[]
         {
             new FieldExtractionDescriptor(

@@ -9,8 +9,10 @@ using Dignite.Vault.Extract.Documents;
 using Dignite.Vault.Extract.Documents.DocumentTypes;
 using Dignite.Abp.FlexFields.Number;
 using Dignite.Vault.Extract.Documents.Fields;
+using Dignite.Vault.Extract.Documents.Fields.FieldTypeExtensions;
 using Dignite.Vault.Extract.Documents.Pipelines;
 using Dignite.Vault.Extract.Documents.Pipelines.FieldExtraction;
+using Dignite.Vault.Extract.FlexFields;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -45,7 +47,13 @@ public class FieldExtractionJobTestModule : AbpModule
         var workflow = Substitute.ForPartsOf<FieldExtractionWorkflow>(
             Substitute.For<IChatClient>(),
             NullLogger<FieldExtractionWorkflow>.Instance,
-            new FieldSchemaPromptBudgetGuard(Options.Create(new VaultExtractBehaviorOptions())));
+            new FieldSchemaPromptBudgetGuard(Options.Create(new VaultExtractBehaviorOptions())),
+            new VaultExtractFieldTypeRegistry(new IVaultExtractFieldTypeExtension[]
+            {
+                new TextFieldTypeExtension(), new NumberFieldTypeExtension(), new BooleanFieldTypeExtension(),
+                new DateTimeFieldTypeExtension(), new SelectFieldTypeExtension(), new CKEditorFieldTypeExtension(),
+                new TagsFieldTypeExtension()
+            }));
         context.Services.AddSingleton(workflow);
     }
 }

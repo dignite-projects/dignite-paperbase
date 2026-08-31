@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Dignite.Abp.FlexFields;
 using Dignite.Vault.Extract.Ai;
 using Dignite.Vault.Extract.Documents;
+using Dignite.Vault.Extract.FlexFields;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -52,9 +53,11 @@ public sealed class DocumentTypeResources
         IDocumentTypeAppService documentTypeAppService,
         IFieldDefinitionAppService fieldDefinitionAppService,
         IFieldTypeResolver fieldTypeResolver,
+        IVaultExtractFieldTypeRegistry fieldTypeExtensionRegistry,
         CancellationToken cancellationToken = default)
     {
-        return await ReadCoreAsync(code, documentTypeAppService, fieldDefinitionAppService, fieldTypeResolver, tenantId: null);
+        return await ReadCoreAsync(
+            code, documentTypeAppService, fieldDefinitionAppService, fieldTypeResolver, fieldTypeExtensionRegistry, tenantId: null);
     }
 
     [McpServerResource(
@@ -71,13 +74,15 @@ public sealed class DocumentTypeResources
         IDocumentTypeAppService documentTypeAppService,
         IFieldDefinitionAppService fieldDefinitionAppService,
         IFieldTypeResolver fieldTypeResolver,
+        IVaultExtractFieldTypeRegistry fieldTypeExtensionRegistry,
         CancellationToken cancellationToken = default,
         IServiceProvider? serviceProvider = null)
     {
         var explicitTenantId = McpTenantScope.Parse(tenantId);
         using var tenantScope = McpTenantScope.Change(explicitTenantId, serviceProvider);
 
-        return await ReadCoreAsync(code, documentTypeAppService, fieldDefinitionAppService, fieldTypeResolver, explicitTenantId);
+        return await ReadCoreAsync(
+            code, documentTypeAppService, fieldDefinitionAppService, fieldTypeResolver, fieldTypeExtensionRegistry, explicitTenantId);
     }
 
     private static async Task<ResourceContents> ReadCoreAsync(
@@ -85,6 +90,7 @@ public sealed class DocumentTypeResources
         IDocumentTypeAppService documentTypeAppService,
         IFieldDefinitionAppService fieldDefinitionAppService,
         IFieldTypeResolver fieldTypeResolver,
+        IVaultExtractFieldTypeRegistry fieldTypeExtensionRegistry,
         Guid? tenantId)
     {
         // Delegate to GetVisibleAsync, which enforces fail-closed authorization and ambient tenant
@@ -113,7 +119,7 @@ public sealed class DocumentTypeResources
             // indirect prompt injection. TypeCode is a system-controlled allow-listed value, so it is
             // emitted raw; the per-field wrapping is DocumentTypeFieldSchemaProjector's.
             DisplayName = PromptBoundary.WrapField(documentType.DisplayName),
-            Fields = DocumentTypeFieldSchemaProjector.Project(fields, fieldTypeResolver)
+            Fields = DocumentTypeFieldSchemaProjector.Project(fields, fieldTypeResolver, fieldTypeExtensionRegistry)
         };
 
         return new TextResourceContents

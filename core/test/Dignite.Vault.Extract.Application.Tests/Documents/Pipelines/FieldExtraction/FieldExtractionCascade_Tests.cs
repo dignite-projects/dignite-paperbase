@@ -43,7 +43,8 @@ public class FieldExtractionCascadeTestModule : AbpModule
         var workflow = Substitute.ForPartsOf<FieldExtractionWorkflow>(
             Substitute.For<IChatClient>(),
             NullLogger<FieldExtractionWorkflow>.Instance,
-            new FieldSchemaPromptBudgetGuard(Options.Create(new VaultExtractBehaviorOptions())));
+            new FieldSchemaPromptBudgetGuard(Options.Create(new VaultExtractBehaviorOptions())),
+            TestFieldTypeRegistry.Default);
         context.Services.AddSingleton(workflow);
     }
 }

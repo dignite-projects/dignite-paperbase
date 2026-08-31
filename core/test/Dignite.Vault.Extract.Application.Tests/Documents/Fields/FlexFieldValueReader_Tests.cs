@@ -25,7 +25,8 @@ public class FlexFieldValueReader_Tests
     private static bool TryRead(
         string json, string fieldTypeName, out object? result, FieldConfigurationDictionary? configuration = null)
         => FlexFieldValueReader.TryRead(
-            Json(json), fieldTypeName, configuration ?? new FieldConfigurationDictionary(), out result);
+            Json(json), fieldTypeName, configuration ?? new FieldConfigurationDictionary(),
+            TestFieldTypeRegistry.Default, out result);
 
     /// <summary>
     /// A field the document does not contain is accepted with no value — distinct from a rejection, even

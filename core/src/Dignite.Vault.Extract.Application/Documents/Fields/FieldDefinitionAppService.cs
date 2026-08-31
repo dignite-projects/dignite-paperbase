@@ -44,6 +44,7 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
 
     private readonly IBackgroundJobManager _backgroundJobManager;
     private readonly FieldSchemaPromptBudgetGuard _schemaPromptBudget;
+    private readonly IVaultExtractFieldTypeRegistry _fieldTypeExtensionRegistry;
 
     public FieldDefinitionAppService(
         IFieldRepository repository,
@@ -54,7 +55,8 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
         DocumentFieldValueMigrator valueMigrator,
         IFlexFieldIndexManager<Document> indexManager,
         IBackgroundJobManager backgroundJobManager,
-        FieldSchemaPromptBudgetGuard schemaPromptBudget)
+        FieldSchemaPromptBudgetGuard schemaPromptBudget,
+        IVaultExtractFieldTypeRegistry fieldTypeExtensionRegistry)
     {
         _repository = repository;
         _documentTypeRepository = documentTypeRepository;
@@ -65,6 +67,7 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
         _indexManager = indexManager;
         _backgroundJobManager = backgroundJobManager;
         _schemaPromptBudget = schemaPromptBudget;
+        _fieldTypeExtensionRegistry = fieldTypeExtensionRegistry;
     }
 
     /// <summary>See <see cref="IFieldDefinitionAppService.GetFieldTypesAsync"/>.</summary>
@@ -79,11 +82,11 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
             throw new AbpAuthorizationException();
         }
 
-        // Filtered through the same allow-list EnsureFieldTypeRegistered enforces, not everything the
-        // kernel resolver knows about — see VaultExtractFieldTypes.SupportedFieldTypeNames for why the
-        // two lists can differ (the kernel registers Tree unconditionally; nothing here reads one).
+        // Filtered through the same registry EnsureFieldTypeRegistered enforces, not everything the
+        // kernel resolver knows about — see IVaultExtractFieldTypeRegistry for why the two lists can
+        // differ (the kernel registers Tree unconditionally; Vault Extract has no extension for it).
         var fieldTypes = _fieldTypeResolver.GetAll()
-            .Where(fieldType => VaultExtractFieldTypes.IsSupported(fieldType.Name))
+            .Where(fieldType => _fieldTypeExtensionRegistry.IsSupported(fieldType.Name))
             .Select(fieldType => new FieldTypeDto
             {
                 Name = fieldType.Name,
@@ -398,10 +401,10 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
     protected virtual void EnsureFieldTypeRegistered(string fieldTypeName)
     {
         // Both halves matter: registered with the kernel (a name Vault Extract could dispatch on at all)
-        // and on Vault Extract's own supported list (a name something here actually does dispatch on —
-        // see VaultExtractFieldTypes.SupportedFieldTypeNames for the built-in the kernel ships that fails
-        // this second check).
-        if (FindFieldType(fieldTypeName) == null || !VaultExtractFieldTypes.IsSupported(fieldTypeName))
+        // and in Vault Extract's own extension registry (a name something here actually does dispatch on
+        // — see IVaultExtractFieldTypeRegistry for the built-in the kernel ships that fails this second
+        // check).
+        if (FindFieldType(fieldTypeName) == null || !_fieldTypeExtensionRegistry.IsSupported(fieldTypeName))
         {
             throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.UnknownFieldType)
                 .WithData("FieldTypeName", fieldTypeName);
