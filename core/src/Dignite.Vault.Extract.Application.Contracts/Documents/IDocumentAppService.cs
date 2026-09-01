@@ -108,6 +108,33 @@ public interface IDocumentAppService : IApplicationService
     Task<DocumentDto> UpdateExtractedFieldsAsync(Guid id, UpdateExtractedFieldsInput input);
 
     /// <summary>
+    /// Operator correction of already-extracted <see cref="Document.Markdown"/> (#555): fixes a small OCR /
+    /// parsing error, a separate path from the pipeline's write-once extraction write (<c>SetMarkdown</c> is
+    /// unchanged and still refuses a second write there).
+    /// <para>
+    /// <paramref name="input"/>.Reprocess toggles what happens after the Markdown is overwritten:
+    /// <c>true</c> re-runs <b>field extraction only</b> (the same mechanism <see cref="ReextractFieldsAsync"/>
+    /// uses), which re-fires <see cref="Abstractions.Documents.FieldsExtractedEto"/> and, through the existing
+    /// lifecycle re-derivation, may re-fire <see cref="Abstractions.Documents.DocumentReadyEto"/>. It does
+    /// <b>not</b> touch classification or segmentation — those have their own independent entry points
+    /// (<see cref="RerecognizeAsync"/>). <c>false</c> (default) writes the Markdown only: no re-extraction, and
+    /// no event is fired at all — a deliberate accepted trade-off; a downstream consumer that already pulled
+    /// the document via <c>DocumentReadyEto</c> will not know the content changed until it re-fetches.
+    /// </para>
+    /// <para>
+    /// Never touches <see cref="Document.Title"/>, <see cref="Document.Language"/>,
+    /// <see cref="Document.ExtractionMetadata"/>, or <see cref="Document.FieldFingerprint"/> — those stay as
+    /// they were from the original extraction. Forbidden on a container document (<see cref="Document.IsContainer"/>):
+    /// it runs no field extraction and its Markdown is only a provenance anchor. Rejected when the document is
+    /// in the trash, has no Markdown yet (nothing to correct), or — only when <c>Reprocess</c> is <c>true</c> —
+    /// is unclassified (nothing to extract fields against) or field extraction is already in progress. No
+    /// history table: the correction trail is carried by ABP entity audit logging, the same reasoning as
+    /// <see cref="RejectReviewAsync"/> and <see cref="ResolveFieldValidationWarningsAsync"/>.
+    /// </para>
+    /// </summary>
+    Task<DocumentDto> UpdateMarkdownAsync(Guid id, UpdateMarkdownInput input);
+
+    /// <summary>
     /// Reassigns the document's cabinet (#257): a manual organization dimension, orthogonal to pipelines,
     /// triggering no later Run and emitting no export event.
     /// <paramref name="input"/>.CabinetId null means remove from cabinet (uncategorized); non-null must reference an existing cabinet in the current layer.
