@@ -80,8 +80,11 @@ jobs:
         run: dotnet test core/test/Dignite.Vault.Extract.Ocr.VisionLlm.Tests/Dignite.Vault.Extract.Ocr.VisionLlm.Tests.csproj --no-build --configuration Release --verbosity normal
 
       - name: Build Docker image
-        run: docker build -f host/Dockerfile -t vault-extract-api:${{ github.sha }} .
+        run: docker build -f host/Dockerfile -t vault-extract-api:${{ github.sha }} --secret id=github_packages_token,env=GITHUB_PACKAGES_TOKEN .
         if: github.event_name == 'push'
+        env:
+          DOCKER_BUILDKIT: 1
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
 
   build-angular:
     runs-on: ubuntu-latest

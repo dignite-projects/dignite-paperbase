@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 WORKDIR /app
 
@@ -27,7 +28,10 @@ COPY common.props Directory.Packages.props Dignite.Vault.Extract.slnx ./
 COPY core/ core/
 COPY host/ host/
 
-RUN dotnet restore "host/src/Dignite.Vault.Extract.Host.csproj"
+# GITHUB_PACKAGES_TOKEN authenticates host/NuGet.Config's `github` source (Dignite.Abp.FlexFields.*).
+# BuildKit secret mount keeps it out of the image layers/history - never bake it in via ENV/ARG.
+RUN --mount=type=secret,id=github_packages_token \
+    GITHUB_PACKAGES_TOKEN="$(cat /run/secrets/github_packages_token)" dotnet restore "host/src/Dignite.Vault.Extract.Host.csproj"
 RUN dotnet build "host/src/Dignite.Vault.Extract.Host.csproj" -c Release -o /app/build
 
 FROM build AS publish
