@@ -13,9 +13,9 @@ globs:
 
 # LLM call anti-patterns
 
-This file is referenced by the `maf-workflow-reviewer` agent during PR review to quickly locate typical mistakes at Dignite Vault Extract's internal **LLM call sites** (anti-patterns A / B are security issues, C is an MCP schema correctness issue, D is a cost / availability issue). The rules apply to all LLM entry points:
+This file is referenced by the `maf-workflow-reviewer` agent during PR review to quickly locate typical mistakes at Dignite Vault Extract's internal **LLM call sites** (anti-patterns A / B / E are security issues, C is an MCP schema correctness issue, D is a cost / availability issue). The rules apply to all LLM entry points:
 
-- Currently landed: `DocumentClassificationWorkflow` / `FieldExtractionWorkflow` + `FieldExtractionEventHandler` (field architecture v2 unifying Host + tenant (mechanism B)) / `DocumentParseBackgroundJob.TryGenerateTitleAsync`
+- Currently landed: `DocumentClassificationWorkflow` / `FieldExtractionWorkflow` + `FieldExtractionService` (field architecture v2 unifying Host + tenant (mechanism B)) / `DocumentParseBackgroundJob.TryGenerateTitleAsync`
 - Future extensions: MCP server tools ([#170](https://github.com/dignite-projects/vault-extract/issues/170)), Webhook-triggered LLM paths, any query path where LLM output influences the parameters
 
 All examples are **pseudocode**, not compilable, illustrating intent only.
@@ -215,6 +215,49 @@ private static async Task<string> SearchAsync(
 4. **description / instructions must be compile-time constants** — concatenating user strings is forbidden
 5. **No raw SQL** — LLM-concatenated SQL is within the attack surface
 6. **PromptBoundary** — user-derived free-text fields in the return value (title, partyName, summary, etc.) must be wrapped by `PromptBoundary.WrapField(...)`
+
+---
+
+## Anti-pattern E: switching multi-tenancy context before the authorization check
+
+**Rule source**: [#524](https://github.com/dignite-projects/vault-extract/issues/524), found in a post-merge review of #519 (explicit-tenant MCP support, merged same day into `McpTenantScope`).
+
+**Scope**: any path that both (a) accepts a caller-supplied tenant id and (b) calls `ICurrentTenant.Change(...)` to scope a query to it — currently the MCP `tenantId` parameter / URI-segment paths in `Dignite.Vault.Extract.Mcp`.
+
+**This is a different mistake from anti-pattern B.** B is a *missing* authorization check. Here the check runs — it is just evaluated against the wrong tenant, because it runs *after* the switch instead of *before* it.
+
+### ❌ Wrong (the pre-#524 shape — these exact method names no longer exist, kept here to illustrate the mistake)
+
+```csharp
+public static async Task<...> ToolAsync(
+    string? tenantId, IDocumentAppService documentAppService, IServiceProvider serviceProvider)
+{
+    // Switches first...
+    using var scope = McpTenantScope.Change(McpTenantScope.Parse(tenantId), serviceProvider);
+    // ...so this permission check now runs INSIDE the caller-chosen tenant, not the caller's own tenant.
+    var result = await documentAppService.GetListAsync(input);   // CheckPolicyAsync evaluates against the TARGET tenant's PermissionGrant rows
+    ...
+}
+```
+
+**Harm**: ABP's role-based `PermissionGrant` rows key on the role **name** plus the ambient `TenantId`. A caller whose token carries a role name that also happens to be granted in the target tenant (e.g. every tenant's default seeded `admin` role) passes `CheckPolicyAsync` there, even though nothing ties that specific caller to that specific tenant. The switch itself is legitimate (`ICurrentTenant.Change`, not a filter bypass — anti-pattern B's concern is unrelated here), but it silently moves the authorization boundary along with it.
+
+### ✅ Correct (the shipped #524 shape)
+
+Gate the switch itself, before it happens, with checks that depend only on the caller's real identity — never on what the target tenant happens to grant. `McpTenantScope.ResolveAsync`/`ResolveRequiredAsync` run the admission checks (deployment opt-in → `IMcpTenantAccessValidator`, fail-closed → tenant existence/active) and return the resolved tenant id **without** touching `ICurrentTenant`; the actual switch happens in a separate, synchronous `Enter` call. This split is not a style choice — see the type-level doc comment on `McpTenantScope` for the `AsyncLocal` reason a single awaited "resolve and switch" method would silently fail to scope anything for the caller:
+
+```csharp
+public static async Task<...> ToolAsync(
+    string? tenantId, IDocumentAppService documentAppService, IServiceProvider serviceProvider)
+{
+    var explicitTenantId = await McpTenantScope.ResolveAsync(tenantId, serviceProvider);  // or ResolveRequiredAsync for a mandatory {tenantId} uri segment
+    using var tenantScope = McpTenantScope.Enter(explicitTenantId, serviceProvider);      // the actual ICurrentTenant.Change, in this method's own frame
+    var result = await documentAppService.GetListAsync(input);
+    ...
+}
+```
+
+Shipped in #524: `VaultExtractMcpOptions.AllowExplicitTenantScope` defaults to `false` (whole capability opt-in per deployment); `IMcpTenantAccessValidator.IsAllowedAsync` defaults to deny-all (`DenyAllMcpTenantAccessValidator`, registered via a single explicit `TryAddTransient` — not ABP's conventional auto-registration, so a downstream deployment replaces it outright with `context.Services.Replace(...)` instead of competing with it); `ITenantStore` existence/active validation runs after the access validator, never before, so a denied caller cannot use the difference between "denied" and "unknown tenant" to enumerate real tenant ids.
 
 ---
 

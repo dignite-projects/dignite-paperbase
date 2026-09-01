@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using Dignite.Vault.Extract.Documents;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using NSubstitute;
 using Shouldly;
@@ -20,6 +21,11 @@ public class DocumentResourcesTestModule : AbpModule
         // tenant isolation live in AppService and are represented here by a mock substitute; the injected
         // mock asserts the metadata-header assembly only.
         context.Services.AddSingleton(Substitute.For<IDocumentAppService>());
+
+        // #524: explicit tenant scope is fail-closed by default. This suite's ad hoc Guid.NewGuid()
+        // tenant ids need to clear that gate; the gate itself is covered separately (McpTenantAdmission_Tests /
+        // McpPermissionResolution_Tests).
+        context.Services.AllowAnyExplicitTenant();
     }
 }
 
@@ -69,6 +75,25 @@ public class DocumentResources_Tests : VaultExtractTestBase<DocumentResourcesTes
         // the ICurrentTenant.Change it makes internally never flows back to this caller's ExecutionContext,
         // and the assertion would pass even if the using-scope were removed. The stubbed callback above
         // asserts the scope was actually applied during the call.
+    }
+
+    /// <summary>
+    /// #524 acceptance criterion: a blank/whitespace mandatory <c>{tenantId}</c> uri segment must error,
+    /// not silently read the ambient tenant under a uri that names a different one.
+    /// </summary>
+    [Fact]
+    public async Task Rejects_blank_mandatory_tenant_segment_instead_of_falling_back_to_ambient()
+    {
+        var documentId = Guid.NewGuid();
+
+        await Should.ThrowAsync<McpException>(() =>
+            DocumentResources.ReadTenantScopedAsync(
+                "   ",
+                documentId.ToString(),
+                _documentAppService,
+                serviceProvider: ServiceProvider));
+
+        await _documentAppService.DidNotReceive().GetAsync(Arg.Any<Guid>());
     }
 
     [Fact]

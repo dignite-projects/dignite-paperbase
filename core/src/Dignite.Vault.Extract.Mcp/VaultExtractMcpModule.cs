@@ -1,6 +1,7 @@
 using Dignite.Vault.Extract.Mcp;
 using Dignite.Vault.Extract.Mcp.Documents;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Volo.Abp.Modularity;
 
 namespace Dignite.Vault.Extract;
@@ -35,6 +36,12 @@ public class VaultExtractMcpModule : AbpModule
             options.ResourceListContributors.Add<DocumentTypeMcpResourceListContributor>();
             options.ResourceListContributors.Add<CabinetMcpResourceListContributor>();
         });
+
+        // Single explicit registration, not conventional auto-registration (#524): see the reasoning on
+        // IMcpTenantAccessValidator. TryAdd so a downstream module that already registered its own
+        // implementation before this module's ConfigureServices runs is not clobbered; the expected
+        // override path is still context.Services.Replace(...) in a module that depends on this one.
+        context.Services.TryAddTransient<IMcpTenantAccessValidator, DenyAllMcpTenantAccessValidator>();
 
         // Streamable HTTP transport. Capabilities declare only plain resources/tools, with no
         // subscribe / listChanged support, honestly advertising pull-only behavior so clients do not

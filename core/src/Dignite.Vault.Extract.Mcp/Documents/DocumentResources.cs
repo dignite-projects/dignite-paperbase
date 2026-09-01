@@ -65,8 +65,8 @@ public sealed class DocumentResources
         CancellationToken cancellationToken = default,
         IServiceProvider? serviceProvider = null)
     {
-        var explicitTenantId = McpTenantScope.Parse(tenantId);
-        using var tenantScope = McpTenantScope.Change(explicitTenantId, serviceProvider);
+        var explicitTenantId = await McpTenantScope.ResolveRequiredAsync(tenantId, serviceProvider, cancellationToken);
+        using var tenantScope = McpTenantScope.Enter(explicitTenantId, serviceProvider);
 
         return await ReadCoreAsync(id, documentAppService, explicitTenantId);
     }

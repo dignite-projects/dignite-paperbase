@@ -45,6 +45,11 @@ public class DocumentTypeResourcesTestModule : AbpModule
                 new DateTimeFieldTypeExtension(), new SelectFieldTypeExtension(), new CKEditorFieldTypeExtension(),
                 new TagsFieldTypeExtension()
             }));
+
+        // #524: explicit tenant scope is fail-closed by default. This suite's ad hoc Guid.NewGuid()
+        // tenant ids need to clear that gate; the gate itself is covered separately (McpTenantAdmission_Tests /
+        // McpPermissionResolution_Tests).
+        context.Services.AllowAnyExplicitTenant();
     }
 }
 
@@ -108,6 +113,26 @@ public class DocumentTypeResources_Tests : VaultExtractTestBase<DocumentTypeReso
         // the ICurrentTenant.Change it makes internally never flows back to this caller's ExecutionContext,
         // and the assertion would pass even if the using-scope were removed. The stubbed callback above
         // asserts the scope was actually applied during the call.
+    }
+
+    /// <summary>
+    /// #524 acceptance criterion: a blank/whitespace mandatory <c>{tenantId}</c> uri segment must error,
+    /// not silently read the ambient tenant under a uri that names a different one.
+    /// </summary>
+    [Fact]
+    public async Task Rejects_blank_mandatory_tenant_segment_instead_of_falling_back_to_ambient()
+    {
+        await Should.ThrowAsync<McpException>(() =>
+            DocumentTypeResources.ReadTenantScopedAsync(
+                " ",
+                "contract.general",
+                _documentTypeAppService,
+                _fieldDefinitionAppService,
+                _fieldTypeResolver,
+                _fieldTypeExtensionRegistry,
+                serviceProvider: ServiceProvider));
+
+        await _documentTypeAppService.DidNotReceive().GetVisibleAsync();
     }
 
     [Fact]

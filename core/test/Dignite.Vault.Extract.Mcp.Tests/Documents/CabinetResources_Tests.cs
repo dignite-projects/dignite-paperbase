@@ -24,6 +24,11 @@ public class CabinetResourcesTestModule : AbpModule
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
         context.Services.AddSingleton(Substitute.For<ICabinetReadAppService>());
+
+        // #524: explicit tenant scope is fail-closed by default. This suite's ad hoc Guid.NewGuid()
+        // tenant ids need to clear that gate; the gate itself is covered separately (McpTenantAdmission_Tests /
+        // McpPermissionResolution_Tests).
+        context.Services.AllowAnyExplicitTenant();
     }
 }
 
@@ -62,6 +67,25 @@ public class CabinetResources_Tests : VaultExtractTestBase<CabinetResourcesTestM
         // the ICurrentTenant.Change it makes internally never flows back to this caller's ExecutionContext,
         // and the assertion would pass even if the using-scope were removed. The stubbed callback above
         // asserts the scope was actually applied during the call.
+    }
+
+    /// <summary>
+    /// #524 acceptance criterion: a blank/whitespace mandatory <c>{tenantId}</c> uri segment must error,
+    /// not silently read the ambient tenant under a uri that names a different one.
+    /// </summary>
+    [Fact]
+    public async Task Rejects_blank_mandatory_tenant_segment_instead_of_falling_back_to_ambient()
+    {
+        var cabinetId = Guid.NewGuid();
+
+        await Should.ThrowAsync<McpException>(() =>
+            CabinetResources.ReadTenantScopedAsync(
+                " ",
+                cabinetId.ToString(),
+                _cabinetReadAppService,
+                serviceProvider: ServiceProvider));
+
+        await _cabinetReadAppService.DidNotReceive().GetAsync(Arg.Any<Guid>());
     }
 
     [Fact]

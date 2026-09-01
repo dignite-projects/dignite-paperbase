@@ -27,8 +27,8 @@ public sealed class CabinetTools
         CancellationToken cancellationToken = default,
         IServiceProvider? serviceProvider = null)
     {
-        var explicitTenantId = McpTenantScope.Parse(tenantId);
-        using var tenantScope = McpTenantScope.Change(explicitTenantId, serviceProvider);
+        var explicitTenantId = await McpTenantScope.ResolveAsync(tenantId, serviceProvider, cancellationToken);
+        using var tenantScope = McpTenantScope.Enter(explicitTenantId, serviceProvider);
 
         // The application use case supplies the permission assertion, tenant isolation, genuine count,
         // stable ordering, and database-side hard cap.

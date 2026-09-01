@@ -5,6 +5,7 @@ using Dignite.Vault.Extract.Documents;
 using Dignite.Vault.Extract.Documents.Cabinets;
 using Dignite.Vault.Extract.Documents.DocumentTypes;
 using Dignite.Vault.Extract.Permissions;
+using ModelContextProtocol;
 using Shouldly;
 using Volo.Abp.Authorization;
 using Volo.Abp.Guids;
@@ -99,6 +100,29 @@ public class McpPermissionResolution_Tests : McpPermissionPipelineTestBase<McpPe
         {
             await Should.ThrowAsync<AbpAuthorizationException>(() =>
                 WithUnitOfWorkAsync(() => DocumentSearchTool.SearchAsync(_documentAppService, documentTypeCode: TypeCode)));
+        }
+    }
+
+    /// <summary>
+    /// #524: <c>VaultExtractMcpOptions.AllowExplicitTenantScope</c> defaults to <c>false</c>, and this
+    /// module (unlike <see cref="McpExplicitTenantScopeTestModule"/>) never configures it, and never
+    /// registers <see cref="IMcpTenantAccessValidator"/> either — so this exercises the real shipped
+    /// default end to end, not a stubbed one. The principal is deliberately ungranted so a bypass of the
+    /// disabled-scope gate would not silently pass for the unrelated reason of the principal lacking
+    /// <c>Documents.Default</c>; if the gate were ever removed or bypassed here, resolution would instead
+    /// fail loudly with a DI resolution error for the never-registered validator, not a silent pass.
+    /// </summary>
+    [Fact]
+    public async Task Explicit_tenant_scope_disabled_by_default_rejects_any_tenantId_before_authorization_runs()
+    {
+        using (_principalAccessor.Change(ServiceAccountPrincipal(UngrantedServiceAccountId)))
+        {
+            await Should.ThrowAsync<McpException>(() =>
+                WithUnitOfWorkAsync(() => DocumentSearchTool.SearchAsync(
+                    _documentAppService,
+                    documentTypeCode: TypeCode,
+                    tenantId: Guid.NewGuid().ToString(),
+                    serviceProvider: ServiceProvider)));
         }
     }
 
