@@ -39,6 +39,11 @@ public class DocumentTypeToolsTestModule : AbpModule
                 new DateTimeFieldTypeExtension(), new SelectFieldTypeExtension(), new CKEditorFieldTypeExtension(),
                 new TagsFieldTypeExtension()
             }));
+
+        // #524: explicit tenant scope is fail-closed by default. This suite's ad hoc Guid.NewGuid()
+        // tenant ids need to clear that gate; the gate itself is covered separately (McpTenantAdmission_Tests /
+        // McpPermissionResolution_Tests).
+        context.Services.AllowAnyExplicitTenant();
     }
 }
 

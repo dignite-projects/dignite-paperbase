@@ -25,6 +25,11 @@ public class DocumentSearchToolTestModule : AbpModule
         // Tool is a thin shell delegating to IDocumentAppService.GetListAsync; injected mock asserts input
         // assembly and result mapping.
         context.Services.AddSingleton(Substitute.For<IDocumentAppService>());
+
+        // #524: explicit tenant scope is fail-closed by default. This suite's ad hoc Guid.NewGuid()
+        // tenant ids need to clear that gate; the gate itself is covered separately (McpTenantAdmission_Tests /
+        // McpPermissionResolution_Tests).
+        context.Services.AllowAnyExplicitTenant();
     }
 }
 

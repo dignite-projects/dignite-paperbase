@@ -43,8 +43,8 @@ public sealed class DocumentTypeTools
         CancellationToken cancellationToken = default,
         IServiceProvider? serviceProvider = null)
     {
-        var explicitTenantId = McpTenantScope.Parse(tenantId);
-        using var tenantScope = McpTenantScope.Change(explicitTenantId, serviceProvider);
+        var explicitTenantId = await McpTenantScope.ResolveAsync(tenantId, serviceProvider, cancellationToken);
+        using var tenantScope = McpTenantScope.Enter(explicitTenantId, serviceProvider);
 
         // Delegate to GetVisibleAsync. Fail-closed authorization assertions and ambient tenant
         // isolation (two-layer independent single-layer model) execute inside the AppService.

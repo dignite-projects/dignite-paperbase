@@ -19,6 +19,11 @@ public class CabinetToolsTestModule : AbpModule
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
         context.Services.AddSingleton(Substitute.For<ICabinetReadAppService>());
+
+        // #524: explicit tenant scope is fail-closed by default. This suite's ad hoc Guid.NewGuid()
+        // tenant ids need to clear that gate; the gate itself is covered separately (McpTenantAdmission_Tests /
+        // McpPermissionResolution_Tests).
+        context.Services.AllowAnyExplicitTenant();
     }
 }
 

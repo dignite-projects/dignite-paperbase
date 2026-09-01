@@ -76,8 +76,8 @@ public sealed class DocumentSearchTool
         CancellationToken cancellationToken = default,
         IServiceProvider? serviceProvider = null)
     {
-        var explicitTenantId = McpTenantScope.Parse(tenantId);
-        using var tenantScope = McpTenantScope.Change(explicitTenantId, serviceProvider);
+        var explicitTenantId = await McpTenantScope.ResolveAsync(tenantId, serviceProvider, cancellationToken);
+        using var tenantScope = McpTenantScope.Enter(explicitTenantId, serviceProvider);
         // Sub-document provenance query (#354): listing a container's children is anchored by originDocumentId,
         // not by type — the children are heterogeneously typed and their types are unknown to the caller. Parse
         // leniently (LLM clients pass string GUIDs); a malformed value is treated as "no provenance filter".

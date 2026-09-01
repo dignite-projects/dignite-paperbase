@@ -40,8 +40,8 @@ public sealed class DocumentTools
         CancellationToken cancellationToken = default,
         IServiceProvider? serviceProvider = null)
     {
-        var explicitTenantId = McpTenantScope.Parse(tenantId);
-        using var tenantScope = McpTenantScope.Change(explicitTenantId, serviceProvider);
+        var explicitTenantId = await McpTenantScope.ResolveAsync(tenantId, serviceProvider, cancellationToken);
+        using var tenantScope = McpTenantScope.Enter(explicitTenantId, serviceProvider);
 
         if (!Guid.TryParse(id, out var documentId))
         {
