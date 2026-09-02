@@ -2,7 +2,7 @@
   "applications": {
     "Dignite.Vault.Extract.Host.Angular": {
       "type": "cli",
-      "workingDirectory": "../../../angular/apps/host",
+      "workingDirectory": "../../../angular",
       "startCommand": "./start.ps1",
       "launchUrl": "http://localhost:4200",
       "execution": {
