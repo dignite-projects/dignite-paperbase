@@ -8,8 +8,8 @@ module.exports = tseslint.config(
     languageOptions: {
       parserOptions: {
         project: [
-          'packages/vault-extract/tsconfig.lib.json',
-          'packages/vault-extract/tsconfig.spec.json',
+          'projects/vault-extract/tsconfig.lib.json',
+          'projects/vault-extract/tsconfig.spec.json',
         ],
       },
     },

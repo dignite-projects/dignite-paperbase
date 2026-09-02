@@ -16,9 +16,9 @@
     "useDefineForClassFields": false,
     "strict": true,
     "paths": {
-      "@dignite/vault-extract": ["packages/vault-extract/src/public-api.ts"],
-      "@dignite/vault-extract/documents": ["packages/vault-extract/documents/src/public-api.ts"],
-      "@dignite/vault-extract/config": ["packages/vault-extract/config/src/public-api.ts"]
+      "@dignite/vault-extract": ["projects/vault-extract/src/public-api.ts"],
+      "@dignite/vault-extract/documents": ["projects/vault-extract/documents/src/public-api.ts"],
+      "@dignite/vault-extract/config": ["projects/vault-extract/config/src/public-api.ts"]
     }
   },
   "angularCompilerOptions": {

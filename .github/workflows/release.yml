@@ -9,7 +9,7 @@
 # pre-release builds prefer workflow_dispatch: no tag, no draft Release, no lockstep check - just
 # bump <Version> in common.props, run, and the packages land in GitHub Packages.
 #
-# The npm version in angular/packages/vault-extract/package.json must stay in lockstep with common.props
+# The npm version in angular/projects/vault-extract/package.json must stay in lockstep with common.props
 # <Version> (enforced by the guard step on tag pushes).
 
 name: Release
@@ -44,9 +44,9 @@ jobs:
             echo "::error::Tag $TAG does not match <Version>$VERSION</Version> in common.props."
             exit 1
           fi
-          NPM_VERSION=$(node -p "require('./angular/packages/vault-extract/package.json').version")
+          NPM_VERSION=$(node -p "require('./angular/projects/vault-extract/package.json').version")
           if [ "$NPM_VERSION" != "$VERSION" ]; then
-            echo "::error::npm version $NPM_VERSION (angular/packages/vault-extract/package.json) is not in lockstep with common.props $VERSION."
+            echo "::error::npm version $NPM_VERSION (angular/projects/vault-extract/package.json) is not in lockstep with common.props $VERSION."
             exit 1
           fi
 

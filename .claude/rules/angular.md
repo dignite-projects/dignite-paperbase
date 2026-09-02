@@ -22,7 +22,7 @@ angular/
 │           ├── app.config.ts        # bootstrapApplication providers
 │           ├── app.routes.ts        # APP_ROUTES (lazy loadChildren to lib route arrays)
 │           └── home/
-└── packages/
+└── projects/
     └── vault-extract/               # Nx library; imported as @dignite/vault-extract
         ├── src/lib/
         │   ├── proxy/               # ⚠️  GENERATED — never edit by hand
@@ -55,7 +55,7 @@ Do not run `abp generate-proxy -t ng` directly here; it expects a plain Angular 
 The npm script wraps ABP's official nx generator `nx g @abp/nx.generators:generate-proxy`
 (`@abp/nx.generators` is ABP's nx-specific wrapper; it internally calls the
 `@abp/ng.schematics:proxy-add` schematic) and generates typed service classes under
-`packages/vault-extract/src/lib/proxy/`. The host API must be running at `https://localhost:44348`.
+`projects/vault-extract/src/lib/proxy/`. The host API must be running at `https://localhost:44348`.
 
 The `proxy/` folder is fully owned by the generator and is overwritten on every run —
 never edit it by hand. Hand-written, regeneration-safe code lives OUTSIDE `proxy/`:
@@ -123,7 +123,7 @@ Routes use `loadComponent` for individual components and `loadChildren` for rout
 Guards are functional: `[authGuard, permissionGuard]` from `@abp/ng.core`.
 
 ```typescript
-// packages/vault-extract/documents/src/lib/documents.routes.ts
+// projects/vault-extract/documents/src/lib/documents.routes.ts
 import { Routes } from '@angular/router';
 import { authGuard, permissionGuard } from '@abp/ng.core';
 import { EXTRACT_PERMISSIONS } from '@dignite/vault-extract';
