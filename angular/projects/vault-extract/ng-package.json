@@ -7,6 +7,7 @@
   "allowedNonPeerDependencies": [
     "@abp/ng.core",
     "@abp/ng.theme.shared",
-    "marked"
+    "marked",
+    "@dignite/ng.flex-fields"
   ]
 }
