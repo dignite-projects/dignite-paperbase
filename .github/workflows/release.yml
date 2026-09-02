@@ -215,14 +215,29 @@ jobs:
           # npm publish has no --skip-duplicate equivalent (unlike the dotnet nuget push calls
           # above); re-dispatching at an unchanged pre-release version is expected and should not
           # fail the run, so treat "already published" as a soft skip and let anything else fail.
-          if ! npm publish "$workdir/package" --registry https://npm.pkg.github.com 2>&1 | tee /tmp/npm-publish.log; then
+          #
+          # Redirect rather than `| tee`: the step shell is `bash -e` with no pipefail, so a
+          # pipeline's status is tee's (always 0) and a failed publish would report success. That
+          # is not hypothetical - it is exactly how run 33594399735 reported a green step while
+          # npm had returned E401.
+          set +e
+          npm publish "$workdir/package" --registry https://npm.pkg.github.com > /tmp/npm-publish.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/npm-publish.log
+          if [ $status -ne 0 ]; then
             if grep -q 'Cannot publish over existing version' /tmp/npm-publish.log; then
               echo "::notice::@dignite-projects/vault-extract@${{ steps.channel.outputs.version }} is already published; skipping."
             else
-              exit 1
+              exit $status
             fi
           fi
         working-directory: angular
+        # angular/.npmrc reads ${GITHUB_TOKEN} for the @dignite-projects scope, and a project-level
+        # .npmrc outranks the user-level file this step appends to. Without this the placeholder
+        # resolves empty and silently overrides the token written above - the E401 in that same run.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Stable releases carry the public @dignite/* name to npmjs. Note this still requires every
       # @dignite/* dependency to exist there: @dignite/ng.flex-fields does not yet (flex-fields
