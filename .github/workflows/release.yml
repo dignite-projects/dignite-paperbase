@@ -2,12 +2,13 @@
 # truth); a pushed v* tag must match it (guard step below), but tags do not drive the number.
 #
 # Routing by channel, derived from the SemVer pre-release suffix in <Version>:
-#   - Pre-release (e.g. 0.2.0-preview.3) -> NuGet packages pushed to GitHub Packages only.
+#   - Pre-release (e.g. 0.2.0-preview.3) -> NuGet + npm packages pushed to GitHub Packages only.
 #   - Stable      (e.g. 0.2.0)           -> NuGet to NuGet.org, npm (@dignite/vault-extract) to npmjs.
 #
 # Triggers: push a v* tag (e.g. v0.2.0 or v0.2.0-preview.3) or use workflow_dispatch. For churny
 # pre-release builds prefer workflow_dispatch: no tag, no draft Release, no lockstep check - just
-# bump <Version> in common.props, run, and the packages land in GitHub Packages.
+# bump <Version> in common.props (and angular/projects/vault-extract/package.json to match), run,
+# and the packages land in GitHub Packages.
 #
 # The npm version in angular/projects/vault-extract/package.json must stay in lockstep with common.props
 # <Version> (enforced by the guard step on tag pushes).
@@ -26,7 +27,7 @@ jobs:
 
     permissions:
       contents: write # Required by softprops/action-gh-release to create a draft Release
-      packages: write # Required to push pre-release NuGet packages to GitHub Packages
+      packages: write # Required to push pre-release NuGet/npm packages to GitHub Packages
 
     steps:
       - name: Checkout
@@ -71,12 +72,15 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # See ci.yml: NuGet.Config routes Dignite.Abp.FlexFields.* to GitHub Packages, which needs auth
-      # even for public packages. The built-in GITHUB_TOKEN has packages:read for this org.
+      # NuGet.Config routes Dignite.Abp.FlexFields.* to GitHub Packages, which needs auth even for
+      # public packages. The built-in GITHUB_TOKEN cannot be used: it grants packages:read only for
+      # packages published by THIS repository, never for a sibling repo in the same org - and
+      # Dignite.Abp.FlexFields.* ships from abp-modules/flex-fields. Same real PAT ci.yml uses;
+      # commit 4309740c fixed this in ci.yml only and did not reach here.
       - name: Restore
         run: dotnet restore Dignite.Vault.Extract.slnx
         env:
-          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
 
       - name: Build
         run: dotnet build Dignite.Vault.Extract.slnx --no-restore --configuration Release
@@ -146,9 +150,15 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
+      # angular/.npmrc routes @dignite-projects:* to GitHub Packages and reads the credential from
+      # the plain GITHUB_TOKEN env var (npm's own ${VAR} substitution, not a GitHub Actions
+      # expression). Cross-repo access, so the default job token is not enough - same real PAT the
+      # CI workflow uses. Without this the install fails E401 on @dignite-projects/ng.flex-fields.
       - name: Install Angular dependencies
         run: npm ci
         working-directory: angular
+        env:
+          GITHUB_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
 
       - name: Build npm package
         run: npx ng build vault-extract --configuration production
@@ -169,10 +179,55 @@ jobs:
           path: artifacts/*.tgz
           if-no-files-found: error
 
-      # npm publishes to npmjs only on stable builds. Pre-release UI builds are still compiled
-      # above (validation) but not published anywhere: GitHub Packages npm would force the scope to
-      # @dignite-projects/* (it must match the repo owner), colliding with the public @dignite/*
-      # brand. A vertical that needs a pre-release UI lib consumes it as a pinned `npm pack` tarball.
+      # Pre-release UI packages go to GitHub Packages, the npm mirror of the pre-release NuGet push
+      # above. GitHub Packages' npm registry rejects any scope that does not match the owning org,
+      # so @dignite/vault-extract cannot be pushed there under its real name - the public @dignite/*
+      # scope belongs to npmjs (stable releases, below). The rename happens in a scratch copy of the
+      # packed tarball so the working tree and the npmjs artifact keep the public name.
+      #
+      # Every @dignite/* dependency needs the same scope swap: the packed package.json names
+      # "@dignite/ng.flex-fields", which only exists on npmjs once flex-fields ships a stable
+      # release - today only @dignite-projects/* does. Rewritten to the npm alias form rather than a
+      # plain key rename, so the dependency still installs under the name the compiled bundle's bare
+      # specifiers import while resolving from @dignite-projects. angular/package.json uses the same
+      # alias for this workspace's own build. Mirrors site's release workflow, which solved this first.
+      - name: Publish pre-release Angular package to GitHub Packages
+        if: steps.channel.outputs.channel == 'preview'
+        run: |
+          echo "@dignite-projects:registry=https://npm.pkg.github.com" >> "$NPM_CONFIG_USERCONFIG"
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> "$NPM_CONFIG_USERCONFIG"
+          tarball="../artifacts/dignite-vault-extract-${{ steps.channel.outputs.version }}.tgz"
+          workdir=$(mktemp -d)
+          tar -xzf "$tarball" -C "$workdir"
+          npm pkg set name="@dignite-projects/vault-extract" --prefix "$workdir/package"
+          PKG_DIR="$workdir/package" node -e '
+            const fs = require("fs");
+            const path = require("path");
+            const pkgPath = path.join(process.env.PKG_DIR, "package.json");
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+            for (const [name, range] of Object.entries(pkg.dependencies || {})) {
+              if (name.startsWith("@dignite/")) {
+                pkg.dependencies[name] = `npm:@dignite-projects/${name.slice("@dignite/".length)}@${range}`;
+              }
+            }
+            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+          '
+          # npm publish has no --skip-duplicate equivalent (unlike the dotnet nuget push calls
+          # above); re-dispatching at an unchanged pre-release version is expected and should not
+          # fail the run, so treat "already published" as a soft skip and let anything else fail.
+          if ! npm publish "$workdir/package" --registry https://npm.pkg.github.com 2>&1 | tee /tmp/npm-publish.log; then
+            if grep -q 'Cannot publish over existing version' /tmp/npm-publish.log; then
+              echo "::notice::@dignite-projects/vault-extract@${{ steps.channel.outputs.version }} is already published; skipping."
+            else
+              exit 1
+            fi
+          fi
+        working-directory: angular
+
+      # Stable releases carry the public @dignite/* name to npmjs. Note this still requires every
+      # @dignite/* dependency to exist there: @dignite/ng.flex-fields does not yet (flex-fields
+      # publishes pre-releases to GitHub Packages only), so a stable npm release is gated on that -
+      # tracked in #577.
       - name: Publish to npm (stable)
         if: steps.channel.outputs.channel == 'stable'
         env:
