@@ -121,10 +121,10 @@ jobs:
         run: npx ng lint vault-extract && npx ng lint host
         working-directory: angular
 
-      # Unit tests run on plain Vitest (jsdom) via vitest.config.mts, not the
-      # `@angular/build:unit-test` builder — see vitest.setup.ts for the rationale.
+      # All specs live in the library; the host app has none. Runs through the Angular CLI
+      # test target, which uses the @angular/build:unit-test builder with the vitest runner.
       - name: Unit tests
-        run: npx vitest run
+        run: npx ng test vault-extract --watch=false
         working-directory: angular
 
       # Verifies the frontend .local image still builds (COPY paths do not regress). The ng build host

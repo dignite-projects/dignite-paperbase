@@ -47,7 +47,7 @@ dotnet test core/test/Dignite.Vault.Extract.Ocr.VisionLlm.Tests
 ```bash
 cd angular
 npm install
-npm test          # vitest run
+npm test          # ng test vault-extract
 npm run lint
 ```
 
