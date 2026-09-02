@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-preview.1] - 2026-09-02
+
+Two structural changes land together in this preview: **field architecture v3**, which replaces the hand-rolled field storage with the `Dignite.Abp.FlexFields` kernel, and the **Angular workspace migration** from Nx back to the Angular CLI. Both are breaking, which is why this opens a `0.5.0` line rather than continuing `0.4.x`.
+
+> **This preview publishes to GitHub Packages only.** A stable release additionally requires `@dignite/ng.flex-fields` to exist on npmjs, which it does not yet — see [#577](https://github.com/dignite-projects/vault-extract/issues/577). Consuming the preview npm package means adding the `@dignite-projects` scope to your `.npmrc`.
+
+> **Upgrading is breaking on three axes**: the field storage schema (a data migration ships with it), the Angular library's own dependencies, and the workspace layout if you build from source. See the Changed entries below.
+
+### Added
+
+- **Operator correction of extracted Markdown** — an operator can now fix small OCR/parsing errors directly on a document, with an optional unified reprocess toggle that re-runs the downstream pipeline stages against the corrected text. Corrections are tracked through ABP's audit log rather than a separate history table (#555).
+- **`Tags` field type** — Vault Extract's own open-vocabulary multi-value field type, replacing v2's `AllowMultiple` flag on a text field. Multi-value ordering is preserved by the JSON array itself rather than a separate `Order` column.
+- **`Select` options projected into the LLM extraction schema as an `enum`** — closed-vocabulary fields now constrain model output structurally instead of relying on free-text prompt instructions.
+- **`Month` as a third `DateTime` input mode**, alongside date and date-time.
+- **Field-type metadata served to the client** — the Angular field designer no longer hardcodes which field types can be marked searchable; the server declares it, closing two searchability gaps where the UI and the server disagreed.
+- **Pre-release Angular packages now publish to GitHub Packages** as `@dignite-projects/vault-extract`, mirroring the pre-release NuGet channel. Previously pre-release UI builds were compiled and then published nowhere (#577).
+
+### Changed
+
+- **BREAKING — field architecture v3: `FieldDefinition` + `DocumentExtractedField` replaced by the `Dignite.Abp.FlexFields` kernel** (#558, #559, #562). Field values now live in a JSON value bag on `Document` with a derived, rebuildable index table, instead of typed child rows. Field definitions become `Field : IFlexField`, carrying `FieldTypeName` + `Configuration` in place of the `FieldDataType` enum; `Prompt` becomes `Description`. The egress contract is unchanged — `ExtractedFields`, `FieldsExtractedEto` and the REST/MCP surfaces keep their shape. A row-level data migration ships with this release and runs from inside the module, so any host embedding the EF model runs the same code (#561).
+- **BREAKING — the Angular field UI is rebuilt on `@dignite/ng.flex-fields`** generic host components, with a field-type picker and a per-type configuration panel. The library now declares `@dignite/ng.flex-fields` as a dependency, which consumers must be able to resolve.
+- **BREAKING — the Angular workspace moved from Nx back to the Angular CLI** (#579). `angular.json` replaces `nx.json` and the per-project `project.json` files; the host app moved to `src/` at the workspace root and `apps/` is gone; the library moved from `packages/` to `projects/`. This matches every sibling Angular project. Proxy generation returns to the standard `abp generate-proxy -t ng`, and `@abp/nx.generators` is dropped. Only affects building from source — the published package's shape is unchanged.
+- **ABP upgraded from 10.2.0 to 10.5.0** across the .NET stack, which the flex-fields kernel requires.
+- **Per-field-type behaviour consolidated into an extensible registry** (#564), replacing four independent string ladders that each had to be updated when a field type was added. The founding commit had already missed one of them, silently disabling duplicate detection for `Select` fields marked as a unique key.
+
+### Fixed
+
+- **`release.yml` never authenticated against GitHub Packages** — the .NET restore passed the built-in `GITHUB_TOKEN`, which grants `packages:read` only for packages published by this repository, and the `npm ci` step had no credential at all. The first release attempt after the flex-fields dependency landed would have failed `E401`. Commit `4309740c` had fixed exactly this in `ci.yml` and did not reach `release.yml`.
+- **Deployment scripts broken by the Nx removal** — `run-docker.ps1` still invoked `npx nx build host` after Nx was uninstalled, so the documented deployment command failed at the frontend prebuild. `build-images-locally.ps1` also called an `npm run build:prod` script that has never existed in this repository.
+- **The Angular library did not declare its flex-fields dependency** — the built bundle emitted a bare `@dignite/ng.flex-fields` import with nothing in the package metadata to resolve it (#577).
+- **v3 migration correctness**, found by running it against a real database rather than only under test: the migrator now opens its own unit of work, always rebuilds the derived index (an "already migrated" shortcut could skip the one step that had not finished while reporting success), and iterates tenants so a host-only pass no longer leaves tenant-layer data on v2. Soft-deleted v2 field definitions are migrated too.
+- **Field-rename value-bag migration scoped to its own document type**, instead of touching same-named fields under other types.
+- **A permission gap and a v1 document-type-pack import failure** surfaced while cutting the admin surface over to v3.
+- **GitHub Packages auth wired into the host Docker build**, and a real PAT used for cross-repo package reads in CI.
+
+### Security
+
+- **MCP tenant-scoped reads gated behind a fail-closed admission seam** (#524). An explicit `tenantId` on an MCP read is now checked against an admission seam that denies by default, closing a path where a caller could address another tenant's documents. Present in the shipped 0.3.0–0.3.2 line; tracked publicly as GHSA-x36r-v84w-cg8h.
+
 ## [0.3.2] - 2026-08-23
 
 Patch release for the 0.3.x stable line. This release closes a silent field-extraction truncation on large multi-value fields (a production bank-statement document lost the tail of a transcribed table with no error signal), and fixes a cluster of vision-LLM OCR and PDF ruling-line issues surfaced by the same document — LaTeX-table / layout-annotation cleanup, no-content-refusal normalization, and stacked per-row table-box detection.
@@ -267,6 +306,7 @@ Preview of the 0.2.0 line. This release rebrands the project to **Dignite Vault 
 - Dead fields from the segmentation subsystem (#390).
 
 [Unreleased]: https://github.com/dignite-projects/vault-extract/compare/v0.3.2...HEAD
+[0.5.0-preview.1]: https://github.com/dignite-projects/vault-extract/compare/v0.3.2...v0.5.0-preview.1
 [0.3.2]: https://github.com/dignite-projects/vault-extract/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/dignite-projects/vault-extract/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/dignite-projects/vault-extract/compare/v0.2.0...v0.3.0
