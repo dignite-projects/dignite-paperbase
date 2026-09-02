@@ -76,7 +76,7 @@ Swagger UI is available at `https://localhost:44348/swagger` (served via `UseAbp
 
 ## Step 3 — Start the Angular SPA
 
-The workspace root is `angular/`. The Nx app name is `host`. The `package.json` `start` script runs `nx serve host`.
+The workspace root is `angular/`. The Angular CLI project name is `host`. The `package.json` `start` script runs `ng serve host`.
 
 ```powershell
 Set-Location angular
@@ -86,7 +86,7 @@ npm start
 Alternative (equivalent, bypasses the npm script wrapper):
 
 ```powershell
-npx nx serve host
+npx ng serve host
 ```
 
 The SPA dev server listens on `http://localhost:4200`.
@@ -135,7 +135,7 @@ npm run generate-proxy
 This runs:
 
 ```
-nx g @abp/nx.generators:generate-proxy --module=vault-extract --apiName=Default --source=host --target=vault-extract --url=https://localhost:44348 --serviceType=application --no-interactive
+abp generate-proxy -t ng -m vault-extract --api-name Default --source host --target vault-extract --url https://localhost:44348
 ```
 
 (exact script from `angular/package.json`)
