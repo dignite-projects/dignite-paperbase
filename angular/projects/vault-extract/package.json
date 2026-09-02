@@ -9,8 +9,8 @@
     "url": "git+https://github.com/dignite-projects/vault-extract.git"
   },
   "dependencies": {
-    "@abp/ng.core": "~10.2.0",
-    "@abp/ng.theme.shared": "~10.2.0",
+    "@abp/ng.core": "~10.5.0",
+    "@abp/ng.theme.shared": "~10.5.0",
     "@dignite/ng.flex-fields": "^10.0.0-rc.11",
     "marked": "^18.0.0",
     "tslib": "^2.1.0"
