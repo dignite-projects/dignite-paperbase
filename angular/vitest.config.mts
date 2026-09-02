@@ -11,15 +11,15 @@ export default defineConfig({
     alias: [
       {
         find: /^@dignite\/vault-extract\/documents$/,
-        replacement: fromRoot('./packages/vault-extract/documents/src/public-api.ts'),
+        replacement: fromRoot('./projects/vault-extract/documents/src/public-api.ts'),
       },
       {
         find: /^@dignite\/vault-extract\/config$/,
-        replacement: fromRoot('./packages/vault-extract/config/src/public-api.ts'),
+        replacement: fromRoot('./projects/vault-extract/config/src/public-api.ts'),
       },
       {
         find: /^@dignite\/vault-extract$/,
-        replacement: fromRoot('./packages/vault-extract/src/public-api.ts'),
+        replacement: fromRoot('./projects/vault-extract/src/public-api.ts'),
       },
     ],
   },
@@ -27,7 +27,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
-    include: ['packages/**/*.spec.ts', 'apps/**/*.spec.ts'],
+    include: ['projects/**/*.spec.ts', 'apps/**/*.spec.ts'],
     // Skip the broken `@angular/build:unit-test` (vitest) builder; see vitest.setup.ts.
     exclude: ['**/node_modules/**', '**/dist/**', '**/.angular/**'],
   },

@@ -26,7 +26,7 @@ This is an **Nx workspace**. There is no `angular.json`.\r
 ### Library layout\r
 \r
 ```\r
-angular/packages/vault-extract/\r
+angular/projects/vault-extract/\r
 ├── src/lib/proxy/          # GENERATED — never hand-edited\r
 ├── src/lib/services/       # hand-written upload wrapper (safe to edit)\r
 ├── src/lib/shared/tokens/extract-permissions.ts\r
@@ -42,7 +42,7 @@ angular/packages/vault-extract/\r
 \r
 ### 2.2 Generated Proxy — never hand-edited\r
 \r
-- 🔴 **Any edit to a file under `packages/vault-extract/src/lib/proxy/`** is a hard violation. The proxy is fully owned by the generator and overwritten on every `npm run generate-proxy` run.\r
+- 🔴 **Any edit to a file under `projects/vault-extract/src/lib/proxy/`** is a hard violation. The proxy is fully owned by the generator and overwritten on every `npm run generate-proxy` run.\r
 - API calls must go through the generated service classes (e.g., `DocumentService`, `CabinetService`) imported from `@dignite/vault-extract`. Raw `HttpClient` calls that duplicate proxy endpoints are a violation.\r
 \r
 ### 2.3 Change Detection\r

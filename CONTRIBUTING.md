@@ -121,7 +121,7 @@ The project follows three-part [Semantic Versioning](https://semver.org/) (`MAJO
 | `<Version>` in [`common.props`](./common.props) | 3-segment SemVer | The NuGet package version and the value a `v*` tag must match. **This is the release version.** |
 | `<AssemblyVersion>` | 4-segment | Keep coarse and stable (e.g. `0.1.0.0`); do not move it for every `MINOR`/`PATCH`, to avoid assembly-binding churn. The 4-segment `1.0.0.0` form belongs here — never as a package version or tag. |
 | `<FileVersion>` | 4-segment | Diagnostic only; CI may stamp it from a build number or commit count. |
-| `version` in [`angular/packages/vault-extract/package.json`](./angular/packages/vault-extract/package.json) | 3-segment SemVer | The npm package version. **Keep it in lockstep with `<Version>`** as a single product version, until the backend and frontend release cadences genuinely diverge. |
+| `version` in [`angular/projects/vault-extract/package.json`](./angular/projects/vault-extract/package.json) | 3-segment SemVer | The npm package version. **Keep it in lockstep with `<Version>`** as a single product version, until the backend and frontend release cadences genuinely diverge. |
 
 ### Cutting a release
 

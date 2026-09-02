@@ -2,7 +2,7 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "name": "vault-extract",
   "projectType": "library",
-  "sourceRoot": "packages/vault-extract/src",
+  "sourceRoot": "projects/vault-extract/src",
   "prefix": "lib",
   "tags": ["scope:lib", "type:feature-shell"],
   "targets": {
@@ -10,14 +10,14 @@
       "executor": "@angular/build:ng-packagr",
       "outputs": ["{workspaceRoot}/dist/vault-extract"],
       "options": {
-        "project": "packages/vault-extract/ng-package.json"
+        "project": "projects/vault-extract/ng-package.json"
       },
       "configurations": {
         "production": {
-          "tsConfig": "packages/vault-extract/tsconfig.lib.prod.json"
+          "tsConfig": "projects/vault-extract/tsconfig.lib.prod.json"
         },
         "development": {
-          "tsConfig": "packages/vault-extract/tsconfig.lib.json"
+          "tsConfig": "projects/vault-extract/tsconfig.lib.json"
         }
       },
       "defaultConfiguration": "production"
@@ -25,7 +25,7 @@
     "test": {
       "executor": "@angular/build:unit-test",
       "options": {
-        "tsConfig": "packages/vault-extract/tsconfig.spec.json",
+        "tsConfig": "projects/vault-extract/tsconfig.spec.json",
         "buildTarget": "vault-extract:build",
         "runner": "vitest",
         "include": ["**/*.spec.ts", "../documents/**/*.spec.ts", "../config/**/*.spec.ts"]
@@ -35,8 +35,8 @@
       "executor": "@angular-eslint/builder:lint",
       "options": {
         "lintFilePatterns": [
-          "packages/vault-extract/**/*.ts",
-          "packages/vault-extract/**/*.html"
+          "projects/vault-extract/**/*.ts",
+          "projects/vault-extract/**/*.html"
         ]
       }
     }

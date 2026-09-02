@@ -31,13 +31,13 @@
         {
           "name": "@dignite/vault-extract",
           "paths": [
-            "angular/packages/vault-extract/src/public-api.ts"
+            "angular/projects/vault-extract/src/public-api.ts"
           ]
         },
         {
           "name": "@dignite/vault-extract/config",
           "paths": [
-            "angular/packages/vault-extract/config/src/public-api.ts"
+            "angular/projects/vault-extract/config/src/public-api.ts"
           ]
         }
       ]
