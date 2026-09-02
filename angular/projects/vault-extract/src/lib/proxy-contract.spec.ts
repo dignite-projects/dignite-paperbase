@@ -23,7 +23,7 @@ import {
   reclassificationScopeOptions,
 } from './proxy/documents/reprocessing/reclassification-scope.enum';
 
-// Contract smoke test for generator-produced enums (`nx g @abp/ng.schematics:proxy-add`).
+// Contract smoke test for generator-produced enums (`abp generate-proxy -t ng`).
 // Lives OUTSIDE proxy/ so it survives regeneration (the generator overwrites proxy/ and
 // emits no specs). Guards that the numeric values the frontend renders/branches on stay in
 // sync with the backend Domain.Shared enums — a renumbered or dropped member fails here

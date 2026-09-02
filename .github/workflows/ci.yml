@@ -110,15 +110,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
 
       - name: Build extract library
-        run: npx nx build vault-extract --configuration production
+        run: npx ng build vault-extract --configuration production
         working-directory: angular
 
       - name: Build host application
-        run: npx nx build host --configuration production
+        run: npx ng build host --configuration production
         working-directory: angular
 
       - name: Lint
-        run: npx nx run-many -t lint
+        run: npx ng lint vault-extract && npx ng lint host
         working-directory: angular
 
       # Unit tests run on plain Vitest (jsdom) via vitest.config.mts, not the
@@ -127,7 +127,7 @@ jobs:
         run: npx vitest run
         working-directory: angular
 
-      # Verifies the frontend .local image still builds (COPY paths do not regress). The nx build host
+      # Verifies the frontend .local image still builds (COPY paths do not regress). The ng build host
       # step above has already produced dist/host/browser; this step only packages and does not push.
       # Build context = angular/.
       - name: Build Angular Docker image

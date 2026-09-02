@@ -1,6 +1,6 @@
 // Public API surface of @dignite/vault-extract.
 //
-// The proxy/ folder is fully owned by `nx g @abp/ng.schematics:proxy-add`
+// The proxy/ folder is fully owned by `abp generate-proxy -t ng`
 // (see proxy/README.md) and is overwritten on every regeneration — never edit it by hand.
 // Per the generator's README we re-export proxy files DIRECTLY here (not via their
 // index.ts barrels) so this published surface stays flat and ng-packagr-safe.
@@ -21,9 +21,8 @@ export * from './lib/proxy/http-api/documents/document-types/packs/document-type
 export * from './lib/proxy/http-api/documents/exports/document-export.service';
 export * from './lib/proxy/http-api/documents/fields/field-definition.service';
 export * from './lib/proxy/http-api/documents/fields/field-draft-suggestion.service';
-// #447: was a hand-written wrapper under ./lib/services, added because `npm run generate-proxy` could not
-// run (the workspace never installed @nx/devkit, which @abp/nx.generators requires but does not declare).
-// The generator works now, so the wrapper is gone and this is the real generated service.
+// #447: was a hand-written wrapper under ./lib/services, added back when `npm run generate-proxy` could
+// not run at all. Generation works, so the wrapper is gone and this is the real generated service.
 export * from './lib/proxy/http-api/documents/fields/field-prompt-polish.service';
 export * from './lib/proxy/http-api/documents/pipelines/document-pipeline-run.service';
 export * from './lib/proxy/http-api/documents/reprocessing/document-reprocessing.service';

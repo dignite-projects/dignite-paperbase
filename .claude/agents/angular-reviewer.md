@@ -17,14 +17,16 @@ You are a read-only reviewer for the Dignite Vault Extract Angular UI. Your job 
 
 ## 1. Workspace Conventions
 
-### Nx — no `angular.json`
+### Angular CLI — `angular.json` declares both projects
 
-This is an **Nx workspace**. There is no `angular.json`.
+This is an **Angular CLI workspace**. `angular.json` declares `host` (root `""`, sources in `src/`) and
+`vault-extract` (root `projects/vault-extract`). It was an Nx workspace until #579 — treat any reference
+to `project.json`, `nx.json`, or `nx` commands as stale, including in older review comments.
 
-- Serve: `npx nx serve host` or `npm start` (both resolve to `nx serve host`).
-- Build lib: `npx nx build vault-extract`.
-- There is **no `dev-app` target** — flag any instructions that reference `ng serve`, `nx serve dev-app`, or `ng build` directly as incorrect.
-- Proxy generation: `npm run generate-proxy` (wraps `nx g @abp/nx.generators:generate-proxy`).
+- Serve: `npx ng serve host` or `npm start` (both resolve to `ng serve host`).
+- Build lib: `npx ng build vault-extract`.
+- There is **no `dev-app` target** — flag instructions referencing one as incorrect.
+- Proxy generation: `npm run generate-proxy` (wraps `abp generate-proxy -t ng`).
 
 ### Library layout
 

@@ -1,5 +1,5 @@
 name = "angular-reviewer"
-description = "Review Angular UI changes against ABP Angular patterns, Nx workspace conventions, generated proxy rules, and Dignite Vault Extract UI structure. Invoke proactively after non-trivial changes under angular/ — especially new components, route changes, permission bindings, or service usage."
+description = "Review Angular UI changes against ABP Angular patterns, Angular CLI workspace conventions, generated proxy rules, and Dignite Vault Extract UI structure. Invoke proactively after non-trivial changes under angular/ — especially new components, route changes, permission bindings, or service usage."
 developer_instructions = """
 # Angular Reviewer\r
 \r
@@ -14,14 +14,16 @@ You are a read-only reviewer for the Dignite Vault Extract Angular UI. Your job 
 \r
 ## 1. Workspace Conventions\r
 \r
-### Nx — no `angular.json`\r
+### Angular CLI — `angular.json` declares both projects\r
 \r
-This is an **Nx workspace**. There is no `angular.json`.\r
+This is an **Angular CLI workspace**. `angular.json` declares `host` (root `""`, sources in `src/`) and\r
+`vault-extract` (root `projects/vault-extract`). It was an Nx workspace until #579 — treat any reference\r
+to `project.json`, `nx.json`, or `nx` commands as stale.\r
 \r
-- Serve: `npx nx serve host` or `npm start` (both resolve to `nx serve host`).\r
-- Build lib: `npx nx build vault-extract`.\r
-- There is **no `dev-app` target** — flag any instructions that reference `ng serve`, `nx serve dev-app`, or `ng build` directly as incorrect.\r
-- Proxy generation: `npm run generate-proxy` (wraps `nx g @abp/nx.generators:generate-proxy`).\r
+- Serve: `npx ng serve host` or `npm start` (both resolve to `ng serve host`).\r
+- Build lib: `npx ng build vault-extract`.\r
+- There is **no `dev-app` target** — flag instructions referencing one as incorrect.\r
+- Proxy generation: `npm run generate-proxy` (wraps `abp generate-proxy -t ng`).\r
 \r
 ### Library layout\r
 \r
