@@ -10,8 +10,8 @@
     "build": "ng build vault-extract && ng build host",
     "build:vault-extract": "ng build vault-extract",
     "build:host": "ng build host",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "ng test vault-extract --watch=false",
+    "test:watch": "ng test vault-extract",
     "lint": "ng lint vault-extract && ng lint host",
     "generate-proxy": "abp generate-proxy -t ng -m vault-extract --api-name Default --source host --target vault-extract --url https://localhost:44348"
   },
