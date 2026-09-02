@@ -151,7 +151,7 @@ jobs:
         working-directory: angular
 
       - name: Build npm package
-        run: npx nx build vault-extract --configuration production
+        run: npx ng build vault-extract --configuration production
         working-directory: angular
 
       # Pack the built library into a versioned .tgz next to the .nupkg files in ./artifacts, so a

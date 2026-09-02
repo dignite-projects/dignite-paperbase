@@ -1,7 +1,3 @@
-# NX
-.nx/cache
-.nx/workspace-data
-
 # Dependencies
 node_modules/
 dist/

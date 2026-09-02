@@ -6,7 +6,7 @@ import type { DocumentDto } from '../proxy/documents/models';
 /**
  * Hand-written, proxy-external upload wrapper.
  *
- * Lives OUTSIDE `proxy/` so it survives `nx g @abp/ng.schematics:proxy-add` regeneration
+ * Lives OUTSIDE `proxy/` so it survives `abp generate-proxy -t ng` regeneration
  * (the generator overwrites everything under proxy/ — see proxy/README.md).
  *
  * Why not the generated `DocumentService.upload`? The schematic emits

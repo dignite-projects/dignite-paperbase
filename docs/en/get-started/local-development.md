@@ -144,9 +144,9 @@ cd angular
 npm run generate-proxy
 ```
 
-This uses `@abp/nx.generators` (a local Nx generator — no global `nx` or `ng` install needed) to read the Swagger spec from `https://localhost:44348` and regenerate the proxy files under `angular/projects/vault-extract/src/lib/proxy/`.
+This wraps ABP's standard `abp generate-proxy -t ng`, which reads the Swagger spec from `https://localhost:44348` and regenerates the proxy files under `angular/projects/vault-extract/src/lib/proxy/`.
 
-> Do **not** use `abp generate-proxy -t ng` (requires `angular.json`, which Nx projects don't have) or bare `nx g` / `ng g` (require global installs). `npm run generate-proxy` is the only correct entry point.
+> This workspace previously had to use `@abp/nx.generators` instead, because `abp generate-proxy` requires `angular.json` and an Nx workspace has none. That constraint is gone now that the workspace is plain Angular CLI (#579).
 
 Commit the regenerated proxy files together with the API change.
 

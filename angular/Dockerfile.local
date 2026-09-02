@@ -1,7 +1,7 @@
 FROM nginx:alpine
 
 # Build context is angular/ (see context: ../../angular in etc/docker/docker-compose.yml).
-# Prerequisite: run `nx build host` on the host first. Output lands in dist/host/browser/,
+# Prerequisite: run `ng build host` on the host first. Output lands in dist/host/browser/,
 # and dynamic-env.json is already included through assets.
 COPY dist/host/browser /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf

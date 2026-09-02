@@ -12,18 +12,18 @@ paths:
 
 ## Project Structure
 
-This is an Nx workspace (`angular/`). There is **no `angular.json`**; each project has its own `project.json`.
+This is an Angular CLI workspace (`angular/`), with `angular.json` declaring both projects. It was an
+Nx workspace until #579; anything still referring to `project.json` or `nx` commands is stale.
 
 ```
 angular/
-├── apps/
-│   └── host/                        # The only runnable app (nx serve host / npm start)
-│       └── src/app/
-│           ├── app.config.ts        # bootstrapApplication providers
-│           ├── app.routes.ts        # APP_ROUTES (lazy loadChildren to lib route arrays)
-│           └── home/
+├── src/                             # The only runnable app (ng serve host / npm start)
+│   └── app/
+│       ├── app.config.ts            # bootstrapApplication providers
+│       ├── app.routes.ts            # APP_ROUTES (lazy loadChildren to lib route arrays)
+│       └── home/
 └── projects/
-    └── vault-extract/               # Nx library; imported as @dignite/vault-extract
+    └── vault-extract/               # Angular library; imported as @dignite/vault-extract
         ├── src/lib/
         │   ├── proxy/               # ⚠️  GENERATED — never edit by hand
         │   │   └── http-api/documents/  # typed service classes + models
@@ -49,13 +49,12 @@ cd angular
 npm run generate-proxy
 ```
 
-This repository is an Nx workspace and does not have `angular.json`.
-Do not run `abp generate-proxy -t ng` directly here; it expects a plain Angular CLI workspace.
+The npm script wraps ABP's standard `abp generate-proxy -t ng`, which generates typed service classes
+under `projects/vault-extract/src/lib/proxy/`. The host API must be running at `https://localhost:44348`.
 
-The npm script wraps ABP's official nx generator `nx g @abp/nx.generators:generate-proxy`
-(`@abp/nx.generators` is ABP's nx-specific wrapper; it internally calls the
-`@abp/ng.schematics:proxy-add` schematic) and generates typed service classes under
-`projects/vault-extract/src/lib/proxy/`. The host API must be running at `https://localhost:44348`.
+Until #579 this repository was an Nx workspace with no `angular.json`, so `abp generate-proxy` could
+not run and `@abp/nx.generators` had to stand in for it. That is no longer true — the nx generator and
+its undeclared `@nx/devkit` peer are both gone.
 
 The `proxy/` folder is fully owned by the generator and is overwritten on every run —
 never edit it by hand. Hand-written, regeneration-safe code lives OUTSIDE `proxy/`:

@@ -47,8 +47,8 @@ describe('toExportDocumentsInput', () => {
     const withFutureKey = { creationTimeMin: '2026-01-01' } as unknown as DocumentListFilter;
 
     // Widen through `unknown` first: ExportDocumentsInput has no string index signature, so the direct
-    // assertion is a TS2352 compile error. That error made the whole `nx test vault-extract` target fail to
-    // build, and CI only runs `nx run-many -t lint`, so nothing said so.
+    // assertion is a TS2352 compile error. That error made the whole `ng test vault-extract` target fail to
+    // build, and CI only runs lint, so nothing said so.
     const input = toExportDocumentsInput(TYPE, ExportFormat.Csv, withFutureKey) as unknown as Record<
       string,
       unknown
