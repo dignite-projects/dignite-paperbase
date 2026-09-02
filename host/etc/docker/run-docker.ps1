@@ -25,7 +25,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 # 3. Prebuild frontend output -> angular/dist/host/browser/
 #    Dockerfile.local only packages it with nginx.
 Set-Location $angularFolder
-npx nx build host
+npx ng build host
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 # 4. Rebuild images and start them. --build ensures Docker uses the newly produced

@@ -9,7 +9,7 @@ $angularAppFolder = Join-Path $slnFolder "angular"
 Write-Host "********* BUILDING Angular Application *********" -ForegroundColor Green
 Set-Location $angularAppFolder
 npm install
-npm run build:prod
+npm run build
 docker build -f Dockerfile.local -t dignite/vault-extract-web:$version .
 
 Write-Host "********* BUILDING Api.Host Application *********" -ForegroundColor Green
