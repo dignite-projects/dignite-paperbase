@@ -170,17 +170,4 @@ public class FieldDefinitionToFieldMapper_Tests
         Should.Throw<ArgumentException>(() =>
             FieldDefinitionToFieldMapper.MapType(FieldDataType.Number, allowMultiple: true));
     }
-
-    /// <summary>
-    /// The mapper names Number and Boolean by constant rather than by referencing the kernel's types for
-    /// one string each; this is what keeps those constants honest.
-    /// </summary>
-    [Fact]
-    public void Registration_keys_match_the_kernel_types()
-    {
-        FieldDefinitionToFieldMapper.MapType(FieldDataType.Number, false)
-            .FieldTypeName.ShouldBe(NumberFieldType.ControlName);
-        FieldDefinitionToFieldMapper.MapType(FieldDataType.Boolean, false)
-            .FieldTypeName.ShouldBe(BooleanFieldType.ControlName);
-    }
 }

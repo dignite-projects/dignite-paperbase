@@ -1,7 +1,9 @@
 using System;
 using Dignite.Abp.FlexFields;
+using Dignite.Abp.FlexFields.Boolean;
 using Dignite.Abp.FlexFields.CKEditor;
 using Dignite.Abp.FlexFields.Date;
+using Dignite.Abp.FlexFields.Number;
 using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.FlexFields.Tags;
 
@@ -111,10 +113,10 @@ public static class FieldDefinitionToFieldMapper
                 }.ConfigurationDictionary);
 
             case FieldDataType.Number:
-                return (NumberTypeName, new FieldConfigurationDictionary());
+                return (NumberFieldType.ControlName, new FieldConfigurationDictionary());
 
             case FieldDataType.Boolean:
-                return (BooleanTypeName, new FieldConfigurationDictionary());
+                return (BooleanFieldType.ControlName, new FieldConfigurationDictionary());
 
             // Date and DateTime share one field type and are told apart by InputMode (#559 resolution 5).
             // The distinction is not lost, it moves from the type enum into the type's configuration.
@@ -146,10 +148,4 @@ public static class FieldDefinitionToFieldMapper
                     nameof(dataType), dataType, "No v3 field type is defined for this v2 data type.");
         }
     }
-
-    // The kernel's Number/Boolean field types expose their registration key only through the type, and
-    // referencing those two classes here for one constant each would be the only reason this file needs
-    // them. Named constants keep the table readable; they are asserted against the real types in tests.
-    private const string NumberTypeName = "Number";
-    private const string BooleanTypeName = "Boolean";
 }
