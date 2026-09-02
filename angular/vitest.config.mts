@@ -27,7 +27,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
-    include: ['projects/**/*.spec.ts', 'apps/**/*.spec.ts'],
+    include: ['projects/**/*.spec.ts', 'src/**/*.spec.ts'],
     // Skip the broken `@angular/build:unit-test` (vitest) builder; see vitest.setup.ts.
     exclude: ['**/node_modules/**', '**/dist/**', '**/.angular/**'],
   },

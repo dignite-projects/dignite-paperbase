@@ -3,8 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "workspaces": [
-    "projects/*",
-    "apps/*"
+    "projects/*"
   ],
   "scripts": {
     "start": "nx serve host",
