@@ -3,8 +3,8 @@ services:
     image: dignite/vault-extract-web:latest
     container_name: vault-extract-web
     build:
-      context: ../../angular
-      dockerfile: Dockerfile
+      context: ../../../angular
+      dockerfile: Dockerfile.local
     ports:
       - "4200:80"
     depends_on:
