@@ -1,8 +1,8 @@
 {
-  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "$schema": "./node_modules/nx/schemas/project-schema.json",
   "name": "host",
   "projectType": "application",
-  "sourceRoot": "apps/host/src",
+  "sourceRoot": "src",
   "prefix": "app",
   "tags": ["scope:host"],
   "targets": {
@@ -13,30 +13,30 @@
         "outputPath": {
           "base": "dist/host"
         },
-        "index": "apps/host/src/index.html",
-        "browser": "apps/host/src/main.ts",
+        "index": "src/index.html",
+        "browser": "src/main.ts",
         "polyfills": [
-          "apps/host/src/polyfills.ts"
+          "src/polyfills.ts"
         ],
-        "tsConfig": "apps/host/tsconfig.app.json",
+        "tsConfig": "tsconfig.app.json",
         "inlineStyleLanguage": "scss",
         "allowedCommonJsDependencies": ["chart.js"],
         "assets": [
-          "apps/host/src/favicon.ico",
-          "apps/host/src/assets",
+          "src/favicon.ico",
+          "src/assets",
           {
             "glob": "**/*",
-            "input": "apps/host/src/favicon",
+            "input": "src/favicon",
             "output": "favicon"
           },
           {
             "glob": "web.config",
-            "input": "apps/host",
+            "input": ".",
             "output": "."
           },
           {
             "glob": "dynamic-env.json",
-            "input": "apps/host",
+            "input": ".",
             "output": "."
           }
         ],
@@ -121,7 +121,7 @@
             "inject": true,
             "bundleName": "ng-zorro-antd-empty.min"
           },
-          "apps/host/src/styles.scss"
+          "src/styles.scss"
         ],
         "scripts": []
       },
@@ -141,8 +141,8 @@
           ],
           "fileReplacements": [
             {
-              "replace": "apps/host/src/environments/environment.ts",
-              "with": "apps/host/src/environments/environment.prod.ts"
+              "replace": "src/environments/environment.ts",
+              "with": "src/environments/environment.prod.ts"
             }
           ],
           "outputHashing": "all"
@@ -177,7 +177,7 @@
     "test": {
       "executor": "@angular/build:unit-test",
       "options": {
-        "tsConfig": "apps/host/tsconfig.spec.json",
+        "tsConfig": "tsconfig.spec.json",
         "buildTarget": "host:build",
         "runner": "vitest"
       }
@@ -186,8 +186,8 @@
       "executor": "@angular-eslint/builder:lint",
       "options": {
         "lintFilePatterns": [
-          "apps/host/src/**/*.ts",
-          "apps/host/src/**/*.html"
+          "src/**/*.ts",
+          "src/**/*.html"
         ]
       }
     }

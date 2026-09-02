@@ -16,5 +16,5 @@ RUN NX_DAEMON=false npx nx build host --configuration=production
 # Stage 2: Serve with Nginx
 FROM nginx:alpine
 COPY --from=build /app/dist/host/browser /usr/share/nginx/html
-COPY apps/host/nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80

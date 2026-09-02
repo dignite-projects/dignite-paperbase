@@ -149,7 +149,7 @@ export const DOCUMENTS_ROUTES: Routes = [
 The host app wires route arrays via `loadChildren`:
 
 ```typescript
-// apps/host/src/app/app.routes.ts
+// src/app/app.routes.ts
 export const APP_ROUTES: Routes = [
   {
     path: 'documents',

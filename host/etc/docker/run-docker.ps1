@@ -23,7 +23,7 @@ dotnet publish "src/Dignite.Vault.Extract.Host.csproj" -c Release
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 # 3. Prebuild frontend output -> angular/dist/host/browser/
-#    apps/host/Dockerfile.local only packages it with nginx.
+#    Dockerfile.local only packages it with nginx.
 Set-Location $angularFolder
 npx nx build host
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

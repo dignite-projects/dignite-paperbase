@@ -4,7 +4,7 @@ services:
     container_name: vault-extract-web
     build:
       context: ../../angular
-      dockerfile: apps/host/Dockerfile
+      dockerfile: Dockerfile
     ports:
       - "4200:80"
     depends_on:
