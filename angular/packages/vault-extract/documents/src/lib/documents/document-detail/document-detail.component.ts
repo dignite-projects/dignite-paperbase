@@ -143,6 +143,14 @@ export class DocumentDetailComponent implements OnInit {
   isEditingCabinet = signal(false);
   isSavingCabinet = signal(false);
   selectedCabinetId = signal<string>('');
+  // #555: operator correction of Document.Markdown edit-toggle state, mirroring the Cabinet reassignment
+  // and extracted-fields editor above. markdownDraft holds the textarea value while editing;
+  // reprocessOnSave is the "also re-extract fields" checkbox, defaulted off so a plain typo fix does not
+  // also queue field re-extraction.
+  isEditingMarkdown = signal(false);
+  isSavingMarkdown = signal(false);
+  markdownDraft = signal('');
+  reprocessOnSave = signal(false);
   // Document types visible in the current layer, used for typeCode-to-displayName mapping and the
   // confirm-classification picker. Populated together with field definition loading.
   documentTypes = signal<DocumentTypeDto[]>([]);
@@ -323,6 +331,25 @@ export class DocumentDetailComponent implements OnInit {
     !this.pipelineInProgress() &&
     !this.isLoading()
   );
+
+  // #555 "correct Markdown" availability: same prerequisites as canRerecognize/canReextractFields (edit
+  // permission, extracted text present, no critical pipeline running, page not loading), plus excluding
+  // container documents — the backend hard-rejects UpdateMarkdownAsync on a container with
+  // CannotCorrectContainerMarkdown, so the affordance is hidden here rather than exposing an action that is
+  // guaranteed to fail.
+  canEditMarkdown = computed(() =>
+    this.canEditFields &&
+    !!this.document()?.markdown &&
+    !this.document()?.isContainer &&
+    !this.pipelineInProgress() &&
+    !this.isLoading()
+  );
+
+  // #555 review: single source of truth for "reprocess is available" -- referenced by the checkbox's
+  // disabled state, its hint text, and saveMarkdown()'s save-time re-check, so the three cannot drift.
+  // Mirrors canReextractFields's own documentTypeCode requirement, since reprocess=true runs the same
+  // field-extraction pipeline.
+  canReprocessMarkdown = computed(() => !!this.document()?.documentTypeCode);
 
   isImage = computed(() =>
     isImageContentType(this.document()?.fileOrigin?.contentType)
@@ -532,6 +559,13 @@ export class DocumentDetailComponent implements OnInit {
         this.documentId = id;
         this.fileBlob.reset();
         this.activeTab.set('preview');
+        // #555 review: this component instance is reused across same-route navigation (see the
+        // comment above), so an open Markdown draft for the PREVIOUS document must not survive
+        // into the newly-loaded one -- otherwise Save would write the old document's text onto
+        // this one.
+        this.isEditingMarkdown.set(false);
+        this.markdownDraft.set('');
+        this.reprocessOnSave.set(false);
         this.loadDocument();
       });
   }
@@ -747,6 +781,98 @@ export class DocumentDetailComponent implements OnInit {
         error: () => {
           this.isSavingCabinet.set(false);
           this.toaster.error('::Document:UpdateFailed', '::Error');
+        },
+      });
+  }
+
+  // #555: operator correction of Document.Markdown. Enter edit mode with the current markdown preloaded
+  // into the draft textarea; reprocessOnSave defaults off so a plain typo fix does not also queue field
+  // re-extraction.
+  startEditMarkdown(): void {
+    this.markdownDraft.set(this.document()?.markdown ?? '');
+    this.reprocessOnSave.set(false);
+    this.isEditingMarkdown.set(true);
+  }
+
+  cancelEditMarkdown(): void {
+    this.isEditingMarkdown.set(false);
+    this.markdownDraft.set('');
+  }
+
+  // #555: save the corrected Markdown. When the operator also opted into field re-extraction, that has the
+  // identical field-value-overwriting side effect as the standalone reextractFields() action above, so
+  // confirm first, mirroring that method's confirm-first treatment. A plain correction (no reprocess) saves
+  // directly, matching saveCabinet()/saveFields() which do not confirm.
+  saveMarkdown(): void {
+    const doc = this.document();
+    const markdown = this.markdownDraft().trim();
+    if (!doc || !markdown || this.isSavingMarkdown()) return;
+
+    // #555 review: the server rejects Reprocess=true on an unclassified document (NotClassified)
+    // *before* CorrectMarkdown runs, discarding the whole edit -- not just the reprocess request.
+    // Force reprocess off in that case so a plain text fix always saves, regardless of whether the
+    // checkbox UI below is hidden/stale for this document. requestedReprocess is kept so
+    // submitMarkdown can tell "operator never asked" apart from "asked, but silently dropped" and
+    // surface the latter instead of a plain success toast.
+    const requestedReprocess = this.reprocessOnSave();
+    const reprocess = requestedReprocess && this.canReprocessMarkdown();
+    if (reprocess) {
+      this.confirmation
+        .warn('::Document:Markdown:Correct:ReprocessConfirm', '::AreYouSure')
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe(status => {
+          if (status === Confirmation.Status.confirm) this.submitMarkdown(doc.id!, markdown, reprocess, false);
+        });
+    } else {
+      this.submitMarkdown(doc.id!, markdown, reprocess, requestedReprocess && !reprocess);
+    }
+  }
+
+  private submitMarkdown(id: string, markdown: string, reprocess: boolean, reprocessDropped: boolean): void {
+    this.isSavingMarkdown.set(true);
+    this.documentService.updateMarkdown(id, { markdown, reprocess })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: updated => {
+          this.isSavingMarkdown.set(false);
+          this.isEditingMarkdown.set(false);
+          if (reprocessDropped) {
+            // #555 review: the operator checked "also re-extract fields" and confirmed the warning
+            // dialog, but the document went unclassified before Save actually ran -- surface that
+            // instead of a plain success toast, so the request vanishing is visible, not silent.
+            this.toaster.warn('::Document:Markdown:Correct:ReprocessSkipped', '::Warning');
+          } else {
+            this.toaster.success('::Document:Markdown:Corrected', '::Success');
+          }
+          // #555 review: apply the corrected DTO immediately so the preview/source tabs never flash
+          // back to the pre-correction text while a reprocess reload is in flight.
+          this.document.set(updated);
+          if (reprocess) {
+            // A field-extraction run was queued server-side (same as reextractFields()) -- refresh only
+            // pipelineRuns/polling so the new run shows up. document is already current from `updated`
+            // above (queuing is lifecycle-neutral server-side), so a full loadDocument() re-fetch of the
+            // document itself would just be discarding-and-refetching identical data.
+            this.reloadPipelineRuns();
+          }
+        },
+        error: () => {
+          this.isSavingMarkdown.set(false);
+          this.toaster.error('::Document:UpdateFailed', '::Error');
+        },
+      });
+  }
+
+  // #555 review: lighter-weight refresh for after a Reprocess=true Markdown save -- the document itself
+  // is already current (queuing a field-extraction run is lifecycle-neutral server-side), so only
+  // pipelineRuns needs to be re-fetched to pick up the newly-queued run. Mirrors pollReload()'s "quiet"
+  // shape (no isLoading toggle) and, like fetchDocument, re-syncs the poll schedule off the fresh runs.
+  private reloadPipelineRuns(): void {
+    this.documentPipelineRunService.getList(this.documentId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: runs => {
+          this.pipelineRuns.set(runs);
+          this.syncPolling();
         },
       });
   }

@@ -116,6 +116,12 @@ public class DocumentController : VaultExtractController, IDocumentAppService
         return _documentAppService.UpdateExtractedFieldsAsync(id, input);
     }
 
+    [HttpPost("{id}/markdown")]
+    public virtual Task<DocumentDto> UpdateMarkdownAsync(Guid id, [FromBody] UpdateMarkdownInput input)
+    {
+        return _documentAppService.UpdateMarkdownAsync(id, input);
+    }
+
     [HttpPost("{id}/cabinet")]
     public virtual Task<DocumentDto> UpdateCabinetAsync(Guid id, [FromBody] UpdateDocumentCabinetInput input)
     {

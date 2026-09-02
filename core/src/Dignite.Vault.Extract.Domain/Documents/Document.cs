@@ -289,6 +289,35 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
         Markdown = string.IsNullOrEmpty(markdown) ? null : markdown;
     }
 
+    /// <summary>
+    /// Operator correction of already-extracted <see cref="Markdown"/> (#555): fixes a small OCR / parsing
+    /// error the pipeline got wrong. This is a <b>separate</b> path from <see cref="SetMarkdown"/> and does
+    /// not relax it — <see cref="SetMarkdown"/> stays write-once for pipeline completion exactly as before.
+    /// <see cref="CorrectMarkdown"/> instead requires the opposite precondition: Markdown must <b>already</b>
+    /// be set, because a document with nothing extracted yet has nothing to correct, so it throws
+    /// <see cref="VaultExtractErrorCodes.Document.NotTextExtracted"/> rather than silently behaving like a
+    /// first write.
+    /// <para>
+    /// Public and atomic, the same category as <see cref="SetCabinet"/> / <see cref="SetFields"/> — no
+    /// DomainService mediation needed. Overwrites only <see cref="Markdown"/> itself: <see cref="Title"/>,
+    /// <see cref="Language"/>, <see cref="ExtractionMetadata"/>, and <see cref="FieldFingerprint"/> are left
+    /// exactly as they were from the original extraction, because a manual text fix does not re-derive any
+    /// of them the way a real pipeline re-run would. No length cap, unlike upload's provider-driven ceiling.
+    /// </para>
+    /// <para>
+    /// No history table, no "PreviousMarkdown" snapshot column: the "was corrected, by whom, when, from
+    /// what" trail is carried by ABP entity audit logging, the same reasoning already applied to
+    /// <see cref="RejectReview"/> and <c>DocumentAppService.ResolveFieldValidationWarningsAsync</c>.
+    /// </para>
+    /// </summary>
+    public void CorrectMarkdown(string markdown)
+    {
+        if (string.IsNullOrEmpty(Markdown))
+            throw new BusinessException(VaultExtractErrorCodes.Document.NotTextExtracted);
+
+        Markdown = Check.NotNullOrWhiteSpace(markdown, nameof(markdown));
+    }
+
     internal void SetTitle(string? title)
     {
         if (!string.IsNullOrEmpty(Title))

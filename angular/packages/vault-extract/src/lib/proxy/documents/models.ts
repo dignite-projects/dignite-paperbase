@@ -131,6 +131,11 @@ export interface UpdateExtractedFieldsInput {
   fields?: Record<string, any>;
 }
 
+export interface UpdateMarkdownInput {
+  markdown: string;
+  reprocess?: boolean;
+}
+
 export interface UploadDocumentInput {
   file: IRemoteStreamContent;
   cabinetId?: string | null;

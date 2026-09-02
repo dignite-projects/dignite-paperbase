@@ -14,6 +14,10 @@ public static class VaultExtractErrorCodes
     {
         public const string MarkdownIsImmutable = "Extract:MarkdownIsImmutable";
         public const string TitleIsImmutable = "Extract:TitleIsImmutable";
+        // #555: an operator Markdown correction (UpdateMarkdownAsync) is forbidden on a container — it runs
+        // no field extraction and its Markdown is only a provenance anchor, so a correction has no sensible
+        // meaning here. Deferred to a future issue if ever needed.
+        public const string CannotCorrectContainerMarkdown = "Extract:CannotCorrectContainerMarkdown";
         public const string Duplicate = "Extract:DocumentDuplicate";
         public const string InRecycleBin = "Extract:DocumentInRecycleBin";
         public const string NotClassified = "Extract:DocumentNotClassified";

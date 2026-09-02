@@ -6410,6 +6410,38 @@
                   }
                 },
                 {
+                  "name": "UpdateMarkdownAsync",
+                  "parametersOnMethod": [
+                    {
+                      "name": "id",
+                      "typeAsString": "System.Guid, System.Private.CoreLib",
+                      "type": "System.Guid",
+                      "typeSimple": "string",
+                      "isOptional": false,
+                      "defaultValue": null,
+                      "summary": null,
+                      "description": null,
+                      "displayName": null
+                    },
+                    {
+                      "name": "input",
+                      "typeAsString": "Dignite.Vault.Extract.Documents.UpdateMarkdownInput, Dignite.Vault.Extract.Application.Contracts",
+                      "type": "Dignite.Vault.Extract.Documents.UpdateMarkdownInput",
+                      "typeSimple": "Dignite.Vault.Extract.Documents.UpdateMarkdownInput",
+                      "isOptional": false,
+                      "defaultValue": null,
+                      "summary": null,
+                      "description": null,
+                      "displayName": null
+                    }
+                  ],
+                  "returnValue": {
+                    "type": "Dignite.Vault.Extract.Documents.DocumentDto",
+                    "typeSimple": "Dignite.Vault.Extract.Documents.DocumentDto",
+                    "summary": null
+                  }
+                },
+                {
                   "name": "UpdateCabinetAsync",
                   "parametersOnMethod": [
                     {
@@ -7527,6 +7559,81 @@
                   "jsonName": null,
                   "type": "Dignite.Vault.Extract.Documents.UpdateExtractedFieldsInput",
                   "typeSimple": "Dignite.Vault.Extract.Documents.UpdateExtractedFieldsInput",
+                  "isOptional": false,
+                  "defaultValue": null,
+                  "constraintTypes": null,
+                  "bindingSourceId": "Body",
+                  "descriptorName": "",
+                  "summary": null,
+                  "description": null,
+                  "displayName": null
+                }
+              ],
+              "returnValue": {
+                "type": "Dignite.Vault.Extract.Documents.DocumentDto",
+                "typeSimple": "Dignite.Vault.Extract.Documents.DocumentDto",
+                "summary": null
+              },
+              "allowAnonymous": null,
+              "authorizeDatas": [],
+              "implementFrom": "Dignite.Vault.Extract.Documents.IDocumentAppService",
+              "summary": null,
+              "remarks": null,
+              "description": null,
+              "displayName": null
+            },
+            "UpdateMarkdownAsyncByIdAndInput": {
+              "uniqueName": "UpdateMarkdownAsyncByIdAndInput",
+              "name": "UpdateMarkdownAsync",
+              "httpMethod": "POST",
+              "url": "api/vault-extract/documents/{id}/markdown",
+              "supportedVersions": [],
+              "parametersOnMethod": [
+                {
+                  "name": "id",
+                  "typeAsString": "System.Guid, System.Private.CoreLib",
+                  "type": "System.Guid",
+                  "typeSimple": "string",
+                  "isOptional": false,
+                  "defaultValue": null,
+                  "summary": null,
+                  "description": null,
+                  "displayName": null
+                },
+                {
+                  "name": "input",
+                  "typeAsString": "Dignite.Vault.Extract.Documents.UpdateMarkdownInput, Dignite.Vault.Extract.Application.Contracts",
+                  "type": "Dignite.Vault.Extract.Documents.UpdateMarkdownInput",
+                  "typeSimple": "Dignite.Vault.Extract.Documents.UpdateMarkdownInput",
+                  "isOptional": false,
+                  "defaultValue": null,
+                  "summary": null,
+                  "description": null,
+                  "displayName": null
+                }
+              ],
+              "parameters": [
+                {
+                  "nameOnMethod": "id",
+                  "name": "id",
+                  "jsonName": null,
+                  "type": "System.Guid",
+                  "typeSimple": "string",
+                  "isOptional": false,
+                  "defaultValue": null,
+                  "constraintTypes": [],
+                  "bindingSourceId": "Path",
+                  "descriptorName": "",
+                  "summary": null,
+                  "description": null,
+                  "displayName": null
+                },
+                {
+                  "nameOnMethod": "input",
+                  "name": "input",
+                  "jsonName": null,
+                  "type": "Dignite.Vault.Extract.Documents.UpdateMarkdownInput",
+                  "typeSimple": "Dignite.Vault.Extract.Documents.UpdateMarkdownInput",
                   "isOptional": false,
                   "defaultValue": null,
                   "constraintTypes": null,
@@ -13621,6 +13728,51 @@
           "jsonName": null,
           "type": "{System.String:System.Text.Json.JsonElement}",
           "typeSimple": "{string:System.Text.Json.JsonElement}",
+          "isRequired": false,
+          "minLength": null,
+          "maxLength": null,
+          "minimum": null,
+          "maximum": null,
+          "regex": null,
+          "isNullable": false,
+          "summary": null,
+          "description": null,
+          "displayName": null
+        }
+      ],
+      "summary": null,
+      "remarks": null,
+      "description": null,
+      "displayName": null
+    },
+    "Dignite.Vault.Extract.Documents.UpdateMarkdownInput": {
+      "baseType": null,
+      "isEnum": false,
+      "enumNames": null,
+      "enumValues": null,
+      "genericArguments": null,
+      "properties": [
+        {
+          "name": "Markdown",
+          "jsonName": null,
+          "type": "System.String",
+          "typeSimple": "string",
+          "isRequired": true,
+          "minLength": null,
+          "maxLength": null,
+          "minimum": null,
+          "maximum": null,
+          "regex": null,
+          "isNullable": false,
+          "summary": null,
+          "description": null,
+          "displayName": null
+        },
+        {
+          "name": "Reprocess",
+          "jsonName": null,
+          "type": "System.Boolean",
+          "typeSimple": "boolean",
           "isRequired": false,
           "minLength": null,
           "maxLength": null,

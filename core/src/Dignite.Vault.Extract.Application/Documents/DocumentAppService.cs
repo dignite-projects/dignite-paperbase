@@ -576,14 +576,7 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
         // so AppService no longer directly depends on IDocumentPipelineRunRepository.
         var document = await _documentRepository.GetAsync(id, includeDetails: false);
 
-        if (document.IsDeleted)
-        {
-            throw new BusinessException(VaultExtractErrorCodes.Document.InRecycleBin)
-                // #485: null-safe -- a legacy pre-#481 derived row can still carry a null FileOrigin during the
-                // documented deploy window; avoid an NRE while building this diagnostic (and CS8604, since
-                // .WithData's value parameter is non-nullable).
-                .WithData("FileName", document.FileOrigin?.BlobName ?? string.Empty);
-        }
+        EnsureNotDeleted(document);
 
         var latestRun = await _pipelineRunManager.EnsureRetryableAsync(id, input.PipelineCode);
 
@@ -609,14 +602,7 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
         // Need only scalar fields (IsDeleted / Markdown / FileOrigin); field values are not touched. Tenant isolation is enforced by the ambient IMultiTenant filter.
         var document = await _documentRepository.GetAsync(id, includeDetails: false);
 
-        if (document.IsDeleted)
-        {
-            throw new BusinessException(VaultExtractErrorCodes.Document.InRecycleBin)
-                // #485: null-safe -- a legacy pre-#481 derived row can still carry a null FileOrigin during the
-                // documented deploy window; avoid an NRE while building this diagnostic (and CS8604, since
-                // .WithData's value parameter is non-nullable).
-                .WithData("FileName", document.FileOrigin?.BlobName ?? string.Empty);
-        }
+        EnsureNotDeleted(document);
 
         // Automatic classification input is Document.Markdown. If text extraction has not produced text yet, reclassification cannot run.
         if (string.IsNullOrEmpty(document.Markdown))
@@ -646,6 +632,34 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
         // Need only scalar fields (IsDeleted / DocumentTypeId / Markdown); field values are not touched. Tenant isolation is enforced by the ambient IMultiTenant filter.
         var document = await _documentRepository.GetAsync(id, includeDetails: false);
 
+        EnsureNotDeleted(document);
+
+        // Field extraction hangs off DocumentType; unclassified documents have nothing to extract against.
+        EnsureClassified(document);
+
+        // Field extraction input is Document.Markdown. If text extraction has not produced text yet, extraction cannot run.
+        if (string.IsNullOrEmpty(document.Markdown))
+        {
+            throw new BusinessException(VaultExtractErrorCodes.Document.NotTextExtracted);
+        }
+
+        Logger.LogInformation(
+            "ReextractFieldsAsync user={UserId} tenant={TenantId} doc={DocumentId}",
+            CurrentUser.Id, CurrentTenant.Id, document.Id);
+
+        // #555: guard (reject while a field-extraction run is already Pending/Running) + enqueue, shared with
+        // UpdateMarkdownAsync's Reprocess=true branch so the two callers cannot drift apart.
+        await QueueFieldReextractionAsync(id, document);
+    }
+
+    /// <summary>
+    /// Shared recycle-bin guard (code-review follow-up on #555): rejects an operator action on a
+    /// soft-deleted document, used by every action that requires a live document -- retry, rerecognize,
+    /// field re-extraction, and Markdown correction -- so the exception shape and the #485 null-safe
+    /// diagnostic cannot drift between call sites the way they had before this was extracted.
+    /// </summary>
+    protected virtual void EnsureNotDeleted(Document document)
+    {
         if (document.IsDeleted)
         {
             throw new BusinessException(VaultExtractErrorCodes.Document.InRecycleBin)
@@ -654,28 +668,34 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
                 // .WithData's value parameter is non-nullable).
                 .WithData("FileName", document.FileOrigin?.BlobName ?? string.Empty);
         }
+    }
 
-        // Field extraction hangs off DocumentType; unclassified documents have nothing to extract against.
+    /// <summary>
+    /// Shared classification guard (code-review follow-up on #555): rejects an operator action that hangs
+    /// off <see cref="Document.DocumentTypeId"/> -- field re-extraction, editing extracted field values, and
+    /// Markdown correction's <c>Reprocess</c> branch -- on a document with no confirmed type, so the
+    /// exception cannot drift between call sites the way <see cref="EnsureNotDeleted"/> did before extraction.
+    /// </summary>
+    protected virtual void EnsureClassified(Document document)
+    {
         if (!document.DocumentTypeId.HasValue)
         {
             throw new BusinessException(VaultExtractErrorCodes.Document.NotClassified);
         }
+    }
 
-        // Field extraction input is Document.Markdown. If text extraction has not produced text yet, extraction cannot run.
-        if (string.IsNullOrEmpty(document.Markdown))
-        {
-            throw new BusinessException(VaultExtractErrorCodes.Document.NotTextExtracted);
-        }
-
-        // Concurrency guard: do not re-enqueue while field-extraction is Pending/Running, avoiding double-click stacking.
-        // New attempts do not collide with the unique index for Running, so this must be blocked explicitly.
+    /// <summary>
+    /// Shared guard + enqueue pair for a field-extraction-only re-run (#555): used by both
+    /// <see cref="ReextractFieldsAsync"/> and <see cref="UpdateMarkdownAsync"/>'s <c>Reprocess=true</c> branch
+    /// so the concurrency guard and the queue call cannot drift between the two callers. Guards first —
+    /// rejects while a field-extraction run for this document is already Pending/Running, avoiding double-click
+    /// stacking (new attempts do not collide with the unique index for Running, so this must be blocked
+    /// explicitly) — then creates a fresh Pending run and enqueues its background job. Lifecycle-neutral:
+    /// queuing alone does not change <see cref="Document.LifecycleStatus"/>.
+    /// </summary>
+    protected virtual async Task QueueFieldReextractionAsync(Guid id, Document document)
+    {
         await _pipelineRunManager.EnsureNotInProgressAsync(id, VaultExtractPipelines.FieldExtraction);
-
-        Logger.LogInformation(
-            "ReextractFieldsAsync user={UserId} tenant={TenantId} doc={DocumentId}",
-            CurrentUser.Id, CurrentTenant.Id, document.Id);
-
-        // Create a Pending field-extraction run + enqueue the background job. Lifecycle-neutral, so LifecycleStatus is unchanged.
         await _pipelineJobScheduler.QueueAsync(document, VaultExtractPipelines.FieldExtraction);
     }
 
@@ -698,17 +718,16 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
         }
 
         // Field definitions hang off DocumentType; unclassified documents have no basis for validating field names.
-        if (!document.DocumentTypeId.HasValue)
-        {
-            throw new BusinessException(VaultExtractErrorCodes.Document.NotClassified);
-        }
+        EnsureClassified(document);
 
         // ETO still carries the DocumentTypeCode string, preserving the export contract. It is resolved from internal DocumentTypeId (#207).
         var documentTypeCode = await ResolveTypeCodeAsync(document.DocumentTypeId);
 
         // Validate that each key is a field name defined under this document's layer and DocumentType.
         // GetListAsync reads a single layer by ambient CurrentTenant.Id (already asserted == document.TenantId) and matches by internal DocumentTypeId.
-        var definitions = await _fieldRepository.GetListAsync(document.DocumentTypeId.Value);
+        // Null-forgiving: EnsureClassified above already guarantees HasValue, but that guarantee crosses a
+        // method boundary the compiler's nullable flow analysis can't see through.
+        var definitions = await _fieldRepository.GetListAsync(document.DocumentTypeId!.Value);
         var definitionsByName = definitions.ToDictionary(d => d.Name, StringComparer.Ordinal);
         var fields = input.Fields ?? new Dictionary<string, JsonElement>();
 
@@ -784,6 +803,72 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
                 DocumentTypeCode = documentTypeCode,
                 FieldCount = fieldCount
             });
+
+        return await MapToDtoAsync(document);
+    }
+
+    /// <summary>
+    /// Operator correction of already-extracted <see cref="Document.Markdown"/> (#555): fixes a small OCR /
+    /// parsing error found after extraction. A separate, explicitly operator-facing path from the pipeline's
+    /// write-once extraction write — <see cref="Document.SetMarkdown"/> is untouched and still refuses a
+    /// second write there.
+    /// <para>
+    /// <paramref name="input"/>.Reprocess = <c>true</c> re-runs field extraction only, reusing the same
+    /// guard + enqueue pair <see cref="ReextractFieldsAsync"/> uses (<see cref="QueueFieldReextractionAsync"/>),
+    /// which re-fires <see cref="FieldsExtractedEto"/> and, through the existing lifecycle re-derivation, may
+    /// re-fire <see cref="DocumentReadyEto"/>. It does not touch classification or segmentation — those are
+    /// <see cref="RerecognizeAsync"/>'s job. Reprocess = <c>false</c> writes the Markdown only: no
+    /// re-extraction, no event at all — a deliberate accepted trade-off (a downstream consumer that already
+    /// pulled the document via <c>DocumentReadyEto</c> will not know the content changed until it re-fetches).
+    /// </para>
+    /// <para>
+    /// Forbidden on a container (<see cref="Document.IsContainer"/>): it runs no field extraction and its
+    /// Markdown is only a provenance anchor, so a correction has no sensible meaning there. The unclassified
+    /// guard (<c>NotClassified</c>) applies only when Reprocess is requested — a Markdown-only correction does
+    /// not need a type. No history table: the correction trail is carried by ABP entity audit logging, the
+    /// same reasoning as <see cref="ResolveFieldValidationWarningsAsync"/>.
+    /// </para>
+    /// </summary>
+    [Authorize(VaultExtractPermissions.Documents.ConfirmClassification)]
+    public virtual async Task<DocumentDto> UpdateMarkdownAsync(Guid id, UpdateMarkdownInput input)
+    {
+        // #527: FindWithFieldValuesAsync (not the lean includeDetails) so the returned DTO carries the warning details.
+        var document = await _documentRepository.FindWithFieldValuesAsync(id);
+        if (document == null)
+        {
+            throw new EntityNotFoundException(typeof(Document), id);
+        }
+
+        EnsureNotDeleted(document);
+
+        // #555: a container runs no type-bound field extraction and its Markdown is only a provenance anchor;
+        // a correction has no sensible meaning here.
+        if (document.IsContainer)
+        {
+            throw new BusinessException(VaultExtractErrorCodes.Document.CannotCorrectContainerMarkdown);
+        }
+
+        // Field extraction hangs off DocumentType; unclassified documents have nothing to extract against.
+        // Only checked when a reprocess was requested -- a Markdown-only correction does not need a type.
+        if (input.Reprocess)
+        {
+            EnsureClassified(document);
+        }
+
+        // Throws NotTextExtracted if Markdown was never set -- nothing to correct yet. Does not touch
+        // Title / Language / ExtractionMetadata / FieldFingerprint.
+        document.CorrectMarkdown(input.Markdown);
+
+        if (input.Reprocess)
+        {
+            Logger.LogInformation(
+                "UpdateMarkdownAsync(Reprocess) user={UserId} tenant={TenantId} doc={DocumentId}",
+                CurrentUser.Id, CurrentTenant.Id, document.Id);
+
+            await QueueFieldReextractionAsync(id, document);
+        }
+
+        await _documentRepository.UpdateAsync(document, autoSave: true);
 
         return await MapToDtoAsync(document);
     }
