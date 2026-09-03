@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-preview.2] - 2026-09-03
+
+Re-cuts `0.5.0-preview.1` from a tagged commit. That preview was published by two separate `workflow_dispatch` runs, so its artifacts do not correspond to a single commit — the NuGet packages came from `e9f86ca0`, the npm package from `9aeac63d`, after the publish-reporting fix below. It also predates the Angular ABP upgrade, so the published library declared `@abp/ng.core: ~10.2.0` while the .NET stack was already on 10.5.0; a consumer could only reconcile that with an `overrides` entry, which suppresses the mismatch rather than resolving it. **Consumers pinning `0.5.0-preview.1` should move to this version.**
+
+### Changed
+
+- **The Angular ABP packages upgraded from 10.2.0 to 10.5.0** (#590), closing the last of [#558](https://github.com/dignite-projects/vault-extract/issues/558)'s gates. The .NET side moved with field architecture v3; the Angular runtime stayed behind, below the `~10.5.0` peer range `@dignite/ng.flex-fields` declares. `@abp/ng.theme.lepton-x` moves to `~5.5.0` on its own version line. `legacy-peer-deps` stays: `@abp/ng.theme.shared` still pins `@swimlane/ngx-datatable@~22.0.0`, whose peer range stops at Angular 20 while this workspace is on 21 — a conflict upstream of ABP that no ABP version fixes.
+- **The Angular container image packages the prebuilt SPA** instead of building it in the container ([#584](https://github.com/dignite-projects/vault-extract/issues/584)). `docker-compose` points at `Dockerfile.local`, which is what `run-docker.ps1` already did; the container-side `npm ci` and with it the GitHub Packages credential requirement are gone, and the now-unused `angular/Dockerfile` is removed.
+
+### Fixed
+
+- **The npm publish step reported success on a failed publish.** It piped `npm publish` through `tee` under a shell with no `pipefail`, so the step's status was always `tee`'s. That is how a green run had in fact returned `E401`.
+
 ## [0.5.0-preview.1] - 2026-09-02
 
 Two structural changes land together in this preview: **field architecture v3**, which replaces the hand-rolled field storage with the `Dignite.Abp.FlexFields` kernel, and the **Angular workspace migration** from Nx back to the Angular CLI. Both are breaking, which is why this opens a `0.5.0` line rather than continuing `0.4.x`.
