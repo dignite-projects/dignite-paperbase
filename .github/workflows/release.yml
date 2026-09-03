@@ -72,15 +72,8 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # NuGet.Config routes Dignite.Abp.FlexFields.* to GitHub Packages, which needs auth even for
-      # public packages. The built-in GITHUB_TOKEN cannot be used: it grants packages:read only for
-      # packages published by THIS repository, never for a sibling repo in the same org - and
-      # Dignite.Abp.FlexFields.* ships from abp-modules/flex-fields. Same real PAT ci.yml uses;
-      # commit 4309740c fixed this in ci.yml only and did not reach here.
       - name: Restore
         run: dotnet restore Dignite.Vault.Extract.slnx
-        env:
-          GITHUB_PACKAGES_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
 
       - name: Build
         run: dotnet build Dignite.Vault.Extract.slnx --no-restore --configuration Release
