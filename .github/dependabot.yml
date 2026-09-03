@@ -1,0 +1,86 @@
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: nuget
+    directory: "/"
+    schedule:
+      interval: monthly
+    groups:
+      abp:
+        patterns:
+          - "Volo.Abp.*"
+      microsoft:
+        patterns:
+          - "Microsoft.*"
+          - "System.*"
+      others:
+        patterns:
+          - "*"
+    ignore:
+      # Pinned to ABP Framework 10.5.0 - do not bump Volo.Abp.* to 10.6.0+.
+      - dependency-name: "Volo.Abp.*"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      # Its own version line (2.x/3.x) is decoupled from the ABP core version it requires:
+      # Volo.Abp.Studio.Client.AspNetCore 3.0.7/3.0.8 depend on Volo.Abp.AspNetCore 10.5.0, but
+      # 3.0.9+ silently require 10.6.0 - dependabot classifies e.g. 3.0.7->3.0.10 as a same-line
+      # patch update, so the semver-based ignore above doesn't catch it (confirmed in abp-modules).
+      - dependency-name: "Volo.Abp.Studio.Client.AspNetCore"
+        versions: [">= 3.0.9"]
+      # Volo.Abp.Swashbuckle 10.5.0 pulls in Swashbuckle.AspNetCore, whose Swashbuckle.AspNetCore.Swagger
+      # sub-package is compiled against Microsoft.OpenApi 2.x (floor 2.3.0). 3.x is a breaking rewrite
+      # Swashbuckle hasn't picked up yet, so a 3.x bump would resolve fine on paper but break Swagger
+      # generation at runtime (confirmed in abp-modules).
+      - dependency-name: "Microsoft.OpenApi"
+        versions: [">= 3.0.0"]
+
+  - package-ecosystem: npm
+    directory: "/angular"
+    schedule:
+      interval: monthly
+    groups:
+      angular:
+        patterns:
+          - "@angular/*"
+          - "@angular-devkit/*"
+      abp-ng:
+        patterns:
+          - "@abp/*"
+      others:
+        patterns:
+          - "*"
+    ignore:
+      # ABP 10.5.0 pairs with Angular 21; Angular 22 is the ABP 10.6.0-track version. 21.x
+      # patch/minor bumps still flow through normally.
+      - dependency-name: "@angular/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@angular-devkit/*"
+        update-types: ["version-update:semver-major"]
+      # ng-packagr and angular-eslint aren't under the @angular/* scope but their major version
+      # tracks Angular's own (confirmed as a gap in abp-modules - ng-packagr 22.x pairs with
+      # Angular 22, and the same applies to angular-eslint's unified package here).
+      - dependency-name: "ng-packagr"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "angular-eslint"
+        update-types: ["version-update:semver-major"]
+      # All @abp/* packages (incl. @abp/ng.theme.lepton-x, which uses its own 5.x line) are
+      # released in lockstep with the ABP Framework version - pinned at 10.5.0, don't bump to
+      # whatever ships alongside 10.6.0.
+      - dependency-name: "@abp/*"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+
+  - package-ecosystem: npm
+    directory: "/host/src"
+    schedule:
+      interval: monthly
+    ignore:
+      - dependency-name: "@abp/*"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
