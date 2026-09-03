@@ -86,7 +86,7 @@
     </ItemGroup>
 
     <ItemGroup Label="ABP Studio">
-        <PackageVersion Include="Volo.Abp.Studio.Client.AspNetCore" Version="2.2.6" />
+        <PackageVersion Include="Volo.Abp.Studio.Client.AspNetCore" Version="2.2.7" />
     </ItemGroup>
 
     <ItemGroup Label="AI">
