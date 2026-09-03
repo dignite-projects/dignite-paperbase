@@ -3,7 +3,8 @@
 #
 # Routing by channel, derived from the SemVer pre-release suffix in <Version>:
 #   - Pre-release (e.g. 0.2.0-preview.3) -> NuGet + npm packages pushed to GitHub Packages only.
-#   - Stable      (e.g. 0.2.0)           -> NuGet to NuGet.org, npm (@dignite/vault-extract) to npmjs.
+#   - Stable      (e.g. 0.2.0)           -> NuGet to NuGet.org, npm (@dignite/vault-extract) to npmjs
+#                                            via npm Trusted Publishing (OIDC), no NPM_TOKEN.
 #
 # Triggers: push a v* tag (e.g. v0.2.0 or v0.2.0-preview.3) or use workflow_dispatch. For churny
 # pre-release builds prefer workflow_dispatch: no tag, no draft Release, no lockstep check - just
@@ -28,6 +29,7 @@ jobs:
     permissions:
       contents: write # Required by softprops/action-gh-release to create a draft Release
       packages: write # Required to push pre-release NuGet/npm packages to GitHub Packages
+      id-token: write # npm Trusted Publishing (OIDC) + provenance for the stable npmjs publish
 
     steps:
       - name: Checkout
@@ -137,11 +139,17 @@ jobs:
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
 
+      # Trusted publishing (OIDC) needs Node >= 22.14.0; ci.yml already builds the workspace on 22.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing (OIDC) needs npm >= 11.5.1; Node 22 bundles npm 10.9.x. Pinned to the
+      # 11.x line so a future npm major cannot change publish behaviour unannounced.
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@^11.5.1
 
       # angular/.npmrc routes @dignite-projects:* to GitHub Packages and reads the credential from
       # the plain GITHUB_TOKEN env var (npm's own ${VAR} substitution, not a GitHub Actions
@@ -232,20 +240,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Stable releases carry the public @dignite/* name to npmjs. Note this still requires every
-      # @dignite/* dependency to exist there: @dignite/ng.flex-fields does not yet (flex-fields
-      # publishes pre-releases to GitHub Packages only), so a stable npm release is gated on that -
-      # tracked in #577.
+      # Stable releases carry the public @dignite/* name to npmjs. Auth is OIDC: npm exchanges this
+      # job's GitHub id-token for a short-lived publish token for @dignite/vault-extract (a Trusted
+      # Publisher is configured on npmjs.com for this repo + this workflow file - that is why the
+      # job has id-token: write). A missing/misconfigured Trusted Publisher fails loudly here
+      # (E404/E401), which is intended.
+      #
+      # This still requires every @dignite/* dependency to exist on npmjs: @dignite/ng.flex-fields*
+      # are being bootstrapped there (dignite-projects/abp-modules#106), tracked in #577.
       - name: Publish to npm (stable)
         if: steps.channel.outputs.channel == 'stable'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # angular/.npmrc's ${GITHUB_TOKEN} placeholder must resolve (same reason as the
+          # preview step above); npmjs auth no longer uses it.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::notice::NPM_TOKEN secret is not configured; skipping npm publish."
-            exit 0
-          fi
-          npm publish ./dist/vault-extract --access public
+          npm publish ./dist/vault-extract --access public --provenance
         working-directory: angular
 
       # Extract this version's section from CHANGELOG.md as the draft release body. The heading
