@@ -7,7 +7,7 @@
     <ItemGroup Label="Build tools">
         <PackageVersion Include="ConfigureAwait.Fody" Version="3.3.1" />
         <PackageVersion Include="Fody" Version="6.5.3" />
-        <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.300" />
+        <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.400" />
     </ItemGroup>
 
     <ItemGroup Label="ABP Framework">
@@ -90,10 +90,10 @@
     </ItemGroup>
 
     <ItemGroup Label="AI">
-        <PackageVersion Include="Microsoft.Extensions.AI" Version="10.6.0" />
-        <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.6.0" />
-        <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.6.0" />
-        <PackageVersion Include="Microsoft.Agents.AI" Version="1.8.0" />
+        <PackageVersion Include="Microsoft.Extensions.AI" Version="10.9.0" />
+        <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.9.0" />
+        <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.9.0" />
+        <PackageVersion Include="Microsoft.Agents.AI" Version="1.20.0" />
     </ItemGroup>
 
     <ItemGroup Label="MCP">
@@ -114,13 +114,13 @@
     </ItemGroup>
 
     <ItemGroup Label="Infrastructure">
-        <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.2" />
-        <PackageVersion Include="Microsoft.EntityFrameworkCore.Proxies" Version="10.0.2" />
-        <PackageVersion Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.2" />
-        <PackageVersion Include="Microsoft.Extensions.FileProviders.Embedded" Version="10.0.9" />
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.11" />
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.Proxies" Version="10.0.11" />
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.11" />
+        <PackageVersion Include="Microsoft.Extensions.FileProviders.Embedded" Version="10.0.11" />
         <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.2" />
         <PackageVersion Include="Azure.AI.DocumentIntelligence" Version="1.0.0" />
-        <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.0" />
+        <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.11" />
         <PackageVersion Include="ElBruno.MarkItDotNet" Version="0.6.0" />
         <PackageVersion Include="ElBruno.MarkItDotNet.Excel" Version="0.6.0" />
         <!-- Charset detection for legacy-encoded CSV/TSV/TXT uploads (#493). Tri-licensed MPL-1.1 /
@@ -152,8 +152,8 @@
     </ItemGroup>
 
     <ItemGroup Label="Test">
-        <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
-        <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.8" />
+        <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+        <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.11" />
         <PackageVersion Include="NSubstitute" Version="5.3.0" />
         <PackageVersion Include="NSubstitute.Analyzers.CSharp" Version="1.0.17" />
         <PackageVersion Include="Shouldly" Version="4.3.0" />
