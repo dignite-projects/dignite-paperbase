@@ -10,6 +10,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ClosedXML" />
+    <PackageReference Include="DocumentFormat.OpenXml" />
+    <PackageReference Include="PdfPig" />
     <InternalsVisibleTo Include="Dignite.Vault.Extract.Application.Tests" />
     <PackageReference Include="Volo.Abp.Core" />
     <PackageReference Include="ElBruno.MarkItDotNet" />
