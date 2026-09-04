@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`@dignite/ng.flex-fields` / `@dignite/ng.flex-fields-ckeditor` bumped to `10.0.0-rc.13`**, matching `Dignite.Abp.FlexFields.*` on the .NET side. The npm workspace alias to GitHub Packages (`npm:@dignite-projects/...`) is dropped now that the real `@dignite/*` packages are live on npmjs, closing the npmjs-availability blocker from [#577](https://github.com/dignite-projects/vault-extract/issues/577).
 - **The npm install no longer needs a registry credential.** With the alias gone, every dependency resolves from npmjs, so the `@dignite-projects` scope mapping and its `${GITHUB_TOKEN}` placeholder are removed from `angular/.npmrc` and the `PACKAGES_READ_TOKEN` drops out of both workflows' `npm ci`. The npm counterpart of [#595](https://github.com/dignite-projects/vault-extract/pull/595), which did this for the .NET restore. Publishing a pre-release to GitHub Packages still authenticates, in the publish step's own config.
 
+### Added
+
+- **A build guard that fails when the published bundle imports a package the published `package.json` does not declare** ([#577](https://github.com/dignite-projects/vault-extract/issues/577)). ng-packagr externalises every bare specifier it does not bundle but never checks that the externals are declared, so this class of defect is silent through build, `npm install`, and CI — it only surfaces when a consumer builds their own app. Runs in CI and as part of `npm run build:vault-extract`. Ported from the sibling `abp-modules` repo; it is what found the `@abp/ng.components` omission below.
+
 ### Fixed
 
 - **The Angular library did not declare `@abp/ng.components`**, which its bundle imports (`@abp/ng.components/extensible`) in five components. It is not reachable transitively: `@abp/ng.components` peer-requires `ng.core` / `ng.theme.shared` rather than being pulled in by them, so a consumer without their own direct dependency on it got an unresolvable specifier. The same shape as the `@dignite/ng.flex-fields` omission that opened #577.
