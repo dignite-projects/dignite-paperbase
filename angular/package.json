@@ -42,7 +42,7 @@
     "marked": "^18.0.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.1.0",
-    "zone.js": "~0.15.0"
+    "zone.js": "~0.16.2"
   },
   "devDependencies": {
     "@abp/ng.schematics": "~10.5.0",
@@ -51,10 +51,10 @@
     "@angular/cli": "~21.2.21",
     "@angular/compiler-cli": "~21.2.0",
     "@angular/language-service": "~21.2.0",
-    "@types/node": "^20.0.0",
+    "@types/node": "^26.4.0",
     "angular-eslint": "~21.4.0",
     "eslint": "^10.9.1",
-    "jsdom": "^27.1.0",
+    "jsdom": "^30.0.1",
     "ng-packagr": "~21.2.0",
     "typescript": "~5.9.0",
     "typescript-eslint": "^8.69.0",
