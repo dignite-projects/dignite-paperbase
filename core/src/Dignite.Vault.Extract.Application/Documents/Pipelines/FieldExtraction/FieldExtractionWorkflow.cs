@@ -27,10 +27,11 @@ namespace Dignite.Vault.Extract.Documents.Pipelines.FieldExtraction;
 /// <list type="bullet">
 ///   <item>Extract all fields in one call, reducing LLM round-trips and repeated context.</item>
 ///   <item>Constrain output schema with <c>ChatResponseFormat.ForJsonSchema</c>.</item>
-///   <item>Normalization is requested in the prompt: the AI should output canonical shapes by <see cref="FieldDataType"/>
+///   <item>Normalization is requested in the prompt: the AI should output canonical shapes by field type
 ///         (bare JSON number for numbers, ISO-8601 string for dates, JSON true/false for booleans). Parsing then runs strict validation through
-///         <see cref="ExtractedFieldValueValidator"/>. Values that do not match the declared type are written as null and logged, ensuring
-///         <c>ExtractedFields</c> type consistency (Issue #204: typed queries in GetFieldMatchedIdsAsync are built on clean data).</item>
+///         <c>FlexFieldValueReader</c> (v3's successor to v2's now-removed <c>ExtractedFieldValueValidator</c>, #593). Values that do not match
+///         the declared type are written as null and logged, ensuring <c>ExtractedFields</c> type consistency (Issue #204: typed queries are
+///         built on clean data).</item>
 ///   <item>Prompts for all fields, including Host-origin fields, are uniformly wrapped with <c>PromptBoundary.WrapField</c>.
 ///         This is more conservative than v1's Host/Tenant distinction and has no functional loss.</item>
 /// </list>

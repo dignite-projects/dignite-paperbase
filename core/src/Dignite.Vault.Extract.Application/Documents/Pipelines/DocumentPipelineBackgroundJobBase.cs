@@ -49,10 +49,11 @@ public abstract class DocumentPipelineBackgroundJobBase<TArgs> : AsyncBackground
     /// are responsible for invoking and committing this inside their own short UoW.
     /// <para>
     /// When <paramref name="includeFieldValues"/> is true, eager-load
-    /// <see cref="Document.ExtractedFieldValues"/>. Only the classification job's Complete stage needs
+    /// <see cref="Document.FieldValidationWarnings"/>. Only the classification job's Complete stage needs
     /// this: the low-confidence path calls <c>RequestClassificationReview</c>, which clears
-    /// type-bound fields (#267), and EF needs the collection present to actually delete child rows.
-    /// Text extraction / failure closeout paths use the default false to avoid unnecessary JOINs.
+    /// type-bound fields (#267) and their validation warnings, and EF needs the warnings collection
+    /// present to actually delete its child rows. Text extraction / failure closeout paths use the
+    /// default false to avoid unnecessary JOINs.
     /// </para>
     /// </summary>
     protected virtual async Task<(Document Document, DocumentPipelineRun Run)> LoadDocumentAndRunAsync(

@@ -17,9 +17,10 @@ public static class VaultExtractDbContextModelCreatingExtensions
     // Document.ExtractionMetadata (#210): a single typed value object (provider name + nullable archived manifest).
     // It is read and written as a whole with no per-column query requirement, so it uses ABP's AbpJsonValueConverter<T>
     // to serialize into a large text column (SQL Server -> nvarchar(max); other providers choose their own mapping),
-    // without binding to provider-specific native JSON. Contrast with DocumentExtractedField: field values with query
-    // requirements become first-class children (Issue #206), while JSON-like payloads without query requirements stay as
-    // strings and do not bind to native JSON — the principle established by the Issue #206 cross-DB cleanup.
+    // without binding to provider-specific native JSON. Contrast with the FlexFields value bag below: field values with
+    // query requirements are decomposed into the derived DocumentFlexFieldIndex (Issue #206 / #558), while JSON-like
+    // payloads without query requirements stay as strings and do not bind to native JSON — the principle established by
+    // the Issue #206 cross-DB cleanup.
     // Nullable: not extracted / historical records are null.
     // EF stores DB null and does not call the converter when the property is null; it serializes only non-null values. The get-only value object
     // is deserialized by System.Text.Json through its single parameterized constructor, matching constructor parameter names to property names.
@@ -75,8 +76,8 @@ public static class VaultExtractDbContextModelCreatingExtensions
             // Field architecture v3 (#558): the authoritative flex-field value bag, one JSON column. Mapped by
             // the kernel, which also installs the value comparer a converted mutable dictionary needs - without
             // it EF compares the bag by reference and an in-place field write on a loaded document never
-            // persists. Not yet written to: ExtractedFieldValues below is still the truth source until #561's
-            // migration runs.
+            // persists. The sole truth source for field-value queries and persistence (#561, #593: v2's
+            // DocumentExtractedField child-row collection was removed once the v3 data migration ran).
             b.ConfigureFlexFieldsProperty<Document>();
 
             // The bag is read back through AbpJsonValueConverter, i.e.
@@ -88,16 +89,9 @@ public static class VaultExtractDbContextModelCreatingExtensions
             // than failing at migration time. "{}" is the empty bag such a document actually has.
             b.Property(x => x.FlexFields).HasDefaultValueSql("'{}'");
 
-            // Field architecture v2 / Issue #206: type-bound field values are an aggregate-internal child collection (DocumentExtractedField),
-            // no longer a top-level native JSON column on Document. Hard-deleting a Document cascades field-row deletion.
-            b.HasMany(x => x.ExtractedFieldValues)
-                .WithOne()
-                .HasForeignKey(f => f.DocumentId)
-                .OnDelete(DeleteBehavior.Cascade);
-
             // #527 §4: field validation warnings are an aggregate-internal child collection (one merged warning per
-            // field), separate from field values. Hard-deleting a Document cascades warning-row deletion (mirrors
-            // ExtractedFieldValues); the blocking FieldValidationWarning review bit is coupled to this collection in
+            // field), separate from field values. Hard-deleting a Document cascades warning-row deletion; the
+            // blocking FieldValidationWarning review bit is coupled to this collection in
             // Document.ReplaceFieldValidationWarnings.
             b.HasMany(x => x.FieldValidationWarnings)
                 .WithOne()
@@ -172,52 +166,6 @@ public static class VaultExtractDbContextModelCreatingExtensions
             // (TenantId, DocumentTypeId) prefix also covers the list-page filter, but the existing dedicated
             // (TenantId, DocumentTypeId) index above is kept to avoid an index drop on a populated table.
             b.HasIndex(x => new { x.TenantId, x.DocumentTypeId, x.FieldFingerprint });
-        });
-
-        builder.Entity<DocumentExtractedField>(b =>
-        {
-            b.ToTable(VaultExtractDbProperties.DbTablePrefix + "DocumentExtractedFields", VaultExtractDbProperties.DbSchema);
-            b.ConfigureByConvention();
-
-            // Composite primary key (DocumentId, FieldDefinitionId, Order) (#207 + #212): single-value fields always use Order 0, unique per document and field.
-            // Multi-value text fields (AllowMultiple) use multiple rows per field with Order 0/1/2... Reconcile replaces in place by (FieldDefinitionId, Order), leaving no duplicates.
-            // DocumentId is also the foreign key to the Document aggregate root (identifying relationship).
-            b.HasKey(x => new { x.DocumentId, x.FieldDefinitionId, x.Order });
-
-            // Field type is not persisted on this row (#208); it is determined by the referenced FieldDefinition.DataType, and read / export paths load that entity.
-            // TextValue is limited to nvarchar(256) (#209): type-bound text fields are short structured values extracted from Markdown
-            // (names, numbers, currencies, case titles, and similar), not long text payloads (long text belongs in Document.Markdown).
-            // The length limit lets it participate in composite index keys so equality queries can use index seek.
-            // The validation limit shares the same source, DocumentExtractedFieldConsts.MaxTextValueLength, and ExtractedFieldValueValidator enforces it too.
-            b.Property(x => x.TextValue).HasMaxLength(DocumentExtractedFieldConsts.MaxTextValueLength);
-
-            // LongTextValue has no mapped length limit (no HasMaxLength -> providers map to large text types such as nvarchar(max), cross-DB portable):
-            // long content payloads such as summaries / descriptions. It intentionally does not participate in any composite index below and has no single-column index.
-            // Long text cannot be an index key and has no equality / range query semantics (ApplyFieldValueFilter loud-fails for LongText).
-            // The App-layer MaxLongTextValueLength is only an anti-abuse limit and is not mapped as column length.
-            b.Property(x => x.LongTextValue);
-
-            // NumberValue uses precision(38,6) (32 integer digits + 6 decimal digits), covering realistic extracted numbers
-            // such as amounts, ratios, and percentages without overflow / truncation. EF's default decimal(18,2) silently rounds values with more than 2 decimals and loses precision.
-            // Precision is cross-DB portable, with each provider mapping it appropriately.
-            // Other numeric / date value columns are provider-mapped from CLR types (long -> bigint, DateOnly -> date, DateTime -> datetime2, and so on), without provider-specific type binding.
-            b.Property(x => x.NumberValue).HasPrecision(38, 6);
-
-            // Internal field definition association (#207): FK -> FieldDefinition.Id, OnDelete Restrict. FieldDefinition uses soft delete and does not trigger the FK.
-            // Only hard-deleting a definition still referenced by field values is rejected by the DB, preserving historical field value explainability. EF automatically creates an index for this FK.
-            b.HasOne<FieldDefinition>()
-                .WithMany()
-                .HasForeignKey(x => x.FieldDefinitionId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            // Field value queries start from the Documents aggregate root (narrowed by TenantId + DocumentTypeId + soft-delete global filters),
-            // then apply child EXISTS on (FieldDefinitionId, typedValue). The following (TenantId, FieldDefinitionId, <typedValue>, DocumentId)
-            // composite indexes support text equality plus Number / date equality and range filters. Text can enter index keys after the 256-char limit (#209).
-            // Boolean gets no dedicated index: cardinality is only 2 and selectivity is too low; the (TenantId, FieldDefinitionId) prefix grouping plus AND narrowing with other fields is enough.
-            b.HasIndex(x => new { x.TenantId, x.FieldDefinitionId, x.TextValue, x.DocumentId });
-            b.HasIndex(x => new { x.TenantId, x.FieldDefinitionId, x.NumberValue, x.DocumentId });
-            b.HasIndex(x => new { x.TenantId, x.FieldDefinitionId, x.DateValue, x.DocumentId });
-            b.HasIndex(x => new { x.TenantId, x.FieldDefinitionId, x.DateTimeValue, x.DocumentId });
         });
 
         builder.Entity<DocumentFieldValidationWarning>(b =>
@@ -334,37 +282,12 @@ public static class VaultExtractDbContextModelCreatingExtensions
             // "unique index treats NULL as equal" semantics for Host rows (TenantId IS NULL) plus a HasFilter("IsDeleted = 0")
             // literal — neither portable across providers (PostgreSQL defaults to NULLS DISTINCT, which would silently drop the
             // Host-layer guarantee). Dropping it makes the schema cross-DB by construction; the accepted tradeoff is a TOCTOU
-            // race on these low-frequency admin-config entities. The same applies to FieldDefinition / Cabinet below.
-        });
-
-        builder.Entity<FieldDefinition>(b =>
-        {
-            b.ToTable(VaultExtractDbProperties.DbTablePrefix + "FieldDefinitions", VaultExtractDbProperties.DbSchema);
-            b.ConfigureByConvention();
-
-            b.Property(x => x.Name).IsRequired().HasMaxLength(FieldDefinitionConsts.MaxNameLength);
-            b.Property(x => x.DisplayName).IsRequired().HasMaxLength(FieldDefinitionConsts.MaxDisplayNameLength);
-            // Prompt is optional (nullable): when empty, the LLM infers from Name + DataType only. FieldDefinition.NormalizePrompt collapses whitespace to null.
-            // #447: no HasMaxLength -> nvarchar(max). Prompt is admin-authored configuration (may be long, structured Markdown), so its length is intentionally uncapped.
-            b.Property(x => x.Prompt).IsRequired(false);
-            b.Property(x => x.DataType).IsRequired();
-
-            // Internal association to parent document type (#207): FK -> DocumentType.Id, OnDelete Restrict. Soft delete does not trigger it; hard-deleting a referenced type is rejected by the DB.
-            b.HasOne<DocumentType>()
-                .WithMany()
-                .HasForeignKey(x => x.DocumentTypeId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            // Layer-scoped uniqueness on (TenantId, DocumentTypeId, Name) is enforced by FieldDefinitionManager in the
-            // application/domain layer (#304), not by a DB index — see the DocumentType block above for the cross-DB rationale.
-
-            // Non-unique index: supports listing fields by (tenant layer, type), including trash-bin paths (DataFilter.Disable<ISoftDelete>).
-            b.HasIndex(x => new { x.TenantId, x.DocumentTypeId });
+            // race on these low-frequency admin-config entities. The same applies to Field / Cabinet below.
         });
 
         // === Field architecture v3 (#558): the FlexFields kernel's three shapes ===
-        // Additive alongside the v2 FieldDefinition / DocumentExtractedField tables above, which stay
-        // authoritative until the migration is written and verified (#561 expand-then-contract).
+        // Replaces the v2 FieldDefinition / DocumentExtractedField tables, which were dropped once the v3 data
+        // migration ran and was verified (#561 expand-then-contract, #593 the final drop).
 
         builder.Entity<Field>(b =>
         {
@@ -402,7 +325,7 @@ public static class VaultExtractDbContextModelCreatingExtensions
                 .OnDelete(DeleteBehavior.Restrict);
 
             // Layer-scoped uniqueness on (TenantId, DocumentTypeId, Name) stays an application-layer check,
-            // not a DB index - same cross-DB rationale as DocumentType / FieldDefinition above.
+            // not a DB index - same cross-DB rationale as DocumentType above.
             b.HasIndex(x => new { x.TenantId, x.DocumentTypeId });
         });
 

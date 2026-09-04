@@ -25,8 +25,6 @@ public class VaultExtractEntityFrameworkCoreModule : AbpModule
 
             options.AddRepository<Document, EfCoreDocumentRepository>();
             options.AddRepository<DocumentType, EfCoreDocumentTypeRepository>();
-            options.AddRepository<FieldDefinition, EfCoreFieldDefinitionRepository>();
-            // Field architecture v3 (#558), alongside FieldDefinition until #561's migration retires it.
             options.AddRepository<Field, EfCoreFieldRepository>();
             options.AddRepository<Cabinet, EfCoreCabinetRepository>();
             // #216: PipelineRun was promoted to an independent aggregate root.

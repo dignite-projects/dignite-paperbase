@@ -110,12 +110,12 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
 
     /// <summary>
     /// Content-derived stable key for duplicate re-upload detection (#411): the SHA-256 (lowercase hex) of this
-    /// document type's <b>normalized unique-key field values</b> (the <c>FieldDefinition.IsUniqueKey</c> set). Two
+    /// document type's <b>normalized unique-key field values</b> (the <c>Field.IsUniqueKey</c> set). Two
     /// documents in the same layer + same <see cref="DocumentTypeId"/> sharing this value are likely the same
     /// business entity (e.g. the same receipt scanned twice). Written by the field extraction stage via
     /// <see cref="SetFieldFingerprint"/>; <c>null</c> when the type declares no unique-key fields, or when not all of
     /// them have an extracted value (a partial key is not fingerprinted, to avoid false collisions). Derived from
-    /// <see cref="ExtractedFieldValues"/> and therefore recomputed on every re-extraction; cleared whenever the type
+    /// <see cref="FlexFields"/> and therefore recomputed on every re-extraction; cleared whenever the type
     /// is retracted or the document becomes a container.
     /// </summary>
     public virtual string? FieldFingerprint { get; private set; }
@@ -186,28 +186,14 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
     /// </summary>
     public virtual string? OriginConstituentKey { get; private set; }
 
-    // --- Aggregate-internal field value collection (field architecture v2 / Issue #206) ---
-
-    private readonly List<DocumentExtractedField> _extractedFieldValues = new();
-
-    /// <summary>
-    /// Type-bound field extraction results (field architecture v2): a child collection with one row per field value, the sole truth source for field value queries and persistence.
-    /// <para>
-    /// A single Document runs field extraction in exactly one layer, determined by <see cref="TenantId"/>; there is no bucketing and no cross-layer naming conflict.
-    /// </para>
-    /// The export DTO / MCP / REST <c>ExtractedFields</c> dictionary is assembled on demand from these rows by the App / Mapper layer
-    /// (see <see cref="DocumentExtractedField.ToJsonElement"/>), preserving wire-format compatibility with the old JSON column.
-    /// </summary>
-    public virtual IReadOnlyCollection<DocumentExtractedField> ExtractedFieldValues => _extractedFieldValues.AsReadOnly();
-
     // --- Aggregate-internal field validation warnings collection (#527 §4) ---
 
     private readonly List<DocumentFieldValidationWarning> _fieldValidationWarnings = new();
 
     /// <summary>
     /// Type-bound field validation warnings (#527): one merged warning per field whose extracted value failed a
-    /// validation rule declared in the field's prompt. The extracted value itself stays on
-    /// <see cref="ExtractedFieldValues"/>; this collection carries only the warning messages and is kept strictly out of
+    /// validation rule declared in the field's prompt. The extracted value itself stays in
+    /// <see cref="FlexFields"/>; this collection carries only the warning messages and is kept strictly out of
     /// field-value queries, search, export, and event payloads (#527 §11). Reconciled — and coupled to the blocking
     /// <see cref="DocumentReviewReasons.FieldValidationWarning"/> bit — through <see cref="ReplaceFieldValidationWarnings"/>.
     /// </summary>
@@ -216,14 +202,10 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
     // --- Field architecture v3 value bag (#558) ---
 
     /// <summary>
-    /// Authoritative storage for type-bound field values under field architecture v3: one entry per field,
-    /// keyed by <see cref="Fields.Field.Name"/>, persisted as a single JSON column.
-    /// <para>
-    /// <b>Not yet in use.</b> <see cref="ExtractedFieldValues"/> above is still the truth source; this
-    /// property exists so the schema and the v2 rows can coexist while the migration is written and
-    /// verified (#561's expand-then-contract plan). The rollback before the final drop is therefore
-    /// "revert the code", not "restore a backup".
-    /// </para>
+    /// Authoritative storage for type-bound field values, one entry per field, keyed by
+    /// <see cref="Fields.Field.Name"/>, persisted as a single JSON column. The sole truth source for
+    /// field-value queries and persistence — v2's <c>DocumentExtractedField</c> child-row collection was
+    /// removed once the v3 data migration ran (#561, #593).
     /// <para>
     /// This is FlexFields' own dictionary, deliberately <b>not</b> ABP's <c>ExtraProperties</c>: kept
     /// isolated from that shared bag so no other module can collide with a tenant's field names. Note
@@ -298,7 +280,7 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
     /// <see cref="VaultExtractErrorCodes.Document.NotTextExtracted"/> rather than silently behaving like a
     /// first write.
     /// <para>
-    /// Public and atomic, the same category as <see cref="SetCabinet"/> / <see cref="SetFields"/> — no
+    /// Public and atomic, the same category as <see cref="SetCabinet"/> / <see cref="SetFlexFields"/> — no
     /// DomainService mediation needed. Overwrites only <see cref="Markdown"/> itself: <see cref="Title"/>,
     /// <see cref="Language"/>, <see cref="ExtractionMetadata"/>, and <see cref="FieldFingerprint"/> are left
     /// exactly as they were from the original extraction, because a manual text fix does not re-derive any
@@ -331,7 +313,7 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
 
         // Title is LLM output and can be indirectly controlled through document content: collapse control characters
         // (including \r \n \t / null byte) to spaces, merge consecutive whitespace into one space, then Trim + truncate.
-        // This mirrors FieldDefinition.NormalizeDisplayName, including dropping a trailing unpaired high surrogate after truncation
+        // This mirrors Fields.Field.NormalizeDisplayName, including dropping a trailing unpaired high surrogate after truncation
         // so JSON serialization / DB round-trips are not broken by a split surrogate pair.
         var cleaned = new string(title.Select(c => char.IsControl(c) ? ' ' : c).ToArray()).Trim();
         cleaned = Regex.Replace(cleaned, @"\s+", " ");
@@ -381,7 +363,7 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
     /// <summary>
     /// Reassigns / assigns the document's cabinet (#257). <c>null</c> = remove from cabinet (uncategorized).
     /// CabinetId is an orthogonal organization dimension. Reassignment <b>does not</b> trigger any pipeline or domain event; it is an atomic state change
-    /// (same category as <see cref="SetFields"/>, called directly by the Application layer without a DomainService).
+    /// (same category as <see cref="SetFlexFields"/>, called directly by the Application layer without a DomainService).
     /// The Application layer validates target cabinet existence and current-layer ownership (<c>DocumentAppService.UpdateCabinetAsync</c>).
     /// </summary>
     public void SetCabinet(Guid? cabinetId)
@@ -399,23 +381,8 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
     }
 
     /// <summary>
-    /// Replaces the full set of type-bound field values (field architecture v2 / Issue #206 + #207). <c>FieldExtractionService</c> calls this after the classification cascade runs;
-    /// operator edits (<c>UpdateExtractedFieldsAsync</c>) use the same path. Passing an empty collection clears all field rows.
-    /// Callers submit the current full field value set for the document, after validating that value types match <see cref="DocumentFieldValue.DataType"/>
-    /// and each <see cref="DocumentFieldValue.FieldDefinitionId"/> resolves from a <c>FieldDefinition</c> in the document's layer / type.
-    /// <para>
-    /// Uses <b>reconcile</b> rather than clear+add: rows for the same field value (by <see cref="DocumentFieldValue.FieldDefinitionId"/> +
-    /// <see cref="DocumentFieldValue.Order"/>, #212) are <b>updated in place</b>, missing rows are deleted, and new rows are inserted. Reason: under the composite key
-    /// <c>(DocumentId, FieldDefinitionId, Order)</c>, clear+add creates delete+insert for the same key within one SaveChanges,
-    /// risking unique conflicts / EF operation ordering issues. Changing <c>amount=100</c> to <c>200</c> is a same-field same-Order replacement;
-    /// changing multi-value text <c>["a","b","c"] -> ["x","y"]</c> updates Order 0/1 in place and deletes Order 2 without key collision.
-    /// </para>
-    /// Atomic state change without DomainService mediation, unlike internal setters such as <see cref="SetMarkdown"/> that must be composed with pipeline completion transactions.
-    /// <b>Precondition</b>: <see cref="DocumentTypeId"/> is not null because fields hang off document types; both caller paths run after classification completes.
-    /// </summary>
-    /// <summary>
-    /// Replaces the whole type-bound field value set (field architecture v3, #562) — the v3 successor to
-    /// <see cref="SetFields"/>.
+    /// Replaces the whole type-bound field value set. <c>FieldExtractionService</c> calls this after the
+    /// classification cascade runs; operator edits (<c>UpdateExtractedFieldsAsync</c>) use the same path.
     /// <para>
     /// Whole-set replacement, not a merge: extraction produces the complete set for a document's type in
     /// one call, so a field absent from <paramref name="values"/> means "this document has no value for
@@ -425,8 +392,12 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
     /// <para>
     /// Keyed by <see cref="Fields.Field.Name"/>, because that is the bag's key. The caller resolves names
     /// from the field definitions and is responsible for having validated each value against its field
-    /// type first — the aggregate stores what it is given, exactly as <see cref="SetFields"/> did.
+    /// type first — the aggregate stores what it is given.
     /// </para>
+    /// Atomic state change without DomainService mediation, unlike internal setters such as
+    /// <see cref="SetMarkdown"/> that must be composed with pipeline completion transactions.
+    /// <b>Precondition</b>: <see cref="DocumentTypeId"/> is not null because fields hang off document types;
+    /// both caller paths run after classification completes.
     /// </summary>
     public void SetFlexFields(IReadOnlyDictionary<string, object?>? values)
     {
@@ -449,28 +420,6 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
         }
     }
 
-    public void SetFields(IEnumerable<DocumentFieldValue>? values)
-    {
-        var incoming = values?.ToList() ?? new List<DocumentFieldValue>();
-
-        _extractedFieldValues.RemoveAll(existing =>
-            incoming.All(v => v.FieldDefinitionId != existing.FieldDefinitionId || v.Order != existing.Order));
-
-        foreach (var value in incoming)
-        {
-            var existing = _extractedFieldValues.FirstOrDefault(
-                f => f.FieldDefinitionId == value.FieldDefinitionId && f.Order == value.Order);
-            if (existing != null)
-            {
-                existing.SetValue(value);
-            }
-            else
-            {
-                _extractedFieldValues.Add(new DocumentExtractedField(Id, TenantId, value));
-            }
-        }
-    }
-
     /// <summary>
     /// Replaces the full set of field validation warnings (#527 §4) and, in the <b>same operation</b>, sets or clears the
     /// blocking <see cref="DocumentReviewReasons.FieldValidationWarning"/> review reason so the collection and the bit can
@@ -478,7 +427,7 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
     /// the document's current type; passing an empty collection (or <c>null</c>) clears all warnings and the bit — exactly
     /// what a later clean re-extraction does to release the document.
     /// <para>
-    /// Reconciles like <see cref="SetFields"/> (one row per field, keyed by
+    /// Reconciles like <see cref="SetFlexFields"/> (one row per field, keyed by
     /// <see cref="DocumentFieldValidationWarning.FieldDefinitionId"/>): existing rows are updated in place, dropped rows
     /// deleted, new rows inserted — avoiding a delete+insert on the same composite key within one <c>SaveChanges</c>.
     /// Callers submit warnings already resolved to the current field definitions (undeclared / stale-field warnings
@@ -546,9 +495,9 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
 
     /// <summary>
     /// Writes the duplicate-detection fingerprint (#411): the SHA-256 of this type's normalized unique-key field
-    /// values, computed by the field extraction stage after <see cref="SetFields"/>. <c>null</c> / whitespace clears
+    /// values, computed by the field extraction stage after <see cref="SetFlexFields"/>. <c>null</c> / whitespace clears
     /// it (no unique-key fields configured, or a partial key). Unlike <see cref="SetMarkdown"/> this is <b>not</b>
-    /// write-once: the fingerprint is derived from <see cref="ExtractedFieldValues"/> and must track every
+    /// write-once: the fingerprint is derived from <see cref="FlexFields"/> and must track every
     /// re-extraction. <c>public</c> because the compute point lives in the Application layer (<c>FieldExtractionService</c>),
     /// the same cross-assembly reason as <see cref="SetReviewReason"/>.
     /// </summary>
@@ -613,8 +562,8 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
     /// <see cref="DocumentReviewReasons.UnresolvedClassification"/> (blocking), preventing stale values from polluting external read models.
     /// <para>
     /// Invariant: "no confirmed type implies no type-bound field values". Once the type is retracted (<see cref="DocumentTypeId"/> = null),
-    /// old field values — both the legacy <see cref="ExtractedFieldValues"/> rows and the v3 <see cref="FlexFields"/> bag — no longer
-    /// belong to any confirmed type and must be cleared together. Otherwise export DTO / MCP /
+    /// old field values in the <see cref="FlexFields"/> bag no longer belong to any confirmed type and must be
+    /// cleared. Otherwise export DTO / MCP /
     /// export paths would expose a dirty model with fields but no type (#267 first exposed this when automatic reclassification fell to low confidence).
     /// Re-confirming a type (<see cref="ConfirmClassification"/> or high-confidence reclassification -> <c>DocumentClassifiedEto</c> -> field re-extraction) will restore fields.
     /// Centralizing this invariant in the aggregate root avoids per-read-path type filtering and special-case buildup.
@@ -636,7 +585,6 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
         ClearFieldValidationWarnings();
         ReviewDisposition = DocumentReviewDisposition.NotReviewed;
         RejectionReason = null; // #284 review-fix: leaving Rejected disposition -> clear stale rejection reason.
-        _extractedFieldValues.Clear();
         SetFlexFields(null);
     }
 
@@ -689,7 +637,6 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
         ClearFieldValidationWarnings();
         ReviewDisposition = DocumentReviewDisposition.NotReviewed;
         RejectionReason = null;
-        _extractedFieldValues.Clear();
         SetFlexFields(null);
 
         // #355: mirror of the container→type retraction (#349 ContainerMarkerClearedEvent). The in-process handler

@@ -13,8 +13,6 @@ public class VaultExtractDbContext : AbpDbContext<VaultExtractDbContext>, IVault
     public DbSet<DocumentPipelineRun> DocumentPipelineRuns { get; set; }
     public DbSet<DocumentSegment> DocumentSegments { get; set; }
     public DbSet<DocumentType> DocumentTypes { get; set; }
-    public DbSet<FieldDefinition> FieldDefinitions { get; set; }
-    // Field architecture v3 (#558), additive alongside FieldDefinition until #561's migration runs.
     public DbSet<Field> Fields { get; set; }
     public DbSet<DocumentFlexFieldIndex> DocumentFlexFieldIndexes { get; set; }
     public DbSet<Cabinet> Cabinets { get; set; }
