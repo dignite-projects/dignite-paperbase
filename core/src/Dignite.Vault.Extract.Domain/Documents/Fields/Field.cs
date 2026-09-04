@@ -10,7 +10,8 @@ namespace Dignite.Vault.Extract.Documents.Fields;
 
 /// <summary>
 /// A type-bound field definition (field architecture v3, #558/#559) — Vault Extract's implementation of
-/// the FlexFields kernel's <see cref="IFlexField"/> contract. Replaces <see cref="FieldDefinition"/>.
+/// the FlexFields kernel's <see cref="IFlexField"/> contract. Replaces v2's now-removed
+/// <c>FieldDefinition</c> entity (#593).
 /// <para>
 /// Unique constraint stays <c>(TenantId, DocumentTypeId, Name)</c>: fields remain bound to a single
 /// document type, deliberately <b>not</b> the tenant-wide reusable field library plus per-usage split
@@ -29,7 +30,7 @@ namespace Dignite.Vault.Extract.Documents.Fields;
 public class Field : FullAuditedAggregateRoot<Guid>, IFlexField, IMultiTenant
 {
     /// <summary>
-    /// Deliberately the <b>same</b> pattern <see cref="FieldDefinition"/> enforces, referenced rather
+    /// Deliberately the <b>same</b> pattern v2's <c>FieldDefinition</c> enforced, referenced rather
     /// than copied. The FlexFields kernel validates no format on <c>Name</c> at all — its
     /// <c>ConfigureFlexField</c> maps only a max length, leaving the character set to the downstream —
     /// so adopting the kernel does <b>not</b> carry this guard over by itself. It has to be re-declared
@@ -167,8 +168,8 @@ public class Field : FullAuditedAggregateRoot<Guid>, IFlexField, IMultiTenant
 
     /// <summary>
     /// DisplayName never reaches an LLM prompt; rejecting control characters is defense-in-depth for UI
-    /// rendering and logs. Same rule as <see cref="FieldDefinition"/>, so a migrated value cannot become
-    /// unsavable.
+    /// rendering and logs. Same rule v2's <c>FieldDefinition</c> enforced, so a migrated value cannot
+    /// become unsavable.
     /// </summary>
     public virtual void SetDisplayName(string displayName)
     {
@@ -181,6 +182,45 @@ public class Field : FullAuditedAggregateRoot<Guid>, IFlexField, IMultiTenant
         }
 
         DisplayName = displayName;
+    }
+
+    /// <summary>
+    /// Normalizes a candidate display name into a <b>safe-to-save</b> form: replace control characters
+    /// such as line breaks / tabs / null bytes with spaces, fold consecutive whitespace, and truncate to
+    /// <see cref="FieldDefinitionConsts.MaxDisplayNameLength"/>.
+    /// <para>
+    /// Used by "draft from prompt" (#264) to prefill forms — <c>FieldDraftSuggestionAppService</c> is the
+    /// sole live caller. Carried over unchanged from v2's <c>FieldDefinition.NormalizeDisplayName</c>
+    /// (#593 removed that entity once the v3 data migration ran; this method moved here because it is
+    /// still needed). Output normalized through this method is <b>guaranteed</b> to pass
+    /// <see cref="SetDisplayName"/>, so saving will not immediately loud-fail. Whitespace input -> empty
+    /// string, letting callers treat it as "draft unavailable".
+    /// </para>
+    /// </summary>
+    public static string NormalizeDisplayName(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return string.Empty;
+        }
+
+        var cleaned = new string(raw.Select(c => char.IsControl(c) ? ' ' : c).ToArray()).Trim();
+        cleaned = Regex.Replace(cleaned, @"\s+", " ");
+        if (cleaned.Length > FieldDefinitionConsts.MaxDisplayNameLength)
+        {
+            cleaned = cleaned[..FieldDefinitionConsts.MaxDisplayNameLength];
+            // Truncating by UTF-16 code units can split surrogate pairs and leave a trailing unpaired high surrogate.
+            // SetDisplayName would allow it, but it is an invalid paired character and can break later JSON serialization / DB round-trips.
+            // Drop the trailing unpaired high surrogate (#264 review2 #2).
+            if (cleaned.Length > 0 && char.IsHighSurrogate(cleaned[^1]))
+            {
+                cleaned = cleaned[..^1];
+            }
+
+            cleaned = cleaned.Trim();
+        }
+
+        return cleaned;
     }
 
     public virtual void SetFieldTypeName(string fieldTypeName)

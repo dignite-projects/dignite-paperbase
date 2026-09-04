@@ -113,9 +113,10 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
             documentTypeId = type.Id;
         }
 
-        // ExtractedFields value filters: resolve each FieldFilter into a DocumentFieldQuery carrying FieldDefinitionId + declared type.
-        // FieldDefinition cross-aggregate lookup is the caller-layer responsibility. If any field is not defined under that type, loud fail
-        // with UnknownExtractedField as a correctable signal, instead of silently returning empty. No FieldFilters -> null (metadata-only retrieval).
+        // ExtractedFields value filters: resolve each FieldFilter into a FlexFieldQueryCondition via DocumentFieldQueryResolver,
+        // carrying the field's Id + declared value type. Field cross-aggregate lookup is the caller-layer responsibility. If any
+        // field is not defined under that type, loud fail with UnknownExtractedField as a correctable signal, instead of silently
+        // returning empty. No FieldFilters -> null (metadata-only retrieval).
         var fieldQueries = await ResolveFieldQueriesAsync(input, documentTypeId);
 
         // Trash-bin view: requires Restore permission, and the entire query pipeline must run inside DataFilter.Disable<ISoftDelete>.

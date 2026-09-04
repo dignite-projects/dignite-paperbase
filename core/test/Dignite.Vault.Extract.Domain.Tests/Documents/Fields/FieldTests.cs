@@ -80,7 +80,7 @@ public class FieldTests
     /// Blank and over-length names fail earlier, in ABP's <c>Check</c> guard, so they surface as
     /// <see cref="ArgumentException"/> rather than the allow-list's <see cref="BusinessException"/>.
     /// Asserted separately rather than folded into the theory above, because the distinction is real:
-    /// this is the same split <see cref="FieldDefinition"/> already has, and v3 keeps it so the app
+    /// this is the same split v2's <c>FieldDefinition</c> already had, and v3 keeps it so the app
     /// layer's existing handling of both does not have to change.
     /// </summary>
     [Theory]
@@ -98,13 +98,68 @@ public class FieldTests
     }
 
     /// <summary>
-    /// Carried over from <see cref="FieldDefinition"/> unchanged so a migrated display name cannot
+    /// Carried over from v2's <c>FieldDefinition</c> unchanged so a migrated display name cannot
     /// become unsavable under v3.
     /// </summary>
     [Fact]
     public void Rejects_control_characters_in_the_display_name()
     {
         Should.Throw<BusinessException>(() => Create(displayName: "Contract\nAmount"));
+    }
+
+    // ─── NormalizeDisplayName contract (#264: draft assistant prefill must pass SetDisplayName) ─────────
+    // Carried over from v2's FieldDefinitionTests unchanged (#593: FieldDefinition removed, the method
+    // moved onto Field, the sole live caller FieldDraftSuggestionAppService follows it).
+
+    [Theory]
+    [InlineData("Amount\nIgnore")]            // \n to space
+    [InlineData("Amount\r\nIgnore")]          // \r\n to collapsed space
+    [InlineData("Tab\there")]                 // tab
+    [InlineData("Null\0byte")]                // \0
+    [InlineData("Vertical\vTab")]
+    [InlineData("Form\fFeed")]
+    [InlineData("  双侧空白  ")]
+    [InlineData("多   连续   空白")]
+    public void NormalizeDisplayName_Output_Should_Pass_SetDisplayName(string raw)
+    {
+        // Contract lock: Normalize output must pass SetDisplayName through the constructor. This
+        // prevents future tightening of the rejection domain from silently drifting between the two paths
+        // and making drafted values fail loudly when saved (#264 review2 #3).
+        var normalized = Field.NormalizeDisplayName(raw);
+
+        var field = Create(displayName: normalized);
+
+        field.DisplayName.ShouldBe(normalized);
+        normalized.ShouldNotContain('\n');
+        normalized.ShouldNotContain('\t');
+        normalized.ShouldNotContain('\0');
+    }
+
+    [Fact]
+    public void NormalizeDisplayName_Should_Truncate_Without_Leaving_Lone_Surrogate()
+    {
+        // The MaxDisplayNameLength-th code unit is exactly the high surrogate of an astral character
+        // (emoji); truncation must not leave an orphan high surrogate.
+        var raw = new string('a', FieldDefinitionConsts.MaxDisplayNameLength - 1) + "😀"; // 😀 = U+D83D U+DE00
+
+        var normalized = Field.NormalizeDisplayName(raw);
+
+        normalized.Length.ShouldBeLessThanOrEqualTo(FieldDefinitionConsts.MaxDisplayNameLength);
+        // Last char is not an orphan high surrogate; either keep 😀 intact or drop it entirely.
+        if (normalized.Length > 0)
+        {
+            char.IsHighSurrogate(normalized[^1]).ShouldBeFalse();
+        }
+        // Still safe to construct: no throw and serializable.
+        var field = Create(displayName: normalized);
+        field.DisplayName.ShouldBe(normalized);
+    }
+
+    [Fact]
+    public void NormalizeDisplayName_Should_Return_Empty_For_Blank()
+    {
+        Field.NormalizeDisplayName(null).ShouldBe(string.Empty);
+        Field.NormalizeDisplayName("   ").ShouldBe(string.Empty);
     }
 
     [Fact]

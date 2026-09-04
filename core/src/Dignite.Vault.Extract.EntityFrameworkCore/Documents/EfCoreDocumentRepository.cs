@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -149,15 +148,12 @@ public class EfCoreDocumentRepository
     public virtual async Task<Document?> FindWithFieldValuesAsync(
         Guid id, CancellationToken cancellationToken = default)
     {
-        // #527: load BOTH field-stage child collections — ExtractedFieldValues and FieldValidationWarnings — because the
-        // field-extraction write phase and the §7 type-change clearing reconcile / delete both. Two collection Includes
-        // reintroduce the Cartesian product #206 removed, so split into per-collection queries (AsSplitQuery); the
-        // single-document scope keeps each query small, and every field-stage caller runs in a short UoW so the split
-        // queries see a consistent snapshot. The generic list path (IncludeDetails) deliberately does NOT co-load
-        // warnings — it projects a bounded summary — so it stays a single, un-split Include.
-        var query = await WithDetailsAsync(d => d.ExtractedFieldValues, d => d.FieldValidationWarnings);
+        // #527: load the field-stage child collection — FieldValidationWarnings — because the field-extraction
+        // write phase and the §7 type-change clearing reconcile / delete it. The generic list path
+        // (IncludeDetails) deliberately does NOT co-load warnings — it projects a bounded summary — so this is
+        // the only path that does.
+        var query = await WithDetailsAsync(d => d.FieldValidationWarnings);
         return await query
-            .AsSplitQuery()
             .FirstOrDefaultAsync(d => d.Id == id, GetCancellationToken(cancellationToken));
     }
 
@@ -166,9 +162,9 @@ public class EfCoreDocumentRepository
         // Traverse only soft delete to physically delete already-soft-deleted rows, while preserving the IMultiTenant tenant boundary.
         // Never use IgnoreQueryFilters(), because it would also disable IMultiTenant and allow future callers without app-layer tenant validation
         // to hard-delete across tenants (#220).
-        // ExecuteDeleteAsync relies on DB-level ON DELETE CASCADE. All four child FKs — DocumentExtractedField,
-        // DocumentFieldValidationWarning (#527), DocumentPipelineRun, and DocumentSegment (#346/#371) — use
-        // OnDelete(Cascade), and the narrowed filter does not affect cascading.
+        // ExecuteDeleteAsync relies on DB-level ON DELETE CASCADE. All three child FKs — DocumentFieldValidationWarning
+        // (#527), DocumentPipelineRun, and DocumentSegment (#346/#371) — use OnDelete(Cascade), and the narrowed
+        // filter does not affect cascading. DocumentFlexFieldIndex (#558) also cascades.
         using (DataFilter.Disable<ISoftDelete>())
         {
             var dbContext = await GetDbContextAsync();
@@ -176,53 +172,6 @@ public class EfCoreDocumentRepository
                 .Where(d => d.Id == id)
                 .ExecuteDeleteAsync(GetCancellationToken(cancellationToken));
         }
-    }
-
-    public virtual async Task<List<Guid>> GetFieldMatchedIdsAsync(
-        Guid documentTypeId,
-        IReadOnlyList<DocumentFieldQuery> fieldQueries,
-        CancellationToken cancellationToken = default)
-    {
-        // Caller layer (DocumentAppService.GetListAsync) calls this only when field filters exist, and has already validated required documentTypeCode,
-        // field count / length / at least one value (DTO + AppService layer, loud AbpValidationException), then resolved documentTypeCode /
-        // fieldName to internal Ids. This guard defends direct empty input.
-        if (fieldQueries is not { Count: > 0 })
-        {
-            return new List<Guid>();
-        }
-
-        var dbSet = await GetDbSetAsync();
-
-        // Field value filtering starts from the Documents aggregate root. Tenant (IMultiTenant) + soft-delete (ISoftDelete)
-        // global filters are applied automatically by ambient state (Issue #206: no filter disabling and no hand-written TenantId predicate).
-        // documentTypeId anchors one type because field values have no stable meaning outside a type.
-        // Each field filter compiles to ExtractedFieldValues.Any (EXISTS, matching the child by FieldDefinitionId), and multiple fields are ANDed
-        // following structured retrieval convention: different fields narrow each other. Ordinary column comparisons (= / range) are portable
-        // across relational databases, no longer relying on SQL Server JSON_VALUE / TRY_CONVERT / raw SQL, eliminating the injection surface.
-        var query = dbSet.Where(d => d.DocumentTypeId == documentTypeId);
-
-        foreach (var fieldQuery in fieldQueries)
-        {
-            query = ApplyFieldValueFilter(query, fieldQuery);
-        }
-
-        return await query
-            .AsNoTracking()
-            .Select(d => d.Id)
-            .ToListAsync(GetCancellationToken(cancellationToken));
-    }
-
-    public virtual async Task<bool> AnyExtractedFieldValueAsync(
-        Guid fieldDefinitionId,
-        CancellationToken cancellationToken = default)
-    {
-        // Scan the child DbSet directly, bypassing the aggregate root, to answer "does any field value still reference this FieldDefinition".
-        // This is not constrained by the parent Document's ISoftDelete filter because the child has no ISoftDelete and its DbSet does not apply parent filters.
-        // Field rows for soft-deleted documents still exist and revive on restore, so count them too. IMultiTenant still isolates by ambient tenant,
-        // matching field definitions in the current layer.
-        var dbContext = await GetDbContextAsync();
-        return await dbContext.Set<DocumentExtractedField>()
-            .AnyAsync(f => f.FieldDefinitionId == fieldDefinitionId, GetCancellationToken(cancellationToken));
     }
 
     public virtual async Task<bool> AnyFlexFieldValueAsync(
@@ -484,155 +433,4 @@ public class EfCoreDocumentRepository
         return query;
     }
 
-    /// <summary>
-    /// Compiles one field value query into an <c>Any</c> (EXISTS) predicate over <see cref="Document.ExtractedFieldValues"/>,
-    /// dispatching by <see cref="FieldDataType"/> to ordinary comparisons on the corresponding typed column:
-    /// <list type="bullet">
-    ///   <item><c>Text</c> / <c>Boolean</c>: equality only (red line: never LIKE); passing a range throws
-    ///   <see cref="VaultExtractErrorCodes.ExtractedField.FieldTypeDoesNotSupportRange"/> as a correctable signal for AI clients.</item>
-    ///   <item><c>Number</c> / <c>Date</c> / <c>DateTime</c>: equality or inclusive range.
-    ///   Inputs that cannot parse as the declared type throw <see cref="VaultExtractErrorCodes.ExtractedField.InvalidValue"/> loudly, not silent empty.</item>
-    /// </list>
-    /// Equality is uniformly represented as a degenerate interval <c>[v, v]</c>, sharing the same predicate shape as ranges and removing equality/range branch duplication.
-    /// </summary>
-    private static IQueryable<Document> ApplyFieldValueFilter(
-        IQueryable<Document> query,
-        DocumentFieldQuery fieldQuery)
-    {
-        // Internally match child rows by FieldDefinitionId (#207, no longer by field name string). FieldName is only for readable diagnostics in error messages.
-        var fieldDefinitionId = fieldQuery.FieldDefinitionId;
-        var name = fieldQuery.FieldName;
-
-        // Fail-closed: provide at least equality or range. Completely empty means malformed query and loud-fails, matching the DocumentFieldQuery contract.
-        // It must never degrade into "fetch everything of this type". Caller-layer DTO already validates this; this is defense in depth for direct repository calls.
-        if (fieldQuery.FieldValue == null && fieldQuery.FieldValueMin == null && fieldQuery.FieldValueMax == null)
-        {
-            throw InvalidValue(name, fieldQuery.FieldDataType);
-        }
-
-        var isRange = fieldQuery.FieldValue == null
-            && (fieldQuery.FieldValueMin != null || fieldQuery.FieldValueMax != null);
-
-        switch (fieldQuery.FieldDataType)
-        {
-            case FieldDataType.Text:
-                if (isRange)
-                {
-                    throw RangeNotSupported(name, fieldQuery.FieldDataType);
-                }
-                var textValue = fieldQuery.FieldValue!;
-                return query.Where(d => d.ExtractedFieldValues
-                    .Any(f => f.FieldDefinitionId == fieldDefinitionId && f.TextValue == textValue));
-
-            case FieldDataType.LongText:
-                // LongText fields live in nvarchar(max) columns and are not indexed. Red line: never use them as query conditions
-                // (equality / range / LIKE are all forbidden). Long-content search belongs to downstream RAG (CLAUDE.md OUT of scope).
-                // Loud-fail as a correctable signal for AI clients, never degrade into fetching everything.
-                throw NotQueryable(name, fieldQuery.FieldDataType);
-
-            case FieldDataType.Boolean:
-                if (isRange)
-                {
-                    throw RangeNotSupported(name, fieldQuery.FieldDataType);
-                }
-                if (!bool.TryParse(fieldQuery.FieldValue, out var boolValue))
-                {
-                    throw InvalidValue(name, fieldQuery.FieldDataType);
-                }
-                return query.Where(d => d.ExtractedFieldValues
-                    .Any(f => f.FieldDefinitionId == fieldDefinitionId && f.BooleanValue == boolValue));
-
-            case FieldDataType.Number:
-                {
-                    var (min, max) = ParseRange(fieldQuery, ParseDecimal);
-                    return query.Where(d => d.ExtractedFieldValues.Any(f =>
-                        f.FieldDefinitionId == fieldDefinitionId
-                        && (min == null || f.NumberValue >= min)
-                        && (max == null || f.NumberValue <= max)));
-                }
-
-            case FieldDataType.Date:
-                {
-                    var (min, max) = ParseRange(fieldQuery, ParseDate);
-                    return query.Where(d => d.ExtractedFieldValues.Any(f =>
-                        f.FieldDefinitionId == fieldDefinitionId
-                        && (min == null || f.DateValue >= min)
-                        && (max == null || f.DateValue <= max)));
-                }
-
-            case FieldDataType.DateTime:
-                {
-                    var (min, max) = ParseRange(fieldQuery, ParseDateTime);
-                    return query.Where(d => d.ExtractedFieldValues.Any(f =>
-                        f.FieldDefinitionId == fieldDefinitionId
-                        && (min == null || f.DateTimeValue >= min)
-                        && (max == null || f.DateTimeValue <= max)));
-                }
-
-            default:
-                throw InvalidValue(name, fieldQuery.FieldDataType);
-        }
-    }
-
-    /// <summary>
-    /// Parses a field query into typed inclusive <c>(min, max)</c> bounds: equality degenerates to <c>[v, v]</c>;
-    /// range uses min / max, each nullable. Any input parse failure throws <see cref="VaultExtractErrorCodes.ExtractedField.InvalidValue"/> loudly.
-    /// </summary>
-    private static (T? Min, T? Max) ParseRange<T>(
-        DocumentFieldQuery fieldQuery, Func<string, T?> parse)
-        where T : struct
-    {
-        if (fieldQuery.FieldValue != null)
-        {
-            var value = parse(fieldQuery.FieldValue)
-                ?? throw InvalidValue(fieldQuery.FieldName, fieldQuery.FieldDataType);
-            return (value, value);
-        }
-
-        T? min = null;
-        T? max = null;
-        if (fieldQuery.FieldValueMin != null)
-        {
-            min = parse(fieldQuery.FieldValueMin)
-                ?? throw InvalidValue(fieldQuery.FieldName, fieldQuery.FieldDataType);
-        }
-        if (fieldQuery.FieldValueMax != null)
-        {
-            max = parse(fieldQuery.FieldValueMax)
-                ?? throw InvalidValue(fieldQuery.FieldName, fieldQuery.FieldDataType);
-        }
-        return (min, max);
-    }
-
-    private static decimal? ParseDecimal(string s)
-        => decimal.TryParse(s, NumberStyles.Number, CultureInfo.InvariantCulture, out var v) ? v : null;
-
-    private static DateOnly? ParseDate(string s)
-        => DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out var v)
-            ? DateOnly.FromDateTime(v)
-            : null;
-
-    // Accept only offset-free wall-clock ISO strings, consistent with storage-side datetime2 / DocumentExtractedField.SetValue.
-    // Strings with offset / Z would be converted by .NET to server local time and break wall-clock storage semantics,
-    // so treat them as dirty input and return null; the caller loud-fails.
-    private static DateTime? ParseDateTime(string s)
-        => DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out var v)
-            && v.Kind == DateTimeKind.Unspecified
-            ? v
-            : null;
-
-    private static BusinessException RangeNotSupported(string fieldName, FieldDataType dataType) =>
-        new BusinessException(VaultExtractErrorCodes.ExtractedField.FieldTypeDoesNotSupportRange)
-            .WithData("FieldName", fieldName)
-            .WithData("DataType", dataType.ToString());
-
-    private static BusinessException NotQueryable(string fieldName, FieldDataType dataType) =>
-        new BusinessException(VaultExtractErrorCodes.ExtractedField.FieldTypeNotQueryable)
-            .WithData("FieldName", fieldName)
-            .WithData("DataType", dataType.ToString());
-
-    private static BusinessException InvalidValue(string fieldName, FieldDataType dataType) =>
-        new BusinessException(VaultExtractErrorCodes.ExtractedField.InvalidValue)
-            .WithData("FieldName", fieldName)
-            .WithData("DataType", dataType.ToString());
 }

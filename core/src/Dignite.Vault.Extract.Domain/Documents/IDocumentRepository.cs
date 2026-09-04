@@ -127,12 +127,10 @@ public interface IDocumentRepository : IRepository<Document, Guid>
     Task HardDeleteAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Finds a Document by Id and eager-loads its <b>field-stage</b> child collections —
-    /// <see cref="Document.ExtractedFieldValues"/> and (#527) <see cref="Document.FieldValidationWarnings"/>. Both are
-    /// written and cleared together by the field-extraction write phase and the §7 type-change clearing, so the reconcile
-    /// paths (<see cref="Document.SetFields"/> / <see cref="Document.ReplaceFieldValidationWarnings"/> and the clearing
-    /// transitions) need the existing rows present to delete old / update in place / insert new. The two collections are
-    /// loaded with split queries (single-document scope) to avoid the #206 Cartesian product.
+    /// Finds a Document by Id and eager-loads its <b>field-stage</b> child collection —
+    /// (#527) <see cref="Document.FieldValidationWarnings"/>. Written and cleared by the field-extraction write
+    /// phase and the §7 type-change clearing, so the reconcile path (<see cref="Document.ReplaceFieldValidationWarnings"/>
+    /// and the clearing transitions) needs the existing rows present to delete old / update in place / insert new.
     /// <para>
     /// Semantics match <c>FindAsync(id, includeDetails: true)</c>: returns <c>null</c> when not found;
     /// <c>IMultiTenant</c> + <c>ISoftDelete</c> global filters are applied automatically according to ambient state.
@@ -145,53 +143,9 @@ public interface IDocumentRepository : IRepository<Document, Guid>
     Task<Document?> FindWithFieldValuesAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Field value matching subquery for structured retrieval (field architecture v2 / Issue #206 + #207): returns document Ids in the current layer
-    /// (ABP <c>IMultiTenant</c> + soft-delete global filters isolate automatically by ambient state), where
-    /// <see cref="Document.DocumentTypeId"/> == <paramref name="documentTypeId"/> and
-    /// <see cref="Document.ExtractedFieldValues"/> satisfies <paramref name="fieldQueries"/>. Multiple queries are combined with <c>AND</c>,
-    /// following structured retrieval convention: different fields narrow each other. The caller layer (<c>DocumentAppService.GetListAsync</c>)
-    /// intersects this with metadata filters using <c>query.Where(ids.Contains(d.Id))</c>.
-    /// <para>
-    /// Implementations start from the <c>Documents</c> aggregate root. Each field filter compiles into an <c>Any</c> over the child collection
-    /// <see cref="Document.ExtractedFieldValues"/> (EXISTS, matching the child by <see cref="DocumentFieldQuery.FieldDefinitionId"/>)
-    /// plus ordinary typed-column comparisons. This is pure EF Core LINQ and translates to SQL Server / PostgreSQL / MySQL / SQLite.
-    /// It no longer depends on SQL Server <c>JSON_VALUE</c> / <c>TRY_CONVERT</c> / raw SQL, eliminating the injection surface.
-    /// </para>
-    /// Safety: dispatch equality / range by <see cref="DocumentFieldQuery.FieldDataType"/>; only = + range, never LIKE.
-    /// Passing ranges for Text/Boolean throws <see cref="VaultExtractErrorCodes.ExtractedField.FieldTypeDoesNotSupportRange"/>;
-    /// values that cannot parse as the declared type throw <see cref="VaultExtractErrorCodes.ExtractedField.InvalidValue"/>.
-    /// Both are loud failures, never silent empty results.
-    /// Authorization assertions, input validation (required / length / count / at least one value), and field resolution (external documentTypeCode / fieldName -> internal
-    /// <see cref="Document.DocumentTypeId"/> / <see cref="DocumentFieldQuery.FieldDefinitionId"/> + <see cref="FieldDataType"/>）
-    /// all belong to the caller layer (DTO + AppService). This repository only handles data access for the <see cref="Document"/> aggregate root,
-    /// does not repeat those checks here, and does not depend on repositories for other aggregates.
-    /// </summary>
-    /// <param name="documentTypeId">Single document type Id that anchors retrieval, resolved from documentTypeCode by the caller layer and applied as a SQL parameter.</param>
-    /// <param name="fieldQueries">Resolved field value filters; each carries <c>FieldDefinitionId</c> + <c>FieldDataType</c> + at least one value. Empty -> returns an empty collection.</param>
-    Task<List<Guid>> GetFieldMatchedIdsAsync(
-        Guid documentTypeId,
-        IReadOnlyList<DocumentFieldQuery> fieldQueries,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Whether any <see cref="DocumentExtractedField"/> field value row references <paramref name="fieldDefinitionId"/> (#207).
-    /// Used by <c>FieldDefinitionAppService.UpdateAsync</c> as a DataType change guard: fields with existing extracted values cannot change DataType,
-    /// otherwise historical values remain in old typed columns and silently disappear from queries by the new type.
-    /// <para>
-    /// Scans the child <c>DbSet</c> directly. It is not constrained by the parent Document's <c>ISoftDelete</c> filter:
-    /// even when the referenced document is soft-deleted, its field rows remain and revive on restore, so they should count too (conservative fail-closed).
-    /// <c>IMultiTenant</c> still isolates by ambient tenant, matching field definitions in the current layer.
-    /// </para>
-    /// </summary>
-    Task<bool> AnyExtractedFieldValueAsync(
-        Guid fieldDefinitionId,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// The v3 answer to the same question: whether any document holds a value for <paramref name="field"/>
-    /// (#559). Same guard, same fail-closed direction — a field whose values already exist may not change
-    /// its field type, because those values were validated against the old type and would render and index
-    /// as nothing under the new one.
+    /// The v3 answer to "does any document hold a value for this field" (#559). Fail-closed direction — a
+    /// field whose values already exist may not change its field type, because those values were validated
+    /// against the old type and would render and index as nothing under the new one.
     /// <para>
     /// Two paths, because the value bag is an opaque JSON column and no provider can push a bag-key
     /// predicate into it:

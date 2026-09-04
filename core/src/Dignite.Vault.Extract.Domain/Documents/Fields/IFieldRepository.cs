@@ -7,8 +7,8 @@ using Volo.Abp.Domain.Repositories;
 namespace Dignite.Vault.Extract.Documents.Fields;
 
 /// <summary>
-/// Repository for the v3 <see cref="Field"/> aggregate. Mirrors <see cref="IFieldDefinitionRepository"/>
-/// so the two can run side by side until #561's migration retires the v2 entity.
+/// Repository for the v3 <see cref="Field"/> aggregate. Replaces v2's now-removed
+/// <c>IFieldDefinitionRepository</c> (#561, #593).
 /// <para>
 /// Deliberately Vault Extract's own rather than the kernel's <c>IFlexFieldRepository&lt;TField&gt;</c>:
 /// that one walks the field-definition axis by <i>name</i>, which suits a downstream whose fields form a
@@ -24,8 +24,7 @@ public interface IFieldRepository : IRepository<Field, Guid>
     /// <para>
     /// Isolation comes from the ambient <c>IMultiTenant</c> filter, with no cross-layer read. Background
     /// paths (field extraction, index rebuild) must call <c>ICurrentTenant.Change(...)</c> so the ambient
-    /// layer matches <c>Document.TenantId</c> before calling this — the same contract
-    /// <see cref="IFieldDefinitionRepository"/> documents.
+    /// layer matches <c>Document.TenantId</c> before calling this.
     /// </para>
     /// </summary>
     Task<List<Field>> GetListAsync(

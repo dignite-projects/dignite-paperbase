@@ -36,8 +36,8 @@ namespace Dignite.Vault.Extract.Documents.Fields;
 ///   <item>**Compile-time constant instructions**: <see cref="DraftSystemPrompt"/> is <c>const</c> and concatenates no runtime strings.</item>
 ///   <item>**Do not trust LLM output**: Name is constrained to <c>[a-z0-9_]</c> by <see cref="SlugNormalizer.Sanitize"/>; DataType maps through an allow-list;
 ///         multi-value is forced off for non-Text before the coarse kind is mapped to a field type, mirroring the same invariant;
-///         DisplayName is normalized by <see cref="FieldDefinition.NormalizeDisplayName"/> from the same source as entity validation.
-///         All values are only **suggestions** editable by admins; final Create / Update still goes through FieldDefinition entity allow-list validation.</item>
+///         DisplayName is normalized by <see cref="Field.NormalizeDisplayName"/> from the same source as entity validation.
+///         All values are only **suggestions** editable by admins; final Create / Update still goes through Field entity allow-list validation.</item>
 /// </list>
 /// </summary>
 [Authorize]
@@ -156,7 +156,7 @@ public class FieldDraftSuggestionAppService : VaultExtractAppService, IFieldDraf
             {
                 // DisplayName normalization policy lives in the entity in one place (control chars -> spaces, whitespace folding, truncation),
                 // ensuring the drafted value can pass ValidateDisplayName (#264 review #3).
-                DisplayName = FieldDefinition.NormalizeDisplayName(GetString(root, "displayName")),
+                DisplayName = Field.NormalizeDisplayName(GetString(root, "displayName")),
                 // Guardrail 1: suggest Name only for new fields; editing an existing field always returns empty Name, freezing the contract-level identity key against AI overwrite.
                 Name = forNewField ? SlugNormalizer.Sanitize(GetString(root, "name")) : string.Empty,
                 FieldTypeName = fieldTypeName,

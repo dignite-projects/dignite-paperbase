@@ -10,73 +10,37 @@ using Dignite.Vault.Extract.FlexFields.Tags;
 namespace Dignite.Vault.Extract.Documents.Fields.Migration;
 
 /// <summary>
-/// The #559 resolution-1 mapping table, as executable code: one v2 <see cref="FieldDefinition"/> to the
-/// v3 <see cref="Field"/> that replaces it.
+/// The #559 resolution-1 v1-dataType -> v3 field-type mapping table, as executable code.
+/// <para>
+/// Originally written to turn one v2 <c>FieldDefinition</c> row into its v3 <see cref="Field"/>
+/// replacement (#561); that entity and its one-shot migrator are gone now that the v3 data migration has
+/// run (#593). What is left is the table itself — <see cref="MapType(FieldDataType, bool)"/> and
+/// <see cref="IsSearchableFor"/> — which two independent live callers still need: the AI field-drafting
+/// assistant (<c>FieldDraftSuggestionAppService</c>, which produces the same v1-shaped
+/// <see cref="FieldDataType"/> vocabulary from an LLM response) and the document-type-pack v1 importer
+/// (<see cref="DocumentTypePackV1Upconverter"/>, which reads it from a legacy pack file). Both need the
+/// exact same "old data type -> v3 field type + configuration" table this class always was, so it stays in
+/// place rather than being deleted with the migrator that used to be its third caller.
+/// </para>
 /// <para>
 /// Pure and total — every <see cref="FieldDataType"/> has a target, and an unrecognised one fails loudly
 /// rather than defaulting to Text, because a field silently mapped to the wrong type would extract and
 /// index wrong values rather than not working at all.
 /// </para>
-/// <para>
-/// <b>The <see cref="FieldDefinition.Id"/> is preserved.</b> That is what keeps
-/// <c>DocumentFieldValidationWarning</c> rows and every derived index row valid without a second
-/// remapping pass, and it is why the migration can be re-run: a definition already migrated is
-/// recognisable by its id.
-/// </para>
 /// </summary>
 public static class FieldDefinitionToFieldMapper
 {
     /// <summary>
-    /// Builds the v3 <see cref="Field"/> for <paramref name="definition"/>.
-    /// <para>
-    /// <c>IsSearchable</c> defaults to <c>true</c>: v2 indexed every extracted value unconditionally, with
-    /// no opt-out, so that is the faithful conversion for every v3 target type that can actually be
-    /// indexed. See <see cref="IsSearchableFor"/> for the one exception.
-    /// </para>
-    /// </summary>
-    public static Field Map(FieldDefinition definition)
-    {
-        var (fieldTypeName, configuration) = MapType(definition);
-
-        return new Field(
-            id: definition.Id,
-            tenantId: definition.TenantId,
-            documentTypeId: definition.DocumentTypeId,
-            name: definition.Name,
-            displayName: definition.DisplayName,
-            fieldTypeName: fieldTypeName,
-            // v2's Prompt is v3's Description - the kernel's consumers already treat Description as the
-            // field's AI-facing briefing (#559 resolution 4 rationale).
-            description: definition.Prompt,
-            configuration: configuration,
-            displayOrder: definition.DisplayOrder,
-            isRequired: definition.IsRequired,
-            isSearchable: IsSearchableFor(fieldTypeName),
-            isUniqueKey: definition.IsUniqueKey);
-    }
-
-    /// <summary>
-    /// Whether a v2-sourced field should carry <c>IsSearchable = true</c> in v3. v2 indexed every
+    /// Whether a v1-shaped field should carry <c>IsSearchable = true</c> in v3. v2 indexed every
     /// extracted value unconditionally, so <c>true</c> is the faithful conversion — except for a v3
     /// target type that structurally cannot be indexed (<see cref="CKEditorFieldType"/>, LongText's
     /// target, whose <c>IndexValueType</c> is null). Leaving it <c>true</c> there would collide with the
     /// same searchable/indexable guard that <c>FieldDefinitionAppService</c> and
-    /// <c>DocumentTypePackAppService</c> enforce on every other write path, and fail the very migration
-    /// or pack import meant to carry the field forward. Shared by <see cref="Map"/> and
+    /// <c>DocumentTypePackAppService</c> enforce on every other write path. Shared by
     /// <see cref="DocumentTypePackV1Upconverter.Upconvert"/> so the two paths cannot drift apart.
     /// </summary>
     public static bool IsSearchableFor(string fieldTypeName)
         => fieldTypeName != CKEditorFieldType.ControlName;
-
-    /// <summary>
-    /// Resolves the field type and its configuration. Exposed separately so the pack upconverter, which
-    /// has a DTO rather than an entity, can share exactly this table instead of restating it.
-    /// </summary>
-    public static (string FieldTypeName, FieldConfigurationDictionary Configuration) MapType(
-        FieldDefinition definition)
-    {
-        return MapType(definition.DataType, definition.AllowMultiple);
-    }
 
     public static (string FieldTypeName, FieldConfigurationDictionary Configuration) MapType(
         FieldDataType dataType,

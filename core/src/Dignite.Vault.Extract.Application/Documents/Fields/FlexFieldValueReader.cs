@@ -6,9 +6,9 @@ namespace Dignite.Vault.Extract.Documents.Fields;
 
 /// <summary>
 /// Converts a raw <see cref="JsonElement"/> — from the LLM, or from an operator edit — into the CLR value
-/// the v3 bag stores, rejecting anything that does not match the field type. The v3 successor to
-/// <see cref="ExtractedFieldValueValidator"/>, which validated against a <see cref="FieldDataType"/> and
-/// left the typed-column split to the entity.
+/// the v3 bag stores, rejecting anything that does not match the field type. The v3 successor to v2's
+/// now-removed <c>ExtractedFieldValueValidator</c> (#593), which validated against a
+/// <see cref="FieldDataType"/> and left the typed-column split to the entity.
 /// <para>
 /// Validation and conversion are one step here rather than two, deliberately. Under v2 the validator said
 /// yes and <c>DocumentExtractedField.SetValue</c> then did the conversion, so the two had to agree about

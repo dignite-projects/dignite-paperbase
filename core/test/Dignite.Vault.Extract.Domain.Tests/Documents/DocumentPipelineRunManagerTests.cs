@@ -1,5 +1,5 @@
 using System;
-using System.Text.Json;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Dignite.Vault.Extract.Documents;
 using Dignite.Vault.Extract.Documents.Fields;
@@ -179,18 +179,15 @@ public class DocumentPipelineRunManagerTests : VaultExtractDomainTestBase<VaultE
     public async Task Container_Classification_Clears_ExtractedFieldValues()
     {
         var doc = CreateDocument();
-        doc.SetFields(new[]
-        {
-            new DocumentFieldValue(Guid.NewGuid(), FieldDataType.Text, JsonSerializer.SerializeToElement("Acme")),
-        });
-        doc.ExtractedFieldValues.ShouldNotBeEmpty();
+        doc.SetFlexFields(new Dictionary<string, object?> { ["name"] = "Acme" });
+        doc.FlexFields.ShouldNotBeEmpty();
 
         var run = await _manager.StartAsync(doc, VaultExtractPipelines.Classification);
         await _manager.CompleteClassificationAsContainerAsync(doc, run);
 
         doc.IsContainer.ShouldBeTrue();
         doc.DocumentTypeId.ShouldBeNull();
-        doc.ExtractedFieldValues.ShouldBeEmpty();
+        doc.FlexFields.ShouldBeEmpty();
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -303,17 +300,14 @@ public class DocumentPipelineRunManagerTests : VaultExtractDomainTestBase<VaultE
     {
         var doc = CreateDocument();
         // Simulate an existing state with classification and extracted fields.
-        doc.SetFields(new[]
-        {
-            new DocumentFieldValue(Guid.NewGuid(), FieldDataType.Text, JsonSerializer.SerializeToElement("Acme")),
-        });
-        doc.ExtractedFieldValues.ShouldNotBeEmpty();
+        doc.SetFlexFields(new Dictionary<string, object?> { ["name"] = "Acme" });
+        doc.FlexFields.ShouldNotBeEmpty();
 
         var run = await _manager.StartAsync(doc, VaultExtractPipelines.Classification);
         await _manager.CompleteClassificationWithLowConfidenceAsync(doc, run, "AI confidence too low");
 
         doc.DocumentTypeId.ShouldBeNull();
-        doc.ExtractedFieldValues.ShouldBeEmpty();
+        doc.FlexFields.ShouldBeEmpty();
     }
 
     [Fact]

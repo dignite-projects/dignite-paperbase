@@ -9,8 +9,8 @@ namespace Dignite.Vault.Extract.Documents;
 /// <summary>
 /// <b>Field validation warning row</b> (#527 §4): a child entity of the <see cref="Document"/> aggregate recording that
 /// one type-bound field's extracted value failed a validation rule declared in the field's prompt (e.g. a
-/// bank-statement balance-consistency check). The model-extracted value is <b>preserved</b> on
-/// <see cref="DocumentExtractedField"/> so an operator can compare it with the source; this row carries only the
+/// bank-statement balance-consistency check). The model-extracted value is <b>preserved</b> in the
+/// <see cref="Document.FlexFields"/> bag so an operator can compare it with the source; this row carries only the
 /// human-readable <see cref="Message"/>, kept strictly separate from field values, search indexes, exports, and event
 /// payloads (#527 §11).
 /// <para>
@@ -22,7 +22,7 @@ namespace Dignite.Vault.Extract.Documents;
 /// diverge.
 /// </para>
 /// <para>
-/// Isolation contract (mirrors <see cref="DocumentExtractedField"/>): implements <see cref="IMultiTenant"/> so ABP
+/// Isolation contract: implements <see cref="IMultiTenant"/> so ABP
 /// appends tenant global filters when the child navigation is used; does <b>not</b> implement <c>ISoftDelete</c> —
 /// hidden through the parent <see cref="Document"/> filter on soft delete, cascade-deleted on hard delete. It
 /// participates in no field-value index and is never consulted by field-value search / filtering.
@@ -34,7 +34,7 @@ public class DocumentFieldValidationWarning : Entity, IMultiTenant
 
     public virtual Guid DocumentId { get; private set; }
 
-    /// <summary><see cref="FieldDefinition"/>.Id this warning is attached to (immutable internal association / key, #207).</summary>
+    /// <summary>The <c>Field</c>.Id this warning is attached to (immutable internal association / key, #207). Column name is a frozen wire contract (#562); it stays <c>FieldDefinitionId</c> even though the entity it points at is now <c>Field</c>.</summary>
     public virtual Guid FieldDefinitionId { get; private set; }
 
     /// <summary>
