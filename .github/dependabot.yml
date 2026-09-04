@@ -71,6 +71,14 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "angular-eslint"
         update-types: ["version-update:semver-major"]
+      # TypeScript's usable range is dictated by @angular/compiler-cli, whose peer on Angular
+      # 21.2 is ">=5.9 <6.1". A major bump installs cleanly and then fails the library build with
+      # "Cannot read properties of undefined (reading 'useCaseSensitiveFileNames')", because the
+      # Angular compiler is calling a TypeScript API that moved - npm has no way to know, since
+      # typescript is not under the @angular scope. Same shape as the ng-packagr gap above;
+      # observed for real when a grouped bump proposed 5.9 -> 7.0.2 (#599).
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
       # All @abp/* packages (incl. @abp/ng.theme.lepton-x, which uses its own 5.x line) are
       # released in lockstep with the ABP Framework version - pinned at 10.5.0, don't bump to
       # whatever ships alongside 10.6.0.
