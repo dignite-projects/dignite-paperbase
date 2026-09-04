@@ -41,6 +41,46 @@ updates:
       # generation at runtime (confirmed in abp-modules).
       - dependency-name: "Microsoft.OpenApi"
         versions: [">= 3.0.0"]
+      # ── Held groups. Each needs verification a package-graph resolution cannot give, so they
+      #    are worked through their issue rather than proposed automatically. Lift the entry when
+      #    the issue closes; do not lift one member of a group on its own.
+      #
+      # MCP egress (#611). ModelContextProtocol.AspNetCore backs the MCP server, one of the three
+      # live egress channels. A major changes protocol/transport behaviour that a green build and
+      # our inputSchema + authorization tests do not reach - no test here speaks to a real client
+      # handshake, and the deployed instance is reached by real MCP clients. 1.x patches still flow.
+      - dependency-name: "ModelContextProtocol"
+        versions: [">= 2.0.0"]
+      - dependency-name: "ModelContextProtocol.AspNetCore"
+        versions: [">= 2.0.0"]
+      #
+      # Text extraction (#612). PdfPig / DocumentFormat.OpenXml / ClosedXML are pinned to the exact
+      # versions ElBruno.MarkItDotNet 0.6.0 pulls transitively, so the host resolves a single copy of
+      # each and the two extraction providers cannot conflict (see the comments beside those pins in
+      # Directory.Packages.props). Any independent bump makes the pin describe a version nothing
+      # justifies, so all five are held together - not just majors, since MarkItDotNet is pre-1.0 and
+      # its minors carry the conversion-behaviour changes. Failures here are wrong Markdown, not
+      # exceptions, which nothing in CI would catch.
+      - dependency-name: "ElBruno.MarkItDotNet"
+        versions: [">= 0.6.1"]
+      - dependency-name: "ElBruno.MarkItDotNet.Excel"
+        versions: [">= 0.6.1"]
+      - dependency-name: "PdfPig"
+        versions: [">= 0.1.15"]
+      - dependency-name: "DocumentFormat.OpenXml"
+        versions: [">= 3.3.1"]
+      - dependency-name: "ClosedXML"
+        versions: [">= 0.105.1"]
+      #
+      # PDF rasterisation (#613). SkiaSharp.NativeAssets.Linux must match the SkiaSharp version
+      # PDFtoImage pulls in, exactly - the managed assembly loads the native library by version.
+      # Dependabot got this pair wrong once already: it proposed PDFtoImage 5.4.0 (which resolves
+      # SkiaSharp to 4.150.1) alongside native assets 4.151.2. A mismatch surfaces only when the
+      # Linux container loads native assets, so neither the build nor any unit test sees it.
+      - dependency-name: "PDFtoImage"
+        versions: [">= 5.2.2"]
+      - dependency-name: "SkiaSharp.NativeAssets.Linux"
+        versions: [">= 3.119.3"]
 
   - package-ecosystem: npm
     directory: "/angular"
