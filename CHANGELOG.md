@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING — the Angular library is renamed `@dignite/vault-extract` → `@dignite/ng.vault-extract`**, matching the `@dignite/ng.*` convention the sibling Angular packages already follow (`@dignite/ng.flex-fields`, `@dignite/ng.flex-fields-ckeditor`). The sub-entry-points move with it (`@dignite/ng.vault-extract/documents`, `/config`), as does the pre-release GitHub Packages name (`@dignite-projects/ng.vault-extract`). Consumers must update their `package.json` and every import site; `@dignite/vault-extract` on npmjs stops at `0.3.2` and receives no further releases.
+- **`@dignite/ng.flex-fields` / `@dignite/ng.flex-fields-ckeditor` bumped to `10.0.0-rc.13`**, matching `Dignite.Abp.FlexFields.*` on the .NET side. The npm workspace alias to GitHub Packages (`npm:@dignite-projects/...`) is dropped now that the real `@dignite/*` packages are live on npmjs, closing the npmjs-availability blocker from [#577](https://github.com/dignite-projects/vault-extract/issues/577).
+
 ## [0.5.0-preview.2] - 2026-09-03
 
 Re-cuts `0.5.0-preview.1` from a tagged commit. That preview was published by two separate `workflow_dispatch` runs, so its artifacts do not correspond to a single commit — the NuGet packages came from `e9f86ca0`, the npm package from `9aeac63d`, after the publish-reporting fix below. It also predates the Angular ABP upgrade, so the published library declared `@abp/ng.core: ~10.2.0` while the .NET stack was already on 10.5.0; a consumer could only reconcile that with an `overrides` entry, which suppresses the mismatch rather than resolving it. **Consumers pinning `0.5.0-preview.1` should move to this version.**
