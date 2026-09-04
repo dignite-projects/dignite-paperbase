@@ -219,7 +219,14 @@ jobs:
           # is not hypothetical - it is exactly how run 33594399735 reported a green step while
           # npm had returned E401.
           set +e
-          npm publish "$workdir/package" --registry https://npm.pkg.github.com > /tmp/npm-publish.log 2>&1
+          # --tag is not optional: npm errors out on a prerelease version whose dist-tag is left
+          # at its default ("You must specify a tag using --tag when publishing a prerelease
+          # version" - npm/cli checks whether the tag was explicitly set, not what it was set to).
+          # "latest" is the right value here even though the version is a prerelease: this registry
+          # only ever receives pre-releases - stable goes to npmjs under the public @dignite/*
+          # name - so latest tracking the newest preview is what a consumer of this channel wants,
+          # and it keeps an unpinned install resolving.
+          npm publish "$workdir/package" --registry https://npm.pkg.github.com --tag latest > /tmp/npm-publish.log 2>&1
           status=$?
           set -e
           cat /tmp/npm-publish.log

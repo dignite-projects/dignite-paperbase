@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.5.0-preview.3] - 2026-09-04
+## [0.5.0-preview.4] - 2026-09-04
+
+Re-cuts `0.5.0-preview.3`, whose release run pushed the NuGet packages to GitHub Packages and then failed on the npm step, leaving no npm package and no GitHub Release. The content below is preview.3's, plus the workflow fix. **Nothing consumes `0.5.0-preview.3`; use this version.**
 
 Closes out the field architecture v3 track opened in `0.5.0-preview.1`: the v2 storage is removed, and the four query guarantees the v3 switch had silently dropped are restored and tested on the live path. The Angular library is renamed to `@dignite/ng.vault-extract`.
 
@@ -30,9 +32,14 @@ Closes out the field architecture v3 track opened in `0.5.0-preview.1`: the v2 s
 
 ### Fixed
 
+- **The pre-release npm publish failed on the dist-tag.** npm/cli rejects a prerelease version whose dist-tag is left at its default — the check is on whether `--tag` was passed at all, not on its value — so the release workflow's GitHub Packages step now passes `--tag latest` explicitly. `latest` is correct for that registry: it only ever receives pre-releases (stable goes to npmjs under the public `@dignite/*` name), so it tracks the newest preview and an unpinned install keeps resolving. The step was green through `0.5.0-preview.2` because the npm it installs has since picked up the check.
 - **Field queries lost four of v2's fail-closed guards in the v3 switch** ([#593](https://github.com/dignite-projects/vault-extract/issues/593)). `DocumentFieldQueryResolver` + `DocumentFlexFieldQueryExecutor` replaced `IDocumentRepository.GetFieldMatchedIdsAsync` without carrying over the rejections for a range filter on an unordered field type, a value that does not parse as its declared type, an offset-bearing `DateTime`, and a wholly empty filter. v2's integration tests kept passing throughout because they exercise `GetFieldMatchedIdsAsync` directly, which nothing on the live path calls — vouching for dead code while the path that runs went untested. All four guards are restored, expressed on `FlexFieldValueType` rather than a per-field-type switch, and the cases are ported onto the v3 path; each guard was mutation-tested before landing.
 - **The Angular library did not declare `@abp/ng.components`**, which its bundle imports (`@abp/ng.components/extensible`) in five components. It is not reachable transitively: `@abp/ng.components` peer-requires `ng.core` / `ng.theme.shared` rather than being pulled in by them, so a consumer without their own direct dependency on it got an unresolvable specifier. The same shape as the `@dignite/ng.flex-fields` omission that opened #577.
 - **The library declared no Angular peer dependencies at all.** `@angular/common` / `core` / `forms` / `platform-browser` / `router`, `rxjs`, `@ng-bootstrap/ng-bootstrap` and `@ngx-validate/core` are now declared as peers, stating the versions the library is actually built against instead of leaving a consumer to infer them.
+
+## [0.5.0-preview.3] - 2026-09-04
+
+**Partially published — do not use.** The release run pushed the NuGet packages to GitHub Packages and then failed publishing the npm package, so this version exists on one channel only and has no GitHub Release. Superseded by [0.5.0-preview.4], which carries the same changes plus the fix.
 
 ## [0.5.0-preview.2] - 2026-09-03
 
@@ -347,7 +354,8 @@ Preview of the 0.2.0 line. This release rebrands the project to **Dignite Vault 
 - Legacy Angular document-upload route.
 - Dead fields from the segmentation subsystem (#390).
 
-[Unreleased]: https://github.com/dignite-projects/vault-extract/compare/v0.5.0-preview.3...HEAD
+[Unreleased]: https://github.com/dignite-projects/vault-extract/compare/v0.5.0-preview.4...HEAD
+[0.5.0-preview.4]: https://github.com/dignite-projects/vault-extract/compare/v0.5.0-preview.3...v0.5.0-preview.4
 [0.5.0-preview.3]: https://github.com/dignite-projects/vault-extract/compare/v0.5.0-preview.2...v0.5.0-preview.3
 [0.5.0-preview.2]: https://github.com/dignite-projects/vault-extract/compare/v0.5.0-preview.1...v0.5.0-preview.2
 [0.5.0-preview.1]: https://github.com/dignite-projects/vault-extract/compare/v0.3.2...v0.5.0-preview.1
