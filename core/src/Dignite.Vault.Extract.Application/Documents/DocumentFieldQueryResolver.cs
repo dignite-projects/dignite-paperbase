@@ -24,7 +24,16 @@ namespace Dignite.Vault.Extract.Documents;
 /// <para>
 /// The value type comes from <c>IFieldType.IndexValueType</c> rather than from a switch here. That is the
 /// same property the index manager types rows with, so a filter can never be compared against a slot the
-/// value was not written into — and it means adding a field type does not add a case to this file.
+/// value was not written into — and it means adding a field type does not add a case to this file. Three
+/// more fail-closed guards follow the same rule, expressed on <see cref="FlexFieldValueType"/> rather than
+/// on any per-field-type case: a range is only meaningful against an ordered value type (Number /
+/// DateTime — String / Boolean / Guid reject it with
+/// <see cref="VaultExtractErrorCodes.ExtractedField.FieldTypeDoesNotSupportRange"/>), a raw value must
+/// actually parse as its declared value type
+/// (<see cref="VaultExtractErrorCodes.ExtractedField.InvalidValue"/>), and a filter with none of
+/// <c>Value</c> / <c>Min</c> / <c>Max</c> is rejected here too — defense in depth alongside
+/// <see cref="DocumentFieldFilter.Validate"/>, for any caller that builds a filter without going through
+/// DTO model binding.
 /// </para>
 /// </summary>
 public static class DocumentFieldQueryResolver
@@ -74,7 +83,7 @@ public static class DocumentFieldQueryResolver
                     .WithData("DocumentTypeCode", documentTypeCode);
             }
 
-            AddConditions(conditions, definition, valueType.Value, filter);
+            AddConditions(conditions, definition, valueType.Value, filter, documentTypeCode);
         }
 
         return conditions;
@@ -89,47 +98,119 @@ public static class DocumentFieldQueryResolver
         List<FlexFieldQueryCondition> conditions,
         Field definition,
         FlexFieldValueType valueType,
-        DocumentFieldFilter filter)
+        DocumentFieldFilter filter,
+        string documentTypeCode)
     {
+        if (filter.Value == null && filter.Min == null && filter.Max == null)
+        {
+            // Fail-closed defense in depth: DocumentFieldFilter.Validate already rejects a completely
+            // empty filter at the DTO layer, but this must never degrade into "fetch every document of
+            // this type" for a caller that builds a filter some other way.
+            throw InvalidValue(filter.Name!, documentTypeCode, valueType);
+        }
+
         if (filter.Value != null)
         {
             conditions.Add(new FlexFieldQueryCondition(
                 definition.Id, definition.Name, FlexFieldQueryOperator.Equals,
-                Normalize(filter.Value, valueType), valueType));
+                Normalize(filter.Value, valueType, filter.Name!, documentTypeCode), valueType));
             return;
+        }
+
+        // Range only makes sense against a value type with a natural ordering. String / Boolean / Guid
+        // support equality only — there is no meaningful "between" for a boolean or a guid, and a LIKE /
+        // inequality comparison on a string is a red line (CLAUDE.md).
+        if (!IsOrdered(valueType))
+        {
+            throw RangeNotSupported(filter.Name!, documentTypeCode, valueType);
         }
 
         if (filter.Min != null)
         {
             conditions.Add(new FlexFieldQueryCondition(
                 definition.Id, definition.Name, FlexFieldQueryOperator.GreaterThanOrEqual,
-                Normalize(filter.Min, valueType), valueType));
+                Normalize(filter.Min, valueType, filter.Name!, documentTypeCode), valueType));
         }
 
         if (filter.Max != null)
         {
             conditions.Add(new FlexFieldQueryCondition(
                 definition.Id, definition.Name, FlexFieldQueryOperator.LessThanOrEqual,
-                Normalize(filter.Max, valueType), valueType));
+                Normalize(filter.Max, valueType, filter.Name!, documentTypeCode), valueType));
         }
     }
 
     /// <summary>
-    /// Widens a bare date to the midnight instant the bag stores, so a caller can keep filtering a date
-    /// field with <c>"2026-03-14"</c> the way it did under v2 even though Date and DateTime now share one
-    /// field type and one <see cref="FlexFieldValueType.DateTime"/> slot. Anything else is passed through
-    /// untouched for the kernel's converter to coerce.
+    /// Number and DateTime are the only <see cref="FlexFieldValueType"/> members with a natural ordering —
+    /// expressed on the enum itself rather than a per-field-type switch, so a new field type never adds a
+    /// case here. Notably this also covers Boolean: its <c>IndexValueType</c> is its own slot, not String,
+    /// but it is unordered all the same, so the v2 "range on boolean" guard falls out of the same rule as
+    /// "range on string" rather than needing a special case.
     /// </summary>
-    private static string Normalize(string raw, FlexFieldValueType valueType)
-    {
-        if (valueType == FlexFieldValueType.DateTime
-            && DateOnly.TryParseExact(
-                raw, FieldValueFormats.Date, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
-        {
-            return date.ToDateTime(TimeOnly.MinValue)
-                .ToString(FieldValueFormats.DateTime, CultureInfo.InvariantCulture);
-        }
+    private static bool IsOrdered(FlexFieldValueType valueType) =>
+        valueType is FlexFieldValueType.Number or FlexFieldValueType.DateTime;
 
-        return raw;
+    /// <summary>
+    /// Validates and normalizes one raw filter value against its field's <see cref="FlexFieldValueType"/>.
+    /// <list type="bullet">
+    ///   <item>Number: rejects anything that does not parse as <see cref="decimal"/> (invariant culture) —
+    ///   loud, never a silent empty result.</item>
+    ///   <item>DateTime: widens a bare date to the midnight instant the bag stores, so a caller can keep
+    ///   filtering a date field with <c>"2026-03-14"</c> the way it did under v2 even though Date and
+    ///   DateTime now share one field type and one <see cref="FlexFieldValueType.DateTime"/> slot.
+    ///   Anything else must match the frozen wall-clock shape <see cref="FieldValueFormats.DateTime"/>
+    ///   exactly — <see cref="DateTime.TryParseExact(string, string, IFormatProvider, DateTimeStyles, out DateTime)"/>
+    ///   against that format has no specifier for an offset or a trailing "Z", so offset-bearing input is
+    ///   rejected by construction rather than needing a second explicit check: storage is wall-clock, so an
+    ///   offset is dirty input.</item>
+    ///   <item>Everything else (String, Guid) is passed through untouched for the kernel's converter to
+    ///   coerce.</item>
+    /// </list>
+    /// </summary>
+    private static string Normalize(string raw, FlexFieldValueType valueType, string fieldName, string documentTypeCode)
+    {
+        switch (valueType)
+        {
+            case FlexFieldValueType.Number:
+                if (!decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out _))
+                {
+                    throw InvalidValue(fieldName, documentTypeCode, valueType);
+                }
+
+                return raw;
+
+            case FlexFieldValueType.DateTime:
+                if (DateOnly.TryParseExact(
+                        raw, FieldValueFormats.Date, CultureInfo.InvariantCulture, DateTimeStyles.None,
+                        out var date))
+                {
+                    return date.ToDateTime(TimeOnly.MinValue)
+                        .ToString(FieldValueFormats.DateTime, CultureInfo.InvariantCulture);
+                }
+
+                if (!DateTime.TryParseExact(
+                        raw, FieldValueFormats.DateTime, CultureInfo.InvariantCulture, DateTimeStyles.None,
+                        out _))
+                {
+                    throw InvalidValue(fieldName, documentTypeCode, valueType);
+                }
+
+                return raw;
+
+            default:
+                return raw;
+        }
     }
+
+    private static BusinessException RangeNotSupported(string fieldName, string documentTypeCode, FlexFieldValueType valueType) =>
+        new BusinessException(VaultExtractErrorCodes.ExtractedField.FieldTypeDoesNotSupportRange)
+            .WithData("FieldName", fieldName)
+            .WithData("DocumentTypeCode", documentTypeCode)
+            .WithData("DataType", valueType.ToString());
+
+    private static BusinessException InvalidValue(string fieldName, string documentTypeCode, FlexFieldValueType valueType) =>
+        new BusinessException(VaultExtractErrorCodes.ExtractedField.InvalidValue)
+            .WithData("FieldName", fieldName)
+            .WithData("DocumentTypeCode", documentTypeCode)
+            .WithData("DataType", valueType.ToString());
 }
