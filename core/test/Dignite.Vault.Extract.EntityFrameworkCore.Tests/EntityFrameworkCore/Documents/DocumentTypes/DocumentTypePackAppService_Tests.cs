@@ -1,3 +1,4 @@
+using Dignite.Abp.FlexFields.Boolean;
 using Dignite.Abp.FlexFields.CKEditor;
 using Dignite.Abp.FlexFields.Date;
 using Dignite.Abp.FlexFields.Number;
@@ -7,6 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Dignite.Vault.Extract.Ai;
+using Dignite.Vault.Extract.Documents;
 using Dignite.Vault.Extract.Documents.DocumentTypes;
 using Dignite.Vault.Extract.Documents.DocumentTypes.Packs;
 using Dignite.Vault.Extract.Documents.Fields;
@@ -266,5 +268,193 @@ public class DocumentTypePackAppService_Tests : VaultExtractEntityFrameworkCoreT
         // is not partially applied.
         await WithUnitOfWorkAsync(async () =>
             (await _documentTypeRepository.FindByTypeCodeAsync("host.alpha")).ShouldBeNull());
+    }
+
+    /// <summary>
+    /// A pack file exported before field architecture v3 (#559): <c>dataType</c> / <c>allowMultiple</c> /
+    /// <c>prompt</c>, and no <c>fieldTypeName</c>. Version 1 is still inside
+    /// [<c>MinSupportedVersion</c>, <c>CurrentVersion</c>], so import upconverts it in place rather than
+    /// rejecting it. <c>IsSearchable</c> is deliberately left at the DTO default — exactly what a real v1
+    /// JSON file, which has no such key, deserializes to.
+    /// </summary>
+    private static DocumentTypePackDto V1Pack(string typeCode, params DocumentTypePackFieldDto[] fields) => new()
+    {
+        Version = 1,
+        TypeCode = typeCode,
+        DisplayName = "Legacy",
+        Fields = fields.ToList()
+    };
+
+    /// <summary>
+    /// The v1-pack half of the regression fixed in <c>7c6650b9</c>: LongText's v3 target (CKEditor) has no
+    /// index slot, so carrying v1's "every extracted value is indexed" forward as <c>IsSearchable = true</c>
+    /// collided with the <c>CheckSearchable</c> guard and failed the whole import with no per-item recovery.
+    /// </summary>
+    [Fact]
+    public async Task V1_pack_upconverts_LongText_to_a_non_indexed_CKEditor_field()
+    {
+        var result = await _packAppService.ImportAsync(new ImportDocumentTypePacksInput
+        {
+            Packs = new List<DocumentTypePackDto>
+            {
+                V1Pack("host.v1-longtext", new DocumentTypePackFieldDto
+                {
+                    Name = "summary",
+                    DisplayName = "Summary",
+                    Prompt = "the executive summary",
+                    DataType = FieldDataType.LongText
+                })
+            }
+        });
+
+        result.TypesCreated.ShouldBe(1);
+        result.FieldsCreated.ShouldBe(1);
+
+        await WithUnitOfWorkAsync(async () =>
+        {
+            var type = await _documentTypeRepository.FindByTypeCodeAsync("host.v1-longtext");
+            var field = (await _fieldDefinitionRepository.GetListAsync(type!.Id)).Single();
+
+            field.FieldTypeName.ShouldBe(CKEditorFieldType.ControlName);
+            field.IsSearchable.ShouldBeFalse();
+            // v1's `prompt` is v2's `description`: the LLM briefing survives the rename rather than being dropped.
+            field.Description.ShouldBe("the executive summary");
+
+            // These values are plain text / Markdown pulled out of a document, never HTML, so the field type's
+            // own Html default would be wrong for every upconverted field.
+            var config = new CKEditorConfiguration(field.Configuration);
+            config.ContentFormat.ShouldBe(CKEditorContentFormat.Markdown);
+            config.Mode.ShouldBe(CKEditorMode.Basic);
+        });
+    }
+
+    /// <summary>
+    /// "One value or many" stopped being a flag beside the type and became a property of the type itself, so
+    /// v1's multi-valued text field has to land on Tags — the open-vocabulary multi-value type, not Select,
+    /// which validates against a configured option list a legacy field never had — and carry v2's own
+    /// count / length ceilings forward as configuration.
+    /// </summary>
+    [Fact]
+    public async Task V1_pack_upconverts_a_multi_valued_text_field_to_Tags()
+    {
+        await _packAppService.ImportAsync(new ImportDocumentTypePacksInput
+        {
+            Packs = new List<DocumentTypePackDto>
+            {
+                V1Pack("host.v1-tags", new DocumentTypePackFieldDto
+                {
+                    Name = "parties",
+                    DisplayName = "Parties",
+                    DataType = FieldDataType.Text,
+                    AllowMultiple = true
+                })
+            }
+        });
+
+        await WithUnitOfWorkAsync(async () =>
+        {
+            var type = await _documentTypeRepository.FindByTypeCodeAsync("host.v1-tags");
+            var field = (await _fieldDefinitionRepository.GetListAsync(type!.Id)).Single();
+
+            field.FieldTypeName.ShouldBe(TagsFieldType.ControlName);
+            // Tags is indexable, so here v1's blanket indexing does carry forward untouched.
+            field.IsSearchable.ShouldBeTrue();
+
+            var config = new TagsConfiguration(field.Configuration);
+            config.MaxCount.ShouldBe(DocumentExtractedFieldConsts.MaxMultiValueCount);
+            config.MaxLength.ShouldBe(DocumentExtractedFieldConsts.MaxTextValueLength);
+        });
+    }
+
+    /// <summary>
+    /// The rest of the v1 vocabulary in one pack. The row that earns the test is Date versus DateTime: v3
+    /// folds both into one field type, so the distinction survives only by moving into the configuration's
+    /// <c>InputMode</c> — a mapping that would look correct on the field type alone while silently flattening
+    /// every pure date into a datetime with invented hours.
+    /// </summary>
+    [Fact]
+    public async Task V1_pack_maps_each_remaining_data_type_to_its_v3_field_type()
+    {
+        await _packAppService.ImportAsync(new ImportDocumentTypePacksInput
+        {
+            Packs = new List<DocumentTypePackDto>
+            {
+                V1Pack(
+                    "host.v1-scalars",
+                    new DocumentTypePackFieldDto { Name = "issuer", DisplayName = "Issuer", DataType = FieldDataType.Text },
+                    new DocumentTypePackFieldDto { Name = "amount", DisplayName = "Amount", DataType = FieldDataType.Number },
+                    new DocumentTypePackFieldDto { Name = "paid", DisplayName = "Paid", DataType = FieldDataType.Boolean },
+                    new DocumentTypePackFieldDto { Name = "issued-on", DisplayName = "Issued on", DataType = FieldDataType.Date },
+                    new DocumentTypePackFieldDto { Name = "signed-at", DisplayName = "Signed at", DataType = FieldDataType.DateTime })
+            }
+        });
+
+        await WithUnitOfWorkAsync(async () =>
+        {
+            var type = await _documentTypeRepository.FindByTypeCodeAsync("host.v1-scalars");
+            var fields = (await _fieldDefinitionRepository.GetListAsync(type!.Id)).ToDictionary(f => f.Name);
+
+            fields["issuer"].FieldTypeName.ShouldBe(TextFieldType.ControlName);
+            fields["amount"].FieldTypeName.ShouldBe(NumberFieldType.ControlName);
+            fields["paid"].FieldTypeName.ShouldBe(BooleanFieldType.ControlName);
+
+            fields["issued-on"].FieldTypeName.ShouldBe(DateTimeFieldType.ControlName);
+            fields["signed-at"].FieldTypeName.ShouldBe(DateTimeFieldType.ControlName);
+            new DateTimeConfiguration(fields["issued-on"].Configuration).InputMode.ShouldBe(DateTimeInputMode.Date);
+            new DateTimeConfiguration(fields["signed-at"].Configuration).InputMode.ShouldBe(DateTimeInputMode.DateTime);
+
+            // Every one of these types has an index slot, so none of them trips CheckSearchable.
+            fields.Values.ShouldAllBe(f => f.IsSearchable);
+        });
+    }
+
+    /// <summary>
+    /// The upconvert has to be durable, not merely accepted. Re-exporting a type imported from a v1 pack must
+    /// emit version 2 with the legacy members gone, and re-importing that export must match the same fields
+    /// rather than reading as a field-type change — the "an exported-then-reimported type would stop matching
+    /// the type it came from" failure <c>DocumentTypePackV1Upconverter</c>'s own doc comment warns about.
+    /// </summary>
+    [Fact]
+    public async Task V1_pack_re_exports_as_version_2_and_reimports_onto_the_same_fields()
+    {
+        await _packAppService.ImportAsync(new ImportDocumentTypePacksInput
+        {
+            Packs = new List<DocumentTypePackDto>
+            {
+                V1Pack(
+                    "host.v1-roundtrip",
+                    new DocumentTypePackFieldDto { Name = "summary", DisplayName = "Summary", Prompt = "the gist", DataType = FieldDataType.LongText },
+                    new DocumentTypePackFieldDto { Name = "parties", DisplayName = "Parties", DataType = FieldDataType.Text, AllowMultiple = true })
+            }
+        });
+
+        DocumentTypePackDto exported = null!;
+        await WithUnitOfWorkAsync(async () =>
+        {
+            var type = await _documentTypeRepository.FindByTypeCodeAsync("host.v1-roundtrip");
+            exported = await _packAppService.ExportAsync(type!.Id);
+        });
+
+        exported.Version.ShouldBe(DocumentTypePackConsts.CurrentVersion);
+        // Export never populates the legacy members, whatever version the rows arrived as.
+        exported.Fields.ShouldAllBe(f => f.DataType == null && f.Prompt == null && !f.AllowMultiple);
+        exported.Fields.Single(f => f.Name == "summary").Description.ShouldBe("the gist");
+        exported.Fields.Single(f => f.Name == "parties").FieldTypeName.ShouldBe(TagsFieldType.ControlName);
+
+        var reimport = await _packAppService.ImportAsync(new ImportDocumentTypePacksInput
+        {
+            Packs = new List<DocumentTypePackDto> { exported }
+        });
+
+        reimport.FieldsCreated.ShouldBe(0);
+        reimport.FieldsUpdated.ShouldBe(2);
+
+        await WithUnitOfWorkAsync(async () =>
+        {
+            var type = await _documentTypeRepository.FindByTypeCodeAsync("host.v1-roundtrip");
+            var fields = await _fieldDefinitionRepository.GetListAsync(type!.Id);
+            fields.Count.ShouldBe(2); // matched by name, not duplicated under new field types
+            fields.Single(f => f.Name == "summary").IsSearchable.ShouldBeFalse();
+        });
     }
 }
