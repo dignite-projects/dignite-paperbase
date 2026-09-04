@@ -13,7 +13,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LocalizationPipe } from '@abp/ng.core';
-import { DocumentFieldFilter, FieldDefinitionDto, FieldDefinitionService } from '@dignite/vault-extract';
+import { DocumentFieldFilter, FieldDefinitionDto, FieldDefinitionService } from '@dignite/ng.vault-extract';
 
 import {
   FilterMode,

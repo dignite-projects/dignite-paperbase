@@ -1,4 +1,4 @@
-import { ExportDocumentsInput, ExportFormat, GetDocumentListInput } from '@dignite/vault-extract';
+import { ExportDocumentsInput, ExportFormat, GetDocumentListInput } from '@dignite/ng.vault-extract';
 
 /**
  * #496: exactly the filter keys the document list composes in `buildFilter()`. Named so the round-trip

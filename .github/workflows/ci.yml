@@ -88,14 +88,12 @@ jobs:
           cache: 'npm'
           cache-dependency-path: angular/package-lock.json
 
-      # angular/.npmrc routes @dignite-projects:* to GitHub Packages and reads the credential from the
-      # plain GITHUB_TOKEN env var (npm's own ${VAR} substitution, not a GitHub Actions expression) -
-      # same cross-repo access boundary as the .NET restore above, so it needs the same real PAT.
+      # No registry credential: every dependency resolves from npmjs since the @dignite-projects
+      # workspace alias was dropped (@dignite/ng.flex-fields* are published publicly now). The npm
+      # counterpart of #595, which did the same for the .NET restore.
       - name: Install dependencies
         run: npm ci
         working-directory: angular
-        env:
-          GITHUB_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
 
       - name: Build extract library
         run: npx ng build vault-extract --configuration production

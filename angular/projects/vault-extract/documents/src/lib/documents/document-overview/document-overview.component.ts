@@ -19,7 +19,7 @@ import {
   DocumentTypeDto,
   DocumentTypeService,
   EXTRACT_PERMISSIONS,
-} from '@dignite/vault-extract';
+} from '@dignite/ng.vault-extract';
 import { EMPTY, Subject } from 'rxjs';
 import { catchError, switchMap, tap } from 'rxjs/operators';
 import { DocumentUploadComponent } from '../document-upload/document-upload.component';

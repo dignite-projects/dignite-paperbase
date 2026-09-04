@@ -1,4 +1,4 @@
-import { DocumentFieldFilter } from '@dignite/vault-extract';
+import { DocumentFieldFilter } from '@dignite/ng.vault-extract';
 
 export type FilterMode = 'eq' | 'range';
 

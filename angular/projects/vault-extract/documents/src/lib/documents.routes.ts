@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard, permissionGuard } from '@abp/ng.core';
-import { EXTRACT_PERMISSIONS } from '@dignite/vault-extract';
+import { EXTRACT_PERMISSIONS } from '@dignite/ng.vault-extract';
 
 export const DOCUMENTS_ROUTES: Routes = [
   {

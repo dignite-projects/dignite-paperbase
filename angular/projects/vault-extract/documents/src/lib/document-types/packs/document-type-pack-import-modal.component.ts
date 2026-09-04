@@ -17,7 +17,7 @@ import {
   DocumentTypePackService,
   PackImportMode,
   PackItemAction,
-} from '@dignite/vault-extract';
+} from '@dignite/ng.vault-extract';
 import { MAX_PACKS_PER_IMPORT, PackParseError, parsePackFileText } from './pack-io';
 
 /**

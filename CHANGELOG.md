@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **BREAKING — the Angular library is renamed `@dignite/vault-extract` → `@dignite/ng.vault-extract`**, matching the `@dignite/ng.*` convention the sibling Angular packages already follow (`@dignite/ng.flex-fields`, `@dignite/ng.flex-fields-ckeditor`). The sub-entry-points move with it (`@dignite/ng.vault-extract/documents`, `/config`), as does the pre-release GitHub Packages name (`@dignite-projects/ng.vault-extract`). Consumers must update their `package.json` and every import site; `@dignite/vault-extract` on npmjs stops at `0.3.2` and receives no further releases.
 - **`@dignite/ng.flex-fields` / `@dignite/ng.flex-fields-ckeditor` bumped to `10.0.0-rc.13`**, matching `Dignite.Abp.FlexFields.*` on the .NET side. The npm workspace alias to GitHub Packages (`npm:@dignite-projects/...`) is dropped now that the real `@dignite/*` packages are live on npmjs, closing the npmjs-availability blocker from [#577](https://github.com/dignite-projects/vault-extract/issues/577).
+- **The npm install no longer needs a registry credential.** With the alias gone, every dependency resolves from npmjs, so the `@dignite-projects` scope mapping and its `${GITHUB_TOKEN}` placeholder are removed from `angular/.npmrc` and the `PACKAGES_READ_TOKEN` drops out of both workflows' `npm ci`. The npm counterpart of [#595](https://github.com/dignite-projects/vault-extract/pull/595), which did this for the .NET restore. Publishing a pre-release to GitHub Packages still authenticates, in the publish step's own config.
+
+### Fixed
+
+- **The Angular library did not declare `@abp/ng.components`**, which its bundle imports (`@abp/ng.components/extensible`) in five components. It is not reachable transitively: `@abp/ng.components` peer-requires `ng.core` / `ng.theme.shared` rather than being pulled in by them, so a consumer without their own direct dependency on it got an unresolvable specifier. The same shape as the `@dignite/ng.flex-fields` omission that opened #577.
+- **The library declared no Angular peer dependencies at all.** `@angular/common` / `core` / `forms` / `platform-browser` / `router`, `rxjs`, `@ng-bootstrap/ng-bootstrap` and `@ngx-validate/core` are now declared as peers, stating the versions the library is actually built against instead of leaving a consumer to infer them.
 
 ## [0.5.0-preview.2] - 2026-09-03
 

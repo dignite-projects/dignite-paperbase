@@ -1,4 +1,4 @@
-// Public API surface of @dignite/vault-extract.
+// Public API surface of @dignite/ng.vault-extract.
 //
 // The proxy/ folder is fully owned by `abp generate-proxy -t ng`
 // (see proxy/README.md) and is overwritten on every regeneration — never edit it by hand.

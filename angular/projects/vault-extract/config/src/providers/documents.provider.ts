@@ -5,7 +5,7 @@ import {
   makeEnvironmentProviders,
   provideAppInitializer,
 } from '@angular/core';
-import { EXTRACT_PERMISSIONS } from '@dignite/vault-extract';
+import { EXTRACT_PERMISSIONS } from '@dignite/ng.vault-extract';
 
 export function provideExtract(): EnvironmentProviders {
   return makeEnvironmentProviders([

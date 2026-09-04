@@ -16,7 +16,7 @@ import {
   DocumentListItemDto,
   DocumentService,
   EXTRACT_PERMISSIONS,
-} from '@dignite/vault-extract';
+} from '@dignite/ng.vault-extract';
 import { ClientPagedResult, configureEntityTable, EXTRACT_TABLES } from '../../shared/extensible-table';
 import { executeBulkOperations } from '../../shared/bulk-operation';
 import { formatBytes } from '../../shared/format-bytes';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DocumentLifecycleStatus, ExportFormat } from '@dignite/vault-extract';
+import { DocumentLifecycleStatus, ExportFormat } from '@dignite/ng.vault-extract';
 
 import { DocumentListFilter, toExportDocumentsInput } from './export-current-view';
 

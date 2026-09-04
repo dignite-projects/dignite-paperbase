@@ -7,7 +7,7 @@
             "names":[
               "EXTRACT_ROUTES"
             ],
-            "namespace": "@dignite/vault-extract"
+            "namespace": "@dignite/ng.vault-extract"
           } 
         ],
         "routes":[
@@ -20,7 +20,7 @@
             "names":[
               "provideExtract"
             ],
-            "namespace": "@dignite/vault-extract/config"
+            "namespace": "@dignite/ng.vault-extract/config"
           }
         ],
         "providerNames":[
@@ -29,13 +29,13 @@
       },
       "tsJsonPathRecordConfigurations":[
         {
-          "name": "@dignite/vault-extract",
+          "name": "@dignite/ng.vault-extract",
           "paths": [
             "angular/projects/vault-extract/src/public-api.ts"
           ]
         },
         {
-          "name": "@dignite/vault-extract/config",
+          "name": "@dignite/ng.vault-extract/config",
           "paths": [
             "angular/projects/vault-extract/config/src/public-api.ts"
           ]

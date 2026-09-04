@@ -8,7 +8,7 @@ import type { CurrentTenantDto, CurrentUserDto } from '@abp/ng.core';
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { EXTRACT_PERMISSIONS } from '@dignite/vault-extract';
+import { EXTRACT_PERMISSIONS } from '@dignite/ng.vault-extract';
 
 interface HomeEntryPoint {
   title: string;
