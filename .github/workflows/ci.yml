@@ -99,6 +99,13 @@ jobs:
         run: npx ng build vault-extract --configuration production
         working-directory: angular
 
+      # ng-packagr externalises every bare specifier it does not bundle but never checks that the
+      # emitted externals are declared, so a published bundle can import a package its own
+      # package.json omits - #577's failure mode. Nothing else in this job would notice.
+      - name: Check published dependency declarations
+        run: npm run check:package-deps
+        working-directory: angular
+
       - name: Build host application
         run: npx ng build host --configuration production
         working-directory: angular

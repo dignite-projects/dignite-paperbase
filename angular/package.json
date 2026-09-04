@@ -7,8 +7,9 @@
   ],
   "scripts": {
     "start": "ng serve host",
-    "build": "ng build vault-extract && ng build host",
-    "build:vault-extract": "ng build vault-extract",
+    "build": "npm run build:vault-extract && ng build host",
+    "build:vault-extract": "ng build vault-extract && npm run check:package-deps",
+    "check:package-deps": "node build/check-package-deps.mjs dist/vault-extract",
     "build:host": "ng build host",
     "test": "ng test vault-extract --watch=false",
     "test:watch": "ng test vault-extract",
