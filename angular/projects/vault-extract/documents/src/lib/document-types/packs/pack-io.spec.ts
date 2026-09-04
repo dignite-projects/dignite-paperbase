@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DocumentTypePackDto } from '@dignite/vault-extract';
+import { DocumentTypePackDto } from '@dignite/ng.vault-extract';
 
 import {
   MAX_PACKS_PER_IMPORT,

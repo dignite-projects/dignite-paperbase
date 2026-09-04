@@ -3,7 +3,7 @@
 #
 # Routing by channel, derived from the SemVer pre-release suffix in <Version>:
 #   - Pre-release (e.g. 0.2.0-preview.3) -> NuGet + npm packages pushed to GitHub Packages only.
-#   - Stable      (e.g. 0.2.0)           -> NuGet to NuGet.org, npm (@dignite/vault-extract) to npmjs
+#   - Stable      (e.g. 0.2.0)           -> NuGet to NuGet.org, npm (@dignite/ng.vault-extract) to npmjs
 #                                            via npm Trusted Publishing (OIDC), no NPM_TOKEN.
 #
 # Triggers: push a v* tag (e.g. v0.2.0 or v0.2.0-preview.3) or use workflow_dispatch. For churny
@@ -151,15 +151,12 @@ jobs:
       - name: Upgrade npm for trusted publishing
         run: npm install -g npm@^11.5.1
 
-      # angular/.npmrc routes @dignite-projects:* to GitHub Packages and reads the credential from
-      # the plain GITHUB_TOKEN env var (npm's own ${VAR} substitution, not a GitHub Actions
-      # expression). Cross-repo access, so the default job token is not enough - same real PAT the
-      # CI workflow uses. Without this the install fails E401 on @dignite-projects/ng.flex-fields.
+      # No registry credential: every dependency resolves from npmjs since the @dignite-projects
+      # workspace alias was dropped (@dignite/ng.flex-fields* are published publicly now). Publishing
+      # a pre-release to GitHub Packages still needs auth, but that step writes its own config below.
       - name: Install Angular dependencies
         run: npm ci
         working-directory: angular
-        env:
-          GITHUB_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
 
       - name: Build npm package
         run: npx ng build vault-extract --configuration production
@@ -182,7 +179,7 @@ jobs:
 
       # Pre-release UI packages go to GitHub Packages, the npm mirror of the pre-release NuGet push
       # above. GitHub Packages' npm registry rejects any scope that does not match the owning org,
-      # so @dignite/vault-extract cannot be pushed there under its real name - the public @dignite/*
+      # so @dignite/ng.vault-extract cannot be pushed there under its real name - the public @dignite/*
       # scope belongs to npmjs (stable releases, below). The rename happens in a scratch copy of the
       # packed tarball so the working tree and the npmjs artifact keep the public name.
       #
@@ -197,10 +194,10 @@ jobs:
         run: |
           echo "@dignite-projects:registry=https://npm.pkg.github.com" >> "$NPM_CONFIG_USERCONFIG"
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> "$NPM_CONFIG_USERCONFIG"
-          tarball="../artifacts/dignite-vault-extract-${{ steps.channel.outputs.version }}.tgz"
+          tarball="../artifacts/dignite-ng.vault-extract-${{ steps.channel.outputs.version }}.tgz"
           workdir=$(mktemp -d)
           tar -xzf "$tarball" -C "$workdir"
-          npm pkg set name="@dignite-projects/vault-extract" --prefix "$workdir/package"
+          npm pkg set name="@dignite-projects/ng.vault-extract" --prefix "$workdir/package"
           PKG_DIR="$workdir/package" node -e '
             const fs = require("fs");
             const path = require("path");
@@ -228,32 +225,23 @@ jobs:
           cat /tmp/npm-publish.log
           if [ $status -ne 0 ]; then
             if grep -q 'Cannot publish over existing version' /tmp/npm-publish.log; then
-              echo "::notice::@dignite-projects/vault-extract@${{ steps.channel.outputs.version }} is already published; skipping."
+              echo "::notice::@dignite-projects/ng.vault-extract@${{ steps.channel.outputs.version }} is already published; skipping."
             else
               exit $status
             fi
           fi
         working-directory: angular
-        # angular/.npmrc reads ${GITHUB_TOKEN} for the @dignite-projects scope, and a project-level
-        # .npmrc outranks the user-level file this step appends to. Without this the placeholder
-        # resolves empty and silently overrides the token written above - the E401 in that same run.
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Stable releases carry the public @dignite/* name to npmjs. Auth is OIDC: npm exchanges this
-      # job's GitHub id-token for a short-lived publish token for @dignite/vault-extract (a Trusted
+      # job's GitHub id-token for a short-lived publish token for @dignite/ng.vault-extract (a Trusted
       # Publisher is configured on npmjs.com for this repo + this workflow file - that is why the
       # job has id-token: write). A missing/misconfigured Trusted Publisher fails loudly here
       # (E404/E401), which is intended.
       #
-      # This still requires every @dignite/* dependency to exist on npmjs: @dignite/ng.flex-fields*
-      # are being bootstrapped there (dignite-projects/abp-modules#106), tracked in #577.
+      # Every @dignite/* dependency exists on npmjs since @dignite/ng.flex-fields* were published
+      # there (dignite-projects/abp-modules#106), which closed #577.
       - name: Publish to npm (stable)
         if: steps.channel.outputs.channel == 'stable'
-        env:
-          # angular/.npmrc's ${GITHUB_TOKEN} placeholder must resolve (same reason as the
-          # preview step above); npmjs auth no longer uses it.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npm publish ./dist/vault-extract --access public --provenance
         working-directory: angular

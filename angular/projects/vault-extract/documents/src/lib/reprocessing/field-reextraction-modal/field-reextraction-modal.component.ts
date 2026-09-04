@@ -16,7 +16,7 @@ import { ToasterService } from '@abp/ng.theme.shared';
 import {
   DocumentReprocessingService,
   FieldReextractionPreviewDto,
-} from '@dignite/vault-extract';
+} from '@dignite/ng.vault-extract';
 
 /**
  * Bulk field re-extraction preview and trigger modal (#289 scenario 2): leaf operation with a light

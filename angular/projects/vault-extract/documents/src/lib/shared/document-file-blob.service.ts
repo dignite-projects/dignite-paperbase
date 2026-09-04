@@ -1,7 +1,7 @@
 import { DestroyRef, Injectable, OnDestroy, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
-import { DocumentService } from '@dignite/vault-extract';
+import { DocumentService } from '@dignite/ng.vault-extract';
 
 /**
  * Owns the original-file blob lifecycle for the document preview path (#277): fetch via

@@ -26,7 +26,7 @@ import {
   CabinetService,
   CreateCabinetDto,
   EXTRACT_PERMISSIONS,
-} from '@dignite/vault-extract';
+} from '@dignite/ng.vault-extract';
 import {
   ClientPagedResult,
   configureEntityTable,

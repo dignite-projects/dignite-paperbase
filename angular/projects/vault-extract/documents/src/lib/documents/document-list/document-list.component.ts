@@ -47,7 +47,7 @@ import {
   FieldDefinitionDto,
   FieldDefinitionService,
   EXTRACT_PERMISSIONS,
-} from '@dignite/vault-extract';
+} from '@dignite/ng.vault-extract';
 import { ClientPagedResult, configureEntityTable, EXTRACT_TABLES } from '../../shared/extensible-table';
 import { formatExtractedFieldValue } from '../../shared/format-field-value';
 import { FieldValueFilterComponent } from '../../shared/field-value-filter/field-value-filter.component';

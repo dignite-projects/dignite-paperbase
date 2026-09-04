@@ -30,7 +30,7 @@ import {
   DocumentTypeService,
   EXTRACT_PERMISSIONS,
   SlugSuggestionService,
-} from '@dignite/vault-extract';
+} from '@dignite/ng.vault-extract';
 import {
   ClientPagedResult,
   configureEntityTable,

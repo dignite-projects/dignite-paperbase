@@ -1,4 +1,4 @@
-import { DocumentTypePackDto } from '@dignite/vault-extract';
+import { DocumentTypePackDto } from '@dignite/ng.vault-extract';
 
 /**
  * Config-pack import/export I/O helpers (#444 UI). Kept as pure functions — separate from the modal and the

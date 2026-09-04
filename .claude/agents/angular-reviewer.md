@@ -48,7 +48,7 @@ angular/projects/vault-extract/
 ### 2.2 Generated Proxy — never hand-edited
 
 - 🔴 **Any edit to a file under `projects/vault-extract/src/lib/proxy/`** is a hard violation. The proxy is fully owned by the generator and overwritten on every `npm run generate-proxy` run.
-- API calls must go through the generated service classes (e.g., `DocumentService`, `CabinetService`) imported from `@dignite/vault-extract`. Raw `HttpClient` calls that duplicate proxy endpoints are a violation.
+- API calls must go through the generated service classes (e.g., `DocumentService`, `CabinetService`) imported from `@dignite/ng.vault-extract`. Raw `HttpClient` calls that duplicate proxy endpoints are a violation.
 
 ### 2.3 Change Detection
 
@@ -61,7 +61,7 @@ angular/projects/vault-extract/
 
 ### 2.5 Permissions
 
-- 🔴 **Raw string literals** like `'VaultExtract.Documents.Upload'` in component TypeScript or templates are a smell — they bypass the typed `EXTRACT_PERMISSIONS` constant and break refactoring. Use `EXTRACT_PERMISSIONS.<Group>.<Action>` from `@dignite/vault-extract`.
+- 🔴 **Raw string literals** like `'VaultExtract.Documents.Upload'` in component TypeScript or templates are a smell — they bypass the typed `EXTRACT_PERMISSIONS` constant and break refactoring. Use `EXTRACT_PERMISSIONS.<Group>.<Action>` from `@dignite/ng.vault-extract`.
 - 🟡 The established pattern is `readonly canX = this.permissionService.getGrantedPolicy(EXTRACT_PERMISSIONS.X.Y)` as a class field, bound in the template with `@if (canX)`. `*abpPermission` is a valid alternative but is not the primary idiom used here.
 - 🔴 Route guards must use the functional `authGuard` and `permissionGuard` from `@abp/ng.core` with `data: { requiredPolicy: EXTRACT_PERMISSIONS.X }`. The old class-based `PermissionGuard` is deprecated.
 

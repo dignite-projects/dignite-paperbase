@@ -19,7 +19,7 @@ import {
   DocumentReprocessingService,
   ReclassificationScope,
   ReclassificationScopeInput,
-} from '@dignite/vault-extract';
+} from '@dignite/ng.vault-extract';
 
 /**
  * Bulk reclassification preview and trigger modal (#289 scenario 1): cascading, destructive, and

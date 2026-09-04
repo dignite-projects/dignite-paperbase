@@ -34,7 +34,7 @@ import {
   FieldValidationWarningDto,
   EXTRACT_PERMISSIONS,
   PipelineRunStatus,
-} from '@dignite/vault-extract';
+} from '@dignite/ng.vault-extract';
 import { formatExtractedFieldValue } from '../../shared/format-field-value';
 import { stripMarkdownCodeFences } from '../../shared/strip-code-fences';
 import { DocumentFileBlobService } from '../../shared/document-file-blob.service';

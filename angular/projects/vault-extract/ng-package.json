@@ -5,6 +5,7 @@
     "entryFile": "src/public-api.ts"
   },
   "allowedNonPeerDependencies": [
+    "@abp/ng.components",
     "@abp/ng.core",
     "@abp/ng.theme.shared",
     "marked",

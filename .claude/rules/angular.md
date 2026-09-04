@@ -23,14 +23,14 @@ angular/
 │       ├── app.routes.ts            # APP_ROUTES (lazy loadChildren to lib route arrays)
 │       └── home/
 └── projects/
-    └── vault-extract/               # Angular library; imported as @dignite/vault-extract
+    └── vault-extract/               # Angular library; imported as @dignite/ng.vault-extract
         ├── src/lib/
         │   ├── proxy/               # ⚠️  GENERATED — never edit by hand
         │   │   └── http-api/documents/  # typed service classes + models
         │   ├── services/            # hand-written, regeneration-safe wrappers
         │   └── shared/tokens/
         │       └── extract-permissions.ts   # EXTRACT_PERMISSIONS constant
-        ├── documents/               # sub-entry-point (@dignite/vault-extract/documents)
+        ├── documents/               # sub-entry-point (@dignite/ng.vault-extract/documents)
         │   └── src/lib/
         │       ├── documents.routes.ts       # exports DOCUMENTS_ROUTES
         │       ├── cabinets/
@@ -40,7 +40,7 @@ angular/
         │       ├── fields/
         │       ├── reprocessing/    # dedicated standalone modal components
         │       └── shared/
-        └── config/                  # sub-entry-point (@dignite/vault-extract/config)
+        └── config/                  # sub-entry-point (@dignite/ng.vault-extract/config)
 ```
 
 ## Generate Service Proxies
@@ -71,7 +71,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { LocalizationPipe, ListService, PermissionService } from '@abp/ng.core';
 import { ToasterService } from '@abp/ng.theme.shared';
-import { SomeService, EXTRACT_PERMISSIONS } from '@dignite/vault-extract';
+import { SomeService, EXTRACT_PERMISSIONS } from '@dignite/ng.vault-extract';
 
 @Component({
   selector: 'lib-some-list',
@@ -125,7 +125,7 @@ Guards are functional: `[authGuard, permissionGuard]` from `@abp/ng.core`.
 // projects/vault-extract/documents/src/lib/documents.routes.ts
 import { Routes } from '@angular/router';
 import { authGuard, permissionGuard } from '@abp/ng.core';
-import { EXTRACT_PERMISSIONS } from '@dignite/vault-extract';
+import { EXTRACT_PERMISSIONS } from '@dignite/ng.vault-extract';
 
 export const DOCUMENTS_ROUTES: Routes = [
   {
@@ -152,7 +152,7 @@ The host app wires route arrays via `loadChildren`:
 export const APP_ROUTES: Routes = [
   {
     path: 'documents',
-    loadChildren: () => import('@dignite/vault-extract/documents').then(m => m.DOCUMENTS_ROUTES),
+    loadChildren: () => import('@dignite/ng.vault-extract/documents').then(m => m.DOCUMENTS_ROUTES),
   },
 ];
 ```
@@ -161,7 +161,7 @@ export const APP_ROUTES: Routes = [
 
 ### Runtime check (stored boolean field + `@if`)
 
-Import `EXTRACT_PERMISSIONS` from `@dignite/vault-extract`. Call
+Import `EXTRACT_PERMISSIONS` from `@dignite/ng.vault-extract`. Call
 `permissionService.getGrantedPolicy(...)` at class field level (not in methods) and
 bind it in the template with `@if`.
 
