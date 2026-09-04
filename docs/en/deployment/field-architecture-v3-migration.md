@@ -115,7 +115,8 @@ after that layer's bags exist.
 
 ### 5. Verify
 
-Run all four. The first is the one that matters.
+Every query below was run against a real migrated database before being written down, which is how
+the collation cast in 5a and the corrected arithmetic in 5c got here. 5a is the one that matters.
 
 **5a — every v2 value survived into a bag.** Compare per document + field name.
 
@@ -138,16 +139,25 @@ WITH V2 AS (
 ),
 V3 AS (
     SELECT  d.Id AS DocumentId,
-            bag.[key] AS FieldName,
+            bag.[key] COLLATE DATABASE_DEFAULT AS FieldName,
             bag.[value] AS RawValue
     FROM VaultDocuments d
     CROSS APPLY OPENJSON(d.FlexFields) AS bag
+    WHERE ISJSON(d.FlexFields) = 1
 )
-SELECT V2.DocumentId, V2.FieldName, V2.V2Value
+SELECT V2.DocumentId, V2.FieldName, V2.[Order], V2.V2Value
 FROM V2
 LEFT JOIN V3 ON V3.DocumentId = V2.DocumentId AND V3.FieldName = V2.FieldName
-WHERE V3.DocumentId IS NULL;
+WHERE V3.DocumentId IS NULL
+ORDER BY V2.DocumentId, V2.FieldName, V2.[Order];
 ```
+
+> The `COLLATE DATABASE_DEFAULT` is not optional. `OPENJSON` returns its `key` column as
+> `Latin1_General_BIN2`, while `Name` carries the database collation, and joining them without a cast
+> fails outright:
+> `Msg 468 — Cannot resolve the collation conflict between "SQL_Latin1_General_CP1_CI_AS" and "Latin1_General_BIN2"`.
+> The `ISJSON` guard is for the same class of surprise: one row with a non-JSON `FlexFields` value
+> would otherwise abort the whole query rather than being reported.
 
 > **Use `OPENJSON`, never `JSON_VALUE`, for these comparisons.** `JSON_VALUE` returns `nvarchar(4000)`
 > and yields `NULL` for anything longer, so a long `LongText` value reads as empty and looks exactly
@@ -157,22 +167,64 @@ WHERE V3.DocumentId IS NULL;
 **5b — definition counts match, per layer.**
 
 ```sql
-SELECT TenantId, COUNT(*) AS V2 FROM VaultFieldDefinitions GROUP BY TenantId;
-SELECT TenantId, COUNT(*) AS V3 FROM VaultFields           GROUP BY TenantId;
+SELECT 'v2' AS Layer, TenantId, COUNT(*) AS Cnt,
+       SUM(CASE WHEN IsDeleted = 1 THEN 1 ELSE 0 END) AS Deleted
+FROM VaultFieldDefinitions GROUP BY TenantId
+UNION ALL
+SELECT 'v3', TenantId, COUNT(*), SUM(CASE WHEN IsDeleted = 1 THEN 1 ELSE 0 END)
+FROM VaultFields GROUP BY TenantId
+ORDER BY TenantId, Layer;
 ```
 
-Ids are preserved, so these should agree row for row — including soft-deleted definitions, which are
-migrated too (the validation-warning FK and the derived index both key on the id).
+Ids are preserved, so these should agree — including soft-deleted definitions, which are migrated too
+(the validation-warning FK and the derived index both key on the id). Watch the rows where `TenantId`
+is **not** null: a host-only migration pass leaves the tenant layers entirely on v2 and this is where
+that shows.
+
+The counts will not always match exactly, and a bare count cannot tell a benign difference from a
+lost row. Once v3 owns writes, a field created after the migration exists in `VaultFields` only.
+Compare by id instead — that is what turns a number into an answer:
+
+```sql
+-- In v2, missing from v3. Anything here with ValueRows > 0 is the serious case:
+-- its values are in the bag with no definition backing them, which the field
+-- architecture forbids (every bag key must have a persisted definition).
+SELECT fd.Id, fd.Name, fd.TenantId, fd.IsDeleted,
+       (SELECT COUNT(*) FROM VaultDocumentExtractedFields ef WHERE ef.FieldDefinitionId = fd.Id) AS ValueRows
+FROM VaultFieldDefinitions fd
+WHERE NOT EXISTS (SELECT 1 FROM VaultFields f WHERE f.Id = fd.Id);
+
+-- In v3, absent from v2: expected — fields created after the cutover.
+SELECT f.Id, f.Name, f.TenantId, f.FieldTypeName, f.CreationTime
+FROM VaultFields f
+WHERE NOT EXISTS (SELECT 1 FROM VaultFieldDefinitions fd WHERE fd.Id = f.Id);
+```
 
 **5c — the derived index is populated.**
 
 ```sql
-SELECT COUNT(*) FROM VaultDocumentFlexFieldIndexes;
+SELECT f.FieldTypeName, COUNT(*) AS IndexRows
+FROM VaultDocumentFlexFieldIndexes i
+JOIN VaultFields f ON f.Id = i.FieldId
+GROUP BY f.FieldTypeName ORDER BY IndexRows DESC;
 ```
 
-Expect it to be **lower** than the `VaultDocumentExtractedFields` count, by exactly the number of
-long-text values. `CKEditorFieldType.IndexValueType` is null, so those values never enter the index —
-the same treatment v2's `LongTextValue` column got, which was excluded from every composite index.
+Two things to read off it. **No `CKEditor` row may appear**: that field type's `IndexValueType` is
+null, so long text never enters the index — the same treatment v2's `LongTextValue` column got, which
+was excluded from every composite index. And the total must equal the number of bag entries whose
+field type *is* indexable:
+
+```sql
+SELECT COUNT(*) AS BagEntries
+FROM VaultDocuments d CROSS APPLY OPENJSON(d.FlexFields) bag
+WHERE ISJSON(d.FlexFields) = 1;
+-- IndexRows = BagEntries - (bag entries on CKEditor fields)
+```
+
+Compare against **bag entries**, not against the `VaultDocumentExtractedFields` count. Those two
+agree only in the moment right after the migration; from the cutover onward v3 owns writes, so the
+bag grows while the v2 table stays frozen, and "index rows = v2 rows − long-text rows" stops holding.
+
 A count of **zero** means the rebuild did not run; re-run the migration (it is idempotent, and the
 rebuild is unconditional).
 
@@ -185,6 +237,10 @@ SELECT COUNT(*) FROM VaultDocuments WHERE ReviewReasons & 8 = 8;   -- 8 = Duplic
 
 A change here means the fingerprint recomputation changed which documents collide, which is the
 failure this step exists to catch.
+
+> This one only works as a **pair** of readings. Record the number before step 4; if the migration
+> has already run and nobody took it, the "after" figure on its own proves nothing, and 5a becomes
+> the check carrying the weight. Take the reading first — it costs one query.
 
 Finally, in the UI: open a handful of documents of different types and confirm their fields render
 with the same values as before, and that a field-value filter on the document list returns the same
