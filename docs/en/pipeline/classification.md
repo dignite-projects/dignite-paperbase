@@ -65,6 +65,8 @@ The prompt language follows `Vault:ExtractBehavior:DefaultLanguage` (see [ai-pro
 | LLM unreachable (transient) | `Failed`, exception rethrown | ABP retries the job per `BackgroundJobOptions.JobTypes` `MaxTryCount`. Next attempt does a fresh LLM classification once the provider recovers. |
 | LLM returned malformed JSON | review queue (`UnresolvedClassification`) | No retry — a human resolves the type code in the UI |
 
+Operator confirmation/correction (`ConfirmClassificationAsync` / `ReclassifyAsync`) requires text extraction to have already completed — the same `Document.Markdown` precondition as `RerecognizeAsync` — and throws `NotTextExtracted` otherwise, so a type can never be confirmed on a document that has no text yet to run the field-extraction cascade against.
+
 ## Declared type at upload
 
 `UploadDocumentInput.DocumentTypeId` (#623) lets a caller who already knows the type skip this whole stage. Supplying it is equivalent to an operator calling `ConfirmClassificationAsync` on the document: `DocumentTypeId` is set, `ClassificationConfidence` is pinned to `1.0`, `ReviewDisposition` becomes `Confirmed`, and **no classification LLM call is made** — the document never enters the review queue for `UnresolvedClassification`. This is aimed at business-system integrations that already know what they are submitting (an invoice-scanning station, an HR system uploading a known contract) and at MCP ingest callers that were told the type.

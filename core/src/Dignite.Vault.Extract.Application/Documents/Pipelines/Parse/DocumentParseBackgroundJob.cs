@@ -262,45 +262,26 @@ public class DocumentParseBackgroundJob
         // ride the classification stage, and a declared type is treated as a concrete document -- the same
         // outcome as an operator Reclassify to a concrete type today.
         //
-        // Code review on #623 (2026-09-05): ConfirmClassificationAsync / ReclassifyAsync have no Markdown/parse-
-        // completion precondition, so an operator CAN confirm or reclassify this document while Parse is still
-        // running -- that call already ran ManualClassificationApplier and created its own (Succeeded) Classification
-        // run. DocumentTypeId + ReviewDisposition alone cannot tell "declared at upload, never classified yet" apart
-        // from "already classified" in that race, so a real DocumentPipelineRun lookup is the actual distinguishing
-        // signal: if a Classification run already exists, the operator's action is authoritative and this branch
-        // does nothing further -- reapplying would duplicate that run, the #527 §8 field-extraction cascade (a
-        // second LLM call racing to write the same FlexFields), and DocumentClassifiedEto.
+        // No run-exists check is needed here: ApplyManualClassificationAsync (backing ConfirmClassificationAsync /
+        // ReclassifyAsync) now refuses to run before Document.Markdown is set (see its guard), so no Classification
+        // run can exist for this document at this point in the pipeline -- Parse is the one write path that sets
+        // Markdown, and this branch runs synchronously before Parse's own completion is visible to any other caller.
         DocumentType? declaredType = null;
-        var enqueueAutomaticClassification = true;
 
         if (document.DocumentTypeId.HasValue && document.ReviewDisposition == DocumentReviewDisposition.Confirmed)
         {
-            var existingClassificationRun = await RunRepository.FindLatestByDocumentAndCodeAsync(
-                document.Id, VaultExtractPipelines.Classification);
-
-            if (existingClassificationRun != null)
+            declaredType = await _documentTypeRepository.FindAsync(document.DocumentTypeId.Value);
+            if (declaredType == null)
             {
-                enqueueAutomaticClassification = false;
-            }
-            else
-            {
-                declaredType = await _documentTypeRepository.FindAsync(document.DocumentTypeId.Value);
-                if (declaredType != null)
-                {
-                    enqueueAutomaticClassification = false;
-                }
-                else
-                {
-                    // The declared type was deleted in the window between upload and Parse completion. Retract the
-                    // stale declaration -- as if it had never been declared -- so the persisted row never shows
-                    // Confirmed against a DocumentTypeId that no longer resolves to anything, then fall through to
-                    // the normal automatic LLM classification enqueue below.
-                    Logger.LogWarning(
-                        "Document {DocumentId} declared DocumentTypeId {DocumentTypeId} at upload, but that type no "
-                        + "longer exists by the time Parse completed; falling back to automatic classification.",
-                        document.Id, document.DocumentTypeId);
-                    PipelineRunManager.RetractDeclaredType(document);
-                }
+                // The declared type was deleted in the window between upload and Parse completion. Retract the
+                // stale declaration -- as if it had never been declared -- so the persisted row never shows
+                // Confirmed against a DocumentTypeId that no longer resolves to anything, then fall through to
+                // the normal automatic LLM classification enqueue below.
+                Logger.LogWarning(
+                    "Document {DocumentId} declared DocumentTypeId {DocumentTypeId} at upload, but that type no "
+                    + "longer exists by the time Parse completed; falling back to automatic classification.",
+                    document.Id, document.DocumentTypeId);
+                PipelineRunManager.RetractDeclaredType(document);
             }
         }
 
@@ -308,7 +289,7 @@ public class DocumentParseBackgroundJob
         {
             await _manualClassificationApplier.ApplyAsync(document, declaredType);
         }
-        else if (enqueueAutomaticClassification)
+        else
         {
             await _pipelineJobScheduler.QueueAsync(document, VaultExtractPipelines.Classification);
         }

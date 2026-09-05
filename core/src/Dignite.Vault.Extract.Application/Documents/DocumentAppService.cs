@@ -1039,6 +1039,18 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
             throw new EntityNotFoundException(typeof(Document), id);
         }
 
+        // A type can only be confirmed on a document that has text -- mirrors RerecognizeAsync / ReextractFieldsAsync.
+        // Without this guard the cascade field extraction below would run over an empty body, and since
+        // MissingRequiredFields is non-blocking, the document could reach Ready with no fields at all. This guard is
+        // also what makes the Parse-cascade declared-type branch (DocumentParseBackgroundJob.CompleteRunAsync)
+        // race-free: no path can create a Classification run before Parse writes Markdown -- bulk reprocessing
+        // requires Markdown, RerecognizeAsync carries this same guard, and derived sub-documents are always created
+        // typeless -- so by the time Parse completes, no operator action could have gotten here first.
+        if (string.IsNullOrEmpty(document.Markdown))
+        {
+            throw new BusinessException(VaultExtractErrorCodes.Document.NotTextExtracted);
+        }
+
         // Type validation responsibility lives in AppService and no longer goes through manager-internal EnsureRegisteredTypeCodeAsync:
         // resolve by immutable Id (#207), with tenant isolation delegated to ABP IMultiTenant global filters for exact single-layer matching.
         // Missing type fails fast, avoiding writes of a type that business-module subscribers cannot recognize.

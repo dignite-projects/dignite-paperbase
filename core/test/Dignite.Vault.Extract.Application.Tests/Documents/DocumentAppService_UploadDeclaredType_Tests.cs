@@ -231,6 +231,61 @@ public class DocumentAppService_UploadDeclaredType_Tests
         doc.ReviewReasons.ShouldBe(DocumentReviewReasons.None);
     }
 
+    /// <summary>
+    /// Strengthened guard (code review on #623, 2026-09-05): <see cref="Document.RetractDeclaredType"/> is exposed
+    /// publicly via <see cref="DocumentPipelineRunManager.RetractDeclaredType"/>, so it must refuse anything that is
+    /// not the exact upload-declared, never-classified signature -- not merely "has a type". A document classified
+    /// through the ordinary automatic path (<c>ApplyAutomaticClassificationResult</c>) carries a type with
+    /// <see cref="DocumentReviewDisposition.NotReviewed"/>, not Confirmed, and must not be retractable.
+    /// </summary>
+    [Fact]
+    public void RetractDeclaredType_Throws_When_ReviewDisposition_Is_Not_Confirmed()
+    {
+        var doc = CreateDocument();
+        InvokeApplyAutomaticClassificationResult(doc, Guid.NewGuid(), 0.95);
+        doc.ReviewDisposition.ShouldBe(DocumentReviewDisposition.NotReviewed);
+
+        var exception = Should.Throw<TargetInvocationException>(() => InvokeRetractDeclaredType(doc));
+
+        exception.InnerException.ShouldBeOfType<InvalidOperationException>();
+    }
+
+    /// <summary>
+    /// Same strengthened guard, the other axis: <c>ConfirmClassification</c> also sets ReviewDisposition=Confirmed +
+    /// confidence 1.0 -- identical to the upload-declared signature on those two fields alone -- so once its cascade
+    /// field extraction has actually produced values, the document carries a non-empty <see cref="Document.FlexFields"/>
+    /// bag that the upload-declared, never-classified signature never has (<see cref="Document.DeclareDocumentType"/>
+    /// deliberately never touches <c>FlexFields</c>). That is the signal this guard leans on to refuse it.
+    /// </summary>
+    [Fact]
+    public void RetractDeclaredType_Throws_When_Type_Was_Operator_Confirmed_And_Fields_Were_Extracted()
+    {
+        var doc = CreateDocument();
+        InvokeConfirmClassification(doc, Guid.NewGuid());
+        doc.ReviewDisposition.ShouldBe(DocumentReviewDisposition.Confirmed);
+        doc.ClassificationConfidence.ShouldBe(1.0);
+        // Simulates the #527 §8 field-extraction cascade having already completed.
+        doc.SetFlexFields(new Dictionary<string, object?> { ["amount"] = 100m });
+
+        var exception = Should.Throw<TargetInvocationException>(() => InvokeRetractDeclaredType(doc));
+
+        exception.InnerException.ShouldBeOfType<InvalidOperationException>();
+    }
+
+    private static void InvokeApplyAutomaticClassificationResult(Document document, Guid documentTypeId, double confidence)
+    {
+        typeof(Document)
+            .GetMethod("ApplyAutomaticClassificationResult", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(document, [documentTypeId, confidence]);
+    }
+
+    private static void InvokeConfirmClassification(Document document, Guid documentTypeId)
+    {
+        typeof(Document)
+            .GetMethod("ConfirmClassification", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(document, [documentTypeId]);
+    }
+
     private static void InvokeDeclareDocumentType(Document document, Guid documentTypeId)
     {
         typeof(Document)

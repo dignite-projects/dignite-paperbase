@@ -762,11 +762,29 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
     /// classification's normal "not yet classified" starting state instead of staying Confirmed against a type
     /// that no longer resolves to anything. Deliberately sets no review reason: the caller is about to enqueue the
     /// ordinary classification job, exactly like an undeclared upload, not report a terminal failure.
+    /// <para>
+    /// Exposed publicly via <see cref="DocumentPipelineRunManager.RetractDeclaredType"/>, so the guard refuses
+    /// anything that is not the <em>exact</em> upload-declared, never-classified signature <see cref="DeclareDocumentType"/>
+    /// produces: a confirmed type at confidence 1.0 with no field fingerprint and no extracted field values yet.
+    /// This is deliberately narrower than "has a type" -- it must never be usable to undo a real classification
+    /// (automatic or operator-confirmed) that has already produced field values, because unlike
+    /// <see cref="DeclareDocumentType"/>'s pre-pipeline call site this one runs after Parse, where a real
+    /// classification could already exist.
+    /// </para>
     /// </summary>
     internal void RetractDeclaredType()
     {
-        if (!DocumentTypeId.HasValue)
-            throw new InvalidOperationException("RetractDeclaredType can only be called on a document that currently has a declared type.");
+        if (!DocumentTypeId.HasValue
+            || ReviewDisposition != DocumentReviewDisposition.Confirmed
+            || ClassificationConfidence != 1.0
+            || FieldFingerprint != null
+            || FlexFields.Count != 0)
+        {
+            throw new InvalidOperationException(
+                "RetractDeclaredType can only be called on a document that carries exactly the upload-declared, "
+                + "never-classified signature: a confirmed type at confidence 1.0 with no field fingerprint and no "
+                + "extracted field values.");
+        }
 
         DocumentTypeId = null;
         ClassificationConfidence = 0;

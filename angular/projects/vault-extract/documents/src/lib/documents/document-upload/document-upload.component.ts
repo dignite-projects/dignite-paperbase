@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, Injector, OnInit, afterNextRender, computed, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, Injector, OnInit, afterNextRender, computed, inject, input, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterModule } from '@angular/router';
 import { CommonModule } from '@angular/common';
@@ -9,7 +9,6 @@ import {
   CabinetDto,
   CabinetService,
   DocumentTypeDto,
-  DocumentTypeService,
   DocumentUploadService,
   EXTRACT_PERMISSIONS,
 } from '@dignite/ng.vault-extract';
@@ -45,7 +44,6 @@ interface FileUploadState {
 export class DocumentUploadComponent implements OnInit {
   private readonly documentUploadService = inject(DocumentUploadService);
   private readonly cabinetService = inject(CabinetService);
-  private readonly documentTypeService = inject(DocumentTypeService);
   private readonly toaster = inject(ToasterService);
   private readonly permissionService = inject(PermissionService);
   private readonly destroyRef = inject(DestroyRef);
@@ -65,20 +63,17 @@ export class DocumentUploadComponent implements OnInit {
 
   // Declaring a type at upload is equivalent to an operator confirming classification
   // (#623): it skips the LLM classification call entirely, so it requires
-  // ConfirmClassification in addition to Upload. Without permission, hide the selector —
-  // every file uploads through ordinary LLM classification as before.
+  // ConfirmClassification. Without permission, hide the selector — every file uploads
+  // through ordinary LLM classification as before.
   //
-  // Code review (2026-09-05): also require the same permission the type-list fetch itself
-  // needs (DocumentTypeAppService.GetVisibleAsync accepts Documents.Default OR
-  // DocumentTypes.Default — ConfirmClassification alone is not one of them, and ABP does not
-  // imply a parent permission from a granted child). Without this, a role holding exactly
-  // Upload + ConfirmClassification would see the selector's gate open but the type-list
-  // request would fail, silently hiding the selector anyway via the empty-list guard below.
-  readonly canDeclareType =
-    this.permissionService.getGrantedPolicy(EXTRACT_PERMISSIONS.Documents.ConfirmClassification) &&
-    (this.permissionService.getGrantedPolicy(EXTRACT_PERMISSIONS.Documents.Default) ||
-      this.permissionService.getGrantedPolicy(EXTRACT_PERMISSIONS.DocumentTypes.Default));
-  documentTypes = signal<DocumentTypeDto[]>([]);
+  // Code review (2026-09-05): the type list itself is no longer fetched by this component —
+  // its only mount site (DocumentOverviewComponent) already fetches it for its own quick-links
+  // section and passes it down via the `documentTypes` input, so there is no second request and
+  // no need to mirror the list-read permission (Documents.Default / DocumentTypes.Default) here.
+  readonly canDeclareType = this.permissionService.getGrantedPolicy(
+    EXTRACT_PERMISSIONS.Documents.ConfirmClassification,
+  );
+  readonly documentTypes = input<DocumentTypeDto[]>([]);
   selectedDocumentTypeId = signal<string>('');
 
   // Picker `accept` filter, derived from the shared whitelist (mirrors backend, #221).
@@ -109,15 +104,6 @@ export class DocumentUploadComponent implements OnInit {
         .subscribe({
           next: list => this.cabinets.set(list),
           error: () => this.cabinets.set([]),
-        });
-    }
-
-    if (this.canDeclareType) {
-      this.documentTypeService.getVisible()
-        .pipe(takeUntilDestroyed(this.destroyRef))
-        .subscribe({
-          next: list => this.documentTypes.set(list),
-          error: () => this.documentTypes.set([]),
         });
     }
   }

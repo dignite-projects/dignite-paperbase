@@ -4,18 +4,18 @@ import { LocalizationService, PermissionService } from '@abp/ng.core';
 import { ToasterService } from '@abp/ng.theme.shared';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  CabinetService,
-  DocumentTypeService,
-  DocumentUploadService,
-  EXTRACT_PERMISSIONS,
-} from '@dignite/ng.vault-extract';
+import { CabinetService, DocumentUploadService, EXTRACT_PERMISSIONS } from '@dignite/ng.vault-extract';
 import { DocumentUploadComponent } from './document-upload.component';
 
 // #623: the "declared document type" selector is an operator-confirmation shortcut that
 // skips LLM classification on the backend (ConfirmClassification semantics), so it must
 // only render for callers holding that permission, and the selection must flow through to
 // every file in a batch upload.
+//
+// Code review (2026-09-05): the type list is no longer fetched by this component — it is
+// supplied by the parent (DocumentOverviewComponent, its only mount site) via the
+// `documentTypes` input, so these specs set the input directly instead of stubbing
+// DocumentTypeService.
 
 const DOCUMENT_TYPES = [
   { id: 'type-1', displayName: 'Contract' },
@@ -26,7 +26,7 @@ function fakeFile(name = 'contract.pdf'): File {
   return new File(['content'], name, { type: 'application/pdf' });
 }
 
-async function setup(grantedPolicies: Set<string>) {
+async function setup(grantedPolicies: Set<string>, documentTypes = DOCUMENT_TYPES) {
   const uploadSpy = vi.fn().mockReturnValue(of({ id: 'doc-1' }));
 
   await TestBed.configureTestingModule({
@@ -40,7 +40,6 @@ async function setup(grantedPolicies: Set<string>) {
       { provide: LocalizationService, useValue: { instant: (key: string) => key } },
       { provide: ToasterService, useValue: { success: vi.fn(), error: vi.fn() } },
       { provide: CabinetService, useValue: { getList: () => of([]) } },
-      { provide: DocumentTypeService, useValue: { getVisible: () => of(DOCUMENT_TYPES) } },
       { provide: DocumentUploadService, useValue: { upload: uploadSpy } },
     ],
   }).compileComponents();
@@ -48,6 +47,7 @@ async function setup(grantedPolicies: Set<string>) {
   const fixture: ComponentFixture<DocumentUploadComponent> = TestBed.createComponent(
     DocumentUploadComponent,
   );
+  fixture.componentRef.setInput('documentTypes', documentTypes);
   fixture.detectChanges();
   await fixture.whenStable();
   fixture.detectChanges();
@@ -60,68 +60,54 @@ describe('DocumentUploadComponent — declared document type (#623)', () => {
     TestBed.resetTestingModule();
   });
 
-  it('hides the selector and loads no types without ConfirmClassification', async () => {
+  it('hides the selector without ConfirmClassification (Upload only)', async () => {
     const { fixture } = await setup(new Set([EXTRACT_PERMISSIONS.Documents.Upload]));
     const component = fixture.componentInstance;
 
     expect(component.canDeclareType).toBe(false);
-    expect(component.documentTypes()).toEqual([]);
     expect(fixture.nativeElement.querySelector('.document-type-select')).toBeNull();
   });
 
-  it('shows the selector and loads visible types with ConfirmClassification', async () => {
+  it('hides the selector with Upload + Documents.Default but without ConfirmClassification', async () => {
+    // Proves the ConfirmClassification conjunct is required on its own — holding the list-read
+    // permission (Documents.Default) is not a substitute for the confirmation permission.
     const { fixture } = await setup(
-      new Set([
-        EXTRACT_PERMISSIONS.Documents.Upload,
-        EXTRACT_PERMISSIONS.Documents.ConfirmClassification,
-        EXTRACT_PERMISSIONS.Documents.Default,
-      ]),
-    );
-    const component = fixture.componentInstance;
-
-    expect(component.canDeclareType).toBe(true);
-    expect(component.documentTypes()).toEqual(DOCUMENT_TYPES);
-    expect(fixture.nativeElement.querySelector('.document-type-select')).not.toBeNull();
-  });
-
-  it('shows the selector when the list-fetch permission is DocumentTypes.Default instead', async () => {
-    const { fixture } = await setup(
-      new Set([
-        EXTRACT_PERMISSIONS.Documents.Upload,
-        EXTRACT_PERMISSIONS.Documents.ConfirmClassification,
-        EXTRACT_PERMISSIONS.DocumentTypes.Default,
-      ]),
-    );
-    const component = fixture.componentInstance;
-
-    expect(component.canDeclareType).toBe(true);
-    expect(component.documentTypes()).toEqual(DOCUMENT_TYPES);
-  });
-
-  it('hides the selector with ConfirmClassification alone, matching the backend GetVisibleAsync gate (code review, 2026-09-05)', async () => {
-    // DocumentTypeAppService.GetVisibleAsync requires Documents.Default OR DocumentTypes.Default —
-    // ConfirmClassification is not one of them, and ABP does not imply a parent permission from a
-    // granted child. Without this gate canDeclareType would be true but the type-list fetch would
-    // fail, silently hiding the selector via the empty-list guard instead of via this permission check.
-    const { fixture } = await setup(
-      new Set([
-        EXTRACT_PERMISSIONS.Documents.Upload,
-        EXTRACT_PERMISSIONS.Documents.ConfirmClassification,
-      ]),
+      new Set([EXTRACT_PERMISSIONS.Documents.Upload, EXTRACT_PERMISSIONS.Documents.Default]),
     );
     const component = fixture.componentInstance;
 
     expect(component.canDeclareType).toBe(false);
+    expect(fixture.nativeElement.querySelector('.document-type-select')).toBeNull();
+  });
+
+  it('shows the selector with Upload + ConfirmClassification, rendering options from the input', async () => {
+    const { fixture } = await setup(
+      new Set([EXTRACT_PERMISSIONS.Documents.Upload, EXTRACT_PERMISSIONS.Documents.ConfirmClassification]),
+    );
+    const component = fixture.componentInstance;
+
+    expect(component.canDeclareType).toBe(true);
+    const select = fixture.nativeElement.querySelector('.document-type-select');
+    expect(select).not.toBeNull();
+    const options = select.querySelectorAll('option');
+    // "Let AI classify" placeholder + one option per declared type.
+    expect(options.length).toBe(DOCUMENT_TYPES.length + 1);
+  });
+
+  it('hides the selector when granted but the input list is empty', async () => {
+    const { fixture } = await setup(
+      new Set([EXTRACT_PERMISSIONS.Documents.Upload, EXTRACT_PERMISSIONS.Documents.ConfirmClassification]),
+      [],
+    );
+    const component = fixture.componentInstance;
+
+    expect(component.canDeclareType).toBe(true);
     expect(fixture.nativeElement.querySelector('.document-type-select')).toBeNull();
   });
 
   it('passes the selected DocumentTypeId through to every file in a batch upload', async () => {
     const { fixture, uploadSpy } = await setup(
-      new Set([
-        EXTRACT_PERMISSIONS.Documents.Upload,
-        EXTRACT_PERMISSIONS.Documents.ConfirmClassification,
-        EXTRACT_PERMISSIONS.Documents.Default,
-      ]),
+      new Set([EXTRACT_PERMISSIONS.Documents.Upload, EXTRACT_PERMISSIONS.Documents.ConfirmClassification]),
     );
     const component = fixture.componentInstance;
     component.selectedDocumentTypeId.set('type-1');
@@ -135,11 +121,7 @@ describe('DocumentUploadComponent — declared document type (#623)', () => {
 
   it('does not send a DocumentTypeId when no type is declared', async () => {
     const { fixture, uploadSpy } = await setup(
-      new Set([
-        EXTRACT_PERMISSIONS.Documents.Upload,
-        EXTRACT_PERMISSIONS.Documents.ConfirmClassification,
-        EXTRACT_PERMISSIONS.Documents.Default,
-      ]),
+      new Set([EXTRACT_PERMISSIONS.Documents.Upload, EXTRACT_PERMISSIONS.Documents.ConfirmClassification]),
     );
     const component = fixture.componentInstance;
 
