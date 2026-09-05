@@ -24,11 +24,19 @@ WORKDIR /src
 # restore-cache for a build that doesn't need a Dockerfile audit on every
 # project add — the Host image is rebuilt by CI per push, not in tight inner
 # loops, so the lost cache cost is negligible.
-COPY common.props Directory.Packages.props Dignite.Vault.Extract.slnx ./
+#
+# NuGet.Config must be copied alongside them: each restored project resolves its OWN NuGet.Config by
+# walking up from ITS OWN directory, not from the entry-point project's directory. Without the root
+# file here, core/*'s ancestor chain (/src/core/... -> /src -> filesystem root) never reaches a config
+# that knows about the `github` source below - it silently falls back to nuget.org-only for every
+# core/* project, while host/NuGet.Config (host/'s own nearest file) governs only the host project's
+# own direct references. Verified by reproducing this exact gap locally (NU1102, nuget.org only found
+# up to Dignite.Abp.FlexFields.* 10.0.0-rc.15) before this line existed.
+COPY common.props Directory.Packages.props Dignite.Vault.Extract.slnx NuGet.Config ./
 COPY core/ core/
 COPY host/ host/
 
-# GITHUB_PACKAGES_TOKEN authenticates host/NuGet.Config's `github` source (Dignite.Abp.FlexFields.*).
+# GITHUB_PACKAGES_TOKEN authenticates NuGet.Config's `github` source (Dignite.Abp.FlexFields.*).
 # BuildKit secret mount keeps it out of the image layers/history - never bake it in via ENV/ARG.
 RUN --mount=type=secret,id=github_packages_token \
     GITHUB_PACKAGES_TOKEN="$(cat /run/secrets/github_packages_token)" dotnet restore "host/src/Dignite.Vault.Extract.Host.csproj"
