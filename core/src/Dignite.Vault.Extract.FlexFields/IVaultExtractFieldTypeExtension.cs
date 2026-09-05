@@ -90,6 +90,12 @@ public interface IVaultExtractFieldTypeExtension
     /// fingerprint. Returning an empty list makes the whole key partial - see
     /// <c>FlexFieldFingerprintCalculator</c> for why that must never be confused with "this field
     /// contributes no characters".
+    /// <para>
+    /// Carries <paramref name="configuration"/> alongside the value, unlike the render-only members above -
+    /// every scalar built-in normalizes a value consistently without needing it, but a composite type
+    /// (<c>Table</c>) does: canonicalizing its rows in column order needs its own column schema, which
+    /// lives in configuration, not in the value.
+    /// </para>
     /// </summary>
-    IReadOnlyList<string> CanonicalizeForFingerprint(object value);
+    IReadOnlyList<string> CanonicalizeForFingerprint(object value, FieldConfigurationDictionary configuration);
 }

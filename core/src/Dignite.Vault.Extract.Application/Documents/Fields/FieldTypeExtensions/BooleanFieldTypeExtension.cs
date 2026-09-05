@@ -40,7 +40,7 @@ public class BooleanFieldTypeExtension : VaultExtractFieldTypeExtensionBase
     public override string? RenderForExport(object value, FieldConfigurationDictionary configuration)
         => FieldTypeExtensionHelpers.RenderGeneric(value);
 
-    public override IReadOnlyList<string> CanonicalizeForFingerprint(object value)
+    public override IReadOnlyList<string> CanonicalizeForFingerprint(object value, FieldConfigurationDictionary configuration)
         => TryReadBoolean(value, out var flag) ? new[] { flag ? "true" : "false" } : Array.Empty<string>();
 
     private static bool TryReadBoolean(object value, out bool result)

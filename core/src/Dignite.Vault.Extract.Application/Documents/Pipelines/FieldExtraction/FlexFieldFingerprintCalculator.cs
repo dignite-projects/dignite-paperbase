@@ -69,7 +69,7 @@ public static class FlexFieldFingerprintCalculator
             var value = document.GetField(field.Name);
 
             var canonicalValues = value != null && registry.TryGet(field.FieldTypeName, out var extension)
-                ? extension.CanonicalizeForFingerprint(value)
+                ? extension.CanonicalizeForFingerprint(value, field.Configuration)
                 : Array.Empty<string>();
 
             // No value, or a value that normalizes to nothing, both make the key partial.

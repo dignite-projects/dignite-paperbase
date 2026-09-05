@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Dignite.Abp.FlexFields;
 using Dignite.Abp.FlexFields.CKEditor;
+using Dignite.Abp.FlexFields.Table;
 using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.Abstractions.Documents;
 using Dignite.Vault.Extract.Documents;
@@ -66,22 +67,86 @@ public class FieldTypeCatalogAndSearchability_Tests
 
         var byName = fieldTypes.ToDictionary(t => t.Name);
 
-        // Exactly the #559 decision list, not everything the kernel resolver knows about: it also
-        // registers Tree unconditionally as one of its own built-ins, and Vault Extract never wired
-        // support for it (no branch in FlexFieldValueReader / FlexFieldValueSchemaBuilder /
-        // FlexFieldValueJsonWriter). If this assertion ever gains "Tree", the allow-list filter in
-        // GetFieldTypesAsync silently stopped running.
+        // Exactly the #559/#625 decision list, not everything the kernel resolver knows about: it also
+        // registers Tree and Matrix unconditionally as its own built-ins, and Vault Extract never wired
+        // support for either (no IVaultExtractFieldTypeExtension for them). If this assertion ever gains
+        // "Tree" or "Matrix", the allow-list filter in GetFieldTypesAsync silently stopped running.
         byName.Keys.ShouldBe(
-            new[] { "Text", "Number", "Boolean", "DateTime", "Select", "CKEditor", "Tags" },
+            new[] { "Text", "Number", "Boolean", "DateTime", "Select", "CKEditor", "Tags", "Table" },
             ignoreOrder: true);
 
-        // CKEditor is the one type with no query-index slot; every other built-in plus Vault Extract's own
-        // Tags decomposes into index rows.
+        // CKEditor and Table (#625: a list of composite row objects, not a scalar or list of scalars) are
+        // the two types with no query-index slot; every other built-in plus Vault Extract's own Tags
+        // decomposes into index rows.
         byName["CKEditor"].Indexable.ShouldBeFalse();
+        byName["Table"].Indexable.ShouldBeFalse();
         foreach (var name in new[] { "Text", "Number", "Boolean", "DateTime", "Select", "Tags" })
         {
             byName[name].Indexable.ShouldBeTrue();
         }
+    }
+
+    /// <summary>
+    /// #625: a Table field's own FieldTypeName is registered, but one of its columns names a
+    /// FieldTypeName Vault Extract has never wired Vault-Extract-side support for. Rejected here, at
+    /// create time - not merely at the kernel's own generic shape-validation level, and not deferred to
+    /// extraction time, where FlexFieldValueSchemaBuilder's own last-resort failure would otherwise be the
+    /// first thing to notice, after the field definition already exists.
+    /// </summary>
+    [Fact]
+    public async Task CreateAsync_Rejects_A_Table_Column_With_An_Unregistered_FieldTypeName()
+    {
+        var type = await CreateTypeAsync();
+
+        var configuration = new TableConfiguration
+        {
+            Columns = new List<InlineFieldDefinition>
+            {
+                new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName },
+                new() { Name = "qty", DisplayName = "Quantity", FieldTypeName = "SomeFutureType" }
+            }
+        }.ConfigurationDictionary;
+
+        var ex = await Should.ThrowAsync<BusinessException>(() => _fieldAppService.CreateAsync(
+            new CreateFieldDefinitionDto
+            {
+                DocumentTypeId = type.Id,
+                Name = "line_items",
+                DisplayName = "Line items",
+                FieldTypeName = TableFieldType.ControlName,
+                Configuration = configuration,
+                IsSearchable = false,
+            }));
+
+        ex.Code.ShouldBe(VaultExtractErrorCodes.FieldDefinition.UnknownColumnFieldType);
+    }
+
+    /// <summary>A Table field whose every column IS registered saves normally - the positive counterpart above.</summary>
+    [Fact]
+    public async Task CreateAsync_Accepts_A_Table_Field_With_Registered_Columns()
+    {
+        var type = await CreateTypeAsync();
+
+        var configuration = new TableConfiguration
+        {
+            Columns = new List<InlineFieldDefinition>
+            {
+                new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName, Required = true },
+                new() { Name = "qty", DisplayName = "Quantity", FieldTypeName = "Number" }
+            }
+        }.ConfigurationDictionary;
+
+        var field = await _fieldAppService.CreateAsync(new CreateFieldDefinitionDto
+        {
+            DocumentTypeId = type.Id,
+            Name = "line_items",
+            DisplayName = "Line items",
+            FieldTypeName = TableFieldType.ControlName,
+            Configuration = configuration,
+            IsSearchable = false,
+        });
+
+        field.FieldTypeName.ShouldBe(TableFieldType.ControlName);
     }
 
     [Fact]

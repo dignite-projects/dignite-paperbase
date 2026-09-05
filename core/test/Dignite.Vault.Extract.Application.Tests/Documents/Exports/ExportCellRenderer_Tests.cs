@@ -4,7 +4,10 @@ using System.Text.Json;
 using Dignite.Abp.FlexFields;
 using Dignite.Abp.FlexFields.CKEditor;
 using Dignite.Abp.FlexFields.Date;
+using Dignite.Abp.FlexFields.Number;
 using Dignite.Abp.FlexFields.Select;
+using Dignite.Abp.FlexFields.Table;
+using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.Documents.Fields;
 using Dignite.Vault.Extract.FlexFields.Tags;
 using Shouldly;
@@ -114,6 +117,43 @@ public class ExportCellRenderer_Tests
 
         Render(new List<string> { "draft", "signed" }, SelectFieldType.ControlName, config)
             .ShouldBe("draft; signed");
+    }
+
+    /// <summary>
+    /// The #625 regression this feature would otherwise expose silently: <c>List&lt;TableRow&gt;</c> IS an
+    /// <see cref="System.Collections.IEnumerable"/> while being one composite scalar
+    /// (<c>IsMultiValue = false</c>). Before the fix, the shape-first list detection here could not tell
+    /// that apart from a genuine multi-valued list, and would have rendered each row via
+    /// <c>Convert.ToString(row)</c> - a CLR type name - instead of ever reaching
+    /// <c>TableFieldTypeExtension.RenderForExport</c>. Built through the real <c>TryRead</c> -&gt;
+    /// <c>RenderCell</c> path, not a hand-built value that would bypass real dispatch.
+    /// </summary>
+    [Fact]
+    public void Table_export_cell_reaches_RenderForExport_not_the_generic_list_branch()
+    {
+        var configuration = new TableConfiguration
+        {
+            Columns = new List<InlineFieldDefinition>
+            {
+                new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName, Required = true },
+                new() { Name = "qty", DisplayName = "Quantity", FieldTypeName = NumberFieldType.ControlName }
+            }
+        }.ConfigurationDictionary;
+
+        TestFieldTypeRegistry.Default.Get(TableFieldType.ControlName)
+            .TryRead(Json("""[{"item":"Widget","qty":3}]"""), configuration, out var value)
+            .ShouldBeTrue();
+
+        var cell = Render(value, TableFieldType.ControlName, configuration);
+
+        cell.ShouldNotBeNull();
+        cell.ShouldNotContain("TableRow");
+        cell.ShouldNotContain(ExportCellRenderer.MultiValueSeparator);
+
+        var parsed = Json(cell!);
+        parsed.ValueKind.ShouldBe(JsonValueKind.Array);
+        parsed[0].GetProperty("item").GetString().ShouldBe("Widget");
+        parsed[0].GetProperty("qty").GetDecimal().ShouldBe(3m);
     }
 
     /// <summary>

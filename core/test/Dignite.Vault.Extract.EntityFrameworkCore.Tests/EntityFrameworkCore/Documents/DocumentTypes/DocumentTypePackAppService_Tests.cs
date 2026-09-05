@@ -1,7 +1,9 @@
+using Dignite.Abp.FlexFields;
 using Dignite.Abp.FlexFields.Boolean;
 using Dignite.Abp.FlexFields.CKEditor;
 using Dignite.Abp.FlexFields.Date;
 using Dignite.Abp.FlexFields.Number;
+using Dignite.Abp.FlexFields.Table;
 using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.FlexFields.Tags;
 using System.Collections.Generic;
@@ -86,6 +88,38 @@ public class DocumentTypePackAppService_Tests : VaultExtractEntityFrameworkCoreT
             fields.Select(f => f.Name).OrderBy(n => n).ShouldBe(new[] { "amount", "issuer" });
             fields.Single(f => f.Name == "amount").FieldTypeName.ShouldBe(NumberFieldType.ControlName);
         });
+    }
+
+    /// <summary>
+    /// #625: pack import is a second write path into <see cref="Field"/> rows, alongside
+    /// <see cref="IFieldDefinitionAppService.CreateAsync"/>/<c>UpdateAsync</c>, and owes an imported Table
+    /// field's columns the same recursive registry check - not just the kernel's generic shape validation.
+    /// </summary>
+    [Fact]
+    public async Task Import_Rejects_A_Table_Column_With_An_Unregistered_FieldTypeName()
+    {
+        var pack = SamplePack();
+        pack.Fields.Add(new DocumentTypePackFieldDto
+        {
+            Name = "line_items",
+            DisplayName = "Line items",
+            FieldTypeName = TableFieldType.ControlName,
+            DisplayOrder = 3,
+            IsSearchable = false,
+            Configuration = new TableConfiguration
+            {
+                Columns = new List<InlineFieldDefinition>
+                {
+                    new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName },
+                    new() { Name = "qty", DisplayName = "Quantity", FieldTypeName = "SomeFutureType" }
+                }
+            }.ConfigurationDictionary
+        });
+
+        var ex = await Should.ThrowAsync<BusinessException>(() => _packAppService.ImportAsync(
+            new ImportDocumentTypePacksInput { Packs = new List<DocumentTypePackDto> { pack } }));
+
+        ex.Code.ShouldBe(VaultExtractErrorCodes.FieldDefinition.UnknownColumnFieldType);
     }
 
     [Fact]

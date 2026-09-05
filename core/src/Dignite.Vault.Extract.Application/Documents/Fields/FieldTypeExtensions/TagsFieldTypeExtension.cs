@@ -81,6 +81,6 @@ public class TagsFieldTypeExtension : VaultExtractFieldTypeExtensionBase
     public override string? RenderForExport(object value, FieldConfigurationDictionary configuration)
         => FieldTypeExtensionHelpers.RenderGeneric(value);
 
-    public override IReadOnlyList<string> CanonicalizeForFingerprint(object value)
+    public override IReadOnlyList<string> CanonicalizeForFingerprint(object value, FieldConfigurationDictionary configuration)
         => FieldTypeExtensionHelpers.CanonicalizeListForFingerprint(FieldTypeExtensionHelpers.ReadAsStringList(value));
 }

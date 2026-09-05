@@ -1,7 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using Dignite.Abp.FlexFields;
+using Dignite.Abp.FlexFields.Number;
+using Dignite.Abp.FlexFields.Table;
+using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.Documents.Fields;
 using Dignite.Vault.Extract.FlexFields.Tags;
 using Shouldly;
@@ -30,6 +34,9 @@ public class FlexFieldFingerprintCalculator_Tests
 
     private static Field UniqueKey(Guid id, string name, string fieldTypeName)
         => new(id, null, Guid.NewGuid(), name, name, fieldTypeName, isUniqueKey: true);
+
+    private static Field UniqueKey(Guid id, string name, string fieldTypeName, FieldConfigurationDictionary configuration)
+        => new(id, null, Guid.NewGuid(), name, name, fieldTypeName, configuration: configuration, isUniqueKey: true);
 
     private static Field Ordinary(string name, string fieldTypeName)
         => new(Guid.NewGuid(), null, Guid.NewGuid(), name, name, fieldTypeName);
@@ -216,5 +223,66 @@ public class FlexFieldFingerprintCalculator_Tests
         var schema = new List<Field> { UniqueKey(InvoiceNoId, "mystery", "SomeFutureType") };
 
         FlexFieldFingerprintCalculator.Compute(Doc(("mystery", "value")), schema, TestFieldTypeRegistry.Default).ShouldBeNull();
+    }
+
+    // --- Table (composite) keys, #625 ---
+
+    private static readonly FieldConfigurationDictionary TableColumns = new TableConfiguration
+    {
+        Columns = new List<InlineFieldDefinition>
+        {
+            new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName, Required = true },
+            new() { Name = "qty", DisplayName = "Quantity", FieldTypeName = NumberFieldType.ControlName }
+        }
+    }.ConfigurationDictionary;
+
+    private static readonly List<Field> TableSchema = new()
+    {
+        UniqueKey(InvoiceNoId, "line_items", TableFieldType.ControlName, TableColumns)
+    };
+
+    private static List<TableRow> Rows(params (string Item, decimal Qty)[] rows)
+        => rows.Select(r => new TableRow { Values = new FlexFieldDictionary { ["item"] = r.Item, ["qty"] = r.Qty } })
+            .ToList();
+
+    /// <summary>Each cell is canonicalized in column order, delegated to its own column's own extension.</summary>
+    [Fact]
+    public void Table_key_hashes_the_same_for_the_same_rows()
+    {
+        var doc = Doc(("line_items", Rows(("Widget", 3m), ("Gadget", 1.5m))));
+
+        FlexFieldFingerprintCalculator.Compute(doc, TableSchema, TestFieldTypeRegistry.Default)
+            .ShouldBe(FlexFieldFingerprintCalculator.Compute(doc, TableSchema, TestFieldTypeRegistry.Default));
+    }
+
+    [Fact]
+    public void Table_key_changes_when_a_cell_changes()
+    {
+        var a = Doc(("line_items", Rows(("Widget", 3m))));
+        var b = Doc(("line_items", Rows(("Widget", 4m))));
+
+        FlexFieldFingerprintCalculator.Compute(a, TableSchema, TestFieldTypeRegistry.Default)
+            .ShouldNotBe(FlexFieldFingerprintCalculator.Compute(b, TableSchema, TestFieldTypeRegistry.Default));
+    }
+
+    /// <summary>
+    /// A row missing a cell makes the WHOLE Table key partial, not merely shorter - the same rule an
+    /// ordinary unique-key field with no usable value follows.
+    /// </summary>
+    [Fact]
+    public void A_table_row_missing_a_cell_makes_the_key_partial()
+    {
+        var rows = new List<TableRow> { new() { Values = new FlexFieldDictionary { ["item"] = "Widget" } } };
+        var doc = Doc(("line_items", rows));
+
+        FlexFieldFingerprintCalculator.Compute(doc, TableSchema, TestFieldTypeRegistry.Default).ShouldBeNull();
+    }
+
+    [Fact]
+    public void An_empty_table_makes_the_key_partial()
+    {
+        var doc = Doc(("line_items", new List<TableRow>()));
+
+        FlexFieldFingerprintCalculator.Compute(doc, TableSchema, TestFieldTypeRegistry.Default).ShouldBeNull();
     }
 }

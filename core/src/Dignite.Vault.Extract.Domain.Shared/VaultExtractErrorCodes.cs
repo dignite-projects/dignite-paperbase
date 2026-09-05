@@ -94,6 +94,15 @@ public static class VaultExtractErrorCodes
         public const string UnknownFieldType = "Extract:UnknownFieldType";
 
         /// <summary>
+        /// A composite field (<c>Table</c>, #625) declares one of its own columns under a
+        /// <c>FieldTypeName</c> this deployment has never wired Vault-Extract-side support for. Checked
+        /// recursively alongside <see cref="UnknownFieldType"/> at the same create/update boundary, so a
+        /// bad column type is rejected before it is ever saved rather than discovered only when field
+        /// extraction tries to build its schema.
+        /// </summary>
+        public const string UnknownColumnFieldType = "Extract:UnknownColumnFieldType";
+
+        /// <summary>
         /// A field marked <c>IsSearchable</c> whose field type has no query-index slot (#562) — e.g.
         /// long text. The value would never reach the index, so the flag would silently do nothing.
         /// </summary>

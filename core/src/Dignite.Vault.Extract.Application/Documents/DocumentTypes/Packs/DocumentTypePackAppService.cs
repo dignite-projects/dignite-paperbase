@@ -264,7 +264,7 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
 
             if (existing == null)
             {
-                EnsureFieldTypeRegistered(f.FieldTypeName!);
+                EnsureFieldTypeRegistered(f.FieldTypeName!, f.Configuration);
                 await _fieldDefinitionManager.CheckNameAvailableAsync(documentTypeId, f.Name);
                 CheckSearchable(f.FieldTypeName!, f.IsSearchable);
                 var field = new Field(
@@ -291,7 +291,7 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
                 // Updating an existing field needs the Update permission — asserted lazily; a CreateOnly or
                 // all-new import never reaches here.
                 await CheckPolicyAsync(VaultExtractPermissions.FieldDefinitions.Update);
-                EnsureFieldTypeRegistered(f.FieldTypeName!);
+                EnsureFieldTypeRegistered(f.FieldTypeName!, f.Configuration);
                 await GuardFieldMutationAsync(existing, f);
                 CheckSearchable(f.FieldTypeName!, f.IsSearchable);
                 var wasSearchable = existing.IsSearchable;
@@ -345,16 +345,34 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
         => _fieldTypeResolver.GetAll()
             .FirstOrDefault(t => string.Equals(t.Name, fieldTypeName, StringComparison.Ordinal))?.IndexValueType != null;
 
-    /// <summary>Same guard as <see cref="FieldDefinitionAppService.EnsureFieldTypeRegistered"/> — a pack is another write path into the same fields, and owes them the same fail-closed check against Vault Extract's own supported set, not just the kernel's full registry.</summary>
-    protected virtual void EnsureFieldTypeRegistered(string fieldTypeName)
+    /// <summary>
+    /// Same guard as <see cref="FieldDefinitionAppService.EnsureFieldTypeRegistered"/> — a pack is another
+    /// write path into the same fields, and owes them the same fail-closed check against Vault Extract's
+    /// own supported set, not just the kernel's full registry, including the #625 recursive check for a
+    /// composite type's (<c>Table</c>) own columns.
+    /// </summary>
+    protected virtual void EnsureFieldTypeRegistered(string fieldTypeName, FieldConfigurationDictionary? configuration)
     {
-        var registered = _fieldTypeResolver.GetAll()
-            .Any(t => string.Equals(t.Name, fieldTypeName, StringComparison.Ordinal));
+        var kernelFieldType = _fieldTypeResolver.GetAll()
+            .FirstOrDefault(t => string.Equals(t.Name, fieldTypeName, StringComparison.Ordinal));
 
-        if (!registered || !_fieldTypeExtensionRegistry.IsSupported(fieldTypeName))
+        if (kernelFieldType == null || !_fieldTypeExtensionRegistry.IsSupported(fieldTypeName))
         {
             throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.UnknownFieldType)
                 .WithData("FieldTypeName", fieldTypeName);
+        }
+
+        if (kernelFieldType is ICompositeFieldType compositeFieldType)
+        {
+            foreach (var column in compositeFieldType.GetInlineFields(configuration ?? new FieldConfigurationDictionary()))
+            {
+                if (!_fieldTypeExtensionRegistry.IsSupported(column.FieldTypeName))
+                {
+                    throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.UnknownColumnFieldType)
+                        .WithData("FieldTypeName", column.FieldTypeName)
+                        .WithData("ColumnName", column.Name);
+                }
+            }
         }
     }
 

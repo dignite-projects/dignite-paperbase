@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text.Json;
 using Dignite.Abp.FlexFields;
 using Dignite.Abp.FlexFields.CKEditor;
 using Dignite.Abp.FlexFields.Date;
+using Dignite.Abp.FlexFields.Number;
 using Dignite.Abp.FlexFields.Select;
+using Dignite.Abp.FlexFields.Table;
 using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.FlexFields.Tags;
 using Shouldly;
@@ -349,6 +352,44 @@ public class FlexFieldValueReader_Tests
         TryRead("\"2026-06-15\"", "DateTime", out _, configuration).ShouldBeTrue();
         TryRead("\"2025-12-31\"", "DateTime", out _, configuration).ShouldBeFalse();
         TryRead("\"2027-01-01\"", "DateTime", out _, configuration).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// #625: pins that the composite Table type is actually wired into the shared dispatcher, not just
+    /// correct in isolation - each cell is delegated to its own column's own registered extension.
+    /// </summary>
+    [Fact]
+    public void Table_reads_rows_delegating_each_cell_to_its_own_column_type()
+    {
+        var configuration = new TableConfiguration
+        {
+            Columns = new List<InlineFieldDefinition>
+            {
+                new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName, Required = true },
+                new() { Name = "qty", DisplayName = "Quantity", FieldTypeName = NumberFieldType.ControlName }
+            }
+        }.ConfigurationDictionary;
+
+        TryRead("""[{"item":"Widget","qty":3}]""", TableFieldType.ControlName, out var result, configuration)
+            .ShouldBeTrue();
+
+        var row = result.ShouldBeOfType<List<TableRow>>().Single();
+        row.Values["item"].ShouldBe("Widget");
+        row.Values["qty"].ShouldBe(3m);
+    }
+
+    [Fact]
+    public void Table_rejects_a_row_missing_a_required_column()
+    {
+        var configuration = new TableConfiguration
+        {
+            Columns = new List<InlineFieldDefinition>
+            {
+                new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName, Required = true }
+            }
+        }.ConfigurationDictionary;
+
+        TryRead("[{}]", TableFieldType.ControlName, out _, configuration).ShouldBeFalse();
     }
 
     [Fact]

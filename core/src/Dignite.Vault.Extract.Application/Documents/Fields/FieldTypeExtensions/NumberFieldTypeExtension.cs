@@ -41,7 +41,7 @@ public class NumberFieldTypeExtension : VaultExtractFieldTypeExtensionBase
     public override string? RenderForExport(object value, FieldConfigurationDictionary configuration)
         => FieldTypeExtensionHelpers.RenderGeneric(value);
 
-    public override IReadOnlyList<string> CanonicalizeForFingerprint(object value)
+    public override IReadOnlyList<string> CanonicalizeForFingerprint(object value, FieldConfigurationDictionary configuration)
     {
         // Full precision, unlike the export cell's rounded format: two amounts that differ beyond six
         // decimals must not hash to the same fingerprint.

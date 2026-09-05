@@ -44,16 +44,19 @@ public class FieldExtractionJobTestModule : AbpModule
 
         // Register the stub workflow instance directly. ForPartsOf uses the real constructor; DI takes this
         // singleton and bypasses keyed IChatClient resolution.
+        var table = new TableFieldTypeExtension();
+        var fieldTypeRegistry = new VaultExtractFieldTypeRegistry(new IVaultExtractFieldTypeExtension[]
+        {
+            new TextFieldTypeExtension(), new NumberFieldTypeExtension(), new BooleanFieldTypeExtension(),
+            new DateTimeFieldTypeExtension(), new SelectFieldTypeExtension(), new CKEditorFieldTypeExtension(),
+            new TagsFieldTypeExtension(), table
+        });
+        table.Registry = fieldTypeRegistry;
         var workflow = Substitute.ForPartsOf<FieldExtractionWorkflow>(
             Substitute.For<IChatClient>(),
             NullLogger<FieldExtractionWorkflow>.Instance,
             new FieldSchemaPromptBudgetGuard(Options.Create(new VaultExtractBehaviorOptions())),
-            new VaultExtractFieldTypeRegistry(new IVaultExtractFieldTypeExtension[]
-            {
-                new TextFieldTypeExtension(), new NumberFieldTypeExtension(), new BooleanFieldTypeExtension(),
-                new DateTimeFieldTypeExtension(), new SelectFieldTypeExtension(), new CKEditorFieldTypeExtension(),
-                new TagsFieldTypeExtension()
-            }));
+            fieldTypeRegistry);
         context.Services.AddSingleton(workflow);
     }
 }

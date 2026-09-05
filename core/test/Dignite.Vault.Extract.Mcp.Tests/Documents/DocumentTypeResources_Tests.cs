@@ -27,7 +27,7 @@ namespace Dignite.Vault.Extract.Mcp.Documents;
 // stubbing it would let the projection agree with a registry that does not exist. IVaultExtractFieldTypeRegistry
 // (isMultiValue) is Vault Extract's own, built-in extensions constructed directly here rather than via
 // [DependsOn(VaultExtractApplicationModule)] - that module's own EF Core / background-job registration is not
-// needed just to get the same 7 stateless extension classes it would auto-register.
+// needed just to get the same 8 stateless extension classes it would auto-register.
 [DependsOn(typeof(VaultExtractTestBaseModule), typeof(Extract.FlexFields.VaultExtractFlexFieldsModule))]
 public class DocumentTypeResourcesTestModule : AbpModule
 {
@@ -38,13 +38,16 @@ public class DocumentTypeResourcesTestModule : AbpModule
         // filtering, schema projection, PromptBoundary wrapping, and not-found behavior.
         context.Services.AddSingleton(Substitute.For<IDocumentTypeAppService>());
         context.Services.AddSingleton(Substitute.For<IFieldDefinitionAppService>());
-        context.Services.AddSingleton<IVaultExtractFieldTypeRegistry>(new VaultExtractFieldTypeRegistry(
+        var table = new TableFieldTypeExtension();
+        var fieldTypeRegistry = new VaultExtractFieldTypeRegistry(
             new IVaultExtractFieldTypeExtension[]
             {
                 new TextFieldTypeExtension(), new NumberFieldTypeExtension(), new BooleanFieldTypeExtension(),
                 new DateTimeFieldTypeExtension(), new SelectFieldTypeExtension(), new CKEditorFieldTypeExtension(),
-                new TagsFieldTypeExtension()
-            }));
+                new TagsFieldTypeExtension(), table
+            });
+        table.Registry = fieldTypeRegistry;
+        context.Services.AddSingleton<IVaultExtractFieldTypeRegistry>(fieldTypeRegistry);
 
         // #524: explicit tenant scope is fail-closed by default. This suite's ad hoc Guid.NewGuid()
         // tenant ids need to clear that gate; the gate itself is covered separately (McpTenantAdmission_Tests /

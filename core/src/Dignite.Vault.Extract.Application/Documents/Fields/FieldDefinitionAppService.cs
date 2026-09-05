@@ -161,7 +161,7 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
             throw new EntityNotFoundException(typeof(DocumentType), input.DocumentTypeId);
         }
 
-        EnsureFieldTypeRegistered(input.FieldTypeName);
+        EnsureFieldTypeRegistered(input.FieldTypeName, input.Configuration);
         CheckSearchable(input.FieldTypeName, input.IsSearchable);
 
         // Soft-delete-aware duplicate check owned by the domain service (#304): the same (TenantId, DocumentTypeId, Name)
@@ -198,7 +198,7 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
             throw new EntityNotFoundException(typeof(Field), id);
         }
 
-        EnsureFieldTypeRegistered(input.FieldTypeName);
+        EnsureFieldTypeRegistered(input.FieldTypeName, input.Configuration);
         CheckSearchable(input.FieldTypeName, input.IsSearchable);
 
         var oldName = entity.Name;
@@ -398,16 +398,42 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
     /// of them dispatches on this string — so it is rejected at the boundary rather than discovered later
     /// as values that silently fail to save.
     /// </summary>
-    protected virtual void EnsureFieldTypeRegistered(string fieldTypeName)
+    protected virtual void EnsureFieldTypeRegistered(string fieldTypeName, FieldConfigurationDictionary? configuration)
     {
         // Both halves matter: registered with the kernel (a name Vault Extract could dispatch on at all)
         // and in Vault Extract's own extension registry (a name something here actually does dispatch on
         // — see IVaultExtractFieldTypeRegistry for the built-in the kernel ships that fails this second
         // check).
-        if (FindFieldType(fieldTypeName) == null || !_fieldTypeExtensionRegistry.IsSupported(fieldTypeName))
+        var kernelFieldType = FindFieldType(fieldTypeName);
+        if (kernelFieldType == null || !_fieldTypeExtensionRegistry.IsSupported(fieldTypeName))
         {
             throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.UnknownFieldType)
                 .WithData("FieldTypeName", fieldTypeName);
+        }
+
+        // A composite type (Table, #625) declares further fields inline, inside its own configuration,
+        // rather than under a single FieldTypeName the check above already covers. Each inline column's
+        // own FieldTypeName must independently clear Vault Extract's own registry gate too — the kernel's
+        // own recursive validator (InlineFieldValidator, inside e.g. TableFieldType.Validate) only checks
+        // kernel-level shape correctness against IFieldTypeResolver, which says nothing about whether Vault
+        // Extract has ever wired up an IVaultExtractFieldTypeExtension for that column's type. Left
+        // unchecked here, an unregistered column type would only surface at extraction time, as
+        // FlexFieldValueSchemaBuilder's/the column extension's own last-resort NotSupportedException — by
+        // which point the definition is already saved and every document of the type extracts nothing for
+        // it. Generic over ICompositeFieldType rather than named to Table specifically, so a future
+        // composite type (Matrix, out of scope for #625) is covered the moment it implements the same
+        // kernel interface, with nothing to register here.
+        if (kernelFieldType is ICompositeFieldType compositeFieldType)
+        {
+            foreach (var column in compositeFieldType.GetInlineFields(configuration ?? new FieldConfigurationDictionary()))
+            {
+                if (!_fieldTypeExtensionRegistry.IsSupported(column.FieldTypeName))
+                {
+                    throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.UnknownColumnFieldType)
+                        .WithData("FieldTypeName", column.FieldTypeName)
+                        .WithData("ColumnName", column.Name);
+                }
+            }
         }
     }
 

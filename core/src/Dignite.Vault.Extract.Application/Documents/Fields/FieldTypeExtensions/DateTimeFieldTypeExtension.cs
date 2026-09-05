@@ -151,7 +151,7 @@ public class DateTimeFieldTypeExtension : VaultExtractFieldTypeExtensionBase
         return moment.ToString(format, CultureInfo.InvariantCulture);
     }
 
-    public override IReadOnlyList<string> CanonicalizeForFingerprint(object value)
+    public override IReadOnlyList<string> CanonicalizeForFingerprint(object value, FieldConfigurationDictionary configuration)
     {
         // One fixed format regardless of InputMode: the fingerprint only needs internal consistency (the
         // same stored value always hashes the same way), not to match the mode-dependent egress shape, and

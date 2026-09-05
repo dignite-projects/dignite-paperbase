@@ -137,7 +137,7 @@ public class SelectFieldTypeExtension : VaultExtractFieldTypeExtensionBase
     /// list for a multi-Select and a bare string for a single one, and that keeps a multi-Select unique key
     /// from silently falling through to the scalar path and nulling the whole fingerprint.
     /// </summary>
-    public override IReadOnlyList<string> CanonicalizeForFingerprint(object value)
+    public override IReadOnlyList<string> CanonicalizeForFingerprint(object value, FieldConfigurationDictionary configuration)
     {
         if (IsListShaped(value))
         {

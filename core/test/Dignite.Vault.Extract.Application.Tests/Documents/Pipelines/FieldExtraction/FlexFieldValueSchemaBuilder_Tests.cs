@@ -5,7 +5,9 @@ using System.Text.Json.Nodes;
 using Dignite.Abp.FlexFields;
 using Dignite.Abp.FlexFields.CKEditor;
 using Dignite.Abp.FlexFields.Date;
+using Dignite.Abp.FlexFields.Number;
 using Dignite.Abp.FlexFields.Select;
+using Dignite.Abp.FlexFields.Table;
 using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.Documents.Fields;
 using Dignite.Vault.Extract.FlexFields.Tags;
@@ -155,6 +157,32 @@ public class FlexFieldValueSchemaBuilder_Tests
         Build(SelectFieldType.ControlName, configuration)["enum"]!.AsArray()
             .Select(v => v?.GetValue<string>())
             .ShouldBe(new[] { "real", null });
+    }
+
+    /// <summary>
+    /// #625: the composite Table type composes an array-of-row-objects schema from its own column
+    /// schema, each column's fragment built by that column's own registered extension - pinned through the
+    /// shared static entry point, not the extension directly.
+    /// </summary>
+    [Fact]
+    public void Table_composes_a_row_object_schema_from_its_own_columns()
+    {
+        var configuration = new TableConfiguration
+        {
+            Columns = new List<InlineFieldDefinition>
+            {
+                new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName, Required = true },
+                new() { Name = "qty", DisplayName = "Quantity", FieldTypeName = NumberFieldType.ControlName }
+            }
+        }.ConfigurationDictionary;
+
+        var schema = Build(TableFieldType.ControlName, configuration);
+
+        Types(schema).ShouldContain("array");
+        var itemSchema = schema["items"]!.AsObject();
+        itemSchema["properties"]!.AsObject().ContainsKey("item").ShouldBeTrue();
+        itemSchema["properties"]!.AsObject().ContainsKey("qty").ShouldBeTrue();
+        itemSchema["required"]!.AsArray().Select(n => n!.GetValue<string>()).ShouldBe(new[] { "item" });
     }
 
     /// <summary>

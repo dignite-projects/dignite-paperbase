@@ -1,10 +1,7 @@
 using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
-using System.Text.Json;
 using Dignite.Abp.FlexFields;
+using Dignite.Vault.Extract.Documents.Fields.FieldTypeExtensions;
 using Dignite.Vault.Extract.FlexFields;
 
 namespace Dignite.Vault.Extract.Documents.Exports;
@@ -48,40 +45,31 @@ internal static class ExportCellRenderer
                 nameof(fieldTypeName), fieldTypeName, "No export cell rendering is defined for this field type.");
         }
 
-        if (TryReadList(value, out var items))
+        // Multi-valued types are rendered here, before any per-type dispatch - exactly the interception
+        // FlexFieldValueJsonWriter.Write does, and for the same reason: every multi-valued field's elements
+        // are plain strings, so no per-type formatting is needed for them. Decided by registry.IsMultiValue
+        // (configuration), never by the value's own runtime shape.
+        //
+        // This used to be a shape-only check (is the value list-shaped at all, via a switch with a
+        // catch-all IEnumerable branch) rather than this registry-first one. That predates
+        // IVaultExtractFieldTypeRegistry.IsMultiValue existing as a callable single source of truth at this
+        // call site (the check was written in #501, before the v3 registry), and it happened to stay
+        // correct by coincidence: every multi-valued field's stored value really was List<string> (Tags
+        // always, multi-Select by configuration), and no scalar field's value was ever itself IEnumerable -
+        // so "is it list-shaped" and "is it multi-valued" always agreed. Table breaks that coincidence: its
+        // List<TableRow> value IS IEnumerable while being one composite scalar (IsMultiValue = false), and
+        // the old shape-only check could not tell the two apart - it would have rendered each row via
+        // Convert.ToString(row) (a CLR type name), silently, with no error.
+        if (registry.IsMultiValue(fieldTypeName, configuration))
         {
+            var rendered = FieldTypeExtensionHelpers.ReadAsStringList(value)
+                .Where(i => !string.IsNullOrEmpty(i))
+                .ToList();
             // The bag preserves list order, so no re-sort: under v2 this had to order by the row's Order
             // column because the database returned the rows in no particular order.
-            var rendered = items.Where(i => !string.IsNullOrEmpty(i)).ToList();
             return rendered.Count > 0 ? string.Join(MultiValueSeparator, rendered) : null;
         }
 
         return registry.Get(fieldTypeName).RenderForExport(value, configuration);
-    }
-
-    private static bool TryReadList(object value, out List<string> items)
-    {
-        switch (value)
-        {
-            case List<string> list:
-                items = list;
-                return true;
-            case JsonElement { ValueKind: JsonValueKind.Array } element:
-                items = element.EnumerateArray()
-                    .Select(e => e.ValueKind == JsonValueKind.String ? e.GetString()! : e.ToString())
-                    .ToList();
-                return true;
-            // A string is a sequence of chars; "abc" is one value, not three.
-            case string:
-                items = new List<string>();
-                return false;
-            case IEnumerable enumerable:
-                items = enumerable.Cast<object?>()
-                    .Select(i => Convert.ToString(i, CultureInfo.InvariantCulture) ?? string.Empty).ToList();
-                return true;
-            default:
-                items = new List<string>();
-                return false;
-        }
     }
 }

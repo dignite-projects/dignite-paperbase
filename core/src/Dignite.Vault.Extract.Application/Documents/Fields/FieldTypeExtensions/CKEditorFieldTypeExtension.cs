@@ -38,7 +38,7 @@ public class CKEditorFieldTypeExtension : VaultExtractFieldTypeExtensionBase
     public override string? RenderForExport(object value, FieldConfigurationDictionary configuration)
         => FieldTypeExtensionHelpers.RenderGeneric(value);
 
-    public override IReadOnlyList<string> CanonicalizeForFingerprint(object value)
+    public override IReadOnlyList<string> CanonicalizeForFingerprint(object value, FieldConfigurationDictionary configuration)
     {
         var normalized = FieldTypeExtensionHelpers.NormalizeTextForFingerprint(FieldTypeExtensionHelpers.ReadAsString(value));
         return normalized == null ? Array.Empty<string>() : new[] { normalized };
