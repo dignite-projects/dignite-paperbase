@@ -8,6 +8,7 @@ using Dignite.Vault.Extract.Abstractions.Parse;
 using Dignite.Vault.Extract.Ai;
 using Dignite.Vault.Extract.Documents;
 using Dignite.Vault.Extract.Documents.Cabinets;
+using Dignite.Vault.Extract.Documents.Pipelines.Classification;
 using Dignite.Vault.Extract.Documents.Segments;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -54,6 +55,10 @@ public class DocumentParseBackgroundJob
     // #346/#371: born-digital container slices / figure spans; looked up in the Begin phase to seed a derived sub-document's Markdown.
     private readonly IRepository<DocumentSegment, Guid> _documentSegmentRepository;
     private readonly ICurrentTenant _currentTenant;
+    // #623: resolves an upload-declared DocumentTypeId back to its DocumentType, and applies the shared
+    // manual-classification sequence when one is declared.
+    private readonly IDocumentTypeRepository _documentTypeRepository;
+    private readonly ManualClassificationApplier _manualClassificationApplier;
 
     public DocumentParseBackgroundJob(
         IDocumentRepository documentRepository,
@@ -72,7 +77,9 @@ public class DocumentParseBackgroundJob
         IOptions<VaultExtractBehaviorOptions> behaviorOptions,
         ICancellationTokenProvider cancellationTokenProvider,
         IRepository<DocumentSegment, Guid> documentSegmentRepository,
-        ICurrentTenant currentTenant)
+        ICurrentTenant currentTenant,
+        IDocumentTypeRepository documentTypeRepository,
+        ManualClassificationApplier manualClassificationApplier)
         : base(documentRepository, runRepository, pipelineRunManager, pipelineRunAccessor, unitOfWorkManager)
     {
         _pipelineJobScheduler = pipelineJobScheduler;
@@ -87,6 +94,8 @@ public class DocumentParseBackgroundJob
         _cancellationTokenProvider = cancellationTokenProvider;
         _documentSegmentRepository = documentSegmentRepository;
         _currentTenant = currentTenant;
+        _documentTypeRepository = documentTypeRepository;
+        _manualClassificationApplier = manualClassificationApplier;
     }
 
     public override async Task ExecuteAsync(DocumentParseJobArgs args)
@@ -236,7 +245,54 @@ public class DocumentParseBackgroundJob
         // plus operator rerun / re-upload. Figure sub-document routing now rides classification (#371): the embedded
         // *[Image OCR]* markers make the classifier flag an embedded document and enqueue the unified pass — no
         // separate figure-routing enqueue here anymore.
-        await _pipelineJobScheduler.QueueAsync(document, VaultExtractPipelines.Classification);
+        //
+        // #623: a document that already carries an operator-confirmed declared type at this point (set by
+        // Document.DeclareDocumentType at upload, before Parse ever ran) skips the LLM classification job
+        // entirely and instead completes the Classification stage as a manual classification, in THIS SAME
+        // Complete-phase UoW: ManualClassificationApplier's work (queue+begin the Classification run, schedule
+        // the #527 §8 field-extraction cascade transactionally, complete the run, publish DocumentClassifiedEto)
+        // is all fast repository/outbox writes, not slow external IO, so extending this already-open UoW does not
+        // violate the background-jobs.md "no slow work inside a UoW" rule; it also keeps the declaration and its
+        // Classification-run bookkeeping atomic with Parse's own completion.
+        //
+        // This short-circuits only the *first* automatic classification. A later operator "re-recognize"
+        // (RerecognizeAsync) enqueues the LLM classification job directly -- it never routes back through this
+        // Parse job -- so it is unaffected by this branch and still runs the LLM as always. Container detection
+        // and embedded-document routing are intentionally skipped for a declared type (#623 decision 1): both
+        // ride the classification stage, and a declared type is treated as a concrete document -- the same
+        // outcome as an operator Reclassify to a concrete type today.
+        //
+        // No run-exists check is needed here: ApplyManualClassificationAsync (backing ConfirmClassificationAsync /
+        // ReclassifyAsync) now refuses to run before Document.Markdown is set (see its guard), so no Classification
+        // run can exist for this document at this point in the pipeline -- Parse is the one write path that sets
+        // Markdown, and this branch runs synchronously before Parse's own completion is visible to any other caller.
+        DocumentType? declaredType = null;
+
+        if (document.DocumentTypeId.HasValue && document.ReviewDisposition == DocumentReviewDisposition.Confirmed)
+        {
+            declaredType = await _documentTypeRepository.FindAsync(document.DocumentTypeId.Value);
+            if (declaredType == null)
+            {
+                // The declared type was deleted in the window between upload and Parse completion. Retract the
+                // stale declaration -- as if it had never been declared -- so the persisted row never shows
+                // Confirmed against a DocumentTypeId that no longer resolves to anything, then fall through to
+                // the normal automatic LLM classification enqueue below.
+                Logger.LogWarning(
+                    "Document {DocumentId} declared DocumentTypeId {DocumentTypeId} at upload, but that type no "
+                    + "longer exists by the time Parse completed; falling back to automatic classification.",
+                    document.Id, document.DocumentTypeId);
+                PipelineRunManager.RetractDeclaredType(document);
+            }
+        }
+
+        if (declaredType != null)
+        {
+            await _manualClassificationApplier.ApplyAsync(document, declaredType);
+        }
+        else
+        {
+            await _pipelineJobScheduler.QueueAsync(document, VaultExtractPipelines.Classification);
+        }
 
         // #265: after text extraction succeeds and Markdown is ready, fan out the "AI fallback cabinet selection when empty" job.
         // It is an independent sibling orthogonal to the content pipeline, not a PipelineRun phase. Do <b>not</b> read document.CabinetId here:

@@ -332,6 +332,9 @@
     "Document:CabinetUpdated": "文件柜已更新。",
     "Document:Filter:AllCabinets": "全部文件柜",
     "Document:SelectCabinet": "文件柜（可选）",
+    "Document:SelectDocumentType": "文档类型（可选）",
+    "Document:SelectDocumentType:Hint": "跳过 AI 分类，直接确认该类型。",
+    "Document:LetAiClassify": "交由 AI 分类",
 
     "FieldDefinition:Title": "类型绑定字段",
     "FieldDefinition:New": "新建字段",

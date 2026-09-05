@@ -332,6 +332,9 @@
     "Document:CabinetUpdated": "文件櫃已更新。",
     "Document:Filter:AllCabinets": "全部文件櫃",
     "Document:SelectCabinet": "文件櫃（選填）",
+    "Document:SelectDocumentType": "文件類型（選填）",
+    "Document:SelectDocumentType:Hint": "略過 AI 分類，直接確認該類型。",
+    "Document:LetAiClassify": "交由 AI 分類",
 
     "FieldDefinition:Title": "類型綁定欄位",
     "FieldDefinition:New": "新增欄位",

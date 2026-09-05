@@ -332,6 +332,9 @@
     "Document:CabinetUpdated": "キャビネットを更新しました。",
     "Document:Filter:AllCabinets": "すべてのキャビネット",
     "Document:SelectCabinet": "キャビネット（任意）",
+    "Document:SelectDocumentType": "ドキュメントタイプ（任意）",
+    "Document:SelectDocumentType:Hint": "AIによる分類をスキップし、このタイプを直接確定します。",
+    "Document:LetAiClassify": "AIに分類させる",
 
     "FieldDefinition:Title": "タイプ別フィールド",
     "FieldDefinition:New": "新しいフィールド",

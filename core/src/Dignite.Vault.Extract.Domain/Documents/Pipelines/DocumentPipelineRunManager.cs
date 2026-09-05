@@ -54,6 +54,33 @@ public class DocumentPipelineRunManager : DomainService
         _runRepo = runRepo;
     }
 
+    /// <summary>
+    /// Surfaces <see cref="Document.DeclareDocumentType"/> to the Application layer (#623), the same pattern this
+    /// manager already uses to reach <see cref="Document.ConfirmClassification"/> from
+    /// <see cref="CompleteManualClassificationAsync"/>: the Domain project keeps the mutator itself <c>internal</c>,
+    /// and this manager (same assembly) is the one cross-assembly-visible surface.
+    /// <para>
+    /// Unlike every other method on this manager, this is a plain synchronous call with no pipeline run and no
+    /// persistence of its own — it runs once, synchronously, in <c>DocumentAppService.UploadAsync</c> before the
+    /// document is even inserted, so there is nothing here to await.
+    /// </para>
+    /// </summary>
+    public virtual void DeclareDocumentType(Document document, Guid documentTypeId)
+    {
+        document.DeclareDocumentType(documentTypeId);
+    }
+
+    /// <summary>
+    /// Surfaces <see cref="Document.RetractDeclaredType"/> to the Application layer, the same cross-assembly
+    /// pattern as <see cref="DeclareDocumentType"/> above. Called by <c>DocumentParseBackgroundJob</c>'s
+    /// completion cascade when an upload-declared type no longer resolves to a <see cref="DocumentType"/> by the
+    /// time Parse completes (code review on #623, 2026-09-05).
+    /// </summary>
+    public virtual void RetractDeclaredType(Document document)
+    {
+        document.RetractDeclaredType();
+    }
+
     public virtual async Task<DocumentPipelineRun> QueueAsync(
         Document document,
         string pipelineCode,

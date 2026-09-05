@@ -718,6 +718,79 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
         SetReviewReason(DocumentReviewReasons.FieldValidationWarning, present: false);
     }
 
+    /// <summary>
+    /// Declares the document type at upload time (#623): an operator-level confirmation applied to a freshly
+    /// created document, before any pipeline has run. Semantically equivalent to <see cref="ConfirmClassification"/>
+    /// (sets <see cref="DocumentTypeId"/>, pins <see cref="ClassificationConfidence"/> to 1.0, and marks
+    /// <see cref="ReviewDisposition"/> Confirmed), but deliberately narrower: it must never touch container flags,
+    /// review reasons, <see cref="FlexFields"/>, the duplicate-detection fingerprint, or raise any event, because at
+    /// this point no pipeline has produced anything for those to react to yet. The Classification pipeline stage
+    /// itself is completed later, by the Parse-cascade branch (<c>DocumentParseBackgroundJob</c>), which is what
+    /// actually creates the <c>Classification</c> run and publishes <c>DocumentClassifiedEto</c> at the correct
+    /// point in the stage sequence (#623 decision 2) — this method only stamps the declaration onto the aggregate
+    /// so it survives the asynchronous gap between upload and Parse completion.
+    /// <para>
+    /// Guarded to pre-pipeline use only: throws <see cref="InvalidOperationException"/> if <see cref="DocumentTypeId"/>
+    /// is already set (declaring twice is a caller bug — <c>UploadAsync</c> calls this exactly once) or if
+    /// <see cref="Markdown"/> is already set (this method is defined to run strictly before Parse; once Markdown is
+    /// written, the Parse-cascade branch — not this method — is the only path that may act on the declared type).
+    /// Both are internal invariants reachable only through a programming error, not user-facing business rules, so
+    /// they deliberately carry no <c>VaultExtractErrorCodes</c> entry: an error code is a frozen serialized string
+    /// and would never legitimately reach a client.
+    /// </para>
+    /// </summary>
+    internal void DeclareDocumentType(Guid documentTypeId)
+    {
+        if (DocumentTypeId.HasValue)
+            throw new InvalidOperationException("DeclareDocumentType can only be called on a document that has no document type yet.");
+        if (!string.IsNullOrEmpty(Markdown))
+            throw new InvalidOperationException("DeclareDocumentType must run before text extraction has written Markdown.");
+
+        DocumentTypeId = Check.NotDefaultOrNull<Guid>(documentTypeId, nameof(documentTypeId));
+        ClassificationConfidence = 1.0;
+        ReviewDisposition = DocumentReviewDisposition.Confirmed;
+        RejectionReason = null;
+    }
+
+    /// <summary>
+    /// Retracts an upload-time declared type that turned out to be stale by the time Parse completed (code review
+    /// on #623, 2026-09-05): the declared <see cref="DocumentType"/> was deleted in the window between upload and
+    /// Parse completion, so <c>DocumentParseBackgroundJob</c>'s completion cascade cannot honor it and falls back
+    /// to automatic classification instead. Undoes exactly what <see cref="DeclareDocumentType"/> set —
+    /// <see cref="DocumentTypeId"/> back to <c>null</c>, confidence back to 0, disposition back to
+    /// <see cref="DocumentReviewDisposition.NotReviewed"/> — so the persisted row falls back to automatic
+    /// classification's normal "not yet classified" starting state instead of staying Confirmed against a type
+    /// that no longer resolves to anything. Deliberately sets no review reason: the caller is about to enqueue the
+    /// ordinary classification job, exactly like an undeclared upload, not report a terminal failure.
+    /// <para>
+    /// Exposed publicly via <see cref="DocumentPipelineRunManager.RetractDeclaredType"/>, so the guard refuses
+    /// anything that is not the <em>exact</em> upload-declared, never-classified signature <see cref="DeclareDocumentType"/>
+    /// produces: a confirmed type at confidence 1.0 with no field fingerprint and no extracted field values yet.
+    /// This is deliberately narrower than "has a type" -- it must never be usable to undo a real classification
+    /// (automatic or operator-confirmed) that has already produced field values, because unlike
+    /// <see cref="DeclareDocumentType"/>'s pre-pipeline call site this one runs after Parse, where a real
+    /// classification could already exist.
+    /// </para>
+    /// </summary>
+    internal void RetractDeclaredType()
+    {
+        if (!DocumentTypeId.HasValue
+            || ReviewDisposition != DocumentReviewDisposition.Confirmed
+            || ClassificationConfidence != 1.0
+            || FieldFingerprint != null
+            || FlexFields.Count != 0)
+        {
+            throw new InvalidOperationException(
+                "RetractDeclaredType can only be called on a document that carries exactly the upload-declared, "
+                + "never-classified signature: a confirmed type at confidence 1.0 with no field fingerprint and no "
+                + "extracted field values.");
+        }
+
+        DocumentTypeId = null;
+        ClassificationConfidence = 0;
+        ReviewDisposition = DocumentReviewDisposition.NotReviewed;
+    }
+
     internal void ConfirmClassification(Guid documentTypeId)
     {
         DocumentTypeId = Check.NotDefaultOrNull<Guid>(documentTypeId, nameof(documentTypeId));

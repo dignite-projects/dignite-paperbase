@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Dignite.Vault.Extract.Abstractions.Documents;
 using Dignite.Vault.Extract.Documents;
 using Dignite.Vault.Extract.Documents.Pipelines;
+using Dignite.Vault.Extract.Documents.Pipelines.Classification;
 using Dignite.Vault.Extract.Documents.Review;
 using Dignite.Vault.Extract.Permissions;
 using Microsoft.AspNetCore.Authorization;
@@ -43,6 +44,7 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
     private readonly DocumentPipelineJobScheduler _pipelineJobScheduler;
     private readonly IDistributedEventBus _distributedEventBus;
     private readonly ReviewStateEvaluator _reviewEvaluator;
+    private readonly ManualClassificationApplier _manualClassificationApplier;
 
     public DocumentAppService(
         IDocumentRepository documentRepository,
@@ -57,6 +59,7 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
         DocumentPipelineJobScheduler pipelineJobScheduler,
         IDistributedEventBus distributedEventBus,
         ReviewStateEvaluator reviewEvaluator,
+        ManualClassificationApplier manualClassificationApplier,
         Dignite.Vault.Extract.FlexFields.IVaultExtractFieldTypeRegistry fieldTypeExtensionRegistry)
     {
         _documentRepository = documentRepository;
@@ -71,6 +74,7 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
         _pipelineJobScheduler = pipelineJobScheduler;
         _distributedEventBus = distributedEventBus;
         _reviewEvaluator = reviewEvaluator;
+        _manualClassificationApplier = manualClassificationApplier;
         _fieldTypeExtensionRegistry = fieldTypeExtensionRegistry;
     }
 
@@ -214,6 +218,25 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
             }
         }
 
+        // Declared-type validation (#623): fail-closed additive permission, symmetric with the CabinetId check
+        // above. Declaring a type at upload is equivalent to an operator ConfirmClassificationAsync call — it
+        // bypasses the classification LLM call and the UnresolvedClassification review queue entirely — so a
+        // caller holding only Documents.Upload must not be able to reach that outcome through the upload
+        // endpoint. Existence is validated the same way ApplyManualClassificationAsync validates it: an
+        // IDocumentTypeRepository.FindAsync under the ambient IMultiTenant filter, so a cross-layer id resolves
+        // to null -> EntityNotFoundException, never a hand-written tenant predicate.
+        DocumentType? declaredType = null;
+        if (input.DocumentTypeId.HasValue)
+        {
+            await CheckPolicyAsync(VaultExtractPermissions.Documents.ConfirmClassification);
+
+            declaredType = await _documentTypeRepository.FindAsync(input.DocumentTypeId.Value);
+            if (declaredType == null)
+            {
+                throw new EntityNotFoundException(typeof(DocumentType), input.DocumentTypeId.Value);
+            }
+        }
+
         var fileName = input.File.FileName ?? "document";
         var contentType = input.File.ContentType ?? "application/octet-stream";
         var extension = Path.GetExtension(fileName);
@@ -289,6 +312,16 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
             CurrentTenant.Id,
             fileOrigin,
             cabinetId: input.CabinetId);
+
+        // #623: stamp the declared type onto the freshly created (not-yet-persisted) document, before any
+        // pipeline runs. DocumentPipelineRunManager.DeclareDocumentType is the same cross-assembly surface
+        // pattern already used for Document.ConfirmClassification -- see its doc comment. The Classification
+        // pipeline stage itself is completed later by DocumentParseBackgroundJob's Parse-cascade branch, not
+        // here; this only makes the declaration survive the asynchronous gap until Parse runs.
+        if (declaredType != null)
+        {
+            _pipelineRunManager.DeclareDocumentType(document, declaredType.Id);
+        }
 
         await _documentRepository.InsertAsync(document, autoSave: true);
 
@@ -1006,6 +1039,18 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
             throw new EntityNotFoundException(typeof(Document), id);
         }
 
+        // A type can only be confirmed on a document that has text -- mirrors RerecognizeAsync / ReextractFieldsAsync.
+        // Without this guard the cascade field extraction below would run over an empty body, and since
+        // MissingRequiredFields is non-blocking, the document could reach Ready with no fields at all. This guard is
+        // also what makes the Parse-cascade declared-type branch (DocumentParseBackgroundJob.CompleteRunAsync)
+        // race-free: no path can create a Classification run before Parse writes Markdown -- bulk reprocessing
+        // requires Markdown, RerecognizeAsync carries this same guard, and derived sub-documents are always created
+        // typeless -- so by the time Parse completes, no operator action could have gotten here first.
+        if (string.IsNullOrEmpty(document.Markdown))
+        {
+            throw new BusinessException(VaultExtractErrorCodes.Document.NotTextExtracted);
+        }
+
         // Type validation responsibility lives in AppService and no longer goes through manager-internal EnsureRegisteredTypeCodeAsync:
         // resolve by immutable Id (#207), with tenant isolation delegated to ABP IMultiTenant global filters for exact single-layer matching.
         // Missing type fails fast, avoiding writes of a type that business-module subscribers cannot recognize.
@@ -1015,28 +1060,11 @@ public class DocumentAppService : VaultExtractAppService, IDocumentAppService
             throw new EntityNotFoundException(typeof(DocumentType), documentTypeId);
         }
 
-        var run = await _pipelineRunManager.QueueAsync(document, VaultExtractPipelines.Classification);
-        await _pipelineRunManager.BeginAsync(document, run);
-
-        // #527 §8: create the cascade field-extraction run + enqueue its job in THIS UoW, BEFORE completing the
-        // (manual) classification, so completion derivation sees a *pending* field-extraction key pipeline and cannot
-        // derive a premature Ready off a prior succeeded run when reclassifying an already-processed document. The
-        // enqueued job resumes this exact run id; DocumentClassifiedEto stays the external event with no internal
-        // cascade subscriber (FieldExtractionEventHandler was removed). typeDef.TypeCode is forwarded as the
-        // stale-reclassify early-exit hint the removed handler used to pass.
-        await _pipelineJobScheduler.QueueAsync(
-            document, VaultExtractPipelines.FieldExtraction, expectedEventTypeCode: typeDef.TypeCode);
-
-        await _pipelineRunManager.CompleteManualClassificationAsync(document, run, typeDef);
-        await _distributedEventBus.PublishAsync(
-            new DocumentClassifiedEto
-            {
-                DocumentId = document.Id,
-                TenantId = document.TenantId,
-                EventTime = Clock.Now,
-                DocumentTypeCode = typeDef.TypeCode,
-                ClassificationConfidence = 1.0
-            });
+        // #623: the run-queue / cascade-schedule / manual-complete / publish sequence is shared with the
+        // Parse-cascade branch for an upload-declared document type (DocumentParseBackgroundJob), which
+        // must complete the Classification stage identically. See ManualClassificationApplier for the
+        // full sequence description (unchanged from before the extraction, #527 §8 included).
+        await _manualClassificationApplier.ApplyAsync(document, typeDef);
 
         await _documentRepository.UpdateAsync(document, autoSave: true);
 

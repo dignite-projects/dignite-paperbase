@@ -332,6 +332,9 @@
     "Document:CabinetUpdated": "Cabinet updated.",
     "Document:Filter:AllCabinets": "All Cabinets",
     "Document:SelectCabinet": "Cabinet (optional)",
+    "Document:SelectDocumentType": "Document type (optional)",
+    "Document:SelectDocumentType:Hint": "Skip AI classification and confirm this type directly.",
+    "Document:LetAiClassify": "Let AI classify",
 
     "FieldDefinition:Title": "Type-Bound Fields",
     "FieldDefinition:New": "New Field",

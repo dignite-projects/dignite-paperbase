@@ -1,11 +1,17 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, Injector, OnInit, afterNextRender, computed, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, Injector, OnInit, afterNextRender, computed, inject, input, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterModule } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LocalizationPipe, PermissionService } from '@abp/ng.core';
 import { ToasterService } from '@abp/ng.theme.shared';
-import { CabinetDto, CabinetService, DocumentUploadService, EXTRACT_PERMISSIONS } from '@dignite/ng.vault-extract';
+import {
+  CabinetDto,
+  CabinetService,
+  DocumentTypeDto,
+  DocumentUploadService,
+  EXTRACT_PERMISSIONS,
+} from '@dignite/ng.vault-extract';
 import { from, of } from 'rxjs';
 import { catchError, map, mergeMap } from 'rxjs/operators';
 import {
@@ -54,6 +60,21 @@ export class DocumentUploadComponent implements OnInit {
   );
   cabinets = signal<CabinetDto[]>([]);
   selectedCabinetId = signal<string>('');
+
+  // Declaring a type at upload is equivalent to an operator confirming classification
+  // (#623): it skips the LLM classification call entirely, so it requires
+  // ConfirmClassification. Without permission, hide the selector — every file uploads
+  // through ordinary LLM classification as before.
+  //
+  // Code review (2026-09-05): the type list itself is no longer fetched by this component —
+  // its only mount site (DocumentOverviewComponent) already fetches it for its own quick-links
+  // section and passes it down via the `documentTypes` input, so there is no second request and
+  // no need to mirror the list-read permission (Documents.Default / DocumentTypes.Default) here.
+  readonly canDeclareType = this.permissionService.getGrantedPolicy(
+    EXTRACT_PERMISSIONS.Documents.ConfirmClassification,
+  );
+  readonly documentTypes = input<DocumentTypeDto[]>([]);
+  selectedDocumentTypeId = signal<string>('');
 
   // Picker `accept` filter, derived from the shared whitelist (mirrors backend, #221).
   readonly acceptAttribute = UPLOAD_ACCEPT_ATTRIBUTE;
@@ -170,18 +191,24 @@ export class DocumentUploadComponent implements OnInit {
       .pipe(
         mergeMap(
           ({ file, idx }) =>
-            this.documentUploadService.upload(file, this.selectedCabinetId() || undefined).pipe(
-              map(document => ({
-                idx,
-                success: true,
-                documentId: document.id,
-                errorMessage: undefined as string | undefined,
-              })),
-              catchError(err => {
-                const errorMessage: string | undefined = err?.error?.error?.message;
-                return of({ idx, success: false, documentId: undefined, errorMessage });
-              }),
-            ),
+            this.documentUploadService
+              .upload(
+                file,
+                this.selectedCabinetId() || undefined,
+                this.selectedDocumentTypeId() || undefined,
+              )
+              .pipe(
+                map(document => ({
+                  idx,
+                  success: true,
+                  documentId: document.id,
+                  errorMessage: undefined as string | undefined,
+                })),
+                catchError(err => {
+                  const errorMessage: string | undefined = err?.error?.error?.message;
+                  return of({ idx, success: false, documentId: undefined, errorMessage });
+                }),
+              ),
           MAX_CONCURRENT_UPLOADS,
         ),
         takeUntilDestroyed(this.destroyRef),
