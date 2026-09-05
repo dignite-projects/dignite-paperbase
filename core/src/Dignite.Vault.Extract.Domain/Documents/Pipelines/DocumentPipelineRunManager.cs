@@ -70,6 +70,17 @@ public class DocumentPipelineRunManager : DomainService
         document.DeclareDocumentType(documentTypeId);
     }
 
+    /// <summary>
+    /// Surfaces <see cref="Document.RetractDeclaredType"/> to the Application layer, the same cross-assembly
+    /// pattern as <see cref="DeclareDocumentType"/> above. Called by <c>DocumentParseBackgroundJob</c>'s
+    /// completion cascade when an upload-declared type no longer resolves to a <see cref="DocumentType"/> by the
+    /// time Parse completes (code review on #623, 2026-09-05).
+    /// </summary>
+    public virtual void RetractDeclaredType(Document document)
+    {
+        document.RetractDeclaredType();
+    }
+
     public virtual async Task<DocumentPipelineRun> QueueAsync(
         Document document,
         string pipelineCode,

@@ -752,6 +752,27 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
         RejectionReason = null;
     }
 
+    /// <summary>
+    /// Retracts an upload-time declared type that turned out to be stale by the time Parse completed (code review
+    /// on #623, 2026-09-05): the declared <see cref="DocumentType"/> was deleted in the window between upload and
+    /// Parse completion, so <c>DocumentParseBackgroundJob</c>'s completion cascade cannot honor it and falls back
+    /// to automatic classification instead. Undoes exactly what <see cref="DeclareDocumentType"/> set —
+    /// <see cref="DocumentTypeId"/> back to <c>null</c>, confidence back to 0, disposition back to
+    /// <see cref="DocumentReviewDisposition.NotReviewed"/> — so the persisted row falls back to automatic
+    /// classification's normal "not yet classified" starting state instead of staying Confirmed against a type
+    /// that no longer resolves to anything. Deliberately sets no review reason: the caller is about to enqueue the
+    /// ordinary classification job, exactly like an undeclared upload, not report a terminal failure.
+    /// </summary>
+    internal void RetractDeclaredType()
+    {
+        if (!DocumentTypeId.HasValue)
+            throw new InvalidOperationException("RetractDeclaredType can only be called on a document that currently has a declared type.");
+
+        DocumentTypeId = null;
+        ClassificationConfidence = 0;
+        ReviewDisposition = DocumentReviewDisposition.NotReviewed;
+    }
+
     internal void ConfirmClassification(Guid documentTypeId)
     {
         DocumentTypeId = Check.NotDefaultOrNull<Guid>(documentTypeId, nameof(documentTypeId));

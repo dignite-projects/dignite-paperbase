@@ -67,9 +67,17 @@ export class DocumentUploadComponent implements OnInit {
   // (#623): it skips the LLM classification call entirely, so it requires
   // ConfirmClassification in addition to Upload. Without permission, hide the selector —
   // every file uploads through ordinary LLM classification as before.
-  readonly canDeclareType = this.permissionService.getGrantedPolicy(
-    EXTRACT_PERMISSIONS.Documents.ConfirmClassification,
-  );
+  //
+  // Code review (2026-09-05): also require the same permission the type-list fetch itself
+  // needs (DocumentTypeAppService.GetVisibleAsync accepts Documents.Default OR
+  // DocumentTypes.Default — ConfirmClassification alone is not one of them, and ABP does not
+  // imply a parent permission from a granted child). Without this, a role holding exactly
+  // Upload + ConfirmClassification would see the selector's gate open but the type-list
+  // request would fail, silently hiding the selector anyway via the empty-list guard below.
+  readonly canDeclareType =
+    this.permissionService.getGrantedPolicy(EXTRACT_PERMISSIONS.Documents.ConfirmClassification) &&
+    (this.permissionService.getGrantedPolicy(EXTRACT_PERMISSIONS.Documents.Default) ||
+      this.permissionService.getGrantedPolicy(EXTRACT_PERMISSIONS.DocumentTypes.Default));
   documentTypes = signal<DocumentTypeDto[]>([]);
   selectedDocumentTypeId = signal<string>('');
 

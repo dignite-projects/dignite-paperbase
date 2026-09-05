@@ -151,6 +151,47 @@ public class DocumentParseBackgroundJob_DeclaredType_Tests
         await _backgroundJobManager.Received(1).EnqueueAsync(
             Arg.Any<DocumentClassificationJobArgs>(), Arg.Any<BackgroundJobPriority>(), Arg.Any<TimeSpan?>());
         await _eventBus.DidNotReceive().PublishAsync(Arg.Any<DocumentClassifiedEto>(), Arg.Any<bool>());
+
+        // Code review on #623 (2026-09-05): the stale declaration must be retracted, not left dangling, so the
+        // persisted row never shows Confirmed against a DocumentTypeId that no longer resolves to anything while
+        // the newly-queued automatic classification job is still pending.
+        doc.DocumentTypeId.ShouldBeNull();
+        doc.ClassificationConfidence.ShouldBe(0d);
+        doc.ReviewDisposition.ShouldBe(DocumentReviewDisposition.NotReviewed);
+    }
+
+    [Fact]
+    public async Task DeclaredType_Skips_Reapplication_When_An_Operator_Already_Classified_During_The_Parse_Race()
+    {
+        var doc = CreateDocument();
+        _pipelineRunManager.DeclareDocumentType(doc, DocumentParseDeclaredTypeJobTestModule.InvoiceTypeId);
+        SetupDocumentRepository(doc);
+
+        var run = await _pipelineJobScheduler.QueueAsync(doc, VaultExtractPipelines.Parse);
+        StubExtraction("# Invoice\n\nTotal 100.00");
+
+        // Simulates an operator calling ConfirmClassificationAsync / ReclassifyAsync on this document while Parse
+        // is still in flight -- ApplyManualClassificationAsync has no Markdown/parse-completion guard, so this can
+        // race with the declared-type upload. That call already created its own Classification run.
+        var racingRun = await _pipelineRunManager.QueueAsync(doc, VaultExtractPipelines.Classification);
+        await _pipelineRunManager.BeginAsync(doc, racingRun);
+
+        await _job.ExecuteAsync(new DocumentParseJobArgs { DocumentId = doc.Id, PipelineRunId = run.Id });
+
+        // The operator's own action is authoritative: the Parse-cascade branch must not reapply
+        // ManualClassificationApplier on top of it (code review on #623, 2026-09-05) -- no second Classification
+        // attempt, no field-extraction cascade, no automatic-classification fallback, no duplicate event.
+        await _eventBus.DidNotReceive().PublishAsync(Arg.Any<DocumentClassifiedEto>(), Arg.Any<bool>());
+        await _backgroundJobManager.DidNotReceive().EnqueueAsync(
+            Arg.Any<DocumentFieldExtractionJobArgs>(), Arg.Any<BackgroundJobPriority>(), Arg.Any<TimeSpan?>());
+        await _backgroundJobManager.DidNotReceive().EnqueueAsync(
+            Arg.Any<DocumentClassificationJobArgs>(), Arg.Any<BackgroundJobPriority>(), Arg.Any<TimeSpan?>());
+
+        var latestClassificationRun = await _runRepository.FindLatestByDocumentAndCodeAsync(
+            doc.Id, VaultExtractPipelines.Classification);
+        latestClassificationRun.ShouldNotBeNull();
+        latestClassificationRun!.Id.ShouldBe(racingRun.Id);
+        latestClassificationRun.AttemptNumber.ShouldBe(1);
     }
 
     private void SetupDocumentRepository(Document doc)

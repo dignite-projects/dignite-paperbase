@@ -262,31 +262,53 @@ public class DocumentParseBackgroundJob
         // ride the classification stage, and a declared type is treated as a concrete document -- the same
         // outcome as an operator Reclassify to a concrete type today.
         //
-        // Known, accepted edge: an operator who Reclassifies this document BEFORE Parse completes (Markdown not
-        // yet written) also leaves it Confirmed, so this branch applies the sequence a second time. The result is
-        // still correct -- it reads the type currently confirmed on the aggregate, so the operator's later choice
-        // wins -- at the cost of one redundant Classification run and a duplicate DocumentClassifiedEto, which
-        // downstream already absorbs under the at-least-once / EventTime contract. Not guarded on purpose.
+        // Code review on #623 (2026-09-05): ConfirmClassificationAsync / ReclassifyAsync have no Markdown/parse-
+        // completion precondition, so an operator CAN confirm or reclassify this document while Parse is still
+        // running -- that call already ran ManualClassificationApplier and created its own (Succeeded) Classification
+        // run. DocumentTypeId + ReviewDisposition alone cannot tell "declared at upload, never classified yet" apart
+        // from "already classified" in that race, so a real DocumentPipelineRun lookup is the actual distinguishing
+        // signal: if a Classification run already exists, the operator's action is authoritative and this branch
+        // does nothing further -- reapplying would duplicate that run, the #527 §8 field-extraction cascade (a
+        // second LLM call racing to write the same FlexFields), and DocumentClassifiedEto.
+        DocumentType? declaredType = null;
+        var enqueueAutomaticClassification = true;
+
         if (document.DocumentTypeId.HasValue && document.ReviewDisposition == DocumentReviewDisposition.Confirmed)
         {
-            var declaredType = await _documentTypeRepository.FindAsync(document.DocumentTypeId.Value);
-            if (declaredType != null)
+            var existingClassificationRun = await RunRepository.FindLatestByDocumentAndCodeAsync(
+                document.Id, VaultExtractPipelines.Classification);
+
+            if (existingClassificationRun != null)
             {
-                await _manualClassificationApplier.ApplyAsync(document, declaredType);
+                enqueueAutomaticClassification = false;
             }
             else
             {
-                // The declared type was deleted in the window between upload and Parse completion. Fall back to
-                // the normal automatic LLM classification path rather than leaving the document stuck with a
-                // DocumentTypeId that no longer resolves to anything.
-                Logger.LogWarning(
-                    "Document {DocumentId} declared DocumentTypeId {DocumentTypeId} at upload, but that type no "
-                    + "longer exists by the time Parse completed; falling back to automatic classification.",
-                    document.Id, document.DocumentTypeId);
-                await _pipelineJobScheduler.QueueAsync(document, VaultExtractPipelines.Classification);
+                declaredType = await _documentTypeRepository.FindAsync(document.DocumentTypeId.Value);
+                if (declaredType != null)
+                {
+                    enqueueAutomaticClassification = false;
+                }
+                else
+                {
+                    // The declared type was deleted in the window between upload and Parse completion. Retract the
+                    // stale declaration -- as if it had never been declared -- so the persisted row never shows
+                    // Confirmed against a DocumentTypeId that no longer resolves to anything, then fall through to
+                    // the normal automatic LLM classification enqueue below.
+                    Logger.LogWarning(
+                        "Document {DocumentId} declared DocumentTypeId {DocumentTypeId} at upload, but that type no "
+                        + "longer exists by the time Parse completed; falling back to automatic classification.",
+                        document.Id, document.DocumentTypeId);
+                    PipelineRunManager.RetractDeclaredType(document);
+                }
             }
         }
-        else
+
+        if (declaredType != null)
+        {
+            await _manualClassificationApplier.ApplyAsync(document, declaredType);
+        }
+        else if (enqueueAutomaticClassification)
         {
             await _pipelineJobScheduler.QueueAsync(document, VaultExtractPipelines.Classification);
         }

@@ -207,11 +207,42 @@ public class DocumentAppService_UploadDeclaredType_Tests
         exception.InnerException.ShouldBeOfType<InvalidOperationException>();
     }
 
+    [Fact]
+    public void RetractDeclaredType_Throws_When_No_Type_Is_Declared()
+    {
+        var doc = CreateDocument();
+
+        var exception = Should.Throw<TargetInvocationException>(() => InvokeRetractDeclaredType(doc));
+
+        exception.InnerException.ShouldBeOfType<InvalidOperationException>();
+    }
+
+    [Fact]
+    public void RetractDeclaredType_Resets_Declared_State_Back_To_Not_Reviewed()
+    {
+        var doc = CreateDocument();
+        InvokeDeclareDocumentType(doc, Guid.NewGuid());
+
+        InvokeRetractDeclaredType(doc);
+
+        doc.DocumentTypeId.ShouldBeNull();
+        doc.ClassificationConfidence.ShouldBe(0d);
+        doc.ReviewDisposition.ShouldBe(DocumentReviewDisposition.NotReviewed);
+        doc.ReviewReasons.ShouldBe(DocumentReviewReasons.None);
+    }
+
     private static void InvokeDeclareDocumentType(Document document, Guid documentTypeId)
     {
         typeof(Document)
             .GetMethod("DeclareDocumentType", BindingFlags.NonPublic | BindingFlags.Instance)!
             .Invoke(document, [documentTypeId]);
+    }
+
+    private static void InvokeRetractDeclaredType(Document document)
+    {
+        typeof(Document)
+            .GetMethod("RetractDeclaredType", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(document, null);
     }
 
     private static Document CreateDocument()

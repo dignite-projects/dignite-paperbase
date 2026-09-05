@@ -74,6 +74,7 @@ describe('DocumentUploadComponent — declared document type (#623)', () => {
       new Set([
         EXTRACT_PERMISSIONS.Documents.Upload,
         EXTRACT_PERMISSIONS.Documents.ConfirmClassification,
+        EXTRACT_PERMISSIONS.Documents.Default,
       ]),
     );
     const component = fixture.componentInstance;
@@ -83,11 +84,43 @@ describe('DocumentUploadComponent — declared document type (#623)', () => {
     expect(fixture.nativeElement.querySelector('.document-type-select')).not.toBeNull();
   });
 
+  it('shows the selector when the list-fetch permission is DocumentTypes.Default instead', async () => {
+    const { fixture } = await setup(
+      new Set([
+        EXTRACT_PERMISSIONS.Documents.Upload,
+        EXTRACT_PERMISSIONS.Documents.ConfirmClassification,
+        EXTRACT_PERMISSIONS.DocumentTypes.Default,
+      ]),
+    );
+    const component = fixture.componentInstance;
+
+    expect(component.canDeclareType).toBe(true);
+    expect(component.documentTypes()).toEqual(DOCUMENT_TYPES);
+  });
+
+  it('hides the selector with ConfirmClassification alone, matching the backend GetVisibleAsync gate (code review, 2026-09-05)', async () => {
+    // DocumentTypeAppService.GetVisibleAsync requires Documents.Default OR DocumentTypes.Default —
+    // ConfirmClassification is not one of them, and ABP does not imply a parent permission from a
+    // granted child. Without this gate canDeclareType would be true but the type-list fetch would
+    // fail, silently hiding the selector via the empty-list guard instead of via this permission check.
+    const { fixture } = await setup(
+      new Set([
+        EXTRACT_PERMISSIONS.Documents.Upload,
+        EXTRACT_PERMISSIONS.Documents.ConfirmClassification,
+      ]),
+    );
+    const component = fixture.componentInstance;
+
+    expect(component.canDeclareType).toBe(false);
+    expect(fixture.nativeElement.querySelector('.document-type-select')).toBeNull();
+  });
+
   it('passes the selected DocumentTypeId through to every file in a batch upload', async () => {
     const { fixture, uploadSpy } = await setup(
       new Set([
         EXTRACT_PERMISSIONS.Documents.Upload,
         EXTRACT_PERMISSIONS.Documents.ConfirmClassification,
+        EXTRACT_PERMISSIONS.Documents.Default,
       ]),
     );
     const component = fixture.componentInstance;
@@ -105,6 +138,7 @@ describe('DocumentUploadComponent — declared document type (#623)', () => {
       new Set([
         EXTRACT_PERMISSIONS.Documents.Upload,
         EXTRACT_PERMISSIONS.Documents.ConfirmClassification,
+        EXTRACT_PERMISSIONS.Documents.Default,
       ]),
     );
     const component = fixture.componentInstance;
