@@ -12,7 +12,7 @@
     "@abp/ng.components": "~10.5.0",
     "@abp/ng.core": "~10.5.0",
     "@abp/ng.theme.shared": "~10.5.0",
-    "@dignite/ng.flex-fields": "^10.0.0-rc.14",
+    "@dignite/ng.flex-fields": "npm:@dignite-projects/ng.flex-fields@10.0.0-rc.16",
     "marked": "^18.0.0",
     "tslib": "^2.1.0"
   },

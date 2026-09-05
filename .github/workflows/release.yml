@@ -74,8 +74,14 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # NuGet.Config routes Dignite.Abp.FlexFields.* to GitHub Packages, which needs auth even for
+      # public packages. The built-in GITHUB_TOKEN cannot be used: it grants packages:read only for
+      # packages published by THIS repository, never for a sibling repo in the same org - and
+      # Dignite.Abp.FlexFields.* ships from abp-modules/flex-fields. Same real PAT ci.yml uses.
       - name: Restore
         run: dotnet restore Dignite.Vault.Extract.slnx
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
 
       - name: Build
         run: dotnet build Dignite.Vault.Extract.slnx --no-restore --configuration Release
@@ -151,12 +157,14 @@ jobs:
       - name: Upgrade npm for trusted publishing
         run: npm install -g npm@^11.5.1
 
-      # No registry credential: every dependency resolves from npmjs since the @dignite-projects
-      # workspace alias was dropped (@dignite/ng.flex-fields* are published publicly now). Publishing
-      # a pre-release to GitHub Packages still needs auth, but that step writes its own config below.
+      # angular/.npmrc routes @dignite-projects:* to GitHub Packages and reads the credential from
+      # GITHUB_PACKAGES_TOKEN. Cross-repo access, so the default job token is not enough - same real
+      # PAT the CI workflow uses. Without this the install fails E401 on @dignite-projects/ng.flex-fields.
       - name: Install Angular dependencies
         run: npm ci
         working-directory: angular
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
 
       - name: Build npm package
         run: npx ng build vault-extract --configuration production
@@ -238,6 +246,12 @@ jobs:
             fi
           fi
         working-directory: angular
+        # angular/.npmrc's ${GITHUB_PACKAGES_TOKEN} placeholder must resolve, and a project-level
+        # .npmrc outranks the user-level file this step appends to above. Without this the placeholder
+        # resolves to the earlier step's read-only PACKAGES_READ_TOKEN and shadows the write-scoped
+        # token written above - an E401 on this push despite the echo lines looking correct.
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Stable releases carry the public @dignite/* name to npmjs. Auth is OIDC: npm exchanges this
       # job's GitHub id-token for a short-lived publish token for @dignite/ng.vault-extract (a Trusted
@@ -249,6 +263,10 @@ jobs:
       # there (dignite-projects/abp-modules#106), which closed #577.
       - name: Publish to npm (stable)
         if: steps.channel.outputs.channel == 'stable'
+        # angular/.npmrc's ${GITHUB_PACKAGES_TOKEN} placeholder must resolve (same reason as the
+        # preview step above); npmjs auth uses OIDC instead, so the value itself is unused here.
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npm publish ./dist/vault-extract --access public --provenance
         working-directory: angular
