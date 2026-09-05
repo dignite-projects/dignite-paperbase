@@ -382,6 +382,14 @@ public class DocumentAppService_Review_Tests
                 Substitute.For<IBackgroundJobManager>()),
             Substitute.For<IDistributedEventBus>(),
             new ReviewStateEvaluator(),
+            new Pipelines.Classification.ManualClassificationApplier(
+                new DocumentPipelineRunManager(runRepoSubstitute),
+                new DocumentPipelineJobScheduler(
+                    Substitute.For<IDocumentRepository>(),
+                    new DocumentPipelineRunManager(runRepoSubstitute),
+                    Substitute.For<IBackgroundJobManager>()),
+                Substitute.For<IDistributedEventBus>(),
+                Substitute.For<Volo.Abp.Timing.IClock>()),
             Substitute.For<Dignite.Vault.Extract.FlexFields.IVaultExtractFieldTypeRegistry>());
 
         var method = typeof(DocumentAppService).GetMethod(

@@ -16,17 +16,34 @@ import type { DocumentDto } from '../proxy/documents/models';
  * `CabinetId`). File upload is the one endpoint the schematic can't express faithfully,
  * so we keep the known-good FormData call here.
  */
+
+// Pure helper, exported for unit testing without an Angular injection context (#623):
+// builds the multipart body the upload endpoint expects, including the optional
+// `DocumentTypeId` declared-type field (a declared type is an operator confirmation —
+// see UploadDocumentInput on the backend — so it is only appended when actually set).
+export function buildUploadFormData(
+  file: File,
+  cabinetId?: string,
+  documentTypeId?: string,
+): FormData {
+  const formData = new FormData();
+  formData.append('File', file, file.name);
+  if (cabinetId) {
+    formData.append('CabinetId', cabinetId);
+  }
+  if (documentTypeId) {
+    formData.append('DocumentTypeId', documentTypeId);
+  }
+  return formData;
+}
+
 @Injectable({ providedIn: 'root' })
 export class DocumentUploadService {
   private readonly rest = inject(RestService);
   private readonly apiName = 'Default';
 
-  upload = (file: File, cabinetId?: string): Observable<DocumentDto> => {
-    const formData = new FormData();
-    formData.append('File', file, file.name);
-    if (cabinetId) {
-      formData.append('CabinetId', cabinetId);
-    }
+  upload = (file: File, cabinetId?: string, documentTypeId?: string): Observable<DocumentDto> => {
+    const formData = buildUploadFormData(file, cabinetId, documentTypeId);
     return this.rest.request<FormData, DocumentDto>(
       { method: 'POST', url: '/api/vault-extract/documents/upload', body: formData },
       { apiName: this.apiName },

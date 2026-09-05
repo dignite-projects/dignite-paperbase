@@ -5,7 +5,14 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LocalizationPipe, PermissionService } from '@abp/ng.core';
 import { ToasterService } from '@abp/ng.theme.shared';
-import { CabinetDto, CabinetService, DocumentUploadService, EXTRACT_PERMISSIONS } from '@dignite/ng.vault-extract';
+import {
+  CabinetDto,
+  CabinetService,
+  DocumentTypeDto,
+  DocumentTypeService,
+  DocumentUploadService,
+  EXTRACT_PERMISSIONS,
+} from '@dignite/ng.vault-extract';
 import { from, of } from 'rxjs';
 import { catchError, map, mergeMap } from 'rxjs/operators';
 import {
@@ -38,6 +45,7 @@ interface FileUploadState {
 export class DocumentUploadComponent implements OnInit {
   private readonly documentUploadService = inject(DocumentUploadService);
   private readonly cabinetService = inject(CabinetService);
+  private readonly documentTypeService = inject(DocumentTypeService);
   private readonly toaster = inject(ToasterService);
   private readonly permissionService = inject(PermissionService);
   private readonly destroyRef = inject(DestroyRef);
@@ -54,6 +62,16 @@ export class DocumentUploadComponent implements OnInit {
   );
   cabinets = signal<CabinetDto[]>([]);
   selectedCabinetId = signal<string>('');
+
+  // Declaring a type at upload is equivalent to an operator confirming classification
+  // (#623): it skips the LLM classification call entirely, so it requires
+  // ConfirmClassification in addition to Upload. Without permission, hide the selector —
+  // every file uploads through ordinary LLM classification as before.
+  readonly canDeclareType = this.permissionService.getGrantedPolicy(
+    EXTRACT_PERMISSIONS.Documents.ConfirmClassification,
+  );
+  documentTypes = signal<DocumentTypeDto[]>([]);
+  selectedDocumentTypeId = signal<string>('');
 
   // Picker `accept` filter, derived from the shared whitelist (mirrors backend, #221).
   readonly acceptAttribute = UPLOAD_ACCEPT_ATTRIBUTE;
@@ -83,6 +101,15 @@ export class DocumentUploadComponent implements OnInit {
         .subscribe({
           next: list => this.cabinets.set(list),
           error: () => this.cabinets.set([]),
+        });
+    }
+
+    if (this.canDeclareType) {
+      this.documentTypeService.getVisible()
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: list => this.documentTypes.set(list),
+          error: () => this.documentTypes.set([]),
         });
     }
   }
@@ -170,18 +197,24 @@ export class DocumentUploadComponent implements OnInit {
       .pipe(
         mergeMap(
           ({ file, idx }) =>
-            this.documentUploadService.upload(file, this.selectedCabinetId() || undefined).pipe(
-              map(document => ({
-                idx,
-                success: true,
-                documentId: document.id,
-                errorMessage: undefined as string | undefined,
-              })),
-              catchError(err => {
-                const errorMessage: string | undefined = err?.error?.error?.message;
-                return of({ idx, success: false, documentId: undefined, errorMessage });
-              }),
-            ),
+            this.documentUploadService
+              .upload(
+                file,
+                this.selectedCabinetId() || undefined,
+                this.selectedDocumentTypeId() || undefined,
+              )
+              .pipe(
+                map(document => ({
+                  idx,
+                  success: true,
+                  documentId: document.id,
+                  errorMessage: undefined as string | undefined,
+                })),
+                catchError(err => {
+                  const errorMessage: string | undefined = err?.error?.error?.message;
+                  return of({ idx, success: false, documentId: undefined, errorMessage });
+                }),
+              ),
           MAX_CONCURRENT_UPLOADS,
         ),
         takeUntilDestroyed(this.destroyRef),

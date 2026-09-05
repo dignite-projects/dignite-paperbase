@@ -718,6 +718,38 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
         SetReviewReason(DocumentReviewReasons.FieldValidationWarning, present: false);
     }
 
+    /// <summary>
+    /// Declares the document type at upload time (#623): an operator-level confirmation applied to a freshly
+    /// created document, before any pipeline has run. Semantically equivalent to <see cref="ConfirmClassification"/>
+    /// (sets <see cref="DocumentTypeId"/>, pins <see cref="ClassificationConfidence"/> to 1.0, and marks
+    /// <see cref="ReviewDisposition"/> Confirmed), but deliberately narrower: it must never touch container flags,
+    /// review reasons, <see cref="FlexFields"/>, the duplicate-detection fingerprint, or raise any event, because at
+    /// this point no pipeline has produced anything for those to react to yet. The Classification pipeline stage
+    /// itself is completed later, by the Parse-cascade branch (<c>DocumentParseBackgroundJob</c>), which is what
+    /// actually creates the <c>Classification</c> run and publishes <c>DocumentClassifiedEto</c> at the correct
+    /// point in the stage sequence (#623 decision 2) — this method only stamps the declaration onto the aggregate
+    /// so it survives the asynchronous gap between upload and Parse completion.
+    /// <para>
+    /// Guarded to pre-pipeline use only: throws <see cref="VaultExtractErrorCodes.Document.DocumentTypeAlreadyDeclared"/>
+    /// if <see cref="DocumentTypeId"/> is already set (declaring twice is a caller bug — <c>UploadAsync</c> calls this
+    /// exactly once), and throws <see cref="VaultExtractErrorCodes.Document.MarkdownIsImmutable"/> if
+    /// <see cref="Markdown"/> is already set (this method is defined to run strictly before Parse; once Markdown is
+    /// written, the Parse-cascade branch — not this method — is the only path that may act on the declared type).
+    /// </para>
+    /// </summary>
+    internal void DeclareDocumentType(Guid documentTypeId)
+    {
+        if (DocumentTypeId.HasValue)
+            throw new BusinessException(VaultExtractErrorCodes.Document.DocumentTypeAlreadyDeclared);
+        if (!string.IsNullOrEmpty(Markdown))
+            throw new BusinessException(VaultExtractErrorCodes.Document.MarkdownIsImmutable);
+
+        DocumentTypeId = Check.NotDefaultOrNull<Guid>(documentTypeId, nameof(documentTypeId));
+        ClassificationConfidence = 1.0;
+        ReviewDisposition = DocumentReviewDisposition.Confirmed;
+        RejectionReason = null;
+    }
+
     internal void ConfirmClassification(Guid documentTypeId)
     {
         DocumentTypeId = Check.NotDefaultOrNull<Guid>(documentTypeId, nameof(documentTypeId));

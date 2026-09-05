@@ -55,6 +55,11 @@ public static class VaultExtractErrorCodes
         // defense-in-depth for legacy rows, manual DB edits, and a delete/classification race. Remedy: restore the
         // type first, then the document.
         public const string RestoreTypeDeleted = "Extract:DocumentRestoreTypeDeleted";
+        // #623: Document.DeclareDocumentType's pre-pipeline guard — the declared-type-at-upload path is only
+        // valid on a freshly created document (before any pipeline runs). A second declaration attempt (the
+        // aggregate already carries a DocumentTypeId) is a caller bug, not a runtime race: UploadAsync calls this
+        // exactly once, synchronously, before the document is even inserted.
+        public const string DocumentTypeAlreadyDeclared = "Extract:DocumentTypeAlreadyDeclared";
     }
 
     public static class DocumentType

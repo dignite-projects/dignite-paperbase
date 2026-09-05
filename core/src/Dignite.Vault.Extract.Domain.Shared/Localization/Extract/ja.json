@@ -332,6 +332,9 @@
     "Document:CabinetUpdated": "キャビネットを更新しました。",
     "Document:Filter:AllCabinets": "すべてのキャビネット",
     "Document:SelectCabinet": "キャビネット（任意）",
+    "Document:SelectDocumentType": "ドキュメントタイプ（任意）",
+    "Document:SelectDocumentType:Hint": "AIによる分類をスキップし、このタイプを直接確定します。",
+    "Document:LetAiClassify": "AIに分類させる",
 
     "FieldDefinition:Title": "タイプ別フィールド",
     "FieldDefinition:New": "新しいフィールド",
@@ -431,6 +434,7 @@
     "Extract:DocumentNoSourceBlob": "このドキュメントにはダウンロードできるソースファイルがありません。",
     "Extract:DocumentRestoreConflict": "ドキュメント '{DocumentId}' を復元できません：同じソース構成要素を共有する別のライブなサブドキュメントが既に存在します。重複を避けるため、復元は拒否されました。",
     "Extract:DocumentRestoreTypeDeleted": "このドキュメントを復元できません：ドキュメントタイプ '{TypeCode}' は削除されています。先にそのドキュメントタイプを復元してから、このドキュメントを復元してください。",
+    "Extract:DocumentTypeAlreadyDeclared": "このドキュメントには既にドキュメントタイプが設定されているため、再度宣言できません。",
     "Extract:DocumentHasSubDocuments": "このドキュメントには、まだそこから派生したサブドキュメントがあります。先にサブドキュメントを削除してから、このドキュメントを削除してください。",
     "Extract:DocumentHasSubDocumentsPermanentDelete": "このドキュメントには、まだそこから派生したサブドキュメントがあります（ごみ箱内のものを含む）。サブドキュメントは自身のソースファイルを持たず、このドキュメントを通じて参照するため、先にサブドキュメントを完全に削除してください。",
     "Extract:UnknownPipelineCode": "パイプライン '{PipelineCode}' は再試行できません。",

@@ -21,6 +21,25 @@
           </select>
         </div>
       }
+
+      @if (canDeclareType && documentTypes().length > 0 && canAcceptFiles()) {
+        <div class="document-type-select">
+          <label class="form-label fw-semibold">{{ '::Document:SelectDocumentType' | abpLocalization }}</label>
+          <select
+            class="form-select"
+            [ngModel]="selectedDocumentTypeId()"
+            (ngModelChange)="selectedDocumentTypeId.set($event)"
+          >
+            <option value="">{{ '::Document:LetAiClassify' | abpLocalization }}</option>
+            @for (t of documentTypes(); track t.id) {
+              <option [value]="t.id">{{ t.displayName }}</option>
+            }
+          </select>
+          <small class="text-muted d-block mt-1">
+            {{ '::Document:SelectDocumentType:Hint' | abpLocalization }}
+          </small>
+        </div>
+      }
     </div>
 
     <input

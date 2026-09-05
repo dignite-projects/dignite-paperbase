@@ -65,6 +65,18 @@ The prompt language follows `Vault:ExtractBehavior:DefaultLanguage` (see [ai-pro
 | LLM unreachable (transient) | `Failed`, exception rethrown | ABP retries the job per `BackgroundJobOptions.JobTypes` `MaxTryCount`. Next attempt does a fresh LLM classification once the provider recovers. |
 | LLM returned malformed JSON | review queue (`UnresolvedClassification`) | No retry — a human resolves the type code in the UI |
 
+## Declared type at upload
+
+`UploadDocumentInput.DocumentTypeId` (#623) lets a caller who already knows the type skip this whole stage. Supplying it is equivalent to an operator calling `ConfirmClassificationAsync` on the document: `DocumentTypeId` is set, `ClassificationConfidence` is pinned to `1.0`, `ReviewDisposition` becomes `Confirmed`, and **no classification LLM call is made** — the document never enters the review queue for `UnresolvedClassification`. This is aimed at business-system integrations that already know what they are submitting (an invoice-scanning station, an HR system uploading a known contract) and at MCP ingest callers that were told the type.
+
+Mechanically, the declaration is stamped onto the `Document` at upload time, but the `Classification` pipeline stage itself is still completed later, right after [text extraction](../text-extraction/text-extraction.md) finishes — `DocumentParseBackgroundJob`'s cascade branch sees the declared type and completes `Classification` as a manual classification (same run bookkeeping, same transactional field-extraction scheduling, same `DocumentClassifiedEto` shape as an operator confirmation) instead of enqueuing the LLM job. `DocumentClassifiedEto` therefore still fires in the correct stage order, after `OCRCompletedEto` — no ETO contract change.
+
+A few consequences worth knowing:
+
+- **Container detection and embedded-document routing are skipped.** Both ride the classification stage; a document with a declared type is treated as a concrete document, exactly like an operator `Reclassify` to a concrete type today. If the caller declared a type for what is actually a bundle of several documents, the operator's remedy is the same as today: re-recognize, which runs the LLM and can detect the container.
+- **This only short-circuits the first automatic classification.** An operator "re-recognize" (`RerecognizeAsync`) afterward always runs the real LLM classification, the same as re-recognizing an operator-confirmed document.
+- **Declaring a type requires an additional permission.** Because it bypasses the review queue, `UploadAsync` requires the caller to hold `Documents.ConfirmClassification` in addition to `Documents.Upload` when `DocumentTypeId` is supplied — the same additive-permission shape as the `CabinetId` / `Cabinets.Default` check. The id must resolve to a `DocumentType` in the caller's own layer (Host or the caller's tenant); an unknown or cross-layer id fails the upload with `EntityNotFoundException`.
+
 ## See also
 
 - [Text extraction](../text-extraction/text-extraction.md) — produces the `Document.Markdown` consumed here
