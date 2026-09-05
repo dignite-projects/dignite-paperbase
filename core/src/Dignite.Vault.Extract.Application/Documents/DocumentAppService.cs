@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Dignite.Vault.Extract.Abstractions.Documents;
 using Dignite.Vault.Extract.Documents;
 using Dignite.Vault.Extract.Documents.Pipelines;
+using Dignite.Vault.Extract.Documents.Pipelines.Classification;
 using Dignite.Vault.Extract.Documents.Review;
 using Dignite.Vault.Extract.Permissions;
 using Microsoft.AspNetCore.Authorization;
