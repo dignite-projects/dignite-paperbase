@@ -730,19 +730,21 @@ public class Document : FullAuditedAggregateRoot<Guid>, IMultiTenant, IHasFlexFi
     /// point in the stage sequence (#623 decision 2) — this method only stamps the declaration onto the aggregate
     /// so it survives the asynchronous gap between upload and Parse completion.
     /// <para>
-    /// Guarded to pre-pipeline use only: throws <see cref="VaultExtractErrorCodes.Document.DocumentTypeAlreadyDeclared"/>
-    /// if <see cref="DocumentTypeId"/> is already set (declaring twice is a caller bug — <c>UploadAsync</c> calls this
-    /// exactly once), and throws <see cref="VaultExtractErrorCodes.Document.MarkdownIsImmutable"/> if
+    /// Guarded to pre-pipeline use only: throws <see cref="InvalidOperationException"/> if <see cref="DocumentTypeId"/>
+    /// is already set (declaring twice is a caller bug — <c>UploadAsync</c> calls this exactly once) or if
     /// <see cref="Markdown"/> is already set (this method is defined to run strictly before Parse; once Markdown is
     /// written, the Parse-cascade branch — not this method — is the only path that may act on the declared type).
+    /// Both are internal invariants reachable only through a programming error, not user-facing business rules, so
+    /// they deliberately carry no <c>VaultExtractErrorCodes</c> entry: an error code is a frozen serialized string
+    /// and would never legitimately reach a client.
     /// </para>
     /// </summary>
     internal void DeclareDocumentType(Guid documentTypeId)
     {
         if (DocumentTypeId.HasValue)
-            throw new BusinessException(VaultExtractErrorCodes.Document.DocumentTypeAlreadyDeclared);
+            throw new InvalidOperationException("DeclareDocumentType can only be called on a document that has no document type yet.");
         if (!string.IsNullOrEmpty(Markdown))
-            throw new BusinessException(VaultExtractErrorCodes.Document.MarkdownIsImmutable);
+            throw new InvalidOperationException("DeclareDocumentType must run before text extraction has written Markdown.");
 
         DocumentTypeId = Check.NotDefaultOrNull<Guid>(documentTypeId, nameof(documentTypeId));
         ClassificationConfidence = 1.0;

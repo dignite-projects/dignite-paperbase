@@ -261,6 +261,12 @@ public class DocumentParseBackgroundJob
         // and embedded-document routing are intentionally skipped for a declared type (#623 decision 1): both
         // ride the classification stage, and a declared type is treated as a concrete document -- the same
         // outcome as an operator Reclassify to a concrete type today.
+        //
+        // Known, accepted edge: an operator who Reclassifies this document BEFORE Parse completes (Markdown not
+        // yet written) also leaves it Confirmed, so this branch applies the sequence a second time. The result is
+        // still correct -- it reads the type currently confirmed on the aggregate, so the operator's later choice
+        // wins -- at the cost of one redundant Classification run and a duplicate DocumentClassifiedEto, which
+        // downstream already absorbs under the at-least-once / EventTime contract. Not guarded on purpose.
         if (document.DocumentTypeId.HasValue && document.ReviewDisposition == DocumentReviewDisposition.Confirmed)
         {
             var declaredType = await _documentTypeRepository.FindAsync(document.DocumentTypeId.Value);

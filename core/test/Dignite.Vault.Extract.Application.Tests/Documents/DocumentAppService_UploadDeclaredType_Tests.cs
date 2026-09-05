@@ -190,8 +190,7 @@ public class DocumentAppService_UploadDeclaredType_Tests
         var exception = Should.Throw<TargetInvocationException>(
             () => InvokeDeclareDocumentType(doc, Guid.NewGuid()));
 
-        ((BusinessException)exception.InnerException!).Code
-            .ShouldBe(VaultExtractErrorCodes.Document.DocumentTypeAlreadyDeclared);
+        exception.InnerException.ShouldBeOfType<InvalidOperationException>();
     }
 
     [Fact]
@@ -205,8 +204,7 @@ public class DocumentAppService_UploadDeclaredType_Tests
         var exception = Should.Throw<TargetInvocationException>(
             () => InvokeDeclareDocumentType(doc, Guid.NewGuid()));
 
-        ((BusinessException)exception.InnerException!).Code
-            .ShouldBe(VaultExtractErrorCodes.Document.MarkdownIsImmutable);
+        exception.InnerException.ShouldBeOfType<InvalidOperationException>();
     }
 
     private static void InvokeDeclareDocumentType(Document document, Guid documentTypeId)
