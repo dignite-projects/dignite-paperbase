@@ -38,4 +38,24 @@ describe('formatExtractedFieldValue', () => {
   it('never lets an object surface as [object Object]', () => {
     expect(formatExtractedFieldValue({ a: 1 })).toBe('{"a":1}');
   });
+
+  // #625: a Table field's egress value is a JSON array of row objects, not a flat array of scalars like
+  // Tags / multi-Select. Array.isArray(value) is true for both shapes, so the per-element rendering has to
+  // branch on the element's own shape rather than assuming every array element is a scalar.
+  it('renders an array of plain strings the same as before (Tags / multi-Select)', () => {
+    expect(formatExtractedFieldValue(['urgent', 'legal', '2026'])).toBe('urgent; legal; 2026');
+  });
+
+  it('renders array elements that are row objects as JSON, never [object Object] (Table, #625)', () => {
+    const rows = [
+      { item: 'Widget', qty: 3 },
+      { item: 'Gadget', qty: 1.5 },
+    ];
+
+    expect(formatExtractedFieldValue(rows)).toBe('{"item":"Widget","qty":3}; {"item":"Gadget","qty":1.5}');
+  });
+
+  it('renders an empty Table value as the em dash placeholder, not "[]"', () => {
+    expect(formatExtractedFieldValue([])).toBe('—');
+  });
 });

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Dignite.Abp.FlexFields;
 using Dignite.Vault.Extract.FlexFields;
@@ -32,6 +33,11 @@ namespace Dignite.Vault.Extract.Documents.DocumentTypes.Packs;
 /// </summary>
 public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypePackAppService
 {
+    /// <summary>Mirror of <c>FieldDefinitionAppService.ColumnNameRegex</c> — see that field's own doc for why a column <c>Name</c> needs the same prompt-injection allow-list a top-level <c>Field.Name</c> already has.</summary>
+    private static readonly Regex ColumnNameRegex = new(
+        FieldDefinitionConsts.NamePattern,
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private readonly IDocumentTypeRepository _documentTypeRepository;
     private readonly IFieldRepository _fieldDefinitionRepository;
     private readonly IFieldTypeResolver _fieldTypeResolver;
@@ -328,7 +334,15 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
     /// </summary>
     protected virtual async Task GuardFieldMutationAsync(Field existing, DocumentTypePackFieldDto pack)
     {
-        if (string.Equals(pack.FieldTypeName, existing.FieldTypeName, StringComparison.Ordinal))
+        // #625 follow-up: a composite type (Table) whose own FieldTypeName is unchanged can still have its
+        // COLUMNS changed by the incoming pack — see FieldDefinitionAppService.UpdateAsync's mirror of this
+        // same guard for the full rationale (renaming/removing/adding/retyping/reordering a column orphans
+        // historical cell data exactly like a top-level type change would).
+        var fieldTypeChanged = !string.Equals(pack.FieldTypeName, existing.FieldTypeName, StringComparison.Ordinal);
+        var columnsChanged = !fieldTypeChanged &&
+            CompositeColumnsChanged(existing.FieldTypeName, existing.Configuration, pack.Configuration);
+
+        if (!fieldTypeChanged && !columnsChanged)
         {
             return;
         }
@@ -338,6 +352,29 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
             throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.DataTypeChangeNotAllowed)
                 .WithData("Name", existing.Name);
         }
+    }
+
+    /// <summary>Mirror of <c>FieldDefinitionAppService.CompositeColumnsChanged</c> — see that method's own doc.</summary>
+    protected virtual bool CompositeColumnsChanged(
+        string fieldTypeName, FieldConfigurationDictionary? oldConfiguration, FieldConfigurationDictionary? newConfiguration)
+    {
+        var kernelFieldType = _fieldTypeResolver.GetAll()
+            .FirstOrDefault(t => string.Equals(t.Name, fieldTypeName, StringComparison.Ordinal));
+        if (kernelFieldType is not ICompositeFieldType compositeFieldType)
+        {
+            return false;
+        }
+
+        var oldColumns = compositeFieldType
+            .GetInlineFields(oldConfiguration ?? new FieldConfigurationDictionary())
+            .Select(c => (c.Name, c.FieldTypeName))
+            .ToList();
+        var newColumns = compositeFieldType
+            .GetInlineFields(newConfiguration ?? new FieldConfigurationDictionary())
+            .Select(c => (c.Name, c.FieldTypeName))
+            .ToList();
+
+        return !oldColumns.SequenceEqual(newColumns);
     }
 
     /// <summary>Whether values of this field type reach the query index at all; see <see cref="FieldDefinitionAppService"/>.</summary>
@@ -353,7 +390,8 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
     /// </summary>
     protected virtual void EnsureFieldTypeRegistered(string fieldTypeName, FieldConfigurationDictionary? configuration)
     {
-        var kernelFieldType = _fieldTypeResolver.GetAll()
+        var allFieldTypes = _fieldTypeResolver.GetAll();
+        var kernelFieldType = allFieldTypes
             .FirstOrDefault(t => string.Equals(t.Name, fieldTypeName, StringComparison.Ordinal));
 
         if (kernelFieldType == null || !_fieldTypeExtensionRegistry.IsSupported(fieldTypeName))
@@ -362,17 +400,54 @@ public class DocumentTypePackAppService : VaultExtractAppService, IDocumentTypeP
                 .WithData("FieldTypeName", fieldTypeName);
         }
 
-        if (kernelFieldType is ICompositeFieldType compositeFieldType)
+        if (kernelFieldType is ICompositeFieldType)
         {
-            foreach (var column in compositeFieldType.GetInlineFields(configuration ?? new FieldConfigurationDictionary()))
+            // Same ordering as FieldDefinitionAppService's mirror: the depth cap runs FIRST, before
+            // anything below recurses into the configuration itself — see CompositeFieldNesting's own doc.
+            if (CompositeFieldNesting.ExceedsMaxDepth(fieldTypeName, configuration, allFieldTypes))
             {
-                if (!_fieldTypeExtensionRegistry.IsSupported(column.FieldTypeName))
-                {
-                    throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.UnknownColumnFieldType)
-                        .WithData("FieldTypeName", column.FieldTypeName)
-                        .WithData("ColumnName", column.Name);
-                }
+                throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.CompositeNestingTooDeep)
+                    .WithData("FieldTypeName", fieldTypeName)
+                    .WithData("MaxDepth", CompositeFieldNesting.MaxDepth);
             }
+
+            EnsureColumnsRegistered(fieldTypeName, configuration ?? new FieldConfigurationDictionary(), allFieldTypes);
+        }
+    }
+
+    /// <summary>
+    /// Mirror of <c>FieldDefinitionAppService.EnsureColumnsRegistered</c> — a pack is another write path
+    /// into the same fields, and owes an imported composite field's own columns the same recursive registry
+    /// + Name-allow-list check, not just the kernel's generic shape validation. Safe from unbounded
+    /// recursion only because <see cref="EnsureFieldTypeRegistered"/> already rejected anything deeper than
+    /// <see cref="CompositeFieldNesting.MaxDepth"/> before this method is ever called.
+    /// </summary>
+    protected virtual void EnsureColumnsRegistered(
+        string fieldTypeName, FieldConfigurationDictionary configuration, IReadOnlyList<IFieldType> allFieldTypes)
+    {
+        var fieldType = allFieldTypes.FirstOrDefault(t => string.Equals(t.Name, fieldTypeName, StringComparison.Ordinal));
+        if (fieldType is not ICompositeFieldType compositeFieldType)
+        {
+            return;
+        }
+
+        foreach (var column in compositeFieldType.GetInlineFields(configuration))
+        {
+            if (!_fieldTypeExtensionRegistry.IsSupported(column.FieldTypeName))
+            {
+                throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.UnknownColumnFieldType)
+                    .WithData("FieldTypeName", column.FieldTypeName)
+                    .WithData("ColumnName", column.Name);
+            }
+
+            if (!ColumnNameRegex.IsMatch(column.Name))
+            {
+                throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.InvalidColumnName)
+                    .WithData("ColumnName", column.Name)
+                    .WithData("Pattern", FieldDefinitionConsts.NamePattern);
+            }
+
+            EnsureColumnsRegistered(column.FieldTypeName, column.Configuration, allFieldTypes);
         }
     }
 

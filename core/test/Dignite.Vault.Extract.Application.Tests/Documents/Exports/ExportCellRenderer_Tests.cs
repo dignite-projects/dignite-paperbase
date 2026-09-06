@@ -157,6 +157,32 @@ public class ExportCellRenderer_Tests
     }
 
     /// <summary>
+    /// #625 follow-up: an empty (non-null, zero-row) Table value must render as an empty cell, exactly like
+    /// an empty Tags/multi-Select list does above - never the literal text <c>"[]"</c>, which
+    /// <c>TableFieldTypeExtension.RenderForExport</c> would otherwise produce by unconditionally delegating
+    /// to <c>WriteJson</c>. Goes through the real <c>TryRead</c> -&gt; <c>RenderCell</c> path, mirroring
+    /// <see cref="Table_export_cell_reaches_RenderForExport_not_the_generic_list_branch"/> above.
+    /// </summary>
+    [Fact]
+    public void Empty_table_export_cell_is_null_not_the_literal_text_empty_brackets()
+    {
+        var configuration = new TableConfiguration
+        {
+            Columns = new List<InlineFieldDefinition>
+            {
+                new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName, Required = true },
+                new() { Name = "qty", DisplayName = "Quantity", FieldTypeName = NumberFieldType.ControlName }
+            }
+        }.ConfigurationDictionary;
+
+        TestFieldTypeRegistry.Default.Get(TableFieldType.ControlName)
+            .TryRead(Json("[]"), configuration, out var value)
+            .ShouldBeTrue();
+
+        Render(value, TableFieldType.ControlName, configuration).ShouldBeNull();
+    }
+
+    /// <summary>
     /// A field type this renderer does not know must break loudly. Carried over from v2's switch: a silently
     /// wrong cell in a file handed to an accountant is worse than an error.
     /// </summary>

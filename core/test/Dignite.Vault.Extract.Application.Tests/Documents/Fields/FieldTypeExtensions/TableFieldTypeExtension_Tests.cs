@@ -7,6 +7,7 @@ using Dignite.Abp.FlexFields.Table;
 using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.Documents.Exports;
 using Dignite.Vault.Extract.FlexFields;
+using Dignite.Vault.Extract.FlexFields.Tags;
 using Shouldly;
 using Xunit;
 
@@ -235,5 +236,97 @@ public class TableFieldTypeExtension_Tests
         parsed.ValueKind.ShouldBe(JsonValueKind.Array);
         parsed[0].GetProperty("item").GetString().ShouldBe("Widget");
         parsed[0].GetProperty("qty").GetDecimal().ShouldBe(3m);
+    }
+
+    /// <summary>
+    /// #625 follow-up: every other column type tested above contributes exactly one string per cell.
+    /// <c>Tags</c> (and multi-<c>Select</c>) is the first column type that contributes a
+    /// <b>variable-length run</b> of strings per cell - this exercises the full round trip (<c>TryRead</c>
+    /// -&gt; <c>WriteJson</c> -&gt; <c>CanonicalizeForFingerprint</c>) for that shape.
+    /// </summary>
+    [Fact]
+    public void Reads_writes_and_canonicalizes_a_row_whose_cell_is_a_multi_valued_column()
+    {
+        var columnsWithTags = new TableConfiguration
+        {
+            Columns = new List<InlineFieldDefinition>
+            {
+                new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName, Required = true },
+                new() { Name = "labels", DisplayName = "Labels", FieldTypeName = TagsFieldType.ControlName }
+            }
+        }.ConfigurationDictionary;
+
+        var raw = Json("""[{"item":"Widget","labels":["urgent","legal"]},{"item":"Gadget","labels":["low"]}]""");
+
+        Table.TryRead(raw, columnsWithTags, out var result).ShouldBeTrue();
+        var rows = result.ShouldBeOfType<List<TableRow>>();
+        rows.Count.ShouldBe(2);
+        rows[0].Values["labels"].ShouldBeOfType<List<string>>().ShouldBe(new[] { "urgent", "legal" });
+        rows[1].Values["labels"].ShouldBeOfType<List<string>>().ShouldBe(new[] { "low" });
+
+        var written = Table.WriteJson(result!, columnsWithTags);
+        written.ShouldNotBeNull();
+        var writtenRows = written!.Value.EnumerateArray().ToList();
+        writtenRows[0].GetProperty("labels").EnumerateArray().Select(e => e.GetString()).ShouldBe(new[] { "urgent", "legal" });
+        writtenRows[1].GetProperty("labels").EnumerateArray().Select(e => e.GetString()).ShouldBe(new[] { "low" });
+
+        // item (1 string/cell) then labels (N strings/cell), per row, in column order.
+        Table.CanonicalizeForFingerprint(rows, columnsWithTags)
+            .ShouldBe(new[] { "widget", "urgent", "legal", "gadget", "low" });
+    }
+
+    /// <summary>
+    /// KNOWN LIMITATION, not a regression from this pass — reported per the #625 code-review brief rather
+    /// than silently fixed, because a fix changes what an existing Table-based unique key hashes to (a
+    /// fingerprint-contract change, CLAUDE.md "decide whether an Issue is needed" territory).
+    /// <para>
+    /// <see cref="TableFieldTypeExtension.CanonicalizeForFingerprint"/> flattens every cell's contribution
+    /// into one list with <c>AddRange</c> and no boundary marker between cells or rows. That is safe for
+    /// every column type tested above, each of which contributes exactly one string per cell — but once a
+    /// column is multi-valued (<c>Tags</c> / multi-<c>Select</c>), a cell can contribute a
+    /// <b>variable-length</b> run of strings, and the row/cell boundary that run's length used to mark is
+    /// lost the moment it is flattened. Two structurally different tables can then flatten to the identical
+    /// canonical sequence, which <c>FlexFieldFingerprintCalculator</c> (#411) would hash identically - a
+    /// false "these are the same document" duplicate-detection collision if a Table field carrying a
+    /// multi-valued column is ever marked <c>IsUniqueKey</c>.
+    /// </para>
+    /// <para>
+    /// This test pins the CURRENT behavior (the two tables below canonicalize identically) so a future fix
+    /// changes a red assertion, not a silent drift. Every other column-type combination pinned above is
+    /// unaffected: the ambiguity only exists when a multi-valued column shares a row with a scalar one.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void KNOWN_LIMITATION_Multi_valued_columns_can_make_two_different_tables_canonicalize_identically()
+    {
+        var columnsWithTags = new TableConfiguration
+        {
+            Columns = new List<InlineFieldDefinition>
+            {
+                new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName, Required = true },
+                new() { Name = "labels", DisplayName = "Labels", FieldTypeName = TagsFieldType.ControlName }
+            }
+        }.ConfigurationDictionary;
+
+        // Table A: row1 has a 2-tag cell then item "x"; row2 has a 1-tag cell then item "y".
+        var tableA = new List<TableRow>
+        {
+            new() { Values = new FlexFieldDictionary { ["item"] = "a", ["labels"] = new List<string> { "b", "x" } } },
+            new() { Values = new FlexFieldDictionary { ["item"] = "c", ["labels"] = new List<string> { "y" } } }
+        };
+
+        // Table B: a DIFFERENT row/cell split - row1 has a 1-tag cell then item "b"; row2 has a 2-tag cell
+        // then item "y". Not the same data by any reasonable reading, and not equal as List<TableRow>.
+        var tableB = new List<TableRow>
+        {
+            new() { Values = new FlexFieldDictionary { ["item"] = "a", ["labels"] = new List<string> { "b" } } },
+            new() { Values = new FlexFieldDictionary { ["item"] = "x", ["labels"] = new List<string> { "c", "y" } } }
+        };
+
+        var canonicalA = Table.CanonicalizeForFingerprint(tableA, columnsWithTags);
+        var canonicalB = Table.CanonicalizeForFingerprint(tableB, columnsWithTags);
+
+        canonicalA.ShouldBe(canonicalB);
+        canonicalA.ShouldBe(new[] { "a", "b", "x", "c", "y" });
     }
 }

@@ -7,7 +7,10 @@ using System.Threading.Tasks;
 using Dignite.Vault.Extract.Ai;
 using Dignite.Vault.Extract.Documents;
 using Dignite.Vault.Extract.Documents.DocumentTypes;
+using Dignite.Abp.FlexFields;
 using Dignite.Abp.FlexFields.Number;
+using Dignite.Abp.FlexFields.Table;
+using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.Documents.Fields;
 using Dignite.Vault.Extract.Documents.Fields.FieldTypeExtensions;
 using Dignite.Vault.Extract.Documents.Pipelines;
@@ -20,6 +23,7 @@ using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
 using Volo.Abp.BackgroundJobs;
+using Volo.Abp.BlobStoring;
 using Volo.Abp.Guids;
 using Volo.Abp.Modularity;
 using Volo.Abp.Uow;
@@ -36,6 +40,11 @@ public class FieldExtractionJobTestModule : AbpModule
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
         context.Services.AddSingleton(Substitute.For<IBackgroundJobManager>());
+
+        // IDocumentAppService's wider constructor graph needs a blob container even though the Table
+        // egress test below never reads or writes blob content — same substitute other test modules use
+        // for the same reason (e.g. FieldTypeCatalogAndSearchabilityTestModule).
+        context.Services.AddSingleton(Substitute.For<IBlobContainer<VaultExtractDocumentContainer>>());
 
         Configure<VaultExtractBehaviorOptions>(options =>
         {
@@ -194,6 +203,92 @@ public class DocumentFieldExtractionBackgroundJob_Tests
             ReviewReasonPolicy.HasBlocking(doc.ReviewReasons).ShouldBeTrue();
             // #510: a blocking reason (FieldExtractionIncomplete) withholds Ready -> PendingReview, not Processing.
             doc.LifecycleStatus.ShouldBe(DocumentLifecycleStatus.PendingReview);
+        });
+    }
+
+    /// <summary>
+    /// #625 end-to-end: a Table field through the REAL pipeline path — stubbed LLM response (a JSON array
+    /// of row objects) -&gt; <see cref="FieldExtractionService"/>'s schema application and in-flight guards
+    /// -&gt; <c>Document.SetFlexFields</c> -&gt; index sync -&gt; the value appearing correctly in
+    /// <see cref="IDocumentAppService.GetAsync"/>'s <c>ExtractedFields</c> egress, all through real EF and
+    /// the real DI-registered <c>IVaultExtractFieldTypeRegistry</c> (not the hand-built test registry the
+    /// substituted <see cref="FieldExtractionWorkflow"/> above carries — that one is unused here, because
+    /// only <c>ExtractAsync</c> is stubbed and everything downstream of it runs for real).
+    /// </summary>
+    [Fact]
+    public async Task Runs_A_Table_Field_Through_The_Real_Pipeline_And_The_Value_Reaches_Egress()
+    {
+        var typeId = _guidGenerator.Create();
+        var fieldId = _guidGenerator.Create();
+        var documentId = _guidGenerator.Create();
+
+        var columns = new TableConfiguration
+        {
+            Columns = new List<InlineFieldDefinition>
+            {
+                new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName, Required = true },
+                new() { Name = "qty", DisplayName = "Quantity", FieldTypeName = NumberFieldType.ControlName }
+            }
+        }.ConfigurationDictionary;
+
+        await WithUnitOfWorkAsync(async () =>
+        {
+            await _documentTypeRepository.InsertAsync(
+                new DocumentType(typeId, null, "type.table", "Type Table"), autoSave: true);
+            await _fieldRepository.InsertAsync(
+                new Field(
+                    fieldId, null, typeId, "line_items", "Line items",
+                    TableFieldType.ControlName, description: "extract line items", configuration: columns,
+                    isSearchable: false),
+                autoSave: true);
+
+            var doc = NewDocument(documentId);
+            doc.SetMarkdown("# Invoice\n\nWidget x3, Gadget x1");
+            doc.ApplyAutomaticClassificationResult(typeId, 0.99);
+            await _documentRepository.InsertAsync(doc, autoSave: true);
+        });
+
+        _workflow
+            .ExtractAsync(Arg.Any<IReadOnlyList<FieldExtractionDescriptor>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new FieldExtractionWorkflowResult(
+                new Dictionary<string, JsonElement?>
+                {
+                    ["line_items"] = JsonDocument.Parse(
+                        """[{"item":"Widget","qty":3},{"item":"Gadget","qty":1}]""").RootElement
+                },
+                Array.Empty<FieldValidationWarningResult>()));
+
+        await _job.ExecuteAsync(new DocumentFieldExtractionJobArgs { DocumentId = documentId, PipelineRunId = null });
+
+        await WithUnitOfWorkAsync(async () =>
+        {
+            // Reloaded from the DB in a fresh UoW: the bag's JSON column comes back as a JsonElement holding
+            // the KERNEL's own List<TableRow> storage shape (each row's cells nested under "values"), not
+            // the flat egress shape WriteJson/AssembleExtractedFields produce below - see
+            // TableFieldTypeExtension.ReadStoredRows's own doc for this CLR/JsonElement shape split. The
+            // per-cell round trip is already pinned at the unit level (TableFieldTypeExtension_Tests); this
+            // only confirms the value survived the real persistence round trip, under the right key, with
+            // the right row count.
+            var doc = await _documentRepository.FindWithFieldValuesAsync(documentId);
+            var stored = doc!.FlexFields["line_items"].ShouldBeOfType<JsonElement>();
+            stored.ValueKind.ShouldBe(JsonValueKind.Array);
+            stored.GetArrayLength().ShouldBe(2);
+        });
+
+        // Egress: through the real DocumentAppService.AssembleExtractedFields, not a hand-built value.
+        var documentAppService = GetRequiredService<IDocumentAppService>();
+        await WithUnitOfWorkAsync(async () =>
+        {
+            var dto = await documentAppService.GetAsync(documentId);
+            dto.ExtractedFields.ShouldNotBeNull();
+            dto.ExtractedFields!.ShouldContainKey("line_items");
+
+            var rendered = dto.ExtractedFields["line_items"];
+            rendered.ValueKind.ShouldBe(JsonValueKind.Array);
+            rendered[0].GetProperty("item").GetString().ShouldBe("Widget");
+            rendered[0].GetProperty("qty").GetDecimal().ShouldBe(3m);
+            rendered[1].GetProperty("item").GetString().ShouldBe("Gadget");
+            rendered[1].GetProperty("qty").GetDecimal().ShouldBe(1m);
         });
     }
 

@@ -417,6 +417,8 @@
     "Extract:FieldDefinitionDataTypeChangeNotAllowed": "無法修改欄位 '{Name}' 的資料類型：此欄位已存在擷取值。請改為新增欄位。",
     "Extract:UnknownFieldType": "未知的欄位類型 '{FieldTypeName}'。請從已註冊的欄位類型中選擇。",
     "Extract:UnknownColumnFieldType": "欄位 '{ColumnName}' 使用了未知的欄位類型 '{FieldTypeName}'。請為每個欄位都選擇已註冊的欄位類型。",
+    "Extract:InvalidColumnName": "欄位名稱 '{ColumnName}' 無效，必須符合格式 {Pattern}。",
+    "Extract:CompositeNestingTooDeep": "欄位類型 '{FieldTypeName}' 的複合欄位巢狀層級過深，最大巢狀深度為 {MaxDepth}。",
     "Extract:FieldTypeNotSearchable": "欄位類型 '{FieldTypeName}' 無法標記為可篩選：該類型沒有查詢索引。",
     "Extract:FieldDefinitionMultiValueRequiresStringType": "多值僅支援文字類型欄位，但要求的是 '{dataType}'。請將欄位宣告為文字類型再開啟多值。",
     "Extract:FieldDefinitionMultiValueChangeNotAllowed": "無法關閉欄位 '{Name}' 的多值：此欄位已存在擷取值，收窄為單值會讓多餘的值變成孤立資料列。請改為新增欄位。",

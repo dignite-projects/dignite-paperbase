@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Dignite.Abp.FlexFields;
 using Dignite.Abp.FlexFields.CKEditor;
+using Dignite.Abp.FlexFields.Number;
 using Dignite.Abp.FlexFields.Table;
 using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.Abstractions.Documents;
@@ -121,6 +122,41 @@ public class FieldTypeCatalogAndSearchability_Tests
         ex.Code.ShouldBe(VaultExtractErrorCodes.FieldDefinition.UnknownColumnFieldType);
     }
 
+    /// <summary>
+    /// #625 follow-up: a Table column's <c>Name</c> is concatenated raw into the LLM's JSON schema message
+    /// (<c>TableFieldTypeExtension.BuildExtractionSchema</c> uses it verbatim as a property key) exactly
+    /// like a top-level <c>Field.Name</c> is, so it needs the same prompt-injection allow-list
+    /// (<c>FieldDefinitionConsts.NamePattern</c>) — rejected here, at create time, not merely accepted and
+    /// later concatenated raw into a prompt.
+    /// </summary>
+    [Fact]
+    public async Task CreateAsync_Rejects_A_Table_Column_With_An_Invalid_Name()
+    {
+        var type = await CreateTypeAsync();
+
+        var configuration = new TableConfiguration
+        {
+            Columns = new List<InlineFieldDefinition>
+            {
+                new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName },
+                new() { Name = "bad name!\n", DisplayName = "Bad", FieldTypeName = TextFieldType.ControlName }
+            }
+        }.ConfigurationDictionary;
+
+        var ex = await Should.ThrowAsync<BusinessException>(() => _fieldAppService.CreateAsync(
+            new CreateFieldDefinitionDto
+            {
+                DocumentTypeId = type.Id,
+                Name = "line_items",
+                DisplayName = "Line items",
+                FieldTypeName = TableFieldType.ControlName,
+                Configuration = configuration,
+                IsSearchable = false,
+            }));
+
+        ex.Code.ShouldBe(VaultExtractErrorCodes.FieldDefinition.InvalidColumnName);
+    }
+
     /// <summary>A Table field whose every column IS registered saves normally - the positive counterpart above.</summary>
     [Fact]
     public async Task CreateAsync_Accepts_A_Table_Field_With_Registered_Columns()
@@ -147,6 +183,188 @@ public class FieldTypeCatalogAndSearchability_Tests
         });
 
         field.FieldTypeName.ShouldBe(TableFieldType.ControlName);
+    }
+
+    /// <summary>
+    /// #625 follow-up: before the recursive nesting-depth gate existed, only the IMMEDIATE columns'
+    /// FieldTypeName were checked against the registry - a column that was itself composite (Table) was
+    /// never recursed into, so an unregistered type nested two levels deep (Table -&gt; Table column -&gt; bad
+    /// grandchild column) passed this gate and would only fail later, uncaught, inside
+    /// TableFieldTypeExtension.BuildExtractionSchema's own defensive NotSupportedException. Rejected here,
+    /// at create time, is the regression test for that gap.
+    /// </summary>
+    [Fact]
+    public async Task CreateAsync_Rejects_An_Unregistered_Column_Type_Nested_Two_Levels_Deep()
+    {
+        var type = await CreateTypeAsync();
+
+        var ex = await Should.ThrowAsync<BusinessException>(() => _fieldAppService.CreateAsync(
+            new CreateFieldDefinitionDto
+            {
+                DocumentTypeId = type.Id,
+                Name = "line_items",
+                DisplayName = "Line items",
+                FieldTypeName = TableFieldType.ControlName,
+                Configuration = NestedTableConfiguration(2, "SomeFutureType"),
+                IsSearchable = false,
+            }));
+
+        ex.Code.ShouldBe(VaultExtractErrorCodes.FieldDefinition.UnknownColumnFieldType);
+    }
+
+    /// <summary>A configuration nesting composite types exactly to CompositeFieldNesting.MaxDepth (Table &gt; Table &gt; Text, depth 3) saves normally.</summary>
+    [Fact]
+    public async Task CreateAsync_Accepts_A_Nested_Table_At_The_Max_Depth()
+    {
+        var type = await CreateTypeAsync();
+
+        var field = await _fieldAppService.CreateAsync(new CreateFieldDefinitionDto
+        {
+            DocumentTypeId = type.Id,
+            Name = "line_items",
+            DisplayName = "Line items",
+            FieldTypeName = TableFieldType.ControlName,
+            Configuration = NestedTableConfiguration(2),
+            IsSearchable = false,
+        });
+
+        field.FieldTypeName.ShouldBe(TableFieldType.ControlName);
+    }
+
+    /// <summary>
+    /// One level past CompositeFieldNesting.MaxDepth (Table &gt; Table &gt; Table &gt; Text, depth 4) is
+    /// refused before anything recurses into the configuration itself.
+    /// </summary>
+    [Fact]
+    public async Task CreateAsync_Rejects_A_Nested_Table_Exceeding_The_Max_Depth()
+    {
+        var type = await CreateTypeAsync();
+
+        var ex = await Should.ThrowAsync<BusinessException>(() => _fieldAppService.CreateAsync(
+            new CreateFieldDefinitionDto
+            {
+                DocumentTypeId = type.Id,
+                Name = "line_items",
+                DisplayName = "Line items",
+                FieldTypeName = TableFieldType.ControlName,
+                Configuration = NestedTableConfiguration(3),
+                IsSearchable = false,
+            }));
+
+        ex.Code.ShouldBe(VaultExtractErrorCodes.FieldDefinition.CompositeNestingTooDeep);
+    }
+
+    /// <summary>
+    /// #625 follow-up (Option A: block, not migrate). A Table field's own FieldTypeName can stay "Table"
+    /// while its COLUMNS still change shape underneath it - renaming, removing, adding, or reordering a
+    /// column. Any of those orphans the cell data an already-extracted document holds under the old shape,
+    /// exactly like a top-level type change would - so it is blocked the same way, with the same error
+    /// code (<c>DataTypeChangeNotAllowed</c>): "this field's shape changed under stored values" is one
+    /// rule, not two.
+    /// </summary>
+    [Theory]
+    [InlineData("rename")]
+    [InlineData("remove")]
+    [InlineData("add")]
+    [InlineData("reorder")]
+    public async Task UpdateAsync_Blocks_A_Table_Column_Change_When_The_Field_Has_Values(string change)
+    {
+        var type = await CreateTypeAsync();
+        var field = await _fieldAppService.CreateAsync(new CreateFieldDefinitionDto
+        {
+            DocumentTypeId = type.Id,
+            Name = "line_items",
+            DisplayName = "Line items",
+            FieldTypeName = TableFieldType.ControlName,
+            Configuration = new TableConfiguration
+            {
+                Columns = new List<InlineFieldDefinition>
+                {
+                    new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName },
+                    new() { Name = "qty", DisplayName = "Quantity", FieldTypeName = NumberFieldType.ControlName }
+                }
+            }.ConfigurationDictionary,
+            IsSearchable = false,
+        });
+
+        await SeedDocumentWithValueAsync(type.TypeCode, field.Name!, "placeholder");
+
+        var changedColumns = change switch
+        {
+            "rename" => new List<InlineFieldDefinition>
+            {
+                new() { Name = "item_name", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName },
+                new() { Name = "qty", DisplayName = "Quantity", FieldTypeName = NumberFieldType.ControlName }
+            },
+            "remove" => new List<InlineFieldDefinition>
+            {
+                new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName }
+            },
+            "add" => new List<InlineFieldDefinition>
+            {
+                new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName },
+                new() { Name = "qty", DisplayName = "Quantity", FieldTypeName = NumberFieldType.ControlName },
+                new() { Name = "note", DisplayName = "Note", FieldTypeName = TextFieldType.ControlName }
+            },
+            "reorder" => new List<InlineFieldDefinition>
+            {
+                new() { Name = "qty", DisplayName = "Quantity", FieldTypeName = NumberFieldType.ControlName },
+                new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName }
+            },
+            _ => throw new ArgumentOutOfRangeException(nameof(change))
+        };
+
+        var ex = await Should.ThrowAsync<BusinessException>(() => _fieldAppService.UpdateAsync(
+            field.Id,
+            new UpdateFieldDefinitionDto
+            {
+                Name = field.Name,
+                DisplayName = field.DisplayName,
+                FieldTypeName = field.FieldTypeName,
+                Configuration = new TableConfiguration { Columns = changedColumns }.ConfigurationDictionary,
+                IsSearchable = false,
+            }));
+
+        ex.Code.ShouldBe(VaultExtractErrorCodes.FieldDefinition.DataTypeChangeNotAllowed);
+    }
+
+    /// <summary>A genuinely fresh Table field (no values yet) stays freely editable - the guard only fires once some document actually holds a value.</summary>
+    [Fact]
+    public async Task UpdateAsync_Allows_A_Table_Column_Change_When_The_Field_Has_No_Values()
+    {
+        var type = await CreateTypeAsync();
+        var field = await _fieldAppService.CreateAsync(new CreateFieldDefinitionDto
+        {
+            DocumentTypeId = type.Id,
+            Name = "line_items",
+            DisplayName = "Line items",
+            FieldTypeName = TableFieldType.ControlName,
+            Configuration = new TableConfiguration
+            {
+                Columns = new List<InlineFieldDefinition>
+                {
+                    new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName }
+                }
+            }.ConfigurationDictionary,
+            IsSearchable = false,
+        });
+
+        var updated = await _fieldAppService.UpdateAsync(field.Id, new UpdateFieldDefinitionDto
+        {
+            Name = field.Name,
+            DisplayName = field.DisplayName,
+            FieldTypeName = field.FieldTypeName,
+            Configuration = new TableConfiguration
+            {
+                Columns = new List<InlineFieldDefinition>
+                {
+                    new() { Name = "item_name", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName }
+                }
+            }.ConfigurationDictionary,
+            IsSearchable = false,
+        });
+
+        updated.FieldTypeName.ShouldBe(TableFieldType.ControlName);
     }
 
     [Fact]
@@ -266,6 +484,42 @@ public class FieldTypeCatalogAndSearchability_Tests
             TypeCode = $"host.searchability-{Guid.NewGuid():N}",
             DisplayName = "Searchability test",
         });
+
+    /// <summary>
+    /// A Table whose single column is a Table whose single column is... <paramref name="levels"/> deep,
+    /// bottoming out in a column of <paramref name="leafFieldTypeName"/>. Mirrors the kernel's own
+    /// <c>CompositeFieldNesting_Tests.NestedTables</c> helper, which is internal to the flex-fields test
+    /// assembly and so cannot be reused directly. <c>levels=1</c> is a Table with one leaf column (depth 2
+    /// as a field of this type); <c>levels=2</c> reaches depth 3 (at <c>CompositeFieldNesting.MaxDepth</c>);
+    /// <c>levels=3</c> reaches depth 4 (one past it).
+    /// </summary>
+    private static FieldConfigurationDictionary NestedTableConfiguration(int levels, string leafFieldTypeName = TextFieldType.ControlName)
+    {
+        if (levels <= 1)
+        {
+            return new TableConfiguration
+            {
+                Columns = new List<InlineFieldDefinition>
+                {
+                    new() { Name = "label", DisplayName = "Label", FieldTypeName = leafFieldTypeName }
+                }
+            }.ConfigurationDictionary;
+        }
+
+        return new TableConfiguration
+        {
+            Columns = new List<InlineFieldDefinition>
+            {
+                new()
+                {
+                    Name = "nested",
+                    DisplayName = "Nested",
+                    FieldTypeName = TableFieldType.ControlName,
+                    Configuration = NestedTableConfiguration(levels - 1, leafFieldTypeName)
+                }
+            }
+        }.ConfigurationDictionary;
+    }
 
     /// <summary>Seeds one document holding <paramref name="value"/> under <paramref name="fieldName"/>, synchronized to the index exactly once under the field's current searchability. Returns the document id.</summary>
     private async Task<Guid> SeedDocumentWithValueAsync(string typeCode, string fieldName, string value)

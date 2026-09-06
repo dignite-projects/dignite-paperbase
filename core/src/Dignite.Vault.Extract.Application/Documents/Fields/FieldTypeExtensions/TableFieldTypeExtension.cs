@@ -178,9 +178,15 @@ public class TableFieldTypeExtension : VaultExtractFieldTypeExtensionBase
     /// <see cref="WriteJson"/> rather than re-deriving the same per-column recursion, since the egress
     /// shape and the export shape are the same JSON here, just carried as a string instead of a
     /// <see cref="JsonElement"/>.
+    /// <para>
+    /// A zero-row table renders as <c>null</c> - an empty cell, never the literal text <c>"[]"</c> -
+    /// matching <c>ExportCellRenderer</c>'s own rule for an empty Tags/multi-Select list. Checked before
+    /// <see cref="WriteJson"/> runs, which would otherwise happily serialize an empty list to
+    /// valid-but-misleading JSON text.
+    /// </para>
     /// </summary>
     public override string? RenderForExport(object value, FieldConfigurationDictionary configuration)
-        => WriteJson(value, configuration)?.GetRawText();
+        => ReadStoredRows(value).Count == 0 ? null : WriteJson(value, configuration)?.GetRawText();
 
     public override IReadOnlyList<string> CanonicalizeForFingerprint(object value, FieldConfigurationDictionary configuration)
     {

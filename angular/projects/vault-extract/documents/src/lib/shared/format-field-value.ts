@@ -19,14 +19,20 @@ export const MULTI_VALUE_SEPARATOR = '; ';
  * the two cannot drift (#212): multi-value fields arrive as JSON arrays, and a stray object must
  * never surface as `[object Object]`.
  * - null / undefined → "—"
- * - array → elements joined with `MULTI_VALUE_SEPARATOR` (empty array → "—")
- * - object → JSON
+ * - array → each element rendered individually, then joined with `MULTI_VALUE_SEPARATOR` (empty array →
+ *   "—"). A scalar element (Tags / multi-Select) renders via `String()`; an object element renders via
+ *   `JSON.stringify()` — #625: a Table field's egress value is a JSON array of row objects, not a flat
+ *   array of scalars, and `String({...})` on a row object would otherwise produce the literal text
+ *   `[object Object]`. This is a minimal fix, not a real table/grid renderer.
+ * - object (non-array) → JSON
  * - scalar → String(value)
  */
 export function formatExtractedFieldValue(value: unknown): string {
   if (value === null || value === undefined) return '—';
   if (Array.isArray(value)) {
-    return value.length > 0 ? value.map(v => String(v)).join(MULTI_VALUE_SEPARATOR) : '—';
+    return value.length > 0
+      ? value.map(v => (v !== null && typeof v === 'object' ? JSON.stringify(v) : String(v))).join(MULTI_VALUE_SEPARATOR)
+      : '—';
   }
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);

@@ -103,6 +103,23 @@ public static class VaultExtractErrorCodes
         public const string UnknownColumnFieldType = "Extract:UnknownColumnFieldType";
 
         /// <summary>
+        /// A composite field's (<c>Table</c>) column <c>Name</c> fails the same allow-list
+        /// <c>Field.SetName</c> enforces on a top-level field's name. A column name is concatenated raw
+        /// into the LLM's JSON schema message (<c>TableFieldTypeExtension.BuildExtractionSchema</c> uses
+        /// it verbatim as a property key), so it is the same prompt-injection boundary a top-level
+        /// <c>Name</c> already has — not a formatting preference. Checked recursively alongside
+        /// <see cref="UnknownColumnFieldType"/> at the same create/update boundary.
+        /// </summary>
+        public const string InvalidColumnName = "Extract:InvalidColumnName";
+
+        /// <summary>
+        /// A field definition nests composite field types (<c>Table</c>) deeper than the kernel's own
+        /// <c>CompositeFieldNesting.MaxDepth</c> allows. Checked first, before anything here recurses into
+        /// an unvetted configuration — the kernel measures the depth, the host (this check) enforces it.
+        /// </summary>
+        public const string CompositeNestingTooDeep = "Extract:CompositeNestingTooDeep";
+
+        /// <summary>
         /// A field marked <c>IsSearchable</c> whose field type has no query-index slot (#562) — e.g.
         /// long text. The value would never reach the index, so the flag would silently do nothing.
         /// </summary>

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Dignite.Abp.FlexFields;
 using Dignite.Vault.Extract.Documents.DocumentTypes;
@@ -20,6 +21,17 @@ namespace Dignite.Vault.Extract.Documents.Fields;
 // using the same programmatic pattern as DocumentAppService.
 public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitionAppService
 {
+    /// <summary>
+    /// Same allow-list <see cref="Field.SetName"/> enforces on a top-level field's <c>Name</c> (#625
+    /// follow-up), re-declared here for a composite type's own columns: a column's <c>Name</c> reaches the
+    /// LLM's JSON schema message exactly like <see cref="Field.Name"/> does
+    /// (<c>TableFieldTypeExtension.BuildExtractionSchema</c> uses it verbatim as a property key), so it is
+    /// the same prompt-injection boundary, not a formatting preference the kernel would validate for us.
+    /// </summary>
+    private static readonly Regex ColumnNameRegex = new(
+        FieldDefinitionConsts.NamePattern,
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private readonly IFieldRepository _repository;
     private readonly IDocumentTypeRepository _documentTypeRepository;
     private readonly IDocumentRepository _documentRepository;
@@ -218,8 +230,16 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
         //
         // v3 drops the separate multi-value narrowing guard: "one value or many" is a property of the type
         // now (Tags versus Text), so narrowing IS a type change and this one guard covers both.
+        //
+        // #625 follow-up: for a composite type (Table) whose own FieldTypeName did NOT change, a change to
+        // its COLUMNS is the same kind of silent-disappearance risk — renaming, removing, adding, retyping,
+        // or reordering a column orphans the historical cell data every already-extracted document holds
+        // for it, the same way a top-level type change would. Blocked by the same guard, same error code:
+        // "this field's shape changed under stored values" is one rule, not two.
         var fieldTypeChanged = !string.Equals(input.FieldTypeName, entity.FieldTypeName, StringComparison.Ordinal);
-        if (fieldTypeChanged &&
+        var columnsChanged = !fieldTypeChanged &&
+            CompositeColumnsChanged(entity.FieldTypeName, entity.Configuration, input.Configuration);
+        if ((fieldTypeChanged || columnsChanged) &&
             await _documentRepository.AnyFlexFieldValueAsync(entity, IsIndexable(entity.FieldTypeName)))
         {
             throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.DataTypeChangeNotAllowed)
@@ -423,17 +443,62 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
         // it. Generic over ICompositeFieldType rather than named to Table specifically, so a future
         // composite type (Matrix, out of scope for #625) is covered the moment it implements the same
         // kernel interface, with nothing to register here.
-        if (kernelFieldType is ICompositeFieldType compositeFieldType)
+        if (kernelFieldType is ICompositeFieldType)
         {
-            foreach (var column in compositeFieldType.GetInlineFields(configuration ?? new FieldConfigurationDictionary()))
+            var allFieldTypes = _fieldTypeResolver.GetAll();
+
+            // Reject a definition that nests composite field types deeper than the kernel's own cap FIRST,
+            // before anything below recurses into the configuration itself — CompositeFieldNesting's own
+            // doc explains why: it is the first thing to walk a configuration that has not been vetted yet,
+            // and only the caller (here) can bound that walk before it runs. Order matters: the recursive
+            // column walk right below is safe from runaway recursion only because this already ran.
+            if (CompositeFieldNesting.ExceedsMaxDepth(fieldTypeName, configuration, allFieldTypes))
             {
-                if (!_fieldTypeExtensionRegistry.IsSupported(column.FieldTypeName))
-                {
-                    throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.UnknownColumnFieldType)
-                        .WithData("FieldTypeName", column.FieldTypeName)
-                        .WithData("ColumnName", column.Name);
-                }
+                throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.CompositeNestingTooDeep)
+                    .WithData("FieldTypeName", fieldTypeName)
+                    .WithData("MaxDepth", CompositeFieldNesting.MaxDepth);
             }
+
+            EnsureColumnsRegistered(fieldTypeName, configuration ?? new FieldConfigurationDictionary(), allFieldTypes);
+        }
+    }
+
+    /// <summary>
+    /// Recurses into a composite field type's own columns (#625), checking each one against the same two
+    /// gates a top-level <c>FieldTypeName</c> already clears above: Vault Extract's own registry
+    /// (<see cref="VaultExtractErrorCodes.FieldDefinition.UnknownColumnFieldType"/>) and the <c>Name</c>
+    /// allow-list <see cref="Field.SetName"/> enforces
+    /// (<see cref="VaultExtractErrorCodes.FieldDefinition.InvalidColumnName"/>). When a column's own type
+    /// is itself composite (a Table column that is a Table), recurses into its columns in turn — this is
+    /// only safe from unbounded recursion because <see cref="EnsureFieldTypeRegistered"/> already rejected
+    /// anything deeper than <see cref="CompositeFieldNesting.MaxDepth"/> before this method is ever called.
+    /// </summary>
+    protected virtual void EnsureColumnsRegistered(
+        string fieldTypeName, FieldConfigurationDictionary configuration, IReadOnlyList<IFieldType> allFieldTypes)
+    {
+        var fieldType = allFieldTypes.FirstOrDefault(t => string.Equals(t.Name, fieldTypeName, StringComparison.Ordinal));
+        if (fieldType is not ICompositeFieldType compositeFieldType)
+        {
+            return;
+        }
+
+        foreach (var column in compositeFieldType.GetInlineFields(configuration))
+        {
+            if (!_fieldTypeExtensionRegistry.IsSupported(column.FieldTypeName))
+            {
+                throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.UnknownColumnFieldType)
+                    .WithData("FieldTypeName", column.FieldTypeName)
+                    .WithData("ColumnName", column.Name);
+            }
+
+            if (!ColumnNameRegex.IsMatch(column.Name))
+            {
+                throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.InvalidColumnName)
+                    .WithData("ColumnName", column.Name)
+                    .WithData("Pattern", FieldDefinitionConsts.NamePattern);
+            }
+
+            EnsureColumnsRegistered(column.FieldTypeName, column.Configuration, allFieldTypes);
         }
     }
 
@@ -444,6 +509,36 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
     /// </summary>
     protected virtual bool IsIndexable(string fieldTypeName)
         => FindFieldType(fieldTypeName)?.IndexValueType != null;
+
+    /// <summary>
+    /// Whether a composite type's (<c>Table</c>) own column list differs between an old and a new
+    /// configuration — not just the outer <c>FieldTypeName</c>, which the caller already compares
+    /// separately (#625 follow-up: option A, block rather than migrate). Compares the ordered
+    /// <c>(Name, FieldTypeName)</c> pairs <see cref="ICompositeFieldType.GetInlineFields"/> returns:
+    /// adding, removing, renaming, retyping, or reordering any column counts as a change, because any of
+    /// those orphans the cell data an already-extracted document holds under the old shape. A non-composite
+    /// <paramref name="fieldTypeName"/> (or one the kernel no longer recognizes) never counts as changed
+    /// here — the outer-type comparison at the call site already covers that case.
+    /// </summary>
+    protected virtual bool CompositeColumnsChanged(
+        string fieldTypeName, FieldConfigurationDictionary? oldConfiguration, FieldConfigurationDictionary? newConfiguration)
+    {
+        if (FindFieldType(fieldTypeName) is not ICompositeFieldType compositeFieldType)
+        {
+            return false;
+        }
+
+        var oldColumns = compositeFieldType
+            .GetInlineFields(oldConfiguration ?? new FieldConfigurationDictionary())
+            .Select(c => (c.Name, c.FieldTypeName))
+            .ToList();
+        var newColumns = compositeFieldType
+            .GetInlineFields(newConfiguration ?? new FieldConfigurationDictionary())
+            .Select(c => (c.Name, c.FieldTypeName))
+            .ToList();
+
+        return !oldColumns.SequenceEqual(newColumns);
+    }
 
     /// <summary>
     /// Rejects a field marked searchable under a field type with no query-index slot.

@@ -6,12 +6,14 @@ using Dignite.Abp.FlexFields.Number;
 using Dignite.Abp.FlexFields.Table;
 using Dignite.Abp.FlexFields.Text;
 using Dignite.Vault.Extract.FlexFields.Tags;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Dignite.Vault.Extract.Ai;
 using Dignite.Vault.Extract.Documents;
 using Dignite.Vault.Extract.Documents.DocumentTypes;
+using Dignite.Vault.Extract.EntityFrameworkCore.Documents;
 using Dignite.Vault.Extract.Documents.DocumentTypes.Packs;
 using Dignite.Vault.Extract.Documents.Fields;
 using Shouldly;
@@ -120,6 +122,204 @@ public class DocumentTypePackAppService_Tests : VaultExtractEntityFrameworkCoreT
             new ImportDocumentTypePacksInput { Packs = new List<DocumentTypePackDto> { pack } }));
 
         ex.Code.ShouldBe(VaultExtractErrorCodes.FieldDefinition.UnknownColumnFieldType);
+    }
+
+    /// <summary>
+    /// #625 follow-up: a Table column's <c>Name</c> is concatenated raw into the LLM's JSON schema message
+    /// exactly like a top-level <c>Field.Name</c> is, so an imported pack owes it the same prompt-injection
+    /// allow-list check as <see cref="IFieldDefinitionAppService.CreateAsync"/>/<c>UpdateAsync</c>.
+    /// </summary>
+    [Fact]
+    public async Task Import_Rejects_A_Table_Column_With_An_Invalid_Name()
+    {
+        var pack = SamplePack();
+        pack.Fields.Add(new DocumentTypePackFieldDto
+        {
+            Name = "line_items",
+            DisplayName = "Line items",
+            FieldTypeName = TableFieldType.ControlName,
+            DisplayOrder = 3,
+            IsSearchable = false,
+            Configuration = new TableConfiguration
+            {
+                Columns = new List<InlineFieldDefinition>
+                {
+                    new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName },
+                    new() { Name = "bad name!\n", DisplayName = "Bad", FieldTypeName = TextFieldType.ControlName }
+                }
+            }.ConfigurationDictionary
+        });
+
+        var ex = await Should.ThrowAsync<BusinessException>(() => _packAppService.ImportAsync(
+            new ImportDocumentTypePacksInput { Packs = new List<DocumentTypePackDto> { pack } }));
+
+        ex.Code.ShouldBe(VaultExtractErrorCodes.FieldDefinition.InvalidColumnName);
+    }
+
+    /// <summary>
+    /// #625 follow-up regression test: before the recursive nesting-depth gate existed, only the IMMEDIATE
+    /// columns' FieldTypeName were checked, so an unregistered type nested two levels deep (Table -&gt; Table
+    /// column -&gt; bad grandchild column) passed this gate and would only fail later, uncaught, inside
+    /// TableFieldTypeExtension.BuildExtractionSchema's own defensive NotSupportedException.
+    /// </summary>
+    [Fact]
+    public async Task Import_Rejects_An_Unregistered_Column_Type_Nested_Two_Levels_Deep()
+    {
+        var pack = SamplePack();
+        pack.Fields.Add(new DocumentTypePackFieldDto
+        {
+            Name = "line_items",
+            DisplayName = "Line items",
+            FieldTypeName = TableFieldType.ControlName,
+            DisplayOrder = 3,
+            IsSearchable = false,
+            Configuration = NestedTableConfiguration(2, "SomeFutureType")
+        });
+
+        var ex = await Should.ThrowAsync<BusinessException>(() => _packAppService.ImportAsync(
+            new ImportDocumentTypePacksInput { Packs = new List<DocumentTypePackDto> { pack } }));
+
+        ex.Code.ShouldBe(VaultExtractErrorCodes.FieldDefinition.UnknownColumnFieldType);
+    }
+
+    /// <summary>A configuration nesting composite types exactly to CompositeFieldNesting.MaxDepth (Table &gt; Table &gt; Text, depth 3) imports normally.</summary>
+    [Fact]
+    public async Task Import_Accepts_A_Nested_Table_At_The_Max_Depth()
+    {
+        var pack = SamplePack();
+        pack.Fields.Add(new DocumentTypePackFieldDto
+        {
+            Name = "line_items",
+            DisplayName = "Line items",
+            FieldTypeName = TableFieldType.ControlName,
+            DisplayOrder = 3,
+            IsSearchable = false,
+            Configuration = NestedTableConfiguration(2)
+        });
+
+        var result = await _packAppService.ImportAsync(
+            new ImportDocumentTypePacksInput { Packs = new List<DocumentTypePackDto> { pack } });
+
+        result.FieldsCreated.ShouldBe(3);
+    }
+
+    /// <summary>One level past CompositeFieldNesting.MaxDepth (Table &gt; Table &gt; Table &gt; Text, depth 4) is refused before anything recurses into the configuration itself.</summary>
+    [Fact]
+    public async Task Import_Rejects_A_Nested_Table_Exceeding_The_Max_Depth()
+    {
+        var pack = SamplePack();
+        pack.Fields.Add(new DocumentTypePackFieldDto
+        {
+            Name = "line_items",
+            DisplayName = "Line items",
+            FieldTypeName = TableFieldType.ControlName,
+            DisplayOrder = 3,
+            IsSearchable = false,
+            Configuration = NestedTableConfiguration(3)
+        });
+
+        var ex = await Should.ThrowAsync<BusinessException>(() => _packAppService.ImportAsync(
+            new ImportDocumentTypePacksInput { Packs = new List<DocumentTypePackDto> { pack } }));
+
+        ex.Code.ShouldBe(VaultExtractErrorCodes.FieldDefinition.CompositeNestingTooDeep);
+    }
+
+    /// <summary>
+    /// #625 follow-up (Option A: block, not migrate) — pack import is a second write path into <see cref="Field"/>
+    /// rows, and owes a Table field's already-extracted columns the same guard
+    /// <see cref="IFieldDefinitionAppService.UpdateAsync"/> enforces: its own FieldTypeName staying "Table"
+    /// does not excuse a column rename once a document holds a value under the old shape.
+    /// </summary>
+    [Fact]
+    public async Task Import_Blocks_A_Table_Column_Rename_When_The_Field_Has_Values()
+    {
+        var pack = SamplePack("host.table-guard");
+        pack.Fields.Add(new DocumentTypePackFieldDto
+        {
+            Name = "line_items",
+            DisplayName = "Line items",
+            FieldTypeName = TableFieldType.ControlName,
+            DisplayOrder = 3,
+            IsSearchable = false,
+            Configuration = new TableConfiguration
+            {
+                Columns = new List<InlineFieldDefinition>
+                {
+                    new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName }
+                }
+            }.ConfigurationDictionary
+        });
+
+        await _packAppService.ImportAsync(new ImportDocumentTypePacksInput { Packs = new List<DocumentTypePackDto> { pack } });
+        await SeedDocumentWithValueAsync("host.table-guard", "line_items", "placeholder");
+
+        var renamedPack = SamplePack("host.table-guard");
+        renamedPack.Fields.Add(new DocumentTypePackFieldDto
+        {
+            Name = "line_items",
+            DisplayName = "Line items",
+            FieldTypeName = TableFieldType.ControlName,
+            DisplayOrder = 3,
+            IsSearchable = false,
+            Configuration = new TableConfiguration
+            {
+                Columns = new List<InlineFieldDefinition>
+                {
+                    new() { Name = "item_name", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName }
+                }
+            }.ConfigurationDictionary
+        });
+
+        var ex = await Should.ThrowAsync<BusinessException>(() => _packAppService.ImportAsync(
+            new ImportDocumentTypePacksInput { Packs = new List<DocumentTypePackDto> { renamedPack } }));
+
+        ex.Code.ShouldBe(VaultExtractErrorCodes.FieldDefinition.DataTypeChangeNotAllowed);
+    }
+
+    /// <summary>The no-values counterpart: a genuinely fresh Table field's columns stay freely re-importable.</summary>
+    [Fact]
+    public async Task Import_Allows_A_Table_Column_Change_When_The_Field_Has_No_Values()
+    {
+        var pack = SamplePack("host.table-guard-free");
+        pack.Fields.Add(new DocumentTypePackFieldDto
+        {
+            Name = "line_items",
+            DisplayName = "Line items",
+            FieldTypeName = TableFieldType.ControlName,
+            DisplayOrder = 3,
+            IsSearchable = false,
+            Configuration = new TableConfiguration
+            {
+                Columns = new List<InlineFieldDefinition>
+                {
+                    new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName }
+                }
+            }.ConfigurationDictionary
+        });
+
+        await _packAppService.ImportAsync(new ImportDocumentTypePacksInput { Packs = new List<DocumentTypePackDto> { pack } });
+
+        var renamedPack = SamplePack("host.table-guard-free");
+        renamedPack.Fields.Add(new DocumentTypePackFieldDto
+        {
+            Name = "line_items",
+            DisplayName = "Line items",
+            FieldTypeName = TableFieldType.ControlName,
+            DisplayOrder = 3,
+            IsSearchable = false,
+            Configuration = new TableConfiguration
+            {
+                Columns = new List<InlineFieldDefinition>
+                {
+                    new() { Name = "item_name", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName }
+                }
+            }.ConfigurationDictionary
+        });
+
+        var result = await _packAppService.ImportAsync(
+            new ImportDocumentTypePacksInput { Packs = new List<DocumentTypePackDto> { renamedPack } });
+
+        result.FieldsUpdated.ShouldBe(3); // amount, issuer, line_items
     }
 
     [Fact]
@@ -490,5 +690,56 @@ public class DocumentTypePackAppService_Tests : VaultExtractEntityFrameworkCoreT
             fields.Count.ShouldBe(2); // matched by name, not duplicated under new field types
             fields.Single(f => f.Name == "summary").IsSearchable.ShouldBeFalse();
         });
+    }
+
+    /// <summary>
+    /// A Table whose single column is a Table whose single column is... <paramref name="levels"/> deep,
+    /// bottoming out in a column of <paramref name="leafFieldTypeName"/>. Mirrors
+    /// <c>FieldTypeCatalogAndSearchability_Tests</c>'s own copy of this helper (each write path's test
+    /// class keeps its own, the same duplication <c>EnsureFieldTypeRegistered</c> itself has across the two
+    /// write paths).
+    /// </summary>
+    private static FieldConfigurationDictionary NestedTableConfiguration(int levels, string leafFieldTypeName = TextFieldType.ControlName)
+    {
+        if (levels <= 1)
+        {
+            return new TableConfiguration
+            {
+                Columns = new List<InlineFieldDefinition>
+                {
+                    new() { Name = "label", DisplayName = "Label", FieldTypeName = leafFieldTypeName }
+                }
+            }.ConfigurationDictionary;
+        }
+
+        return new TableConfiguration
+        {
+            Columns = new List<InlineFieldDefinition>
+            {
+                new()
+                {
+                    Name = "nested",
+                    DisplayName = "Nested",
+                    FieldTypeName = TableFieldType.ControlName,
+                    Configuration = NestedTableConfiguration(levels - 1, leafFieldTypeName)
+                }
+            }
+        }.ConfigurationDictionary;
+    }
+
+    /// <summary>Seeds one document holding <paramref name="value"/> under <paramref name="fieldName"/>, so <c>AnyFlexFieldValueAsync</c>'s "does any document hold this field" guard finds it.</summary>
+    private async Task<Guid> SeedDocumentWithValueAsync(string typeCode, string fieldName, object value)
+    {
+        var documentRepository = GetRequiredService<IDocumentRepository>();
+        var documentId = Guid.NewGuid();
+        await WithUnitOfWorkAsync(async () =>
+        {
+            var type = await _documentTypeRepository.FindByTypeCodeAsync(typeCode);
+            var doc = new Document(documentId, tenantId: null, DocumentTestData.NewFileOrigin(documentId));
+            DocumentTestData.MarkClassified(doc, type!.Id);
+            doc.SetFlexFields(new Dictionary<string, object?> { [fieldName] = value });
+            await documentRepository.InsertAsync(doc, autoSave: true);
+        });
+        return documentId;
     }
 }

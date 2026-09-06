@@ -417,6 +417,8 @@
     "Extract:FieldDefinitionDataTypeChangeNotAllowed": "Cannot change the data type of field '{Name}': it already has extracted values stored. Create a new field instead.",
     "Extract:UnknownFieldType": "Unknown field type '{FieldTypeName}'. Pick one of the registered field types.",
     "Extract:UnknownColumnFieldType": "Column '{ColumnName}' uses unknown field type '{FieldTypeName}'. Pick one of the registered field types for every column.",
+    "Extract:InvalidColumnName": "Column name '{ColumnName}' is invalid. It must match the pattern {Pattern}.",
+    "Extract:CompositeNestingTooDeep": "Field type '{FieldTypeName}' nests composite field types too deeply. The maximum nesting depth is {MaxDepth}.",
     "Extract:FieldTypeNotSearchable": "Field type '{FieldTypeName}' cannot be marked filterable: it has no query index.",
     "Extract:FieldDefinitionMultiValueRequiresStringType": "Multi-value is only supported for Text fields, but '{dataType}' was requested. Use a Text field to allow multiple values.",
     "Extract:FieldDefinitionMultiValueChangeNotAllowed": "Cannot turn off multi-value on field '{Name}': it already has extracted values stored, and narrowing to single-value would orphan the extra values. Create a new field instead.",
