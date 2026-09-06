@@ -53,7 +53,7 @@ public class TableFieldTypeExtension_Tests
     [Fact]
     public void Reads_multiple_rows_delegating_each_cell_to_its_own_column_type()
     {
-        var raw = Json("""[{"item":"Widget","qty":3},{"item":"Gadget","qty":1.5}]""");
+        var raw = Json("""[{"values":{"item":"Widget","qty":3}},{"values":{"item":"Gadget","qty":1.5}}]""");
 
         Table.TryRead(raw, Columns, out var result).ShouldBeTrue();
 
@@ -69,7 +69,7 @@ public class TableFieldTypeExtension_Tests
     [Fact]
     public void An_absent_optional_cell_is_not_stored()
     {
-        var raw = Json("""[{"item":"Widget"}]""");
+        var raw = Json("""[{"values":{"item":"Widget"}}]""");
 
         Table.TryRead(raw, Columns, out var result).ShouldBeTrue();
 
@@ -80,7 +80,7 @@ public class TableFieldTypeExtension_Tests
     [Fact]
     public void Rejects_a_row_missing_a_required_column()
     {
-        var raw = Json("""[{"qty":3}]"""); // "item" is Required and absent
+        var raw = Json("""[{"values":{"qty":3}}]"""); // "item" is Required and absent
 
         Table.TryRead(raw, Columns, out var result).ShouldBeFalse();
         result.ShouldBeNull();
@@ -89,7 +89,7 @@ public class TableFieldTypeExtension_Tests
     [Fact]
     public void Rejects_a_row_with_a_wrong_typed_cell()
     {
-        var raw = Json("""[{"item":"Widget","qty":"not-a-number"}]""");
+        var raw = Json("""[{"values":{"item":"Widget","qty":"not-a-number"}}]""");
 
         Table.TryRead(raw, Columns, out _).ShouldBeFalse();
     }
@@ -98,7 +98,7 @@ public class TableFieldTypeExtension_Tests
     [Fact]
     public void Rejects_a_row_carrying_a_key_no_column_declares()
     {
-        var raw = Json("""[{"item":"Widget","qty":3,"extra":true}]""");
+        var raw = Json("""[{"values":{"item":"Widget","qty":3,"extra":true}}]""");
 
         Table.TryRead(raw, Columns, out _).ShouldBeFalse();
     }
@@ -110,7 +110,7 @@ public class TableFieldTypeExtension_Tests
     [Fact]
     public void Rejects_the_whole_table_when_any_row_is_bad()
     {
-        var raw = Json("""[{"item":"Widget","qty":3},{"qty":1}]""");
+        var raw = Json("""[{"values":{"item":"Widget","qty":3}},{"values":{"qty":1}}]""");
 
         Table.TryRead(raw, Columns, out _).ShouldBeFalse();
     }
@@ -127,10 +127,25 @@ public class TableFieldTypeExtension_Tests
         Table.TryRead(Json("""["Widget"]"""), Columns, out _).ShouldBeFalse();
     }
 
+    /// <summary>
+    /// The bug this pins: a row's cells sit under a "values" wrapper - the kernel's own TableRow shape,
+    /// which both @dignite/ng.flex-fields Table components (view and edit) require - not at the row's own
+    /// top level. A row shaped like the pre-fix output would have every cell silently ignored by
+    /// ff-table-view (empty cells rendered, no error) rather than rejected here - this is the loud failure
+    /// that should happen instead.
+    /// </summary>
     [Fact]
-    public void Writes_rows_back_as_a_flat_json_array_keyed_by_column_name()
+    public void Rejects_a_row_missing_the_values_wrapper()
     {
-        var raw = Json("""[{"item":"Widget","qty":3}]""");
+        var raw = Json("""[{"item":"Widget","qty":3}]"""); // pre-fix flat shape, no longer accepted
+
+        Table.TryRead(raw, Columns, out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Writes_rows_back_wrapped_under_values_keyed_by_column_name()
+    {
+        var raw = Json("""[{"values":{"item":"Widget","qty":3}}]""");
         Table.TryRead(raw, Columns, out var result).ShouldBeTrue();
 
         var written = Table.WriteJson(result!, Columns);
@@ -138,33 +153,36 @@ public class TableFieldTypeExtension_Tests
         written.ShouldNotBeNull();
         written!.Value.ValueKind.ShouldBe(JsonValueKind.Array);
         var row = written.Value.EnumerateArray().Single();
-        row.GetProperty("item").GetString().ShouldBe("Widget");
-        row.GetProperty("qty").GetDecimal().ShouldBe(3m);
+        var values = row.GetProperty("values");
+        values.GetProperty("item").GetString().ShouldBe("Widget");
+        values.GetProperty("qty").GetDecimal().ShouldBe(3m);
     }
 
     /// <summary>An absent cell round-trips as an absent key, not a null one.</summary>
     [Fact]
     public void Writes_an_absent_cell_as_an_absent_key()
     {
-        var raw = Json("""[{"item":"Widget"}]""");
+        var raw = Json("""[{"values":{"item":"Widget"}}]""");
         Table.TryRead(raw, Columns, out var result).ShouldBeTrue();
 
         var row = Table.WriteJson(result!, Columns)!.Value.EnumerateArray().Single();
 
-        row.TryGetProperty("qty", out _).ShouldBeFalse();
+        row.GetProperty("values").TryGetProperty("qty", out _).ShouldBeFalse();
     }
 
     [Fact]
-    public void Builds_an_array_of_row_objects_schema_with_each_columns_own_schema()
+    public void Builds_an_array_of_row_objects_schema_wrapping_each_columns_own_schema_under_values()
     {
         var schema = Table.BuildExtractionSchema(Columns);
 
         schema["type"]!.AsArray().Select(t => t!.GetValue<string>()).ShouldContain("array");
         var itemSchema = schema["items"]!.AsObject();
-        var properties = itemSchema["properties"]!.AsObject();
+        itemSchema["required"]!.AsArray().Select(n => n!.GetValue<string>()).ShouldBe(new[] { "values" });
+        var valuesSchema = itemSchema["properties"]!.AsObject()["values"]!.AsObject();
+        var properties = valuesSchema["properties"]!.AsObject();
         properties.ContainsKey("item").ShouldBeTrue();
         properties.ContainsKey("qty").ShouldBeTrue();
-        itemSchema["required"]!.AsArray().Select(n => n!.GetValue<string>()).ShouldBe(new[] { "item" });
+        valuesSchema["required"]!.AsArray().Select(n => n!.GetValue<string>()).ShouldBe(new[] { "item" });
     }
 
     [Fact]
@@ -222,7 +240,7 @@ public class TableFieldTypeExtension_Tests
     [Fact]
     public void Export_cell_reaches_RenderForExport_not_the_generic_list_branch()
     {
-        var raw = Json("""[{"item":"Widget","qty":3}]""");
+        var raw = Json("""[{"values":{"item":"Widget","qty":3}}]""");
         Table.TryRead(raw, Columns, out var result).ShouldBeTrue();
 
         var cell = ExportCellRenderer.RenderCell(result, TableFieldType.ControlName, Columns, TestFieldTypeRegistry.Default);
@@ -234,8 +252,9 @@ public class TableFieldTypeExtension_Tests
 
         var parsed = JsonSerializer.Deserialize<JsonElement>(cell!);
         parsed.ValueKind.ShouldBe(JsonValueKind.Array);
-        parsed[0].GetProperty("item").GetString().ShouldBe("Widget");
-        parsed[0].GetProperty("qty").GetDecimal().ShouldBe(3m);
+        var values = parsed[0].GetProperty("values");
+        values.GetProperty("item").GetString().ShouldBe("Widget");
+        values.GetProperty("qty").GetDecimal().ShouldBe(3m);
     }
 
     /// <summary>
@@ -256,7 +275,7 @@ public class TableFieldTypeExtension_Tests
             }
         }.ConfigurationDictionary;
 
-        var raw = Json("""[{"item":"Widget","labels":["urgent","legal"]},{"item":"Gadget","labels":["low"]}]""");
+        var raw = Json("""[{"values":{"item":"Widget","labels":["urgent","legal"]}},{"values":{"item":"Gadget","labels":["low"]}}]""");
 
         Table.TryRead(raw, columnsWithTags, out var result).ShouldBeTrue();
         var rows = result.ShouldBeOfType<List<TableRow>>();
@@ -266,7 +285,7 @@ public class TableFieldTypeExtension_Tests
 
         var written = Table.WriteJson(result!, columnsWithTags);
         written.ShouldNotBeNull();
-        var writtenRows = written!.Value.EnumerateArray().ToList();
+        var writtenRows = written!.Value.EnumerateArray().Select(r => r.GetProperty("values")).ToList();
         writtenRows[0].GetProperty("labels").EnumerateArray().Select(e => e.GetString()).ShouldBe(new[] { "urgent", "legal" });
         writtenRows[1].GetProperty("labels").EnumerateArray().Select(e => e.GetString()).ShouldBe(new[] { "low" });
 

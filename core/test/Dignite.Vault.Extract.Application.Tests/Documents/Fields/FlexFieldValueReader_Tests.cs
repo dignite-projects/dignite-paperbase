@@ -370,7 +370,7 @@ public class FlexFieldValueReader_Tests
             }
         }.ConfigurationDictionary;
 
-        TryRead("""[{"item":"Widget","qty":3}]""", TableFieldType.ControlName, out var result, configuration)
+        TryRead("""[{"values":{"item":"Widget","qty":3}}]""", TableFieldType.ControlName, out var result, configuration)
             .ShouldBeTrue();
 
         var row = result.ShouldBeOfType<List<TableRow>>().Single();
@@ -389,7 +389,7 @@ public class FlexFieldValueReader_Tests
             }
         }.ConfigurationDictionary;
 
-        TryRead("[{}]", TableFieldType.ControlName, out _, configuration).ShouldBeFalse();
+        TryRead("""[{"values":{}}]""", TableFieldType.ControlName, out _, configuration).ShouldBeFalse();
     }
 
     [Fact]

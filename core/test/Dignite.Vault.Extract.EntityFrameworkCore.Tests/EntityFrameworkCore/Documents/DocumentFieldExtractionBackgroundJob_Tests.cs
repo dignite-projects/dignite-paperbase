@@ -254,7 +254,7 @@ public class DocumentFieldExtractionBackgroundJob_Tests
                 new Dictionary<string, JsonElement?>
                 {
                     ["line_items"] = JsonDocument.Parse(
-                        """[{"item":"Widget","qty":3},{"item":"Gadget","qty":1}]""").RootElement
+                        """[{"values":{"item":"Widget","qty":3}},{"values":{"item":"Gadget","qty":1}}]""").RootElement
                 },
                 Array.Empty<FieldValidationWarningResult>()));
 
@@ -285,10 +285,10 @@ public class DocumentFieldExtractionBackgroundJob_Tests
 
             var rendered = dto.ExtractedFields["line_items"];
             rendered.ValueKind.ShouldBe(JsonValueKind.Array);
-            rendered[0].GetProperty("item").GetString().ShouldBe("Widget");
-            rendered[0].GetProperty("qty").GetDecimal().ShouldBe(3m);
-            rendered[1].GetProperty("item").GetString().ShouldBe("Gadget");
-            rendered[1].GetProperty("qty").GetDecimal().ShouldBe(1m);
+            rendered[0].GetProperty("values").GetProperty("item").GetString().ShouldBe("Widget");
+            rendered[0].GetProperty("values").GetProperty("qty").GetDecimal().ShouldBe(3m);
+            rendered[1].GetProperty("values").GetProperty("item").GetString().ShouldBe("Gadget");
+            rendered[1].GetProperty("values").GetProperty("qty").GetDecimal().ShouldBe(1m);
         });
     }
 

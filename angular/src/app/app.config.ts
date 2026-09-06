@@ -46,9 +46,13 @@ export const appConfig: ApplicationConfig = {
     provideLogo(withEnvironmentOptions(environment)),
     provideExtract(),
     // Registers the field-type designer/control/search/view components <ff-flex-field-*> dispatches
-    // to. provideFlexFields() supplies the six kernel built-ins (Text/Number/Boolean/DateTime/Select/
-    // Tree); the two bolt-ons after it add CKEditor (long text) and Vault Extract's own Tags. Order
-    // matters only for same-name overrides, which neither bolt-on is.
+    // to. provideFlexFields() supplies the eight kernel built-ins (Text/Number/Boolean/DateTime/Select/
+    // Tree/Matrix/Table, #625); the two bolt-ons after it add CKEditor (long text) and Vault Extract's
+    // own Tags. Order matters only for same-name overrides, which neither bolt-on is. Vault Extract's
+    // own backend only ever offers Text/Number/Boolean/DateTime/Select/CKEditor/Tags/Table for a new
+    // field (IVaultExtractFieldTypeRegistry has no extension for Tree/Matrix) - registering all eight
+    // kernel types here only means Tree/Matrix would render correctly if ever encountered, not that
+    // they become choosable in the field designer, which is server-filtered.
     provideFlexFields(),
     provideCKEditorFieldType(),
     provideTagsFieldType(),

@@ -510,7 +510,12 @@
                           {{ entry.label }}
                         </dt>
                         <dd class="col-sm-9 mb-2">
-                          @if (entry.isMarkdown) {
+                          @if (entry.isTable && entry.tableFields) {
+                            <!-- Table's own literal table rendering (ff-table-view), reusing the kernel's
+                                 dispatcher rather than the generic JSON-string fallback formatFieldValue
+                                 falls back to for a non-Table field. -->
+                            <ff-flex-field-view [type]="entry.tableFields.field.fieldTypeName" [value]="entry.tableFields.value" [fields]="entry.tableFields" />
+                          } @else if (entry.isMarkdown) {
                             <!-- #418: LongText values render as Markdown, sanitized on bind by Angular's
                                  DomSanitizer — the same pipeline as the left-column preview. -->
                             <div class="markdown-body" [innerHTML]="entry.renderedHtml"></div>

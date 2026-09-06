@@ -16,7 +16,7 @@ import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule } from '@angul
 import { marked } from 'marked';
 import { LocalizationPipe, PermissionService } from '@abp/ng.core';
 import { Confirmation, ConfirmationService, ToasterService } from '@abp/ng.theme.shared';
-import { FlexFieldControlComponent, FlexFieldData, FlexFieldValue } from '@dignite/ng.flex-fields';
+import { FlexFieldControlComponent, FlexFieldData, FlexFieldValue, FlexFieldViewComponent } from '@dignite/ng.flex-fields';
 import {
   CabinetDto,
   CabinetService,
@@ -75,7 +75,14 @@ const POLL_MAX_INTERVAL_MS = 10000;
   selector: 'lib-document-detail',
   templateUrl: './document-detail.component.html',
   styleUrls: ['./document-detail.component.scss'],
-  imports: [CommonModule, FormsModule, ReactiveFormsModule, FlexFieldControlComponent, LocalizationPipe],
+  imports: [
+    CommonModule,
+    FormsModule,
+    ReactiveFormsModule,
+    FlexFieldControlComponent,
+    FlexFieldViewComponent,
+    LocalizationPipe,
+  ],
   providers: [DocumentFileBlobService],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -412,7 +419,9 @@ export class DocumentDetailComponent implements OnInit {
   // deleted field definitions, preserving data for downstream consumers (#206/#207). The operator UI no
   // longer shows them, matching the list's dynamic columns which also use only active definitions. Labels
   // use displayName and sorting uses displayOrder.
-  extractedFieldEntries = computed<{ key: string; label: string; value: string; isMarkdown: boolean; renderedHtml: string }[]>(() => {
+  extractedFieldEntries = computed<
+    { key: string; label: string; value: string; isMarkdown: boolean; renderedHtml: string; isTable: boolean; tableFields?: FlexFieldValue }[]
+  >(() => {
     const fields = this.document()?.extractedFields;
     if (!fields) return [];
     const defByName = new Map(this.fieldDefinitions().map(d => [d.name ?? '', d]));
@@ -434,12 +443,20 @@ export class DocumentDetailComponent implements OnInit {
           def.fieldTypeName === 'CKEditor' &&
           typeof raw === 'string' &&
           raw.trim().length > 0;
+        // Table's egress value is a JSON array of row objects, not a flat scalar/string-list -
+        // formatFieldValue's generic string rendering (JSON.stringify per row, joined with "; ") is a
+        // last-resort fallback, not a real display. Reuse the kernel's own <ff-flex-field-view>, the same
+        // dispatcher-driven view component the config/control side already reuses via toFlexFieldValue -
+        // it renders Table as a literal table (ff-table-view), recursing per cell.
+        const isTable = def.fieldTypeName === 'Table';
         return {
           key,
           label: def.displayName || key,
           value,
           isMarkdown,
           renderedHtml: isMarkdown ? this.renderMarkdown(value) : '',
+          isTable,
+          tableFields: isTable ? this.toFlexFieldValue(def, raw) : undefined,
         };
       });
   });

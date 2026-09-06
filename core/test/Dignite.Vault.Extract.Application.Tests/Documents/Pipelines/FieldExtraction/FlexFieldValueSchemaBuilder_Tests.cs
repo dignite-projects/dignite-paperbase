@@ -180,9 +180,11 @@ public class FlexFieldValueSchemaBuilder_Tests
 
         Types(schema).ShouldContain("array");
         var itemSchema = schema["items"]!.AsObject();
-        itemSchema["properties"]!.AsObject().ContainsKey("item").ShouldBeTrue();
-        itemSchema["properties"]!.AsObject().ContainsKey("qty").ShouldBeTrue();
-        itemSchema["required"]!.AsArray().Select(n => n!.GetValue<string>()).ShouldBe(new[] { "item" });
+        itemSchema["required"]!.AsArray().Select(n => n!.GetValue<string>()).ShouldBe(new[] { "values" });
+        var valuesSchema = itemSchema["properties"]!.AsObject()["values"]!.AsObject();
+        valuesSchema["properties"]!.AsObject().ContainsKey("item").ShouldBeTrue();
+        valuesSchema["properties"]!.AsObject().ContainsKey("qty").ShouldBeTrue();
+        valuesSchema["required"]!.AsArray().Select(n => n!.GetValue<string>()).ShouldBe(new[] { "item" });
     }
 
     /// <summary>

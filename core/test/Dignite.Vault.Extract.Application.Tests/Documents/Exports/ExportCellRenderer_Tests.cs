@@ -141,7 +141,7 @@ public class ExportCellRenderer_Tests
         }.ConfigurationDictionary;
 
         TestFieldTypeRegistry.Default.Get(TableFieldType.ControlName)
-            .TryRead(Json("""[{"item":"Widget","qty":3}]"""), configuration, out var value)
+            .TryRead(Json("""[{"values":{"item":"Widget","qty":3}}]"""), configuration, out var value)
             .ShouldBeTrue();
 
         var cell = Render(value, TableFieldType.ControlName, configuration);
@@ -152,8 +152,9 @@ public class ExportCellRenderer_Tests
 
         var parsed = Json(cell!);
         parsed.ValueKind.ShouldBe(JsonValueKind.Array);
-        parsed[0].GetProperty("item").GetString().ShouldBe("Widget");
-        parsed[0].GetProperty("qty").GetDecimal().ShouldBe(3m);
+        var values = parsed[0].GetProperty("values");
+        values.GetProperty("item").GetString().ShouldBe("Widget");
+        values.GetProperty("qty").GetDecimal().ShouldBe(3m);
     }
 
     /// <summary>

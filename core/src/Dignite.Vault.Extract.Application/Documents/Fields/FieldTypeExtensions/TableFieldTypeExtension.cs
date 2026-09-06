@@ -76,14 +76,22 @@ public class TableFieldTypeExtension : VaultExtractFieldTypeExtensionBase
 
         foreach (var rowElement in value.EnumerateArray())
         {
-            // Strict, like every other type's TryRead: a row is an object carrying exactly the declared
-            // columns - never a bare scalar, and never a key no column declares.
-            if (rowElement.ValueKind != JsonValueKind.Object)
+            // Every row is an object wrapping its cells under "values" - the kernel's own TableRow shape
+            // (Dignite.Abp.FlexFields.Table.TableRow.Values), not a bag of columns at the row's own top
+            // level. Both @dignite/ng.flex-fields components that ever produce or consume a row - the
+            // read-only ff-table-view and the edit-form ff-table-control - use this exact wrapper; an LLM
+            // extraction schema or an operator edit that skipped it would never round-trip. Strict, like
+            // every other type's TryRead: a row is an object carrying exactly "values", and "values" is an
+            // object carrying exactly the declared columns - never a bare scalar, and never a key no
+            // column declares.
+            if (rowElement.ValueKind != JsonValueKind.Object ||
+                !rowElement.TryGetProperty("values", out var valuesElement) ||
+                valuesElement.ValueKind != JsonValueKind.Object)
             {
                 return false;
             }
 
-            foreach (var property in rowElement.EnumerateObject())
+            foreach (var property in valuesElement.EnumerateObject())
             {
                 if (!columnNames.Contains(property.Name))
                 {
@@ -94,7 +102,7 @@ public class TableFieldTypeExtension : VaultExtractFieldTypeExtensionBase
             var row = new TableRow();
             foreach (var column in columns)
             {
-                var hasCell = rowElement.TryGetProperty(column.Name, out var cellElement)
+                var hasCell = valuesElement.TryGetProperty(column.Name, out var cellElement)
                               && cellElement.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined);
 
                 if (!hasCell)
@@ -161,11 +169,26 @@ public class TableFieldTypeExtension : VaultExtractFieldTypeExtensionBase
             ["items"] = new JsonObject
             {
                 ["type"] = "object",
-                ["properties"] = properties,
-                ["required"] = required,
+                // Cells sit under "values" per row - the kernel's own TableRow wire shape (see TryRead's
+                // own comment) - so the model's output round-trips through the same parsing an operator
+                // edit from ff-table-control already has to satisfy. A bare per-column object at the row's
+                // top level, without this wrapper, is rejected by TryRead even though it looks equivalent.
+                ["properties"] = new JsonObject
+                {
+                    ["values"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = properties,
+                        ["required"] = required,
+                        ["additionalProperties"] = false
+                    }
+                },
+                ["required"] = new JsonArray("values"),
                 ["additionalProperties"] = false
             },
-            ["description"] = "A JSON array of row objects, one per table row, or null/empty array when absent."
+            ["description"] =
+                "A JSON array of row objects, one per table row, or null/empty array when absent. " +
+                "Each row is { \"values\": { <column name>: <value>, ... } }."
         };
     }
 
@@ -222,13 +245,13 @@ public class TableFieldTypeExtension : VaultExtractFieldTypeExtensionBase
         return canonical;
     }
 
-    private List<Dictionary<string, JsonElement>> BuildEgressRows(object value, FieldConfigurationDictionary configuration)
+    private List<Dictionary<string, object>> BuildEgressRows(object value, FieldConfigurationDictionary configuration)
     {
         var columns = new TableConfiguration(configuration).Columns;
         var registry = Registry;
         var rows = ReadStoredRows(value);
 
-        var payload = new List<Dictionary<string, JsonElement>>(rows.Count);
+        var payload = new List<Dictionary<string, object>>(rows.Count);
         foreach (var row in rows)
         {
             var rowPayload = new Dictionary<string, JsonElement>();
@@ -252,7 +275,11 @@ public class TableFieldTypeExtension : VaultExtractFieldTypeExtensionBase
                 }
             }
 
-            payload.Add(rowPayload);
+            // Wrapped under "values" - the kernel's own TableRow wire shape (see TryRead's comment) -
+            // so ff-table-view (and ff-table-control, on the edit path) reads this row correctly rather
+            // than silently treating every cell as absent. A plain string key, not a reflected property
+            // name, so no JsonSerializerOptions naming policy is involved.
+            payload.Add(new Dictionary<string, object> { ["values"] = rowPayload });
         }
 
         return payload;
