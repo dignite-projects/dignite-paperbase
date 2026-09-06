@@ -1,32 +1,31 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { CoreModule } from '@abp/ng.core';
-import { AbstractControl, FormControl, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { AbstractControl, FormControl, ReactiveFormsModule, ValidationErrors, ValidatorFn, Validators } from '@angular/forms';
+import { NzSelectModule } from 'ng-zorro-antd/select';
 import { FieldTypeControlBase } from '@dignite/ng.flex-fields';
 import { TagsConfiguration } from './tags-configuration';
 
 /**
- * Edits the value of a `Tags` field — a list of short free-form strings, entered one at a time.
+ * Edits the value of a `Tags` field — a list of short free-form strings.
  *
- * The control's own value is the `string[]` the server stores; the text box below it is draft-only
- * component state, never itself the field value. `MaxCount` / `MaxLength` are enforced here too, as a
- * client convenience — the server's `FlexFieldValueReader` remains the actual gate, and rejects the
- * whole array rather than truncating it, so a value that slipped past this UI still fails loudly there.
+ * Rendered as `nz-select` in Ant Design's `tags` mode: typed text becomes a removable chip inline in
+ * the same box, the input-and-display-in-one-control pattern the flex-fields kernel's own `Select`
+ * control already renders with (also an `nz-select`, just closed-vocabulary). `MaxCount` is enforced
+ * live via `nzMaxMultipleCount`; both `MaxCount` and `MaxLength` are re-checked as form validators —
+ * a client convenience only, since the server's `FlexFieldValueReader` remains the actual gate and
+ * rejects the whole array rather than truncating it, so a value that slipped past this UI still
+ * fails loudly there.
  */
 @Component({
   selector: 'lib-tags-control',
   templateUrl: './tags-control.component.html',
-  imports: [CommonModule, CoreModule, FormsModule, ReactiveFormsModule],
+  imports: [CommonModule, ReactiveFormsModule, NzSelectModule],
 })
 export class TagsControlComponent extends FieldTypeControlBase {
-  draft = '';
+  protected readonly tokenSeparators = [','];
 
   protected get valueControl(): FormControl<string[]> {
     return this.fieldControl as FormControl<string[]>;
-  }
-
-  protected get tags(): string[] {
-    return this.valueControl?.value ?? [];
   }
 
   protected get maxCount(): number {
@@ -37,32 +36,40 @@ export class TagsControlComponent extends FieldTypeControlBase {
     return Number(this.fieldValue?.field.configuration['Tags.MaxLength'] ?? 256);
   }
 
+  protected get placeholder(): string {
+    const value = this.fieldValue?.field.configuration['Tags.Placeholder'];
+    return typeof value === 'string' ? value : '';
+  }
+
   protected configurationDefaults(): object {
     return new TagsConfiguration();
   }
 
   protected createControl(): AbstractControl {
-    const validators = this.fieldValue!.required ? [Validators.required] : [];
+    const validators = [
+      ...(this.fieldValue!.required ? [Validators.required] : []),
+      tagsMaxCountValidator(this.maxCount),
+      tagsMaxLengthValidator(this.maxLength),
+    ];
     return this.fb.control<string[]>(
       Array.isArray(this.selectedValue) ? (this.selectedValue as string[]) : [],
       validators,
     );
   }
+}
 
-  /** Adds the draft text as a new tag on Enter or comma, and clears the draft either way. */
-  commitDraft(event: Event): void {
-    event.preventDefault();
-    const text = this.draft.trim();
-    this.draft = '';
+/** Rejects the whole value once it carries more tags than the field allows. */
+function tagsMaxCountValidator(maxCount: number): ValidatorFn {
+  return (control: AbstractControl): ValidationErrors | null => {
+    const tags = (control.value as string[] | null) ?? [];
+    return tags.length > maxCount ? { tagsMaxCount: { maxCount, actual: tags.length } } : null;
+  };
+}
 
-    if (!text || this.tags.includes(text) || this.tags.length >= this.maxCount || text.length > this.maxLength) {
-      return;
-    }
-
-    this.valueControl.setValue([...this.tags, text]);
-  }
-
-  removeTag(index: number): void {
-    this.valueControl.setValue(this.tags.filter((_, i) => i !== index));
-  }
+/** Rejects the whole value if any single tag exceeds the configured length. */
+function tagsMaxLengthValidator(maxLength: number): ValidatorFn {
+  return (control: AbstractControl): ValidationErrors | null => {
+    const tags = (control.value as string[] | null) ?? [];
+    return tags.some(tag => tag.length > maxLength) ? { tagsMaxLength: { maxLength } } : null;
+  };
 }

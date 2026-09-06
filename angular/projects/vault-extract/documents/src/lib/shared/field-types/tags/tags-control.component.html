@@ -4,31 +4,14 @@
       {{ fieldValue!.field.displayName }}
     </label>
   }
-  @if (tags.length > 0) {
-    <div class="d-flex flex-wrap gap-1 mb-1">
-      @for (tag of tags; track tag; let i = $index) {
-        <span class="badge bg-light text-dark border">
-          {{ tag }}
-          <button
-            type="button"
-            class="btn-close btn-close-sm ms-1"
-            style="font-size: 0.55rem"
-            [attr.aria-label]="'AbpUi::Delete' | abpLocalization"
-            (click)="removeTag(i)"
-          ></button>
-        </span>
-      }
-    </div>
-  }
-  <input
-    type="text"
-    class="form-control"
-    [placeholder]="fieldValue?.field?.configuration?.['Tags.Placeholder'] ?? ''"
-    [(ngModel)]="draft"
-    [ngModelOptions]="{ standalone: true }"
-    (keydown.enter)="commitDraft($event)"
-    (keydown.,)="commitDraft($event)"
-  />
+  <nz-select
+    class="w-100"
+    nzMode="tags"
+    [nzTokenSeparators]="tokenSeparators"
+    [nzMaxMultipleCount]="maxCount"
+    [nzPlaceHolder]="placeholder"
+    [formControl]="valueControl"
+  ></nz-select>
   @if (fieldValue?.field?.description) {
     <small class="form-text text-muted d-block">
       {{ fieldValue!.field.description }}
