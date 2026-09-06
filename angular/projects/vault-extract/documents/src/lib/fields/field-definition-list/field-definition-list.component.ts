@@ -194,6 +194,11 @@ export class FieldDefinitionListComponent implements OnInit {
   // "可筛选" checkbox and swaps in the hint that explains why.
   readonly searchableUnsupported = signal(false);
 
+  // Same gate as searchableUnsupported (same map, same predicate) but for the duplicate-detection
+  // unique key: a type with no query-index slot cannot back IsUniqueKey either (#626 backend guard).
+  // Drives the template: disables the "唯一键" checkbox and swaps in the hint that explains why.
+  readonly uniqueKeyUnsupported = signal(false);
+
   constructor() {
     configureEntityTable<FieldDefinitionDto>(this.extensions, EXTRACT_TABLES.FieldDefinitions, [
       EntityProp.create<FieldDefinitionDto>({
@@ -286,6 +291,7 @@ export class FieldDefinitionListComponent implements OnInit {
         // A modal opened before this landed was built against an empty map/list - re-apply so it
         // catches up.
         this.applySearchableAvailability(this.form.controls.fieldTypeName.value);
+        this.applyUniqueKeyAvailability(this.form.controls.fieldTypeName.value);
       });
   }
 
@@ -309,6 +315,7 @@ export class FieldDefinitionListComponent implements OnInit {
       .subscribe(fieldTypeName => {
         this.configSeed.set(undefined);
         this.applySearchableAvailability(fieldTypeName);
+        this.applyUniqueKeyAvailability(fieldTypeName);
       });
     this.load();
   }
@@ -330,6 +337,27 @@ export class FieldDefinitionListComponent implements OnInit {
       // Restore the default now that the switch is meaningful again - it was pinned to false and
       // locked by a previous, non-indexable type selection, not by the operator.
       control.setValue(true, { emitEvent: false });
+      control.enable({ emitEvent: false });
+    }
+  }
+
+  /**
+   * A field type with no query-index slot cannot participate in the duplicate-detection key however the
+   * switch is set, so it is pinned off and disabled rather than left as a control with no effect - the
+   * hint beside it says why. getRawValue still returns the (forced-false) value.
+   */
+  private applyUniqueKeyAvailability(fieldTypeName?: string): void {
+    this.uniqueKeyUnsupported.set(
+      !!fieldTypeName && this.indexableByFieldType.get(fieldTypeName) === false,
+    );
+    const control = this.form.controls.isUniqueKey;
+    if (this.uniqueKeyUnsupported()) {
+      control.setValue(false, { emitEvent: false });
+      control.disable({ emitEvent: false });
+    } else if (control.disabled) {
+      // Restore the default now that the switch is meaningful again - it was pinned to false and
+      // locked by a previous, non-indexable type selection, not by the operator.
+      control.setValue(false, { emitEvent: false });
       control.enable({ emitEvent: false });
     }
   }
@@ -458,8 +486,10 @@ export class FieldDefinitionListComponent implements OnInit {
     // PREVIOUS modal instance's non-indexable type would otherwise survive into this one and make
     // applySearchableAvailability below misread it as "locked by this field's own type".
     this.form.controls.isSearchable.enable({ emitEvent: false });
+    this.form.controls.isUniqueKey.enable({ emitEvent: false });
     this.configSeed.set(undefined);
     this.applySearchableAvailability(fieldTypeName);
+    this.applyUniqueKeyAvailability(fieldTypeName);
     // Must be called after form.reset()/enable(): both trigger valueChanges that can be misread as
     // "manual edit". reset() clears that marker and resets suggestion state, including the spinner.
     this.slugHandle?.reset();
@@ -489,12 +519,14 @@ export class FieldDefinitionListComponent implements OnInit {
     // a previous edit's non-indexable type would otherwise leave this disabled and make
     // applySearchableAvailability below stomp this field's own real IsSearchable back to true.
     this.form.controls.isSearchable.enable({ emitEvent: false });
+    this.form.controls.isUniqueKey.enable({ emitEvent: false });
     // The stored field, not just its type: <ff-flex-field-config> only restores saved configuration
     // values when selected.fieldTypeName matches the type currently being rendered, so handing it the
     // whole field lets it patch what an admin previously set instead of quietly re-defaulting. Rebuilt
     // as a plain object (not the DTO instance itself) - see toFieldData.
     this.configSeed.set(this.toFieldData(field));
     this.applySearchableAvailability(field.fieldTypeName);
+    this.applyUniqueKeyAvailability(field.fieldTypeName);
     this.slugHandle?.markManual();
     this.justDrafted.set(false);
     this.isDrafting.set(false);
@@ -572,6 +604,7 @@ export class FieldDefinitionListComponent implements OnInit {
       configuration: draft.configuration ?? {},
     });
     this.applySearchableAvailability(fieldTypeName);
+    this.applyUniqueKeyAvailability(fieldTypeName);
     if (forNewField) {
       // Create mode: overwrite the machine key as part of the group. Use the suggested value, or fall
       // back to local placeholder field_{n} when missing, such as when pure CJK sanitizes to empty after

@@ -175,6 +175,7 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
 
         EnsureFieldTypeRegistered(input.FieldTypeName, input.Configuration);
         CheckSearchable(input.FieldTypeName, input.IsSearchable);
+        CheckUniqueKey(input.FieldTypeName, input.IsUniqueKey);
 
         // Soft-delete-aware duplicate check owned by the domain service (#304): the same (TenantId, DocumentTypeId, Name)
         // counts as occupied even when soft-deleted, avoiding conflicts with new records on restore.
@@ -212,6 +213,7 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
 
         EnsureFieldTypeRegistered(input.FieldTypeName, input.Configuration);
         CheckSearchable(input.FieldTypeName, input.IsSearchable);
+        CheckUniqueKey(input.FieldTypeName, input.IsUniqueKey);
 
         var oldName = entity.Name;
         var wasSearchable = entity.IsSearchable;
@@ -555,6 +557,22 @@ public class FieldDefinitionAppService : VaultExtractAppService, IFieldDefinitio
         if (isSearchable && !IsIndexable(fieldTypeName))
         {
             throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.FieldTypeNotSearchable)
+                .WithData("FieldTypeName", fieldTypeName);
+        }
+    }
+
+    /// <summary>
+    /// Rejects a field marked as a unique key under a field type with no query-index slot (#626) — the
+    /// same predicate <see cref="CheckSearchable"/> already gates on, because a composite (Table) or
+    /// long-text (CKEditor) value is not something a document should be identified by, and duplicate-
+    /// detection fingerprinting is a deliberate product restriction rather than a mechanical limitation of
+    /// how the fingerprint itself reads values.
+    /// </summary>
+    protected virtual void CheckUniqueKey(string fieldTypeName, bool isUniqueKey)
+    {
+        if (isUniqueKey && !IsIndexable(fieldTypeName))
+        {
+            throw new BusinessException(VaultExtractErrorCodes.FieldDefinition.FieldTypeNotUniqueKeyable)
                 .WithData("FieldTypeName", fieldTypeName);
         }
     }

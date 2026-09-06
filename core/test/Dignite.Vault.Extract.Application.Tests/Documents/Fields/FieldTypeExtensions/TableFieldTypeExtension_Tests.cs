@@ -285,10 +285,19 @@ public class TableFieldTypeExtension_Tests
     /// every column type tested above, each of which contributes exactly one string per cell — but once a
     /// column is multi-valued (<c>Tags</c> / multi-<c>Select</c>), a cell can contribute a
     /// <b>variable-length</b> run of strings, and the row/cell boundary that run's length used to mark is
-    /// lost the moment it is flattened. Two structurally different tables can then flatten to the identical
-    /// canonical sequence, which <c>FlexFieldFingerprintCalculator</c> (#411) would hash identically - a
-    /// false "these are the same document" duplicate-detection collision if a Table field carrying a
-    /// multi-valued column is ever marked <c>IsUniqueKey</c>.
+    /// lost the moment it is flattened. Two structurally different tables would then flatten to the
+    /// identical canonical sequence, which <c>FlexFieldFingerprintCalculator</c> (#411) would hash
+    /// identically - a false "these are the same document" duplicate-detection collision, IF a Table field
+    /// could ever be marked <c>IsUniqueKey</c> in the first place.
+    /// </para>
+    /// <para>
+    /// #626: it no longer can. <c>Table</c>'s <c>IndexValueType</c> is <c>null</c>, so
+    /// <c>FieldDefinitionAppService.CheckUniqueKey</c> now rejects <c>IsUniqueKey = true</c> for any Table
+    /// field before it can be persisted, the same way <c>CheckSearchable</c> already rejects
+    /// <c>IsSearchable</c> for it - this collision is unreachable via the public API. The method under test
+    /// here, <see cref="TableFieldTypeExtension.CanonicalizeForFingerprint"/>, still exhibits the flattening
+    /// behavior this test pins, since fingerprint canonicalization has no idea a field is (or isn't) a
+    /// unique key; the test remains as a direct unit pin on that method, not as a live production risk.
     /// </para>
     /// <para>
     /// This test pins the CURRENT behavior (the two tables below canonicalize identically) so a future fix

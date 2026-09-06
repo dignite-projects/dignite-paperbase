@@ -39,7 +39,8 @@ public class FieldTypeCatalogAndSearchabilityTestModule : AbpModule
 /// #562: <see cref="IFieldDefinitionAppService.GetFieldTypesAsync"/>, the fail-closed
 /// <c>IsSearchable</c>-on-a-non-indexable-type guard, and the index rebuild an <c>IsSearchable</c> flip
 /// owes the documents that already exist. All three exercise the real EF-backed stack: asserting the
-/// index manager was *called* would not catch a rebuild that ran and derived nothing.
+/// index manager was *called* would not catch a rebuild that ran and derived nothing. #626 adds the
+/// analogous <c>IsUniqueKey</c>-on-a-non-indexable-type guard, gated by the same predicate.
 /// </summary>
 public class FieldTypeCatalogAndSearchability_Tests
     : VaultExtractTestBase<FieldTypeCatalogAndSearchabilityTestModule>
@@ -409,6 +410,128 @@ public class FieldTypeCatalogAndSearchability_Tests
             }));
 
         ex.Code.ShouldBe(VaultExtractErrorCodes.FieldDefinition.FieldTypeNotSearchable);
+    }
+
+    /// <summary>
+    /// #626: the same fail-closed guard as <c>FieldTypeNotSearchable</c>, gating <c>IsUniqueKey</c> instead
+    /// of <c>IsSearchable</c> against the same indexability predicate. A Table/CKEditor value has no query
+    /// index, so duplicate-detection fingerprinting could never usefully identify a document by it.
+    /// </summary>
+    [Fact]
+    public async Task CreateAsync_Rejects_UniqueKey_On_A_Type_With_No_Index_Slot()
+    {
+        var type = await CreateTypeAsync();
+
+        var ex = await Should.ThrowAsync<BusinessException>(() => _fieldAppService.CreateAsync(
+            new CreateFieldDefinitionDto
+            {
+                DocumentTypeId = type.Id,
+                Name = "body",
+                DisplayName = "Body",
+                FieldTypeName = CKEditorFieldType.ControlName,
+                IsSearchable = false,
+                IsUniqueKey = true,
+            }));
+
+        ex.Code.ShouldBe(VaultExtractErrorCodes.FieldDefinition.FieldTypeNotUniqueKeyable);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_Rejects_Turning_UniqueKey_On_For_A_Type_With_No_Index_Slot()
+    {
+        var type = await CreateTypeAsync();
+        var field = await _fieldAppService.CreateAsync(new CreateFieldDefinitionDto
+        {
+            DocumentTypeId = type.Id,
+            Name = "body",
+            DisplayName = "Body",
+            FieldTypeName = CKEditorFieldType.ControlName,
+            IsSearchable = false,
+            IsUniqueKey = false,
+        });
+
+        var ex = await Should.ThrowAsync<BusinessException>(() => _fieldAppService.UpdateAsync(
+            field.Id,
+            new UpdateFieldDefinitionDto
+            {
+                Name = field.Name,
+                DisplayName = field.DisplayName,
+                FieldTypeName = field.FieldTypeName,
+                IsSearchable = false,
+                IsUniqueKey = true,
+            }));
+
+        ex.Code.ShouldBe(VaultExtractErrorCodes.FieldDefinition.FieldTypeNotUniqueKeyable);
+    }
+
+    /// <summary>A Table field cannot be a unique key either: composite rows have no index slot the same way CKEditor's long text has none.</summary>
+    [Fact]
+    public async Task CreateAsync_Rejects_UniqueKey_On_A_Table_Field()
+    {
+        var type = await CreateTypeAsync();
+
+        var ex = await Should.ThrowAsync<BusinessException>(() => _fieldAppService.CreateAsync(
+            new CreateFieldDefinitionDto
+            {
+                DocumentTypeId = type.Id,
+                Name = "line_items",
+                DisplayName = "Line items",
+                FieldTypeName = TableFieldType.ControlName,
+                Configuration = new TableConfiguration
+                {
+                    Columns = new List<InlineFieldDefinition>
+                    {
+                        new() { Name = "item", DisplayName = "Item", FieldTypeName = TextFieldType.ControlName }
+                    }
+                }.ConfigurationDictionary,
+                IsSearchable = false,
+                IsUniqueKey = true,
+            }));
+
+        ex.Code.ShouldBe(VaultExtractErrorCodes.FieldDefinition.FieldTypeNotUniqueKeyable);
+    }
+
+    /// <summary>No regression: an indexable type still saves normally with IsUniqueKey = true.</summary>
+    [Fact]
+    public async Task CreateAsync_Accepts_UniqueKey_On_An_Indexable_Type()
+    {
+        var type = await CreateTypeAsync();
+
+        var field = await _fieldAppService.CreateAsync(new CreateFieldDefinitionDto
+        {
+            DocumentTypeId = type.Id,
+            Name = "code",
+            DisplayName = "Code",
+            FieldTypeName = TextFieldType.ControlName,
+            IsUniqueKey = true,
+        });
+
+        field.IsUniqueKey.ShouldBeTrue();
+    }
+
+    /// <summary>No regression: turning IsUniqueKey on for an already-indexable field still succeeds.</summary>
+    [Fact]
+    public async Task UpdateAsync_Accepts_Turning_UniqueKey_On_For_An_Indexable_Type()
+    {
+        var type = await CreateTypeAsync();
+        var field = await _fieldAppService.CreateAsync(new CreateFieldDefinitionDto
+        {
+            DocumentTypeId = type.Id,
+            Name = "code",
+            DisplayName = "Code",
+            FieldTypeName = TextFieldType.ControlName,
+            IsUniqueKey = false,
+        });
+
+        var updated = await _fieldAppService.UpdateAsync(field.Id, new UpdateFieldDefinitionDto
+        {
+            Name = field.Name,
+            DisplayName = field.DisplayName,
+            FieldTypeName = field.FieldTypeName,
+            IsUniqueKey = true,
+        });
+
+        updated.IsUniqueKey.ShouldBeTrue();
     }
 
     /// <summary>

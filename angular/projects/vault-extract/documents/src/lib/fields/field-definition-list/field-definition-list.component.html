@@ -279,14 +279,18 @@
                 <div class="form-text">
                   {{ (searchableUnsupported() ? '::FieldDefinition:NotIndexableHint' : '::FieldDefinition:IsSearchableHint') | abpLocalization }}
                 </div>
-                <!-- #411: unique-key fields form the duplicate-detection fingerprint. -->
+                <!-- #411: unique-key fields form the duplicate-detection fingerprint. #626: a type that
+                     indexes nothing (long text) has the control disabled by applyUniqueKeyAvailability,
+                     and the hint says why rather than leaving a switch that does nothing. -->
                 <div class="form-check mt-2">
                   <input type="checkbox" class="form-check-input" id="isUniqueKey" formControlName="isUniqueKey" />
                   <label class="form-check-label" for="isUniqueKey">
                     {{ '::FieldDefinition:IsUniqueKey' | abpLocalization }}
                   </label>
                 </div>
-                <div class="form-text">{{ '::FieldDefinition:IsUniqueKeyHint' | abpLocalization }}</div>
+                <div class="form-text">
+                  {{ (uniqueKeyUnsupported() ? '::FieldDefinition:NotUniqueKeyableHint' : '::FieldDefinition:IsUniqueKeyHint') | abpLocalization }}
+                </div>
               </div>
             </div>
 

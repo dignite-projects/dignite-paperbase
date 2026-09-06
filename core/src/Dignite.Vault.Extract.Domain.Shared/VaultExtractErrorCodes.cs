@@ -124,6 +124,16 @@ public static class VaultExtractErrorCodes
         /// long text. The value would never reach the index, so the flag would silently do nothing.
         /// </summary>
         public const string FieldTypeNotSearchable = "Extract:FieldTypeNotSearchable";
+
+        /// <summary>
+        /// A field marked <c>IsUniqueKey</c> whose field type has no query-index slot (#626) — e.g. Table or
+        /// CKEditor. Duplicate-detection fingerprinting reads straight from the value bag, not the index, so this
+        /// isn't about the fingerprint mechanism itself; it's a deliberate product restriction: a composite/long-text
+        /// value is not something you'd sensibly identify a document by, and tying eligibility to the same
+        /// indexability predicate CheckSearchable already uses means any future non-indexable type (e.g. a Matrix
+        /// composite type, not yet implemented) is excluded from IsUniqueKey by construction.
+        /// </summary>
+        public const string FieldTypeNotUniqueKeyable = "Extract:FieldTypeNotUniqueKeyable";
     }
 
     public static class ExtractedField
