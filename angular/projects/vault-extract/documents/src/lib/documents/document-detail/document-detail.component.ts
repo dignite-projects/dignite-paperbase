@@ -35,7 +35,6 @@ import {
   EXTRACT_PERMISSIONS,
   PipelineRunStatus,
 } from '@dignite/ng.vault-extract';
-import { formatExtractedFieldValue } from '../../shared/format-field-value';
 import { stripMarkdownCodeFences } from '../../shared/strip-code-fences';
 import { DocumentFileBlobService } from '../../shared/document-file-blob.service';
 import { isImageContentType, isPdfContentType } from '../../shared/content-type';
@@ -420,7 +419,7 @@ export class DocumentDetailComponent implements OnInit {
   // longer shows them, matching the list's dynamic columns which also use only active definitions. Labels
   // use displayName and sorting uses displayOrder.
   extractedFieldEntries = computed<
-    { key: string; label: string; value: string; isMarkdown: boolean; renderedHtml: string; isTable: boolean; tableFields?: FlexFieldValue }[]
+    { key: string; label: string; fieldTypeName: string; raw: unknown; fieldValue: FlexFieldValue }[]
   >(() => {
     const fields = this.document()?.extractedFields;
     if (!fields) return [];
@@ -433,42 +432,26 @@ export class DocumentDetailComponent implements OnInit {
       .map(key => {
         const def = defByName.get(key)!;
         const raw = fields[key];
-        const value = this.formatFieldValue(raw);
-        // #418: a long-text value is rendered as Markdown here in the detail view (never in the compact
-        // list, so multi-paragraph content cannot blow apart table rows). The long-text field type is an
-        // explicit config-time choice - a declared type, not a runtime guess. Only render when there is
-        // real string content; a null / empty value (formatted as "-") stays plain text. renderedHtml keeps
-        // the sanitize-on-bind contract via renderMarkdown + [innerHTML].
-        const isMarkdown =
-          def.fieldTypeName === 'CKEditor' &&
-          typeof raw === 'string' &&
-          raw.trim().length > 0;
-        // Table's egress value is a JSON array of row objects, not a flat scalar/string-list -
-        // formatFieldValue's generic string rendering (JSON.stringify per row, joined with "; ") is a
-        // last-resort fallback, not a real display. Reuse the kernel's own <ff-flex-field-view>, the same
-        // dispatcher-driven view component the config/control side already reuses via toFlexFieldValue -
-        // it renders Table as a literal table (ff-table-view), recursing per cell.
+        // #628: every field type's own view component already knows how to render its value read-only —
+        // Markdown for CKEditor, chips for Tags, a literal table for Table, plain text for the scalars —
+        // via the kernel's own dispatcher, <ff-flex-field-view>. Reuse toFlexFieldValue (already built for
+        // the edit form below) instead of a per-type isMarkdown/isTable branch here.
         //
-        // toFieldData's own displayName is blanked out here: ff-table-view's non-list template renders a
-        // "flex-field-label" span from fields.field.displayName whenever it's non-empty - correct in the
-        // edit form (fieldValueOf/<ff-flex-field-control>, which has no external label of its own), wrong
-        // here, where the <dt> two lines below the template's for-loop already labels this row. Without
-        // this, "Line Items" renders twice. Mirrors TableControlComponent.columnValueOf's own reason for
-        // blanking a column's displayName - its <th> already names the column the same way this <dt>
-        // already names the field.
-        const isTable = def.fieldTypeName === 'Table';
-        const tableFields = isTable ? this.toFlexFieldValue(def, raw) : undefined;
-        if (tableFields) {
-          tableFields.field = { ...tableFields.field, displayName: '' };
-        }
+        // displayName is blanked out on every entry, not just Table: every built-in/bolt-on view
+        // component's non-list template (showInList=false, the dispatcher's own default) renders an
+        // optional label from fields.field.displayName plus its own block spacing — meant for a
+        // standalone form field, not this <dl>'s <dt>/<dd> pair, which already labels the row two lines
+        // below in the template. Without this, every field's label would render twice, not just Table's
+        // (verified against ff-select-view / ff-ckeditor-view / lib-tags-view's own templates, which all
+        // carry the same *ngIf="fields?.field?.displayName" label).
+        const fieldValue = this.toFlexFieldValue(def, raw);
+        fieldValue.field = { ...fieldValue.field, displayName: '' };
         return {
           key,
           label: def.displayName || key,
-          value,
-          isMarkdown,
-          renderedHtml: isMarkdown ? this.renderMarkdown(value) : '',
-          isTable,
-          tableFields,
+          fieldTypeName: def.fieldTypeName ?? '',
+          raw,
+          fieldValue,
         };
       });
   });
@@ -1334,10 +1317,6 @@ export class DocumentDetailComponent implements OnInit {
     const end = run.completedAt ? new Date(run.completedAt).getTime() : Date.now();
     if (Number.isNaN(end) || end < start) return null;
     return end - start;
-  }
-
-  formatFieldValue(value: unknown): string {
-    return formatExtractedFieldValue(value);
   }
 
   startEditFields(): void {

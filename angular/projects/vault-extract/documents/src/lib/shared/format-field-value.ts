@@ -15,8 +15,11 @@
 export const MULTI_VALUE_SEPARATOR = '; ';
 
 /**
- * Renders an `ExtractedFields` value for display. Shared by the document list and detail views so
- * the two cannot drift (#212): multi-value fields arrive as JSON arrays, and a stray object must
+ * Renders an `ExtractedFields` value for display in the document list's dynamic columns, whose
+ * `EntityProp.valueResolver` contract needs a plain string (#212), never a mounted component tree.
+ * The detail view no longer shares this formatter (#628): it renders every field through its own
+ * `<ff-flex-field-view>` instead, so list and detail intentionally no longer agree on presentation —
+ * only the list needs a string. Multi-value fields arrive as JSON arrays, and a stray object must
  * never surface as `[object Object]`.
  * - null / undefined → "—"
  * - array → each element rendered individually, then joined with `MULTI_VALUE_SEPARATOR` (empty array →

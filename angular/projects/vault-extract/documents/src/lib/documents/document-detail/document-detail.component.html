@@ -510,18 +510,10 @@
                           {{ entry.label }}
                         </dt>
                         <dd class="col-sm-9 mb-2">
-                          @if (entry.isTable && entry.tableFields) {
-                            <!-- Table's own literal table rendering (ff-table-view), reusing the kernel's
-                                 dispatcher rather than the generic JSON-string fallback formatFieldValue
-                                 falls back to for a non-Table field. -->
-                            <ff-flex-field-view [type]="entry.tableFields.field.fieldTypeName" [value]="entry.tableFields.value" [fields]="entry.tableFields" />
-                          } @else if (entry.isMarkdown) {
-                            <!-- #418: LongText values render as Markdown, sanitized on bind by Angular's
-                                 DomSanitizer — the same pipeline as the left-column preview. -->
-                            <div class="markdown-body" [innerHTML]="entry.renderedHtml"></div>
-                          } @else {
-                            <span [title]="entry.value">{{ entry.value }}</span>
-                          }
+                          <!-- #628: every field type renders through its own view component (Markdown for
+                               CKEditor, chips for Tags, a literal table for Table, plain text for the
+                               scalars) via the kernel's dispatcher — no per-type branch here. -->
+                          <ff-flex-field-view [type]="entry.fieldTypeName" [value]="entry.raw" [fields]="entry.fieldValue" />
                         </dd>
                       }
                     </dl>
