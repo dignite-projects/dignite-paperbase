@@ -51,6 +51,7 @@ import {
 import { ClientPagedResult, configureEntityTable, EXTRACT_TABLES } from '../../shared/extensible-table';
 import { formatExtractedFieldValue } from '../../shared/format-field-value';
 import { FieldValueFilterComponent } from '../../shared/field-value-filter/field-value-filter.component';
+import { isFilterableField } from '../../shared/field-value-filter/field-value-filter.model';
 import { exportFileName, readBlobErrorMessage, triggerBlobDownload } from '../../shared/blob-download';
 import { executeBulkOperations } from '../../shared/bulk-operation';
 import { DocumentListFilter, toExportDocumentsInput } from './export-current-view';
@@ -158,6 +159,17 @@ export class DocumentListComponent implements OnInit {
   // definitions (not the union of extractedFields keys) so headers stay stable and
   // friendly even for fields no document in the page happened to fill.
   extractedFieldColumns = signal<FieldDefinitionDto[]>([]);
+  // Which field types index anything at all, keyed by registration name — straight from the server via
+  // FieldDefinitionAppService.GetFieldTypesAsync (IFieldType.IndexValueType). Empty until that request
+  // lands. Mirrors FieldValueFilterComponent's own map (and its isFilterableField predicate below):
+  // a field is a list column only if its type is structurally indexable AND its own IsSearchable is on —
+  // this is what keeps CKEditor/Table (whose IndexValueType is null) out of the dynamic columns without
+  // a per-type isMarkdown/isTable branch, and without a separate "show in list" flag (#628 follow-up).
+  private indexableByFieldType = new Map<string, boolean>();
+  // The current type's field definitions before the isFilterableField filter, kept so the filter can be
+  // re-applied once indexableByFieldType lands (it is fetched independently and may resolve after the
+  // fields themselves, per field-definition-list.component.ts's own comment on the same race).
+  private rawExtractedFields: FieldDefinitionDto[] = [];
   // #415: extracted-field-value filters composed by lib-field-value-filter. AND-combined with the metadata
   // filters and sent as GetDocumentListInput.fieldFilters. Only ever non-empty while a single document type
   // is selected (the backend requires documentTypeCode when fieldFilters are present); cleared on type
@@ -194,6 +206,15 @@ export class DocumentListComponent implements OnInit {
 
   constructor() {
     this.rebuildTableProps([]);
+    this.fieldDefinitionService.getFieldTypes()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(fieldTypes => {
+        this.indexableByFieldType = new Map(
+          fieldTypes.map(fieldType => [fieldType.name ?? '', fieldType.indexable ?? true]),
+        );
+        // Columns already built (or left empty) against a not-yet-loaded map need to catch up now.
+        this.applyExtractedFieldColumns(this.rawExtractedFields);
+      });
     // #440: pause the background poll while the tab is hidden (no point re-fetching an unseen list) and resume
     // with an immediate refresh when it returns to the foreground; always tear the timer down on destroy so
     // navigating away stops polling.
@@ -307,7 +328,7 @@ export class DocumentListComponent implements OnInit {
     // them so they are neither sent on the refresh below nor left dangling; the composer resets its own
     // rows when its fieldDefinitions input changes.
     this.fieldValueFilters.set([]);
-    this.updateExtractedFieldColumns([]);
+    this.applyExtractedFieldColumns([]);
     if (value) {
       this.loadExtractedFieldColumns(value);
     }
@@ -647,7 +668,7 @@ export class DocumentListComponent implements OnInit {
         },
         error: () => {
           this.documentTypes.set([]);
-          this.updateExtractedFieldColumns([]);
+          this.applyExtractedFieldColumns([]);
         },
       });
   }
@@ -730,7 +751,7 @@ export class DocumentListComponent implements OnInit {
     const documentTypeId = this.documentTypes().find(t => t.typeCode === typeCode)?.id;
     if (!documentTypeId) {
       if (this.typeFilter() === typeCode) {
-        this.updateExtractedFieldColumns([]);
+        this.applyExtractedFieldColumns([]);
       }
       return;
     }
@@ -739,15 +760,26 @@ export class DocumentListComponent implements OnInit {
       .subscribe({
         next: fields => {
           if (this.typeFilter() !== typeCode) return;
-          this.updateExtractedFieldColumns(
+          this.applyExtractedFieldColumns(
             [...fields].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0)),
           );
         },
         error: () => {
           if (this.typeFilter() !== typeCode) return;
-          this.updateExtractedFieldColumns([]);
+          this.applyExtractedFieldColumns([]);
         },
       });
+  }
+
+  // Entry point for a freshly (re)loaded set of the current type's field definitions. Stores them
+  // unfiltered (so a later-landing indexableByFieldType can re-derive the same result) and narrows to
+  // isFilterableField before they become columns — the same predicate FieldValueFilterComponent already
+  // uses to build its picker, so "shown in the list" and "filterable" stay one decision, not two.
+  private applyExtractedFieldColumns(fields: FieldDefinitionDto[]): void {
+    this.rawExtractedFields = fields;
+    this.updateExtractedFieldColumns(
+      fields.filter(f => isFilterableField(f.fieldTypeName, f.isSearchable, this.indexableByFieldType)),
+    );
   }
 
   private updateExtractedFieldColumns(fields: FieldDefinitionDto[]): void {
