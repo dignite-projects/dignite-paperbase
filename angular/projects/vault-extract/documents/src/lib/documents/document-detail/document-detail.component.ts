@@ -448,7 +448,19 @@ export class DocumentDetailComponent implements OnInit {
         // last-resort fallback, not a real display. Reuse the kernel's own <ff-flex-field-view>, the same
         // dispatcher-driven view component the config/control side already reuses via toFlexFieldValue -
         // it renders Table as a literal table (ff-table-view), recursing per cell.
+        //
+        // toFieldData's own displayName is blanked out here: ff-table-view's non-list template renders a
+        // "flex-field-label" span from fields.field.displayName whenever it's non-empty - correct in the
+        // edit form (fieldValueOf/<ff-flex-field-control>, which has no external label of its own), wrong
+        // here, where the <dt> two lines below the template's for-loop already labels this row. Without
+        // this, "Line Items" renders twice. Mirrors TableControlComponent.columnValueOf's own reason for
+        // blanking a column's displayName - its <th> already names the column the same way this <dt>
+        // already names the field.
         const isTable = def.fieldTypeName === 'Table';
+        const tableFields = isTable ? this.toFlexFieldValue(def, raw) : undefined;
+        if (tableFields) {
+          tableFields.field = { ...tableFields.field, displayName: '' };
+        }
         return {
           key,
           label: def.displayName || key,
@@ -456,7 +468,7 @@ export class DocumentDetailComponent implements OnInit {
           isMarkdown,
           renderedHtml: isMarkdown ? this.renderMarkdown(value) : '',
           isTable,
-          tableFields: isTable ? this.toFlexFieldValue(def, raw) : undefined,
+          tableFields,
         };
       });
   });
